@@ -189,16 +189,22 @@ fn main() -> Result<()> {
     // flash a "??" before the first LayoutChanged event arrives.
     let initial_layout: Option<LayoutId> = layout_switcher.current().ok();
     let initial_icon = match initial_layout.as_ref() {
-        Some(l) => icon_render::for_layout(l)?,
+        Some(l) => icon_render::for_layout(l, false)?,
         None => icon_render::unknown()?,
     };
 
     let tray: TrayIcon = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip(initial_tooltip(initial_layout.as_ref()))
+        .with_tooltip(tooltip_for(initial_layout.as_ref(), false))
         .with_icon(initial_icon)
         .build()
         .context("build tray icon")?;
+
+    // Cloned reference into the event loop so we can flip the menu
+    // item's text between "⏸ Pause auto-switch" and "▶ Resume
+    // auto-switch" when the engine reports a state change. MenuItem
+    // is internally Arc-shared, so this clone bumps a refcount.
+    let item_pause_for_loop = item_pause.clone();
 
     // Global hotkeys
     let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
@@ -230,12 +236,19 @@ fn main() -> Result<()> {
     let cmd_tx_for_loop = engine_cmd_tx.clone();
     let settings_for_loop = Arc::clone(&settings);
 
+    // Tray-side mirror of engine state. Updated from PausedChanged
+    // and LayoutChanged events; consulted whenever we need to redraw
+    // (icon + tooltip both depend on both fields).
+    let mut tray_state = TrayState {
+        layout: initial_layout,
+        paused: false,
+    };
+
     info!("entering event loop");
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::Menu(id)) => {
-                let _ = &tray; // keep alive; touched in match arms below
                 if id == quit_id {
                     info!("Quit clicked — shutting down");
                     if let Some(mut listener) = input_listener.take() {
@@ -271,31 +284,56 @@ fn main() -> Result<()> {
                     let _ = cmd_tx_for_loop.send(EngineCommand::SwitchLastForcefully);
                 }
             }
-            Event::UserEvent(UserEvent::Engine(ev)) => handle_engine_event(ev, &tray),
+            Event::UserEvent(UserEvent::Engine(ev)) => {
+                handle_engine_event(ev, &tray, &item_pause_for_loop, &mut tray_state);
+            }
             _ => {}
         }
     });
 }
 
-fn initial_tooltip(layout: Option<&LayoutId>) -> String {
-    match layout {
-        Some(l) => format!("{APP_NAME} — {l}"),
-        None => APP_NAME.to_owned(),
+/// Snapshot of "what should the tray look like right now". We need
+/// both fields to render the icon / tooltip correctly — paused state
+/// affects styling regardless of layout, and vice versa — so we
+/// redraw from the whole struct on every relevant event.
+struct TrayState {
+    layout: Option<LayoutId>,
+    paused: bool,
+}
+
+fn tooltip_for(layout: Option<&LayoutId>, paused: bool) -> String {
+    match (layout, paused) {
+        (Some(l), false) => format!("{APP_NAME} — {l}"),
+        (Some(l), true) => format!("{APP_NAME} — {l} (paused)"),
+        (None, false) => APP_NAME.to_owned(),
+        (None, true) => format!("{APP_NAME} (paused)"),
     }
 }
 
-fn update_tray_for_layout(tray: &TrayIcon, layout: &LayoutId) {
-    match icon_render::for_layout(layout) {
+/// Redraw icon + tooltip + the pause menu-item text from the current
+/// `TrayState`. Cheap (no allocation in the icon-rendering path beyond
+/// a 16x16 RGBA buffer); safe to call on every state change.
+fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayState) {
+    let icon_result = match state.layout.as_ref() {
+        Some(l) => icon_render::for_layout(l, state.paused),
+        None => icon_render::unknown(),
+    };
+    match icon_result {
         Ok(icon) => {
             if let Err(e) = tray.set_icon(Some(icon)) {
-                warn!(?e, layout = %layout, "could not update tray icon");
+                warn!(?e, "could not update tray icon");
             }
         }
-        Err(e) => warn!(?e, layout = %layout, "could not render tray icon"),
+        Err(e) => warn!(?e, "could not render tray icon"),
     }
-    if let Err(e) = tray.set_tooltip(Some(format!("{APP_NAME} — {layout}"))) {
+    if let Err(e) = tray.set_tooltip(Some(tooltip_for(state.layout.as_ref(), state.paused))) {
         warn!(?e, "could not update tray tooltip");
     }
+    item_pause.set_text(if state.paused {
+        "▶ Resume auto-switch"
+    } else {
+        "⏸ Pause auto-switch"
+    });
 }
 
 fn open_path(path: &std::path::Path, what: &str) {
@@ -305,7 +343,12 @@ fn open_path(path: &std::path::Path, what: &str) {
     }
 }
 
-fn handle_engine_event(ev: SwitcherEvent, tray: &TrayIcon) {
+fn handle_engine_event(
+    ev: SwitcherEvent,
+    tray: &TrayIcon,
+    item_pause: &MenuItem,
+    state: &mut TrayState,
+) {
     match ev {
         SwitcherEvent::Corrected {
             from_layout,
@@ -325,10 +368,13 @@ fn handle_engine_event(ev: SwitcherEvent, tray: &TrayIcon) {
         }
         SwitcherEvent::PausedChanged(paused) => {
             info!(paused, "engine paused state changed");
+            state.paused = paused;
+            refresh_tray(tray, item_pause, state);
         }
         SwitcherEvent::LayoutChanged(id) => {
             debug!(layout = %id, "layout changed");
-            update_tray_for_layout(tray, &id);
+            state.layout = Some(id);
+            refresh_tray(tray, item_pause, state);
         }
         SwitcherEvent::KeptCurrent { reason } => {
             debug!(%reason, "decision: keep current");

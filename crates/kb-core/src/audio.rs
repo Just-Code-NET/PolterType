@@ -10,10 +10,12 @@
 //! Missing files are silent — we never crash because audio is absent.
 
 use std::fs::File;
-use std::io::{BufReader, Cursor};
+use std::io::BufReader;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crossbeam_channel::{Sender, unbounded};
+use rodio::source::{SineWave, Source};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use thiserror::Error;
 use tracing::{debug, info, warn};
@@ -42,18 +44,25 @@ impl SoundEvent {
         }
     }
 
-    /// Bundled placeholder bytes for the default theme. v0.1 is silent
-    /// when no theme file is present; Phase 8 will swap real audio in.
-    fn bundled_bytes(self) -> Option<&'static [u8]> {
-        if BUNDLED_DEFAULT_OGG.is_empty() {
-            None
-        } else {
-            Some(BUNDLED_DEFAULT_OGG)
+    /// Synthesised fallback tone parameters: `(frequency_Hz,
+    /// duration_ms)`. Used when the user's theme dir doesn't ship a
+    /// matching `.ogg` file. Generating tones at runtime instead of
+    /// shipping audio assets keeps the binary small and avoids
+    /// per-platform decoder quirks.
+    ///
+    /// Distinct pitches per event give the user audible feedback
+    /// without having to look at the tray.
+    fn synth_tone(self) -> (f32, u64) {
+        match self {
+            // Bright "ping" — a correction was applied.
+            Self::Correct => (880.0, 90),
+            // Lower, longer — auto-switching went off.
+            Self::Pause => (440.0, 140),
+            // Mid pitch, short — auto-switching is back on.
+            Self::Resume => (660.0, 90),
         }
     }
 }
-
-const BUNDLED_DEFAULT_OGG: &[u8] = &[];
 
 #[derive(Debug)]
 enum AudioCmd {
@@ -135,6 +144,9 @@ fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
                 let Some(handle) = handle.as_ref() else {
                     continue;
                 };
+                // Prefer a user-supplied theme file if it exists;
+                // otherwise fall back to a synthesised tone so the
+                // user always hears *something*.
                 if let Some(dir) = theme_dir.as_ref() {
                     let path = dir.join(event.file_name());
                     if path.exists() {
@@ -144,10 +156,8 @@ fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
                         continue;
                     }
                 }
-                if let Some(bytes) = event.bundled_bytes() {
-                    if let Err(e) = play_bytes(handle, bytes, volume) {
-                        warn!(err = %e, "could not play bundled sound");
-                    }
+                if let Err(e) = play_tone(handle, event, volume) {
+                    warn!(?e, "could not play synthesised tone");
                 }
             }
             AudioCmd::Shutdown => break,
@@ -171,16 +181,23 @@ fn play_file(
     Ok(())
 }
 
-fn play_bytes(
+/// Play a synthesised fallback tone for `event`. Sine wave shaped
+/// with a brief amplitude envelope so it sounds like a soft "blip"
+/// rather than a click → pop → click. Cheap and asset-free.
+fn play_tone(
     handle: &OutputStreamHandle,
-    bytes: &'static [u8],
+    event: SoundEvent,
     volume: f32,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let cursor = Cursor::new(bytes);
-    let decoder = Decoder::new(cursor)?;
+    let (freq, ms) = event.synth_tone();
+    let dur = Duration::from_millis(ms);
+    let source = SineWave::new(freq)
+        // Soft fade-in/out to take the edge off the square boundary.
+        .take_duration(dur)
+        .fade_in(Duration::from_millis(10))
+        .amplify((volume * 0.4).clamp(0.0, 1.0));
     let sink = Sink::try_new(handle)?;
-    sink.set_volume(volume);
-    sink.append(decoder);
+    sink.append(source);
     sink.detach();
     Ok(())
 }

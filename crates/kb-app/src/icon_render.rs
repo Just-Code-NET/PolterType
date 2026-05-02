@@ -19,11 +19,17 @@ const H: u32 = 16;
 
 /// Build a tray icon for `layout`. The glyph is the first two
 /// alphabetic characters of `layout.as_str()`, uppercased; if we
-/// can't extract two, we fall back to "??".
-pub fn for_layout(layout: &LayoutId) -> Result<Icon> {
+/// can't extract two, we fall back to "??". When `paused` is true
+/// the icon is rendered in a desaturated grey style with a small
+/// pause indicator dot — visually obvious at-a-glance.
+pub fn for_layout(layout: &LayoutId, paused: bool) -> Result<Icon> {
     let code = layout_short_code(layout);
-    let bg = color_for(layout);
-    Icon::from_rgba(render(code.as_bytes(), bg), W, H).context("build tray icon")
+    let bg = if paused { PAUSED_BG } else { color_for(layout) };
+    let mut buf = render(code.as_bytes(), bg);
+    if paused {
+        draw_pause_indicator(&mut buf);
+    }
+    Icon::from_rgba(buf, W, H).context("build tray icon")
 }
 
 /// Generic boot-time icon for "no layout known yet".
@@ -31,6 +37,8 @@ pub fn unknown() -> Result<Icon> {
     Icon::from_rgba(render(b"??", [0x55, 0x55, 0x55, 0xFF]), W, H)
         .context("build placeholder tray icon")
 }
+
+const PAUSED_BG: [u8; 4] = [0x6E, 0x6E, 0x6E, 0xFF];
 
 fn layout_short_code(id: &LayoutId) -> String {
     let s = id.as_str();
@@ -119,6 +127,19 @@ fn put_pixel(buf: &mut [u8], x: i32, y: i32, rgba: [u8; 4]) {
     buf[i..i + 4].copy_from_slice(&rgba);
 }
 
+/// Two thin vertical bars in the bottom-right corner — the canonical
+/// "paused" glyph squashed into 3x4 px so it doesn't crowd the
+/// 2-letter layout code.
+fn draw_pause_indicator(buf: &mut [u8]) {
+    let bar = [0xFF, 0xFF, 0xFF, 0xFF];
+    let x0 = (W as i32) - 4;
+    let y0 = (H as i32) - 5;
+    for dy in 0..4i32 {
+        put_pixel(buf, x0, y0 + dy, bar);
+        put_pixel(buf, x0 + 2, y0 + dy, bar);
+    }
+}
+
 fn draw_glyph(buf: &mut [u8], ch: u8, x: i32, y: i32, fg: [u8; 4]) {
     let bits = glyph_bits(ch);
     // 4 columns × 6 rows, packed row-major LSB = leftmost column.
@@ -199,7 +220,19 @@ mod tests {
 
     #[test]
     fn icon_is_buildable_for_known_layouts() {
-        assert!(for_layout(&LayoutId::from("en-US")).is_ok());
-        assert!(for_layout(&LayoutId::from("uk-UA")).is_ok());
+        assert!(for_layout(&LayoutId::from("en-US"), false).is_ok());
+        assert!(for_layout(&LayoutId::from("uk-UA"), false).is_ok());
+    }
+
+    #[test]
+    fn paused_icon_differs_from_active_icon() {
+        // Smoke test: the paused variant should produce a different
+        // pixel buffer than the active variant for the same layout.
+        // (We compare the underlying render() output to avoid
+        // depending on Icon equality.)
+        let normal = render(b"EN", color_for(&LayoutId::from("en-US")));
+        let mut paused = render(b"EN", PAUSED_BG);
+        draw_pause_indicator(&mut paused);
+        assert_ne!(normal, paused);
     }
 }
