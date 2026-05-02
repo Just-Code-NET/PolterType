@@ -18,8 +18,8 @@
 //! var, schema check, or daemon ping). The first that initialises
 //! wins. All backends interact with their daemon via the canonical
 //! CLI tool shipped with that ecosystem — that's more robust against
-//! D-Bus interface drift between distro / DE versions than raw zbus
-//! calls.
+//! D-Bus interface drift between distro / DE versions than raw D-Bus
+//! calls (and lets us skip the zbus + async-runtime dep entirely).
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 

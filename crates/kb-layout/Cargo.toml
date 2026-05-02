@@ -29,5 +29,4 @@ windows = { version = "0.58", features = [
 core-foundation = "0.10"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus  = { workspace = true }
 x11rb = { workspace = true }

@@ -142,11 +142,13 @@ impl LayoutSwitcher for MacosLayoutSwitcher {
 }
 
 unsafe fn source_id_to_layout_id(src: TISInputSourceRef) -> Option<LayoutId> {
-    let cf = TISGetInputSourceProperty(src, kTISPropertyInputSourceID);
+    // Rust 2024: even inside an `unsafe fn`, calls to unsafe items
+    // need an explicit unsafe block.
+    let cf = unsafe { TISGetInputSourceProperty(src, kTISPropertyInputSourceID) };
     if cf.is_null() {
         return None;
     }
-    let s = CFString::wrap_under_get_rule(cf as CFStringRef).to_string();
+    let s = unsafe { CFString::wrap_under_get_rule(cf as CFStringRef) }.to_string();
     Some(LayoutId::new(tis_id_to_bcp47(&s).unwrap_or(s)))
 }
 

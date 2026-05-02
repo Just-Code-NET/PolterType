@@ -16,12 +16,12 @@
 //! layout-independent contract as Windows' `KEYEVENTF_UNICODE`.
 //!
 //! > **Status:** written from Apple's documented behaviour and
-//! > tested only via `cargo check` on macOS CI. Runtime bugs are
-//! > expected in v0.1.x; the surface area is small enough that we'll
-//! > iron them out as users report them.
+//! > validated only via `cargo check` on macOS CI. Runtime tuning
+//! > will land as macOS contributors report issues.
 
-#![allow(unused_imports, dead_code)] // macOS-only; see DECISIONS for status.
+#![allow(unused_imports, dead_code)] // macOS-only.
 
+use std::ffi::{c_long, c_void};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
@@ -33,14 +33,24 @@ use core_foundation::runloop::{
     kCFRunLoopCommonModes,
 };
 use core_graphics::event::{
-    CGEvent, CGEventField, CGEventFlags, CGEventTapLocation, CGEventTapOptions,
-    CGEventTapPlacement, CGEventType, CGKeyCode,
+    CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+    CGKeyCode,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use crossbeam_channel::Sender;
 use tracing::{debug, info, warn};
 
 use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers};
+
+// ─── Apple constants we read off CGEvent ─────────────────────────────
+//
+// `CGEventField` is a `u32` enum-like in Apple's C header; both
+// versions of the `core-graphics` crate represent it differently
+// across releases. We hard-code the integer values so we don't depend
+// on whichever variant naming the active crate version exposes.
+
+const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
+const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 
 // ─── Listener ────────────────────────────────────────────────────────
 
@@ -67,7 +77,6 @@ impl InputListener for MacosListener {
         }
         *sink_slot().write() = Some(sink);
 
-        // Spawn a dedicated thread that owns a CFRunLoop and the tap.
         let (ready_tx, ready_rx) = crossbeam_channel::bounded::<Result<(), String>>(1);
         thread::Builder::new()
             .name("kb-input-macos-tap".into())
@@ -86,9 +95,6 @@ impl InputListener for MacosListener {
     }
 
     fn stop(&mut self) {
-        // The tap thread parks itself on its CFRunLoop forever; v0.1
-        // simply lets it die with the process. A clean shutdown via
-        // `CFRunLoopStop` is a Phase 5.x polish.
         if let Some(slot) = EVENT_SINK.get() {
             *slot.write() = None;
         }
@@ -102,8 +108,6 @@ impl InputListener for MacosListener {
 fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     use core_graphics::event::CGEventTapProxy;
 
-    let mask = (1u64 << CGEventType::KeyDown as u64) | (1u64 << CGEventType::KeyUp as u64);
-
     let callback =
         |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> Option<CGEvent> {
             let direction = match ev_type {
@@ -112,14 +116,18 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                 _ => None,
             };
             if let Some(direction) = direction {
-                let vk = event.get_integer_value_field(CGEventField::KeyboardEventKeycode) as u32;
+                // Safety: get_integer_value_field accepts the raw u32
+                // wire identifier of the field; we feed it the
+                // documented Apple constants.
+                let vk = unsafe {
+                    CGEventGetIntegerValueField(event_ref(event), K_CG_KEYBOARD_EVENT_KEYCODE)
+                } as u32;
+                let user_data = unsafe {
+                    CGEventGetIntegerValueField(event_ref(event), K_CG_EVENT_SOURCE_USER_DATA)
+                };
                 let scancode = mac_keycode_to_sc1(vk as u16);
                 let flags = event.get_flags();
-                // Heuristic: events posted by CGEventPost typically have a
-                // non-zero EventSourceUserData when tagged by another tool;
-                // for our own corrections we set this in a future step.
-                let injected =
-                    event.get_integer_value_field(CGEventField::EventSourceUserData) != 0;
+                let injected = user_data != 0;
 
                 let ev_out = KeyEvent {
                     vk,
@@ -162,15 +170,11 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
         }
     };
 
-    // Safety: we hand the mach port to a CFRunLoopSource; both objects
-    // live as long as this thread.
+    // Safety: hand the mach port to a CFRunLoopSource. The source
+    // owns a +1 refcount we wrap into Drop via CFRunLoopSource.
     let source = unsafe {
-        let mach_port_ref: CFMachPortRef = tap.mach_port().as_concrete_TypeRef();
-        let src_ref: CFRunLoopSourceRef = core_foundation::runloop::CFMachPortCreateRunLoopSource(
-            std::ptr::null(),
-            mach_port_ref,
-            0,
-        );
+        let mach_port_ref: CFMachPortRef = tap.mach_port.as_concrete_TypeRef();
+        let src_ref = CFMachPortCreateRunLoopSource(std::ptr::null(), mach_port_ref, 0);
         if src_ref.is_null() {
             let _ = ready_tx.send(Err("CFMachPortCreateRunLoopSource returned null".into()));
             return;
@@ -190,10 +194,8 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
 
     let _ = ready_tx.send(Ok(()));
 
-    // Park. CFRunLoopRun blocks; the closure invokes our callback.
     loop {
-        // A 60-second timeout lets the loop occasionally check
-        // process-level shutdown signals (added in Phase 5.x).
+        // Safety: standard CFRunLoop call.
         unsafe {
             let _ = CFRunLoopRunInMode(kCFRunLoopCommonModes, 60.0, 0);
         }
@@ -202,6 +204,30 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
         }
     }
     info!("macOS CGEventTap thread exiting");
+}
+
+// ─── Direct FFI for the bits the crates skip / shift around ──────────
+
+type CGEventRef = *const c_void;
+type CFAllocatorRef = *const c_void;
+type CFIndex = c_long;
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFMachPortCreateRunLoopSource(
+        allocator: CFAllocatorRef,
+        port: CFMachPortRef,
+        order: CFIndex,
+    ) -> CFRunLoopSourceRef;
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+}
+
+fn event_ref(event: &CGEvent) -> CGEventRef {
+    event.as_concrete_TypeRef() as CGEventRef
 }
 
 // ─── Emitter ─────────────────────────────────────────────────────────
@@ -241,13 +267,8 @@ impl KeyEmitter for MacosEmitter {
         let src = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
             .map_err(|()| InputError::Os("CGEventSource::new failed".into()))?;
 
-        // One synthetic key-down/up per char, with the unicode string
-        // attached. `set_string_from_utf16_unchecked` is the modern
-        // helper; we use the existing string-set API of core-graphics.
         for c in text.chars() {
             let utf16: Vec<u16> = c.encode_utf16(&mut [0u16; 2]).iter().copied().collect();
-            // Use a key code of 0 — Apple ignores it once a Unicode
-            // string is attached.
             let down = CGEvent::new_keyboard_event(src.clone(), 0, true)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event failed".into()))?;
             down.set_string_from_utf16_unchecked(&utf16);
@@ -267,12 +288,7 @@ impl KeyEmitter for MacosEmitter {
 }
 
 // ─── Apple → Win SC Set-1 keycode mapping ────────────────────────────
-//
-// Apple uses its own keycode space (kVK_*). We normalise to Win SC1
-// so the layout-mapping TOMLs and WordBuffer classifier work
-// unchanged. Only the alphanumeric / punctuation / nav rows we care
-// about are mapped here; everything else gets passed through as-is
-// (the buffer will simply not produce a translation for those).
+
 fn mac_keycode_to_sc1(kvk: u16) -> u32 {
     match kvk {
         // Letters
@@ -313,7 +329,7 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x1C => 0x09, // 8
         0x19 => 0x0A, // 9
         0x1D => 0x0B, // 0
-        // Common boundaries / nav
+        // Boundaries / nav
         0x24 => 0x1C, // Return
         0x30 => 0x0F, // Tab
         0x31 => 0x39, // Space
