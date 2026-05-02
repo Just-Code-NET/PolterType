@@ -1,45 +1,59 @@
-//! GNOME layout switcher via D-Bus + GSettings.
+//! GSettings-based layout switcher.
 //!
-//! GNOME stores the active input source in
-//! `org.gnome.desktop.input-sources` (GSettings). The `current` key
-//! is a `u` index into the `sources` array (each entry is
-//! `(type, id)` — typically `(s, s)`).
+//! Despite the file name, this covers every DE that exposes the
+//! `org.gnome.desktop.input-sources` schema, which is the lingua
+//! franca for GNOME-derivative environments: **GNOME**, **Ubuntu
+//! Unity 7+**, **Cinnamon**, **Budgie**, **Pantheon** (elementary
+//! OS), **MATE** (when configured via gsettings).
 //!
-//! Querying the array of sources requires reading the GSettings
-//! value; we use the `org.freedesktop.portal.Settings` interface
-//! when available, falling back to `gsettings get` shell-out as a
-//! v0.1.x convenience.
+//! The schema's `sources` is an array of `(type, id)` pairs (typically
+//! `('xkb', 'us')` etc.) and `current` is a `u` index into it.
+//! Switching = writing a new `current`.
 //!
-//! Switching = setting `current` to the index of the desired layout.
+//! `try_init()` is a strict probe — it requires both `gsettings` in
+//! `$PATH` *and* a successful read of `sources` from the schema. So
+//! KDE / Hyprland / IBus / Fcitx-only sessions correctly fall through
+//! to their own backends instead of being claimed here.
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
 use std::process::Command;
 
-use tracing::{debug, info, warn};
-use zbus::blocking::{Connection, Proxy};
-use zbus::zvariant::OwnedValue;
+use tracing::{debug, warn};
 
+use super::shared::xkb_to_bcp47;
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 
 const SCHEMA: &str = "org.gnome.desktop.input-sources";
 
-pub struct GnomeSwitcher {
-    conn: Connection,
-}
+pub struct GnomeSwitcher;
 
 pub fn try_init() -> Option<GnomeSwitcher> {
-    let conn = Connection::session().ok()?;
-    // Cheap reachability ping: org.freedesktop.DBus.GetId on the bus.
-    let proxy = Proxy::new(
-        &conn,
-        "org.freedesktop.DBus",
-        "/org/freedesktop/DBus",
-        "org.freedesktop.DBus",
-    )
-    .ok()?;
-    let _: String = proxy.call("GetId", &()).ok()?;
-    Some(GnomeSwitcher { conn })
+    // Reject if `gsettings` is not in PATH at all.
+    let exists = Command::new("gsettings")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !exists {
+        return None;
+    }
+    // Reject if the schema is not installed (most KDE / minimal-DE
+    // systems). `gsettings get` exits non-zero if the schema or key
+    // is missing.
+    let ok = Command::new("gsettings")
+        .args(["get", SCHEMA, "sources"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        return None;
+    }
+    Some(GnomeSwitcher)
 }
 
 impl LayoutSwitcher for GnomeSwitcher {
@@ -75,7 +89,10 @@ impl LayoutSwitcher for GnomeSwitcher {
     }
 
     fn backend_name(&self) -> &'static str {
-        "linux-gnome-gsettings"
+        // "gsettings" is the honest backend tag — it's what we shell
+        // out to. Picked up by GNOME / Unity / Cinnamon / Budgie /
+        // Pantheon / MATE.
+        "linux-gsettings"
     }
 }
 
@@ -129,7 +146,9 @@ fn parse_sources(raw: &str) -> Vec<LayoutId> {
         let _type = take_quoted(&mut chars);
         let id = take_quoted(&mut chars);
         if let Some(id) = id {
-            out.push(LayoutId::new(xkb_to_bcp47(&id).unwrap_or(id)));
+            out.push(LayoutId::new(
+                xkb_to_bcp47(&id).map(str::to_owned).unwrap_or(id),
+            ));
         }
     }
     out
@@ -150,22 +169,4 @@ fn take_quoted<I: Iterator<Item = char>>(chars: &mut std::iter::Peekable<I>) -> 
         s.push(c);
     }
     None
-}
-
-fn xkb_to_bcp47(code: &str) -> Option<String> {
-    Some(
-        match code {
-            "us" => "en-US",
-            "gb" => "en-GB",
-            "ua" => "uk-UA",
-            "ru" => "ru-RU",
-            "de" => "de-DE",
-            "fr" => "fr-FR",
-            "es" => "es-ES",
-            "pl" => "pl-PL",
-            "gr" => "el-GR",
-            _ => return None,
-        }
-        .to_owned(),
-    )
 }

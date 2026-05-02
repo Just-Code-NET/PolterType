@@ -28,8 +28,8 @@ layout, switches it, and fixes the last word.
 |---|---|
 | Windows 10 / 11 | working (primary target for v0.1) |
 | macOS 14+ | best-effort; needs Accessibility permission |
-| Linux (Wayland, GNOME) | best-effort; run `scripts/setup-linux.sh` once |
-| Linux (X11) | stub (v0.1.x) |
+| Linux (Wayland) | best-effort; run `scripts/setup-linux.sh` once. Layout switching: Hyprland, KDE Plasma, GSettings (GNOME / Ubuntu Unity / Cinnamon / Budgie / Pantheon / MATE), IBus, Fcitx5. |
+| Linux (X11) | layout switching works via the same DE backends; keyboard listener / emitter stubbed (v0.1.x) |
 
 See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
 permissions story.

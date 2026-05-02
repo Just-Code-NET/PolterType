@@ -182,7 +182,7 @@ pub trait InputListener: Send + 'static {
 |---|---|
 | Windows | `LoadKeyboardLayoutW` + `PostMessageW(HWND_BROADCAST, WM_INPUTLANGCHANGEREQUEST, ...)` або `ActivateKeyboardLayout`. |
 | macOS | `TISCreateInputSourceList` → `TISSelectInputSource`. |
-| Linux Wayland | D-Bus: GNOME (`org.gnome.desktop.input-sources`), KDE (`org.kde.keyboard.layouts`), або через input-method (IBus/Fcitx). Стратегія: пробуємо за порядком, fallback — попередження. |
+| Linux Wayland | Probe в порядку: Hyprland (`hyprctl`), KDE (`qdbus`), GSettings (`gsettings org.gnome.desktop.input-sources` — GNOME/Unity/Cinnamon/Budgie/Pantheon/MATE), IBus (`ibus engine`), Fcitx5 (`fcitx5-remote`). Кожен пробінг — реальний CLI/schema check, не просто env-guess. |
 | Linux X11 | `XkbLockGroup` через `x11rb` (швидко) або fallback `setxkbmap -layout ...`. |
 
 ### 3.3 SwitcherEngine (логіка)

@@ -74,14 +74,21 @@ Two paths, picked at runtime:
 * `libei` through the `org.freedesktop.portal.RemoteDesktop` /
   `InputCapture` portal — works on KDE Plasma 6.0+ and GNOME 46+.
 
-### Switching layout on Wayland
+### Switching layout
 
-Pure D-Bus (no special permissions). Backends, in priority order:
+Switching uses whichever backend is alive in the session. No `sudo`
+required — every backend talks over the user's session bus or via
+the canonical CLI tool of its ecosystem. Backends, in priority order:
 
-1. `org.gnome.desktop.input-sources` (GNOME).
-2. `org.kde.keyboard.layouts` (KDE).
-3. IBus (`org.freedesktop.IBus`) and Fcitx (`org.fcitx.Fcitx`)
-   for users running an input method.
+1. **Hyprland** (`hyprctl switchxkblayout`) — when
+   `HYPRLAND_INSTANCE_SIGNATURE` is set.
+2. **KDE Plasma** (`qdbus6`/`qdbus` → `org.kde.keyboard /Layouts`).
+3. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
+   covers **GNOME**, **Ubuntu Unity 7+**, **Cinnamon**, **Budgie**,
+   **Pantheon** (elementary OS), **MATE**. The probe only matches
+   when the schema is actually installed.
+4. **IBus** (`ibus engine`) — any DE hosting IBus.
+5. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx.
 
 If none respond, the tray surfaces a *layout switching unavailable*
 banner with a link back to this document.

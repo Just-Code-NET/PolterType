@@ -41,8 +41,8 @@ The initial scaffolding lands across Phases 0–8 documented in
 |---|---|---|---|
 | Windows 10 / 11 | `WH_KEYBOARD_LL` (working) | `LoadKeyboardLayout` + `WM_INPUTLANGCHANGEREQUEST` (working) | `SendInput` + `KEYEVENTF_UNICODE` (working) |
 | macOS 14+ | `CGEventTap` (best-effort, validated on CI) | Carbon TIS (best-effort) | `CGEventPost` + Unicode string (best-effort) |
-| Linux Wayland | `evdev` (best-effort, requires `setup-linux.sh`) | GNOME via `gsettings` (best-effort) | `uinput` + Ctrl+Shift+U (best-effort) |
-| Linux X11 | stub (v0.1.x) | stub (v0.1.x) | stub (v0.1.x) |
+| Linux Wayland | `evdev` (best-effort, requires `setup-linux.sh`) | Hyprland / KDE / GSettings (GNOME, Ubuntu Unity, Cinnamon, Budgie, Pantheon, MATE) / IBus / Fcitx5 — probed in that order | `uinput` + Ctrl+Shift+U (best-effort) |
+| Linux X11 | stub (v0.1.x) | KDE / GSettings / IBus / Fcitx5 work the same on X11; raw `XkbLockGroup` fallback in v0.1.x | stub (v0.1.x) |
 
 ### Documentation
 
