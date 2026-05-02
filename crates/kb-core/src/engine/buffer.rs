@@ -13,8 +13,14 @@ pub enum WordBoundary {
     /// Key absorbed; word still in progress (or no-op for releases /
     /// non-text keys).
     InProgress,
-    /// User finished a word (Space, Enter, …).
-    WordCompleted,
+    /// User finished a word (Space, Enter, …). The boundary key has
+    /// **already been delivered** to the focused app — the engine
+    /// must include it in its backspace count and re-emit a copy
+    /// after the correction.
+    WordCompleted {
+        boundary_scancode: u32,
+        boundary_shift: bool,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -60,7 +66,10 @@ impl WordBuffer {
                 });
                 WordBoundary::InProgress
             }
-            KeyKind::Boundary => WordBoundary::WordCompleted,
+            KeyKind::Boundary => WordBoundary::WordCompleted {
+                boundary_scancode: ev.scancode,
+                boundary_shift: ev.modifiers.shift,
+            },
             KeyKind::Backspace => {
                 self.keys.pop();
                 WordBoundary::InProgress
@@ -160,7 +169,13 @@ mod tests {
         let mut b = WordBuffer::new();
         assert_eq!(b.feed(press(0x23)), WordBoundary::InProgress); // h
         assert_eq!(b.feed(press(0x12)), WordBoundary::InProgress); // e
-        assert_eq!(b.feed(press(0x39)), WordBoundary::WordCompleted); // space
+        assert_eq!(
+            b.feed(press(0x39)),
+            WordBoundary::WordCompleted {
+                boundary_scancode: 0x39,
+                boundary_shift: false,
+            }
+        );
     }
 
     #[test]

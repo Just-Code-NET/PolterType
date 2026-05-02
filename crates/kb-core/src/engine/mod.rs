@@ -78,6 +78,9 @@ struct LastWord {
     keys: Vec<kb_types::WordKey>,
     rendered: String,
     layout: LayoutId,
+    /// The boundary character the user typed after the word. The
+    /// corrector backspaces over it and re-emits a copy.
+    boundary_char: char,
 }
 
 impl SwitcherEngine {
@@ -197,14 +200,17 @@ impl SwitcherEngine {
             return;
         }
 
-        let boundary = buffer.feed(ev);
-        if matches!(boundary, WordBoundary::WordCompleted) {
-            self.decide(buffer);
+        if let WordBoundary::WordCompleted {
+            boundary_scancode,
+            boundary_shift,
+        } = buffer.feed(ev)
+        {
+            self.decide(buffer, boundary_scancode, boundary_shift);
             buffer.start_new_word();
         }
     }
 
-    fn decide(&self, buffer: &mut WordBuffer) {
+    fn decide(&self, buffer: &mut WordBuffer, boundary_scancode: u32, boundary_shift: bool) {
         let snap = self.settings.snapshot();
         let keys = buffer.take_word();
         if keys.is_empty() {
@@ -243,10 +249,34 @@ impl SwitcherEngine {
             .find(|(l, _)| l == &current_layout)
             .map(|(_, t)| t.clone())
             .unwrap_or_default();
+
+        // Resolve the boundary scancode → character under the current
+        // layout (so a Ukrainian "." lands as ".", a comma as ",", …).
+        // Falls back to a hard-coded table for keys our TOMLs don't
+        // describe (Tab/Enter/Space).
+        let boundary_char = self
+            .layouts
+            .get(&current_layout)
+            .and_then(|m| {
+                m.translate_key(kb_types::WordKey {
+                    scancode: boundary_scancode,
+                    shift: boundary_shift,
+                    timestamp_ms: 0,
+                })
+            })
+            .or(match boundary_scancode {
+                0x39 => Some(' '),
+                0x1C => Some('\n'),
+                0x0F => Some('\t'),
+                _ => None,
+            })
+            .unwrap_or(' ');
+
         *self.last_word.write() = Some(LastWord {
             keys: keys.clone(),
             rendered: current_text.clone(),
             layout: current_layout.clone(),
+            boundary_char,
         });
 
         let ctx = kb_detect::DetectionContext {
@@ -269,10 +299,15 @@ impl SwitcherEngine {
                     .find(|(l, _)| l == &v.best_layout)
                     .map(|(_, t)| t.clone())
                     .unwrap_or_default();
+                // The boundary key has already been delivered to the
+                // focused app, so we have to delete it too and re-emit
+                // a copy after the corrected word.
+                let mut corrected_with_boundary = target_text;
+                corrected_with_boundary.push(boundary_char);
                 SwitchAction::SwitchAndReplay {
                     target_layout: v.best_layout,
-                    corrected_text: target_text,
-                    backspaces: current_text.chars().count(),
+                    corrected_text: corrected_with_boundary,
+                    backspaces: current_text.chars().count() + 1,
                     reason: v.reason,
                 }
             }
@@ -357,13 +392,14 @@ impl SwitcherEngine {
                 return;
             }
         };
-        let corrected = target_mapping.translate_buffer(&last.keys);
+        let mut corrected = target_mapping.translate_buffer(&last.keys);
+        corrected.push(last.boundary_char);
         self.apply_correction(
             &last.layout,
             &target,
             &last.rendered,
             &corrected,
-            last.rendered.chars().count(),
+            last.rendered.chars().count() + 1,
             "manual switch-last hotkey",
             true,
         );

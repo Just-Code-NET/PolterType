@@ -7,6 +7,8 @@
 
 #![forbid(unsafe_code)]
 
+mod icon_render;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,12 +23,14 @@ use kb_core::settings::SettingsStore;
 use kb_detect::{Detector, WordPlausibilityDetector};
 use kb_input::{KeyEvent, create_emitter, create_listener};
 use kb_layout::create_switcher;
+use kb_types::LayoutId;
 use single_instance::SingleInstance;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy};
 use tracing::{debug, error, info, warn};
+use tray_icon::TrayIcon;
+use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
-use tray_icon::{Icon, TrayIconBuilder};
 
 const APP_ID: &str = "dev.opensource.kb-switcher";
 const APP_NAME: &str = "kb-switcher";
@@ -150,10 +154,18 @@ fn main() -> Result<()> {
     let pause_id = item_pause.id().clone();
     let quit_id = item_quit.id().clone();
 
-    let _tray = TrayIconBuilder::new()
+    // Initial icon: query the OS for the current layout so we don't
+    // flash a "??" before the first LayoutChanged event arrives.
+    let initial_layout: Option<LayoutId> = layout_switcher.current().ok();
+    let initial_icon = match initial_layout.as_ref() {
+        Some(l) => icon_render::for_layout(l)?,
+        None => icon_render::unknown()?,
+    };
+
+    let tray: TrayIcon = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip(APP_NAME)
-        .with_icon(build_placeholder_icon()?)
+        .with_tooltip(initial_tooltip(initial_layout.as_ref()))
+        .with_icon(initial_icon)
         .build()
         .context("build tray icon")?;
 
@@ -185,6 +197,7 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::Menu(id)) => {
+                let _ = &tray; // keep alive; touched in match arms below
                 if id == quit_id {
                     info!("Quit clicked — shutting down");
                     if let Some(mut listener) = input_listener.take() {
@@ -220,10 +233,31 @@ fn main() -> Result<()> {
                     let _ = cmd_tx_for_loop.send(EngineCommand::SwitchLastForcefully);
                 }
             }
-            Event::UserEvent(UserEvent::Engine(ev)) => handle_engine_event(ev),
+            Event::UserEvent(UserEvent::Engine(ev)) => handle_engine_event(ev, &tray),
             _ => {}
         }
     });
+}
+
+fn initial_tooltip(layout: Option<&LayoutId>) -> String {
+    match layout {
+        Some(l) => format!("{APP_NAME} — {l}"),
+        None => APP_NAME.to_owned(),
+    }
+}
+
+fn update_tray_for_layout(tray: &TrayIcon, layout: &LayoutId) {
+    match icon_render::for_layout(layout) {
+        Ok(icon) => {
+            if let Err(e) = tray.set_icon(Some(icon)) {
+                warn!(?e, layout = %layout, "could not update tray icon");
+            }
+        }
+        Err(e) => warn!(?e, layout = %layout, "could not render tray icon"),
+    }
+    if let Err(e) = tray.set_tooltip(Some(format!("{APP_NAME} — {layout}"))) {
+        warn!(?e, "could not update tray tooltip");
+    }
 }
 
 fn open_path(path: &std::path::Path, what: &str) {
@@ -233,7 +267,7 @@ fn open_path(path: &std::path::Path, what: &str) {
     }
 }
 
-fn handle_engine_event(ev: SwitcherEvent) {
+fn handle_engine_event(ev: SwitcherEvent, tray: &TrayIcon) {
     match ev {
         SwitcherEvent::Corrected {
             from_layout,
@@ -256,6 +290,7 @@ fn handle_engine_event(ev: SwitcherEvent) {
         }
         SwitcherEvent::LayoutChanged(id) => {
             debug!(layout = %id, "layout changed");
+            update_tray_for_layout(tray, &id);
         }
         SwitcherEvent::KeptCurrent { reason } => {
             debug!(%reason, "decision: keep current");
@@ -355,16 +390,6 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
         .init();
 
     guard
-}
-
-fn build_placeholder_icon() -> Result<Icon> {
-    const W: u32 = 16;
-    const H: u32 = 16;
-    let mut rgba = Vec::with_capacity((W * H * 4) as usize);
-    for _ in 0..(W * H) {
-        rgba.extend_from_slice(&[0x4F, 0x9D, 0xFF, 0xFF]);
-    }
-    Icon::from_rgba(rgba, W, H).context("build placeholder tray icon")
 }
 
 // ─── Noop key emitter (graceful fallback on unimplemented platforms) ──
