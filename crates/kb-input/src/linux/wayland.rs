@@ -23,10 +23,8 @@ use std::thread;
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
-use evdev::uinput::{VirtualDevice, VirtualDeviceBuilder};
-use evdev::{
-    AttributeSet, Device, EnumerationError, EventType, InputEvent, Key, KeyCode, RelativeAxisCode,
-};
+use evdev::uinput::VirtualDevice;
+use evdev::{AttributeSet, Device, EventType, InputEvent, KeyCode};
 use tracing::{debug, info, warn};
 
 use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers};
@@ -47,8 +45,7 @@ impl EvdevListener {
 
 impl InputListener for EvdevListener {
     fn start(&mut self, sink: Sender<KeyEvent>) -> Result<(), InputError> {
-        let devices = open_keyboard_devices()
-            .map_err(|e| InputError::Os(format!("evdev enumerate failed: {e}")))?;
+        let devices = open_keyboard_devices();
         if devices.is_empty() {
             return Err(InputError::Os(
                 "no readable keyboard devices in /dev/input/* — \
@@ -75,19 +72,19 @@ impl InputListener for EvdevListener {
     }
 }
 
-fn open_keyboard_devices() -> Result<Vec<Device>, EnumerationError> {
-    let mut out = Vec::new();
-    for (_path, dev) in evdev::enumerate() {
-        // Heuristic: a device that advertises Key::KEY_A is a keyboard.
-        let is_keyboard = dev
-            .supported_keys()
-            .map(|k| k.contains(KeyCode::KEY_A))
-            .unwrap_or(false);
-        if is_keyboard {
-            out.push(dev);
-        }
-    }
-    Ok(out)
+fn open_keyboard_devices() -> Vec<Device> {
+    // evdev 0.13's `enumerate()` is infallible — it yields whatever
+    // is openable and silently skips the rest. Permission errors on
+    // individual devices fall through, which is exactly what we want.
+    evdev::enumerate()
+        .filter_map(|(_path, dev)| {
+            // Heuristic: a device that advertises KEY_A is a keyboard.
+            let is_keyboard = dev
+                .supported_keys()
+                .is_some_and(|k| k.contains(KeyCode::KEY_A));
+            if is_keyboard { Some(dev) } else { None }
+        })
+        .collect()
 }
 
 fn drain_devices(mut devices: Vec<Device>, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
@@ -166,7 +163,9 @@ impl UinputEmitter {
         for code in 0u16..=255 {
             keys.insert(KeyCode::new(code));
         }
-        let dev = VirtualDeviceBuilder::new()
+        // evdev 0.13 superseded `VirtualDeviceBuilder::new()` with
+        // `VirtualDevice::builder()`.
+        let dev = VirtualDevice::builder()
             .map_err(|e| InputError::Os(format!("uinput build: {e}")))?
             .name("kb-switcher virtual keyboard")
             .with_keys(&keys)

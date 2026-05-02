@@ -116,15 +116,11 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                 _ => None,
             };
             if let Some(direction) = direction {
-                // Safety: get_integer_value_field accepts the raw u32
-                // wire identifier of the field; we feed it the
-                // documented Apple constants.
-                let vk = unsafe {
-                    CGEventGetIntegerValueField(event_ref(event), K_CG_KEYBOARD_EVENT_KEYCODE)
-                } as u32;
-                let user_data = unsafe {
-                    CGEventGetIntegerValueField(event_ref(event), K_CG_EVENT_SOURCE_USER_DATA)
-                };
+                // `CGEventField` is a `u32` type-alias in core-graphics
+                // 0.24, so we feed the documented Apple constants
+                // straight through `get_integer_value_field`.
+                let vk = event.get_integer_value_field(K_CG_KEYBOARD_EVENT_KEYCODE) as u32;
+                let user_data = event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA);
                 let scancode = mac_keycode_to_sc1(vk as u16);
                 let flags = event.get_flags();
                 let injected = user_data != 0;
@@ -206,9 +202,13 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     info!("macOS CGEventTap thread exiting");
 }
 
-// ─── Direct FFI for the bits the crates skip / shift around ──────────
+// ─── Direct FFI: only the things core-foundation 0.10 doesn't expose ──
+//
+// `CFMachPortCreateRunLoopSource` is the one bit of glue that's not
+// re-exported reliably across core-foundation crate versions. Declare
+// it ourselves so we don't depend on whichever module the active
+// version ships it from.
 
-type CGEventRef = *const c_void;
 type CFAllocatorRef = *const c_void;
 type CFIndex = c_long;
 
@@ -219,15 +219,6 @@ unsafe extern "C" {
         port: CFMachPortRef,
         order: CFIndex,
     ) -> CFRunLoopSourceRef;
-}
-
-#[link(name = "CoreGraphics", kind = "framework")]
-unsafe extern "C" {
-    fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
-}
-
-fn event_ref(event: &CGEvent) -> CGEventRef {
-    event.as_concrete_TypeRef() as CGEventRef
 }
 
 // ─── Emitter ─────────────────────────────────────────────────────────
