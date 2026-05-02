@@ -33,7 +33,7 @@ Ubuntu / Debian:
 sudo apt-get install \
     pkg-config libdbus-1-dev libudev-dev \
     libxkbcommon-dev libxkbcommon-x11-dev \
-    libwayland-dev libx11-dev libxi-dev libxtst-dev \
+    libwayland-dev libx11-dev libxi-dev libxtst-dev libxdo-dev \
     libgtk-3-dev libayatana-appindicator3-dev libasound2-dev
 ```
 
@@ -43,7 +43,7 @@ Fedora:
 sudo dnf install \
     pkg-config dbus-devel libudev-devel \
     libxkbcommon-devel libxkbcommon-x11-devel \
-    wayland-devel libX11-devel libXi-devel libXtst-devel \
+    wayland-devel libX11-devel libXi-devel libXtst-devel libxdo-devel \
     gtk3-devel libayatana-appindicator-gtk3-devel alsa-lib-devel
 ```
 
