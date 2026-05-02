@@ -233,6 +233,27 @@ impl SettingsStore {
         &self.path
     }
 
+    /// Re-read the file from disk and replace the in-memory snapshot.
+    /// Returns whether the contents actually changed.
+    pub fn reload(&self) -> Result<bool, SettingsError> {
+        let s = match fs::read_to_string(&self.path) {
+            Ok(s) => s,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(SettingsError::Io(e)),
+        };
+        let parsed: Settings = toml::from_str(&s)?;
+        let mut g = self.inner.write();
+        let changed = *g != parsed;
+        *g = parsed;
+        Ok(changed)
+    }
+
+    /// Path of the directory containing the file logs.
+    pub fn log_dir() -> Result<PathBuf, SettingsError> {
+        let dirs = Self::project_dirs()?;
+        Ok(dirs.data_local_dir().join("logs"))
+    }
+
     pub fn update<F: FnOnce(&mut Settings)>(&self, f: F) -> Result<(), SettingsError> {
         let mut guard = self.inner.write();
         f(&mut guard);

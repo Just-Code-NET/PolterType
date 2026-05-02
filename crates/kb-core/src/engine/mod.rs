@@ -210,6 +210,9 @@ impl SwitcherEngine {
         if keys.is_empty() {
             return;
         }
+        if keys.len() < snap.engine.min_word_length {
+            return;
+        }
 
         let current_layout = match self.layout_switcher.current() {
             Ok(l) => l,
@@ -219,11 +222,18 @@ impl SwitcherEngine {
             }
         };
 
-        // Render under every loaded layout we know about (we'll filter
-        // to the engine's `active` list once that's plumbed through UI).
+        // Filter the candidate set by the `[languages]` settings.
+        // Empty `active` = "every loaded layout"; `ignored` always wins.
+        let active: &[LayoutId] = &snap.languages.active;
+        let ignored: &[LayoutId] = &snap.languages.ignored;
         let candidates: Vec<(LayoutId, String)> = self
             .layouts
             .iter()
+            .filter(|(id, _)| {
+                let allowed = active.is_empty() || active.contains(id) || **id == current_layout;
+                let blocked = ignored.contains(id);
+                allowed && !blocked
+            })
             .map(|(id, m)| (id.clone(), m.translate_buffer(&keys)))
             .collect();
 

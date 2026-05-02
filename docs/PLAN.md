@@ -673,11 +673,21 @@ Workspace з декількох крейтів дає:
 - [ ] Pause/Undo хоткей.
 - [ ] Налаштування: збереження/завантаження `config.toml`.
 
-### Фаза 4 — UI налаштувань (`iced`)
+### Фаза 4 — Settings UX (без повноцінного GUI у v0.1)
 
-- [ ] Сторінки General / Languages / Hotkeys / Exceptions / About.
-- [ ] Біндінг до core через mpsc-канал.
-- [ ] i18n EN+UK.
+Див. `docs/DECISIONS.md` запис `2026-05-02 — Phase 4: deferred full
+GUI`. Замість `iced`-сторінок Phase 4 робить:
+
+- [ ] Tray menu: "Open Settings" → відкриває `config.toml` в
+      редакторі за замовчуванням (cross-platform `opener`).
+- [ ] Tray menu: "Open Logs" → відкриває папку з логами.
+- [ ] Tray menu: "Reload Settings" → перечитує config + повідомляє
+      engine.
+- [ ] File-backed logs через `tracing-appender` (daily rotation).
+- [ ] Engine: фільтрація candidate layouts за `[languages].active` /
+      `[languages].ignored`.
+- [ ] Повноцінний GUI (`iced` чи `egui`) — Phase 8 / v0.2, коли
+      зрозуміла поведінка event-loop'ів на macOS і Linux.
 
 ### Фаза 5 — macOS повністю
 

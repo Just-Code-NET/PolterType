@@ -1,15 +1,17 @@
 //! kb-switcher application entry point.
 //!
-//! Phase 3 scaffold: tray, global keyboard listener, layout switcher,
-//! `SwitcherEngine`, and global hotkeys (pause / switch-last).
-//! Settings UI lands in Phase 4.
+//! Phase 4 scaffold: tray, global keyboard listener, layout switcher,
+//! `SwitcherEngine`, global hotkeys, file logging, and the
+//! Open-Settings / Open-Logs / Reload-Settings tray entries. Full
+//! visual GUI is deferred to Phase 8 (see `docs/DECISIONS.md`).
 
 #![forbid(unsafe_code)]
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
+use crossbeam_channel::{Receiver, bounded, unbounded};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
 use kb_core::audio::AudioPlayer;
@@ -37,7 +39,7 @@ enum UserEvent {
 }
 
 fn main() -> Result<()> {
-    init_tracing();
+    let _log_guard = init_tracing();
     info!(version = env!("CARGO_PKG_VERSION"), "{APP_NAME} starting");
 
     let instance = SingleInstance::new(APP_ID).context("create single-instance lock")?;
@@ -59,44 +61,31 @@ fn main() -> Result<()> {
     // ─── Layouts ───────────────────────────────────────────────────
     let layouts = Arc::new(LayoutDb::load_embedded());
     info!(loaded = layouts.len(), ids = ?layouts.ids().collect::<Vec<_>>(), "layout DB ready");
-    if layouts.is_empty() {
-        warn!("no layouts loaded — engine will be a no-op until at least two layouts exist");
-    }
 
-    // ─── Layout switcher ───────────────────────────────────────────
+    // ─── Subsystems ────────────────────────────────────────────────
     let layout_switcher = match create_switcher() {
         Ok(s) => {
             info!(backend = s.backend_name(), "layout switcher ready");
             Arc::from(s)
         }
         Err(e) => {
-            error!(?e, "no layout switcher backend on this platform; aborting");
+            error!(?e, "no layout switcher backend; aborting");
             return Err(anyhow::anyhow!(e));
         }
     };
-
-    // ─── Key emitter ───────────────────────────────────────────────
     let key_emitter = match create_emitter() {
         Ok(e) => {
             info!(backend = e.backend_name(), "key emitter ready");
             Arc::from(e)
         }
         Err(e) => {
-            warn!(
-                ?e,
-                "no key emitter backend; corrections will be DECISION-ONLY"
-            );
-            // Stub-friendly: build a noop emitter so the engine can
-            // still log decisions on platforms without an impl yet.
+            warn!(?e, "no key emitter backend; corrections will be no-op");
             Arc::from(noop_emitter()) as Arc<dyn kb_input::KeyEmitter>
         }
     };
-
-    // ─── Audio ─────────────────────────────────────────────────────
     let audio = Arc::new(AudioPlayer::new());
     audio.refresh_from(&settings);
 
-    // ─── Detectors ─────────────────────────────────────────────────
     let detectors: Vec<Box<dyn Detector>> = vec![Box::new(build_plausibility_detector(&layouts))];
 
     // ─── Engine ────────────────────────────────────────────────────
@@ -113,46 +102,51 @@ fn main() -> Result<()> {
         Arc::clone(&audio),
         engine_event_tx,
     );
-
     std::thread::Builder::new()
         .name("kb-switcher-engine".into())
         .spawn(move || engine.run(key_rx, engine_cmd_rx))
         .context("spawn engine thread")?;
 
     // ─── Input listener ────────────────────────────────────────────
-    let mut input_listener = match create_listener() {
-        Ok(l) => Some(l),
-        Err(e) => {
-            warn!(
-                ?e,
-                "no input listener backend; engine will receive no events"
-            );
-            None
-        }
-    };
+    let mut input_listener = create_listener().ok();
     if let Some(listener) = input_listener.as_mut() {
         if let Err(e) = listener.start(key_tx) {
             warn!(?e, "input listener failed to start");
         } else {
             info!(backend = listener.backend_name(), "input listener started");
         }
+    } else {
+        warn!("no input listener backend; engine will receive no events");
     }
 
     // ─── Tao event loop + tray + global hotkeys ────────────────────
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
     let menu = Menu::new();
-    let item_settings = MenuItem::new("Settings…", true, None);
+    let item_settings = MenuItem::new("Open Settings (config.toml)…", true, None);
+    let item_logs = MenuItem::new("Open Logs Folder…", true, None);
+    let item_reload = MenuItem::new("Reload Settings", true, None);
     let item_pause = MenuItem::new("Pause auto-switch", true, None);
+    let item_about = MenuItem::new(
+        format!("About {APP_NAME} v{}", env!("CARGO_PKG_VERSION")),
+        false,
+        None,
+    );
     let item_quit = MenuItem::new("Quit", true, None);
     menu.append_items(&[
         &item_settings,
+        &item_logs,
+        &item_reload,
+        &PredefinedMenuItem::separator(),
         &item_pause,
         &PredefinedMenuItem::separator(),
+        &item_about,
         &item_quit,
     ])
     .context("populate tray menu")?;
     let settings_id = item_settings.id().clone();
+    let logs_id = item_logs.id().clone();
+    let reload_id = item_reload.id().clone();
     let pause_id = item_pause.id().clone();
     let quit_id = item_quit.id().clone();
 
@@ -181,8 +175,12 @@ fn main() -> Result<()> {
 
     spawn_event_bridges(event_loop.create_proxy(), engine_event_rx.clone())?;
 
-    info!("entering event loop");
+    let settings_path: PathBuf = settings.path().to_owned();
+    let log_dir: Option<PathBuf> = SettingsStore::log_dir().ok();
     let cmd_tx_for_loop = engine_cmd_tx.clone();
+    let settings_for_loop = Arc::clone(&settings);
+
+    info!("entering event loop");
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
@@ -194,7 +192,23 @@ fn main() -> Result<()> {
                     }
                     *control_flow = ControlFlow::Exit;
                 } else if id == settings_id {
-                    info!("Settings clicked (UI lands in Phase 4)");
+                    open_path(&settings_path, "settings file");
+                } else if id == logs_id {
+                    if let Some(dir) = log_dir.as_ref() {
+                        let _ = std::fs::create_dir_all(dir);
+                        open_path(dir, "log directory");
+                    } else {
+                        warn!("log directory unknown");
+                    }
+                } else if id == reload_id {
+                    match settings_for_loop.reload() {
+                        Ok(true) => {
+                            info!("config.toml reloaded — settings changed");
+                            let _ = cmd_tx_for_loop.send(EngineCommand::SettingsReloaded);
+                        }
+                        Ok(false) => info!("config.toml reloaded — no changes"),
+                        Err(e) => warn!(?e, "could not reload settings"),
+                    }
                 } else if id == pause_id {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
                 }
@@ -206,12 +220,17 @@ fn main() -> Result<()> {
                     let _ = cmd_tx_for_loop.send(EngineCommand::SwitchLastForcefully);
                 }
             }
-            Event::UserEvent(UserEvent::Engine(ev)) => {
-                handle_engine_event(ev);
-            }
+            Event::UserEvent(UserEvent::Engine(ev)) => handle_engine_event(ev),
             _ => {}
         }
     });
+}
+
+fn open_path(path: &std::path::Path, what: &str) {
+    debug!(?path, "opening {what}");
+    if let Err(e) = opener::open(path) {
+        warn!(?e, ?path, "could not open {what} in default app");
+    }
 }
 
 fn handle_engine_event(ev: SwitcherEvent) {
@@ -248,7 +267,6 @@ fn spawn_event_bridges(
     proxy: EventLoopProxy<UserEvent>,
     engine_rx: Receiver<SwitcherEvent>,
 ) -> Result<()> {
-    // Tray menu → loop
     let proxy_menu = proxy.clone();
     std::thread::Builder::new()
         .name("tray-menu-bridge".into())
@@ -262,7 +280,6 @@ fn spawn_event_bridges(
         })
         .context("spawn menu bridge thread")?;
 
-    // Global hotkeys → loop
     let proxy_hk = proxy.clone();
     std::thread::Builder::new()
         .name("hotkey-bridge".into())
@@ -276,7 +293,6 @@ fn spawn_event_bridges(
         })
         .context("spawn hotkey bridge thread")?;
 
-    // Engine events → loop
     std::thread::Builder::new()
         .name("engine-event-bridge".into())
         .spawn(move || {
@@ -299,10 +315,46 @@ fn build_plausibility_detector(layouts: &Arc<LayoutDb>) -> WordPlausibilityDetec
     WordPlausibilityDetector::new(profiles)
 }
 
-fn init_tracing() {
+/// Init `tracing` with both a stderr layer and a file appender that
+/// rotates daily under `<data_dir>/kb-switcher/logs/`. Returns the
+/// guard for the file writer; dropping it would close the file.
+fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
     use tracing_subscriber::{EnvFilter, fmt};
+
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    fmt().with_env_filter(filter).with_target(false).init();
+
+    let stderr_layer = fmt::layer().with_writer(std::io::stderr).with_target(false);
+
+    let (file_layer, guard) = match SettingsStore::log_dir() {
+        Ok(dir) => {
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                eprintln!("kb-switcher: could not create log dir {dir:?}: {e}");
+                (None, None)
+            } else {
+                let appender = tracing_appender::rolling::daily(&dir, "kb-switcher.log");
+                let (writer, guard) = tracing_appender::non_blocking(appender);
+                let layer = fmt::layer()
+                    .with_writer(writer)
+                    .with_ansi(false)
+                    .with_target(false);
+                (Some(layer), Some(guard))
+            }
+        }
+        Err(e) => {
+            eprintln!("kb-switcher: cannot resolve log dir: {e}");
+            (None, None)
+        }
+    };
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(stderr_layer)
+        .with(file_layer)
+        .init();
+
+    guard
 }
 
 fn build_placeholder_icon() -> Result<Icon> {
@@ -336,7 +388,3 @@ impl kb_input::KeyEmitter for NoopEmitter {
 fn noop_emitter() -> Box<dyn kb_input::KeyEmitter> {
     Box::new(NoopEmitter)
 }
-
-// Drop-channel guard so unused senders don't poison the workspace.
-#[allow(dead_code)]
-fn _ensure_sender_used(_t: Sender<KeyEvent>) {}

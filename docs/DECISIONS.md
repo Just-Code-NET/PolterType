@@ -74,3 +74,30 @@ The Corrector itself synthesises keystrokes via `SendInput`; those
 events come back through the LL hook with `LLKHF_INJECTED` set. The
 engine must ignore them to avoid feedback loops where a correction
 triggers another correction.
+
+## 2026-05-02 — Phase 4: deferred full GUI; settings = open `config.toml` in editor
+
+PLAN.md §10 originally pencilled `iced` settings pages for Phase 4.
+On reflection:
+
+* `iced` (or `egui`) integrated with `tao` + `tray-icon` +
+  `global-hotkey` requires careful event-loop juggling, especially
+  on macOS where only one runtime can own the main thread.
+* The most-used flows (toggle autostart, pick active languages, set
+  hotkeys) are perfectly serviceable via direct TOML editing —
+  Karabiner-Elements, Alfred and many other tray apps work this way.
+* Building the GUI now would lock in choices that may need redoing
+  once we know how macOS / Wayland event loops play with iced.
+
+So Phase 4 ships:
+
+* "Open Settings" tray item opens `config.toml` in the user's default
+  editor via the cross-platform `opener` crate.
+* "Open Logs" tray item opens the log directory.
+* "Reload Settings" re-reads `config.toml` and notifies the engine.
+* File-backed logging via `tracing-appender` (rotates daily).
+* Engine respects `[languages].active` to scope candidate layouts.
+
+Full visual settings UI (iced or egui) is deferred to Phase 8 / v0.2,
+when we already know how macOS / Linux event loops behave from
+Phases 5 / 6.
