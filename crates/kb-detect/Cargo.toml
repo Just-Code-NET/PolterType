@@ -16,3 +16,4 @@ kb-types  = { workspace = true }
 serde     = { workspace = true }
 thiserror = { workspace = true }
 tracing   = { workspace = true }
+fst       = { workspace = true }

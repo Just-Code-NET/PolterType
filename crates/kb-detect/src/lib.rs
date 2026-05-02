@@ -12,7 +12,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
+use fst::Set as FstSet;
 pub use kb_types::{DetectionInput, DetectionVerdict, LayoutId};
 use serde::{Deserialize, Serialize};
 
@@ -277,41 +279,89 @@ impl Detector for WordPlausibilityDetector {
 
 // ─── DictionaryDetector ──────────────────────────────────────────────
 
-/// Looks the rendered text up in per-layout common-word dictionaries.
+/// Compact immutable per-layout dictionary backed by an FST. Built
+/// from the `data/wordlists/<id>.txt` files at compile time (see
+/// `kb-core/build.rs`) and optionally augmented at runtime from the
+/// user's `<config-dir>/wordlists/<id>.txt` (which is loaded into a
+/// supplementary `HashSet`).
+///
+/// FST is the right structure here:
+/// * Encoded byte slice — no per-word allocation, sits in `.rodata`.
+/// * O(len(word)) exact lookup; ~1–2 bytes per word stored.
+/// * Loads in microseconds; wraps a `&'static [u8]` so we can embed
+///   ~370k EN + ~333k UK entries into the binary without bloating
+///   resident memory.
+#[derive(Clone)]
+pub struct LayoutDictionary {
+    pub embedded: Arc<FstSet<&'static [u8]>>,
+    pub user_overlay: HashSet<String>,
+}
+
+impl LayoutDictionary {
+    pub fn new(embedded: FstSet<&'static [u8]>, user_overlay: HashSet<String>) -> Self {
+        Self {
+            embedded: Arc::new(embedded),
+            user_overlay,
+        }
+    }
+
+    /// Convenience: empty embedded FST + given user overlay. Used in
+    /// tests where wiring up a real FST would be boilerplate-heavy;
+    /// runtime callers always have a real embedded FST.
+    ///
+    /// Both `expect`s here are infallible by `fst::SetBuilder`'s
+    /// contract — building an empty set never errors — but clippy
+    /// can't see that, so we silence it locally.
+    #[allow(clippy::expect_used)]
+    pub fn from_overlay_only(overlay: HashSet<String>) -> Self {
+        let empty: Vec<u8> = fst::SetBuilder::memory()
+            .into_inner()
+            .expect("SetBuilder::memory().into_inner() is infallible");
+        let set = FstSet::new(empty.leak() as &'static [u8]).expect("empty FST is always valid");
+        Self {
+            embedded: Arc::new(set),
+            user_overlay: overlay,
+        }
+    }
+
+    pub fn contains(&self, word_lowercase: &str) -> bool {
+        if self.user_overlay.contains(word_lowercase) {
+            return true;
+        }
+        self.embedded.contains(word_lowercase.as_bytes())
+    }
+}
+
+/// Looks the rendered text up in per-layout dictionaries.
 ///
 /// Decision logic:
 ///
 /// * `current_text` matches its layout's dictionary  → `Keep`
 ///   (strong signal: the user typed a real word; never switch).
-/// * `current_text` is **not** a word AND exactly one alternate IS  →
-///   `Switch` to that alternate, confidence ~0.95.
-/// * `current_text` is not a word AND multiple alternates are words
-///   → `Switch` to the first hit (in candidate iteration order); a
-///   later refinement could rank by alternate length / frequency.
+/// * `current_text` is **not** a word AND any alternate IS  →
+///   `Switch` to the first matching alternate, confidence ~0.95.
 /// * Neither side hits the dictionary  → `NoOpinion` (defer to the
 ///   plausibility detector).
 ///
 /// Wins:
 /// * Catches single-letter prepositions / pronouns (`а`, `і`, `у`,
-///   `і`, `o`, `a`, `i`) which the plausibility heuristic can't see
-///   (its `min_letters` is 3 by design — too noisy below).
+///   `o`, `a`, `i`) which the plausibility heuristic can't see (its
+///   `min_letters` is 3 by design — too noisy below).
 /// * Catches *both-look-plausible* tokens (`vtys` ↔ `мені` —
 ///   plausibility scores them ~equal; the dictionary breaks the tie
-///   decisively because `мені` is a known word and `vtys` isn't).
+///   decisively because `мені` is in the UK dict and `vtys` isn't).
 pub struct DictionaryDetector {
-    words: HashMap<LayoutId, HashSet<String>>,
+    dicts: HashMap<LayoutId, LayoutDictionary>,
 }
 
 impl DictionaryDetector {
-    pub fn new(words: HashMap<LayoutId, HashSet<String>>) -> Self {
-        Self { words }
+    pub fn new(dicts: HashMap<LayoutId, LayoutDictionary>) -> Self {
+        Self { dicts }
     }
 
     pub fn is_word(&self, layout: &LayoutId, text: &str) -> bool {
         let lower = text.to_lowercase();
-        self.words
-            .get(layout)
-            .is_some_and(|set| set.contains(&lower))
+        self.dicts.get(layout).is_some_and(|d| d.contains(&lower))
     }
 }
 
@@ -503,19 +553,22 @@ mod tests {
 
     fn dict_detector() -> DictionaryDetector {
         let mut m = HashMap::new();
-        m.insert(
-            LayoutId::from("en-US"),
-            ["hello", "world", "the", "is", "a", "i", "to"]
-                .iter()
-                .map(|s| (*s).to_owned())
-                .collect(),
-        );
-        m.insert(
-            LayoutId::from("uk-UA"),
+        let en_overlay: HashSet<String> = ["hello", "world", "the", "is", "a", "i", "to"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let uk_overlay: HashSet<String> =
             ["що", "мені", "з", "цим", "а", "і", "у", "є", "о", "привіт"]
                 .iter()
                 .map(|s| (*s).to_owned())
-                .collect(),
+                .collect();
+        m.insert(
+            LayoutId::from("en-US"),
+            LayoutDictionary::from_overlay_only(en_overlay),
+        );
+        m.insert(
+            LayoutId::from("uk-UA"),
+            LayoutDictionary::from_overlay_only(uk_overlay),
         );
         DictionaryDetector::new(m)
     }

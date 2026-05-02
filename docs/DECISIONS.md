@@ -40,6 +40,40 @@ key events specially (e.g. games) will see the synthetic events as
 v0.1 since we're explicitly out of scope for games (per-app exception
 list handles those).
 
+## 2026-05-02 — Real Hunspell-grade dictionaries via FST
+
+The hand-curated ~280-word lists shipped earlier worked for the
+common case but missed long-tail vocabulary. Switched to:
+
+* **EN**: [`dwyl/english-words`](https://github.com/dwyl/english-words)
+  `words_alpha.txt` — Public Domain — ~370k entries.
+* **UK**: [LibreOffice/dictionaries](https://github.com/LibreOffice/dictionaries)
+  `uk_UA/uk_UA.dic` — MPL 1.1 — ~333k entries (derived from
+  brown-uk/dict_uk).
+
+Storage: not `HashSet<String>` (too much heap overhead at this
+scale). [BurntSushi `fst` crate](https://docs.rs/fst) compresses the
+sorted, deduped wordlist into an immutable byte-buffer set. At
+build time `kb-core/build.rs` reads `data/wordlists/<id>.txt` and
+emits `<OUT_DIR>/<stem>.fst`. At runtime we `include_bytes!` the
+blob and wrap in `fst::Set::new(&'static [u8])` — O(len) lookup,
+no per-word allocation, lives in `.rodata`.
+
+Concrete cost: release binary 5 → 6.85 MB (+1.85 MB for both FSTs);
+~3 MB additional resident memory at runtime. 700k+ words for
+~5 bytes per word storage cost — FST is the right tool.
+
+User overlay path: drop a one-word-per-line text file at
+`<config-dir>/kb-switcher/wordlists/<stem>.txt` to extend a
+dictionary with project-specific vocabulary (proper nouns, slang,
+domain terms). The overlay is loaded at startup and merged on top
+of the embedded FST.
+
+`xtask wordlists fetch` re-downloads upstream sources, runs the
+Hunspell-format normalisation (strip `/affixflags`, drop `+cs=`
+metadata, lowercase, dedupe, sort), and writes the cleaned txt
+files for review and commit.
+
 ## 2026-05-02 — Detection in v0.1 = vowel/consonant plausibility
 
 A pure script detector can't separate "real word in this layout" from

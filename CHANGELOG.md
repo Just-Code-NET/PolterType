@@ -51,6 +51,26 @@ The initial scaffolding lands across Phases 0–8 documented in
 * `docs/PERMISSIONS.md` — per-OS access requirements.
 * `docs/AI.md` — AI subsystem privacy + plug-in API.
 
+### Real Hunspell-grade dictionaries (~700k words)
+
+Detection now consults proper per-language dictionaries instead of a
+hand-curated 280-word list. Sources (see `data/wordlists/CREDITS.md`):
+
+* **EN**: `dwyl/english-words` — Public Domain — ~370k entries.
+* **UK**: LibreOffice `uk_UA.dic` — MPL 1.1 — ~333k entries.
+
+Storage is a [BurntSushi FST](https://docs.rs/fst) Set built at
+compile time from `data/wordlists/<id>.txt` and embedded via
+`include_bytes!`. Cost: +1.85 MB to the release binary, ~3 MB
+resident memory; lookup is O(len(word)) with no per-word allocation.
+
+User overlay: drop additional words into
+`<config-dir>/kb-switcher/wordlists/<id>.txt` to extend any
+dictionary with project-specific vocabulary at startup.
+
+Refresh upstream: `cargo xtask wordlists fetch` re-downloads and
+re-processes the source files.
+
 ### Dev-friendly: keeps quiet in IDEs and on identifiers
 
 Auto-switching skips:

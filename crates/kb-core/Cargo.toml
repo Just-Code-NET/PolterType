@@ -11,6 +11,9 @@ repository.workspace  = true
 [lints]
 workspace = true
 
+[build-dependencies]
+fst = { workspace = true }
+
 [dependencies]
 kb-types          = { workspace = true }
 kb-input          = { workspace = true }
@@ -25,6 +28,7 @@ parking_lot       = { workspace = true }
 thiserror         = { workspace = true }
 tracing           = { workspace = true }
 rodio             = { workspace = true }
+fst               = { workspace = true }
 
 [dev-dependencies]
 # nothing yet

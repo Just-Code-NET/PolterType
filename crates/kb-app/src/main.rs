@@ -64,8 +64,18 @@ fn main() -> Result<()> {
     info!(path = ?settings.path(), "settings loaded");
 
     // ─── Layouts ───────────────────────────────────────────────────
-    let layouts = Arc::new(LayoutDb::load_embedded());
-    info!(loaded = layouts.len(), ids = ?layouts.ids().collect::<Vec<_>>(), "layout DB ready");
+    // Embedded mappings + dictionaries baked at build time, plus
+    // optional user overlay from `<config-dir>/wordlists/<stem>.txt`.
+    let user_wordlist_dir = kb_core::layouts::user_wordlist_dir();
+    let layouts = Arc::new(LayoutDb::load_embedded_with_user_overlay(
+        user_wordlist_dir.as_deref(),
+    ));
+    info!(
+        loaded = layouts.len(),
+        ids = ?layouts.ids().collect::<Vec<_>>(),
+        wordlist_overlay = ?user_wordlist_dir,
+        "layout DB ready"
+    );
 
     // ─── Subsystems ────────────────────────────────────────────────
     let layout_switcher = match create_switcher() {
@@ -379,11 +389,11 @@ fn build_plausibility_detector(layouts: &Arc<LayoutDb>) -> WordPlausibilityDetec
 }
 
 fn build_dictionary_detector(layouts: &Arc<LayoutDb>) -> DictionaryDetector {
-    let words = layouts
+    let dicts = layouts
         .iter()
-        .map(|(id, m)| (id.clone(), m.words.clone()))
+        .filter_map(|(id, m)| m.dictionary.as_ref().map(|d| (id.clone(), d.clone())))
         .collect();
-    DictionaryDetector::new(words)
+    DictionaryDetector::new(dicts)
 }
 
 /// Poll the OS for the current layout every ~250 ms; emit a

@@ -13,3 +13,4 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+ureq   = { version = "2", features = ["tls"] }
