@@ -25,6 +25,9 @@ kb-core   = { workspace = true }
 kb-input  = { workspace = true }
 kb-layout = { workspace = true }
 kb-detect = { workspace = true }
+
+# Both kb-input and kb-layout already depend on this; we re-pull it
+# here so Cargo's feature unification keeps everyone on the same view.
 kb-ai     = { workspace = true, optional = true }
 
 anyhow             = { workspace = true }

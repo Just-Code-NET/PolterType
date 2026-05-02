@@ -1,23 +1,25 @@
 //! kb-switcher application entry point.
 //!
-//! Phase 1 scaffold: single-instance check, tracing, `tao` event loop,
-//! and a system tray with Settings/Quit menu items. No keyboard hooks
-//! yet (Phase 2). No settings window yet (Phase 4).
+//! Phase 2 scaffold: tray + global keyboard listener + layout switcher.
+//! Settings UI lands in Phase 4; engine in Phase 3.
 
 #![forbid(unsafe_code)]
 
 use anyhow::{Context, Result};
+use crossbeam_channel::{Receiver, bounded};
 use single_instance::SingleInstance;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tracing::{info, warn};
+use tracing::{debug, error, info, warn};
 use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
+
+use kb_input::{KeyEvent, create_listener};
+use kb_layout::{LayoutSwitcher, create_switcher};
 
 const APP_ID: &str = "dev.opensource.kb-switcher";
 const APP_NAME: &str = "kb-switcher";
 
-/// Events forwarded from background channels into tao's event loop.
 #[derive(Debug, Clone)]
 enum UserEvent {
     Menu(MenuId),
@@ -33,9 +35,48 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    // ---- Layout switcher: query the OS so we have a baseline -----------
+    let layout_switcher = match create_switcher() {
+        Ok(sw) => {
+            info!(backend = sw.backend_name(), "layout switcher ready");
+            match sw.current() {
+                Ok(id) => info!(layout = %id, "current layout"),
+                Err(e) => warn!(?e, "could not query current layout"),
+            }
+            match sw.list_active() {
+                Ok(list) => info!(?list, "active layouts"),
+                Err(e) => warn!(?e, "could not list active layouts"),
+            }
+            Some(sw)
+        }
+        Err(e) => {
+            warn!(?e, "no layout switcher backend available on this platform");
+            None
+        }
+    };
+    let _layout_switcher: Option<Box<dyn LayoutSwitcher>> = layout_switcher;
+
+    // ---- Input listener: install OS hook --------------------------------
+    let (key_tx, key_rx) = bounded::<KeyEvent>(1024);
+    let mut input_listener = match create_listener() {
+        Ok(l) => Some(l),
+        Err(e) => {
+            warn!(?e, "no input listener backend available on this platform");
+            None
+        }
+    };
+    if let Some(listener) = input_listener.as_mut() {
+        match listener.start(key_tx) {
+            Ok(()) => info!(backend = listener.backend_name(), "input listener started"),
+            Err(e) => warn!(?e, "input listener failed to start"),
+        }
+    }
+
+    spawn_key_drain(key_rx).context("spawn key-event drain thread")?;
+
+    // ---- Tray ----------------------------------------------------------
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
-    // ---- Build tray menu ----
     let menu = Menu::new();
     let item_settings = MenuItem::new("Settings…", true, None);
     let item_quit = MenuItem::new("Quit", true, None);
@@ -45,8 +86,6 @@ fn main() -> Result<()> {
     let settings_id = item_settings.id().clone();
     let quit_id = item_quit.id().clone();
 
-    // Build tray icon. Keep the handle alive for the lifetime of the
-    // event loop — dropping it would remove the icon from the tray.
     let _tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip(APP_NAME)
@@ -54,9 +93,6 @@ fn main() -> Result<()> {
         .build()
         .context("build tray icon")?;
 
-    // Bridge tray-icon's mpsc receiver into tao's user-event channel.
-    // tray-icon publishes menu clicks on a global crossbeam receiver;
-    // tao polls events on the main thread, so we need this hop.
     let proxy = event_loop.create_proxy();
     std::thread::Builder::new()
         .name("tray-menu-bridge".into())
@@ -73,27 +109,51 @@ fn main() -> Result<()> {
     info!("entering event loop");
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
-
         if let Event::UserEvent(UserEvent::Menu(id)) = event {
             if id == quit_id {
-                info!("Quit clicked — exiting");
+                info!("Quit clicked — shutting down");
+                if let Some(mut listener) = input_listener.take() {
+                    listener.stop();
+                }
                 *control_flow = ControlFlow::Exit;
             } else if id == settings_id {
-                // Phase 4 will open the iced settings window here.
-                info!("Settings clicked (UI not implemented yet)");
+                info!("Settings clicked (UI lands in Phase 4)");
             }
         }
     });
 }
 
+/// Drain key events on a worker thread; for Phase 2 we only log them.
+/// Phase 3 will hand them to the SwitcherEngine instead.
+fn spawn_key_drain(rx: Receiver<KeyEvent>) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("key-event-drain".into())
+        .spawn(move || {
+            let mut counted: u64 = 0;
+            for ev in rx.iter() {
+                counted += 1;
+                if counted <= 8 || counted % 100 == 0 {
+                    debug!(
+                        n = counted,
+                        vk = ev.vk,
+                        sc = ev.scancode,
+                        dir = ?ev.direction,
+                        mods = ?ev.modifiers,
+                        injected = ev.injected,
+                        "key event"
+                    );
+                }
+            }
+            error!("key event channel closed");
+        })
+}
+
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
-
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     fmt().with_env_filter(filter).with_target(false).init();
 }
 
-/// 16x16 RGBA placeholder until we ship real per-language tray glyphs.
 fn build_placeholder_icon() -> Result<Icon> {
     const W: u32 = 16;
     const H: u32 = 16;

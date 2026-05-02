@@ -74,6 +74,13 @@ rodio = "0.20"
 # Notifications
 notify-rust = "4"
 
+# Bitflags for modifier sets, etc.
+bitflags = "2"
+
+# Win32 API bindings (Microsoft official). Per-target deps in the
+# crates that need them — features there select narrow modules.
+windows-version = "0.1"
+
 [profile.release]
 lto           = "thin"
 codegen-units = 1
