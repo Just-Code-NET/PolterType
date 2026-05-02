@@ -14,7 +14,9 @@ use crossbeam_channel::Sender;
 use tracing::{debug, error, info, warn};
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RMENU, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT,
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_BACK, VK_CONTROL, VK_LMENU,
+    VK_LWIN, VK_MENU, VK_RMENU, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG,
@@ -22,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
-use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
+use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers};
 
 /// Sender shared with the C-callable hook procedure. There can only be
 /// one global keyboard hook per process at a time. `parking_lot::RwLock`
@@ -208,4 +210,111 @@ fn read_modifiers() -> Modifiers {
         alt: down(VK_MENU.0) || down(VK_LMENU.0) || down(VK_RMENU.0),
         meta: down(VK_LWIN.0) || down(VK_RWIN.0),
     }
+}
+
+// ─── KeyEmitter (SendInput) ──────────────────────────────────────────
+
+pub struct WindowsEmitter;
+
+impl WindowsEmitter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for WindowsEmitter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl KeyEmitter for WindowsEmitter {
+    fn send_backspaces(&self, n: usize) -> Result<(), InputError> {
+        if n == 0 {
+            return Ok(());
+        }
+        let mut events: Vec<INPUT> = Vec::with_capacity(n * 2);
+        for _ in 0..n {
+            events.push(make_vk_input(VK_BACK, false));
+            events.push(make_vk_input(VK_BACK, true));
+        }
+        send_inputs(&events)
+    }
+
+    fn send_text(&self, text: &str) -> Result<(), InputError> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        let mut events: Vec<INPUT> = Vec::with_capacity(text.len() * 2);
+        // Encode each char as UTF-16; non-BMP codepoints take two
+        // INPUT events (high + low surrogate). Each codepoint is sent
+        // both as a key-down and key-up.
+        for c in text.chars() {
+            let mut buf = [0u16; 2];
+            for &unit in c.encode_utf16(&mut buf).iter() {
+                events.push(make_unicode_input(unit, false));
+                events.push(make_unicode_input(unit, true));
+            }
+        }
+        send_inputs(&events)
+    }
+
+    fn backend_name(&self) -> &'static str {
+        "windows-sendinput"
+    }
+}
+
+fn make_vk_input(vk: VIRTUAL_KEY, key_up: bool) -> INPUT {
+    let flags = if key_up {
+        KEYEVENTF_KEYUP
+    } else {
+        KEYBD_EVENT_FLAGS(0)
+    };
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: vk,
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
+fn make_unicode_input(unit: u16, key_up: bool) -> INPUT {
+    let mut flags = KEYEVENTF_UNICODE;
+    if key_up {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: unit,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    }
+}
+
+fn send_inputs(events: &[INPUT]) -> Result<(), InputError> {
+    if events.is_empty() {
+        return Ok(());
+    }
+    // Safety: SendInput requires a contiguous INPUT slice; we pass
+    // exactly that. Returns the number actually inserted.
+    let n = unsafe { SendInput(events, std::mem::size_of::<INPUT>() as i32) };
+    if n as usize != events.len() {
+        return Err(InputError::Os(format!(
+            "SendInput sent {n}/{} events",
+            events.len()
+        )));
+    }
+    Ok(())
 }

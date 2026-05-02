@@ -6,7 +6,7 @@
 
 use crossbeam_channel::Sender;
 
-use crate::{InputError, InputListener, KeyEvent};
+use crate::{InputError, InputListener, KeyEmitter, KeyEvent};
 
 pub struct MacosListener;
 
@@ -27,5 +27,29 @@ impl InputListener for MacosListener {
 
     fn backend_name(&self) -> &'static str {
         "macos-cg-event-tap-stub"
+    }
+}
+
+pub struct MacosEmitter;
+
+impl MacosEmitter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl KeyEmitter for MacosEmitter {
+    fn send_backspaces(&self, _n: usize) -> Result<(), InputError> {
+        Err(InputError::Unsupported(
+            "macOS key emitter not implemented yet (Phase 5)".into(),
+        ))
+    }
+    fn send_text(&self, _text: &str) -> Result<(), InputError> {
+        Err(InputError::Unsupported(
+            "macOS key emitter not implemented yet (Phase 5)".into(),
+        ))
+    }
+    fn backend_name(&self) -> &'static str {
+        "macos-cg-post-stub"
     }
 }

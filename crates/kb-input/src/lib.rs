@@ -57,10 +57,6 @@ pub trait InputListener: Send {
 }
 
 /// Construct the listener appropriate for the current OS.
-///
-/// On Linux, this picks between Wayland (evdev) and X11 (XInput2)
-/// based on the active session — see `linux::create_listener` for the
-/// detection logic.
 pub fn create_listener() -> Result<Box<dyn InputListener>, InputError> {
     #[cfg(windows)]
     {
@@ -73,6 +69,46 @@ pub fn create_listener() -> Result<Box<dyn InputListener>, InputError> {
     #[cfg(target_os = "linux")]
     {
         linux::create_listener()
+    }
+    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    {
+        Err(InputError::Unsupported(format!(
+            "unsupported target_os = {}",
+            std::env::consts::OS
+        )))
+    }
+}
+
+// ─── KeyEmitter ──────────────────────────────────────────────────────
+
+/// Synthesises keystrokes — used by the corrector to delete the
+/// just-typed word and re-type it after switching layouts.
+///
+/// All emitted events come back through [`InputListener`] with
+/// `injected = true`; the engine drops those to avoid feedback.
+pub trait KeyEmitter: Send + Sync {
+    /// Emit `n` Backspace presses, one after another.
+    fn send_backspaces(&self, n: usize) -> Result<(), InputError>;
+
+    /// Emit `text` as Unicode characters. On Windows uses
+    /// `KEYEVENTF_UNICODE`, which is layout-independent.
+    fn send_text(&self, text: &str) -> Result<(), InputError>;
+
+    fn backend_name(&self) -> &'static str;
+}
+
+pub fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
+    #[cfg(windows)]
+    {
+        Ok(Box::new(windows::WindowsEmitter::new()))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Ok(Box::new(macos::MacosEmitter::new()))
+    }
+    #[cfg(target_os = "linux")]
+    {
+        linux::create_emitter()
     }
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {

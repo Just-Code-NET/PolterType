@@ -7,7 +7,7 @@
 //!   3. Otherwise fall back to AT-SPI (Phase 6.x) or report Unsupported
 //!      so the tray can show an onboarding banner.
 
-use crate::{InputError, InputListener};
+use crate::{InputError, InputListener, KeyEmitter};
 
 mod wayland;
 mod x11;
@@ -21,4 +21,11 @@ pub fn create_listener() -> Result<Box<dyn InputListener>, InputError> {
             "unrecognised XDG_SESSION_TYPE = {other:?}"
         ))),
     }
+}
+
+pub fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
+    // Phase 6 will pick uinput / libei / xtest based on the session.
+    Err(InputError::Unsupported(
+        "Linux key emitter not implemented yet (Phase 6)".into(),
+    ))
 }

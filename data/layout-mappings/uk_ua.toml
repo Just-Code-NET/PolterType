@@ -1,0 +1,64 @@
+# Layout mapping: Українська (Ukrainian, modern variant).
+#
+# Keyed by Win SC Set-1 scancode (hex). Mirrors en-US row layout so
+# the engine can translate scancode buffers between the two cleanly.
+# Punctuation differences are listed only where they're stable.
+
+id     = "uk-UA"
+name   = "Українська"
+script = "Cyrillic"
+
+[keys]
+# Number row — same digits as en-US, but Shift symbols differ.
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "\"" }
+0x04 = { plain = "3", shift = "№" }
+0x05 = { plain = "4", shift = ";" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = ":" }
+0x08 = { plain = "7", shift = "?" }
+0x09 = { plain = "8", shift = "*" }
+0x0A = { plain = "9", shift = "(" }
+0x0B = { plain = "0", shift = ")" }
+0x0C = { plain = "-", shift = "_" }
+0x0D = { plain = "=", shift = "+" }
+
+# Top letter row (ЙЦУКЕНГШЩЗХЇ)
+0x10 = { plain = "й", shift = "Й" }
+0x11 = { plain = "ц", shift = "Ц" }
+0x12 = { plain = "у", shift = "У" }
+0x13 = { plain = "к", shift = "К" }
+0x14 = { plain = "е", shift = "Е" }
+0x15 = { plain = "н", shift = "Н" }
+0x16 = { plain = "г", shift = "Г" }
+0x17 = { plain = "ш", shift = "Ш" }
+0x18 = { plain = "щ", shift = "Щ" }
+0x19 = { plain = "з", shift = "З" }
+0x1A = { plain = "х", shift = "Х" }
+0x1B = { plain = "ї", shift = "Ї" }
+
+# Home row (ФІВАПРОЛДЖЄ)
+0x1E = { plain = "ф", shift = "Ф" }
+0x1F = { plain = "і", shift = "І" }
+0x20 = { plain = "в", shift = "В" }
+0x21 = { plain = "а", shift = "А" }
+0x22 = { plain = "п", shift = "П" }
+0x23 = { plain = "р", shift = "Р" }
+0x24 = { plain = "о", shift = "О" }
+0x25 = { plain = "л", shift = "Л" }
+0x26 = { plain = "д", shift = "Д" }
+0x27 = { plain = "ж", shift = "Ж" }
+0x28 = { plain = "є", shift = "Є" }
+
+# Bottom row (ЯЧСМИТЬБЮ)
+0x2B = { plain = "ґ", shift = "Ґ" }
+0x2C = { plain = "я", shift = "Я" }
+0x2D = { plain = "ч", shift = "Ч" }
+0x2E = { plain = "с", shift = "С" }
+0x2F = { plain = "м", shift = "М" }
+0x30 = { plain = "и", shift = "И" }
+0x31 = { plain = "т", shift = "Т" }
+0x32 = { plain = "ь", shift = "Ь" }
+0x33 = { plain = "б", shift = "Б" }
+0x34 = { plain = "ю", shift = "Ю" }
+0x35 = { plain = ".", shift = "," }

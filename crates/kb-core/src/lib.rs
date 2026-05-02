@@ -1,5 +1,13 @@
-//! kb-switcher core: SwitcherEngine, settings, focus tracker, audio.
-//!
-//! Phase 1 placeholder. Real implementation lands in Phase 3.
+//! kb-switcher core: settings, layouts, audio, engine.
 
 #![forbid(unsafe_code)]
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
+pub mod audio;
+pub mod engine;
+pub mod layouts;
+pub mod settings;
+
+pub use engine::{SwitcherEngine, SwitcherEvent};
+pub use layouts::{LayoutDb, LayoutMapping};
+pub use settings::{Settings, SettingsStore};

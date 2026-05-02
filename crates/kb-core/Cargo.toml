@@ -1,6 +1,6 @@
 [package]
 name                  = "kb-core"
-description           = "Switcher engine, settings, focus tracking, audio, autostart."
+description           = "Switcher engine, settings, focus tracking, audio."
 version.workspace     = true
 edition.workspace     = true
 license.workspace     = true
@@ -24,3 +24,7 @@ crossbeam-channel = { workspace = true }
 parking_lot       = { workspace = true }
 thiserror         = { workspace = true }
 tracing           = { workspace = true }
+rodio             = { workspace = true }
+
+[dev-dependencies]
+# nothing yet
