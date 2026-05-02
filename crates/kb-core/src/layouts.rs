@@ -46,8 +46,17 @@ const fn embedded_layouts() -> &'static [(&'static str, &'static str, &'static s
 fn embedded_fst_for(stem: &str) -> Option<&'static [u8]> {
     EMBEDDED_WORDLISTS
         .iter()
-        .find(|(s, _)| *s == stem)
-        .map(|(_, bytes)| *bytes)
+        .find(|(s, _, _)| *s == stem)
+        .map(|(_, bytes, _)| *bytes)
+}
+
+/// Look up the embedded short-stop-word list (raw text) for a given
+/// layout stem.
+fn embedded_stop_words_for(stem: &str) -> Option<&'static str> {
+    EMBEDDED_WORDLISTS
+        .iter()
+        .find(|(s, _, _)| *s == stem)
+        .map(|(_, _, txt)| *txt)
 }
 
 // ─── Raw TOML schema ─────────────────────────────────────────────────
@@ -188,10 +197,12 @@ fn parse_wordlist(input: &str) -> HashSet<String> {
 }
 
 /// Construct a [`LayoutDictionary`] for `stem`: take the embedded
-/// FST blob (always present in v0.1) and optionally merge the user's
-/// override file from `<overlay_dir>/<stem>.txt` (one word per line).
-/// Missing override files are silently fine; malformed ones are
-/// logged and skipped — the embedded dict still works.
+/// FST blob (the full upstream dict, used for ≥ 3-letter tokens) and
+/// the embedded short-stop list (used for ≤ 2-letter tokens), then
+/// optionally merge the user's override file from
+/// `<overlay_dir>/<stem>.txt` (one word per line). Missing override
+/// files are silently fine; malformed ones are logged and skipped —
+/// the embedded data still works.
 fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDictionary> {
     let bytes = embedded_fst_for(stem)?;
     let embedded = match FstSet::new(bytes) {
@@ -201,6 +212,9 @@ fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDict
             return None;
         }
     };
+    let short_stop_words = embedded_stop_words_for(stem)
+        .map(parse_wordlist)
+        .unwrap_or_default();
     let user_overlay = overlay_dir
         .and_then(|dir| {
             let path = dir.join(format!("{stem}.txt"));
@@ -213,7 +227,11 @@ fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDict
                 .ok()
         })
         .unwrap_or_default();
-    Some(LayoutDictionary::new(embedded, user_overlay))
+    Some(LayoutDictionary::new(
+        embedded,
+        user_overlay,
+        short_stop_words,
+    ))
 }
 
 /// Path under which user-supplied wordlist overrides live.

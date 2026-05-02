@@ -1,0 +1,43 @@
+# Hand-curated 1- and 2-letter English stop words.
+#
+# DictionaryDetector consults this list (NOT the full embedded FST)
+# for buffers up to 2 letters long. Reason: large upstream English
+# wordlists like `dwyl/english-words` include many noise-looking
+# 2-letter tokens (`ws`, `ax`, `ne`, `oe`, `ai`, …) that, if used as
+# "this is a real word, don't switch" signal, cause aggressive false
+# positives on Cyrillic / other-script users typing legitimate short
+# words. This list is intentionally conservative.
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+a
+i
+
+am
+an
+as
+at
+be
+by
+do
+go
+he
+hi
+if
+in
+is
+it
+me
+my
+no
+of
+oh
+ok
+on
+or
+so
+to
+up
+us
+we

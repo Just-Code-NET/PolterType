@@ -295,25 +295,38 @@ impl Detector for WordPlausibilityDetector {
 pub struct LayoutDictionary {
     pub embedded: Arc<FstSet<&'static [u8]>>,
     pub user_overlay: HashSet<String>,
+    /// Hand-curated 1- and 2-letter stop words. Consulted **instead
+    /// of** the full FST when the buffer is ≤ 2 letters long. The
+    /// upstream dictionaries we embed are over-inclusive on short
+    /// tokens (`dwyl/english-words` ships `ws`, `ax`, `ne`, `oe`,
+    /// `ai` as "real" 2-letter words) — relying on them for short
+    /// buffers causes aggressive false-positive switches on users
+    /// typing legitimate short Cyrillic words.
+    pub short_stop_words: HashSet<String>,
 }
 
 impl LayoutDictionary {
-    pub fn new(embedded: FstSet<&'static [u8]>, user_overlay: HashSet<String>) -> Self {
+    pub fn new(
+        embedded: FstSet<&'static [u8]>,
+        user_overlay: HashSet<String>,
+        short_stop_words: HashSet<String>,
+    ) -> Self {
         Self {
             embedded: Arc::new(embedded),
             user_overlay,
+            short_stop_words,
         }
     }
 
-    /// Convenience: empty embedded FST + given user overlay. Used in
-    /// tests where wiring up a real FST would be boilerplate-heavy;
-    /// runtime callers always have a real embedded FST.
+    /// Convenience: empty embedded FST + given overlay + given short
+    /// stop list. Used in tests; runtime callers always have a real
+    /// embedded FST.
     ///
     /// Both `expect`s here are infallible by `fst::SetBuilder`'s
     /// contract — building an empty set never errors — but clippy
     /// can't see that, so we silence it locally.
     #[allow(clippy::expect_used)]
-    pub fn from_overlay_only(overlay: HashSet<String>) -> Self {
+    pub fn from_overlay_only(overlay: HashSet<String>, short_stop_words: HashSet<String>) -> Self {
         let empty: Vec<u8> = fst::SetBuilder::memory()
             .into_inner()
             .expect("SetBuilder::memory().into_inner() is infallible");
@@ -321,14 +334,22 @@ impl LayoutDictionary {
         Self {
             embedded: Arc::new(set),
             user_overlay: overlay,
+            short_stop_words,
         }
     }
 
+    /// Full-dict containment check (used for ≥ 3-letter tokens).
     pub fn contains(&self, word_lowercase: &str) -> bool {
         if self.user_overlay.contains(word_lowercase) {
             return true;
         }
         self.embedded.contains(word_lowercase.as_bytes())
+    }
+
+    /// Short-token containment check (used for ≤ 2-letter tokens).
+    /// Deliberately ignores the FST.
+    pub fn contains_short(&self, word_lowercase: &str) -> bool {
+        self.short_stop_words.contains(word_lowercase) || self.user_overlay.contains(word_lowercase)
     }
 }
 
@@ -359,9 +380,18 @@ impl DictionaryDetector {
         Self { dicts }
     }
 
+    /// Full-dict word check — used for ≥ 3 letter tokens.
     pub fn is_word(&self, layout: &LayoutId, text: &str) -> bool {
         let lower = text.to_lowercase();
         self.dicts.get(layout).is_some_and(|d| d.contains(&lower))
+    }
+
+    /// Short-token whitelist check — used for ≤ 2 letter tokens.
+    pub fn is_short_stop_word(&self, layout: &LayoutId, text: &str) -> bool {
+        let lower = text.to_lowercase();
+        self.dicts
+            .get(layout)
+            .is_some_and(|d| d.contains_short(&lower))
     }
 }
 
@@ -373,32 +403,44 @@ impl Detector for DictionaryDetector {
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
         let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
 
-        // Need at least one alphabetic character to even consider it.
-        if !current_text.chars().any(|c| c.is_alphabetic()) {
+        let letter_count = current_text.chars().filter(|c| c.is_alphabetic()).count();
+        if letter_count == 0 {
             return Verdict::NoOpinion;
         }
 
-        let current_match = self.is_word(ctx.current_layout, current_text);
+        // Two regimes — see `LayoutDictionary` doc-comment for why:
+        //   ≤ 2 letters: trust only the curated short-stop list
+        //                (embedded FST is too noisy at this length).
+        //   ≥ 3 letters: trust the full FST (+ user overlay).
+        let short = letter_count <= 2;
 
-        if current_match {
+        let lookup = |layout: &LayoutId, text: &str| -> bool {
+            if short {
+                self.is_short_stop_word(layout, text)
+            } else {
+                self.is_word(layout, text)
+            }
+        };
+        let label = if short { "short-stop" } else { "dictionary" };
+
+        if lookup(ctx.current_layout, current_text) {
             return Verdict::Keep {
                 reason: format!(
-                    "current `{current_text}` is a {} dictionary word",
+                    "current `{current_text}` is a {} {label} word",
                     ctx.current_layout
                 ),
             };
         }
 
-        // Current isn't a known word. Find an alternate that is.
         for (layout, text) in ctx.candidates {
             if layout == ctx.current_layout {
                 continue;
             }
-            if self.is_word(layout, text) {
+            if lookup(layout, text) {
                 return Verdict::Switch(DetectionVerdict {
                     best_layout: layout.clone(),
                     confidence: 0.95,
-                    reason: format!("`{text}` is a {layout} dictionary word"),
+                    reason: format!("`{text}` is a {layout} {label} word"),
                 });
             }
         }
@@ -553,22 +595,33 @@ mod tests {
 
     fn dict_detector() -> DictionaryDetector {
         let mut m = HashMap::new();
-        let en_overlay: HashSet<String> = ["hello", "world", "the", "is", "a", "i", "to"]
+        // Long-form (3+ letter) overlay: stand-in for what the embedded FST holds.
+        let en_overlay: HashSet<String> = ["hello", "world", "the", "elm", "wbv-not-a-word"]
+            .iter()
+            .filter(|s| !s.contains("not-a-word"))
+            .map(|s| (*s).to_owned())
+            .collect();
+        let uk_overlay: HashSet<String> = ["що", "мені", "цим", "привіт", "слово"]
             .iter()
             .map(|s| (*s).to_owned())
             .collect();
-        let uk_overlay: HashSet<String> =
-            ["що", "мені", "з", "цим", "а", "і", "у", "є", "о", "привіт"]
-                .iter()
-                .map(|s| (*s).to_owned())
-                .collect();
+        // Short stop words (1-2 letters) — hand-curated per layout.
+        let en_stop: HashSet<String> = ["a", "i", "is", "to", "of", "we", "in", "on", "ws-NOT"]
+            .iter()
+            .filter(|s| !s.contains("NOT"))
+            .map(|s| (*s).to_owned())
+            .collect();
+        let uk_stop: HashSet<String> = ["а", "і", "у", "є", "з", "не", "що", "ці", "ця", "цю"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
         m.insert(
             LayoutId::from("en-US"),
-            LayoutDictionary::from_overlay_only(en_overlay),
+            LayoutDictionary::from_overlay_only(en_overlay, en_stop),
         );
         m.insert(
             LayoutId::from("uk-UA"),
-            LayoutDictionary::from_overlay_only(uk_overlay),
+            LayoutDictionary::from_overlay_only(uk_overlay, uk_stop),
         );
         DictionaryDetector::new(m)
     }
@@ -606,6 +659,35 @@ mod tests {
         let en = LayoutId::from("en-US");
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "f".into()), (uk.clone(), "а".into())];
+        assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
+    }
+
+    /// Regression: 2-letter `ці` (uk-UA, valid) ↔ `ws` (en-US, accidentally
+    /// in the FST as a noise word). Old logic switched. New logic only
+    /// trusts the curated short-stop list at this length, so the fact
+    /// that `ws` is in the EN FST doesn't matter — it's not in
+    /// `en_stop`, so neither side claims `Keep` from `ws`, while `ці`
+    /// IS in `uk_stop` → the engine keeps the user's input alone.
+    #[test]
+    fn dict_keeps_short_uk_demonstrative() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "ws".into()), (uk.clone(), "ці".into())];
+        match dict_detector().judge(&ctx(&uk, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep, got {other:?}"),
+        }
+    }
+
+    /// Inverse of the above: same scancodes, but the user is in en-US
+    /// and `ws` isn't in the curated en stop list, while `ці` IS in
+    /// the uk stop list — so we *do* switch (matching the user's
+    /// presumed intent of typing Cyrillic).
+    #[test]
+    fn dict_switches_to_short_uk_demonstrative_from_en() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "ws".into()), (uk.clone(), "ці".into())];
         assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
     }
 

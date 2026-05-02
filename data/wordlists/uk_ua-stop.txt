@@ -1,0 +1,51 @@
+# Hand-curated 1- and 2-letter Ukrainian stop words.
+#
+# DictionaryDetector uses this list (NOT the embedded Hunspell FST)
+# for buffers up to 2 letters long. Reason: the Hunspell uk_UA dict
+# is stem-based and lacks most short derived forms (`ці` from `цей`,
+# `цю` etc.) — without an explicit short-stop list, common 2-letter
+# Ukrainian words would be considered "not a word" and trigger
+# false-positive switches.
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored.
+
+а
+б
+в
+з
+й
+і
+о
+у
+є
+ж
+я
+
+ах
+ви
+де
+до
+же
+за
+й
+лі
+ми
+на
+не
+ні
+ну
+ой
+ох
+по
+та
+ти
+ть
+це
+ця
+ці
+цю
+чи
+ще
+як
+що
