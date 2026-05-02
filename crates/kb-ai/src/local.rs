@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use kb_detect::{DetectionContext, DetectionVerdict, Detector};
+use kb_detect::{DetectionContext, Detector, Verdict};
 use tracing::warn;
 
 use crate::AiError;
@@ -34,8 +34,8 @@ impl Detector for LocalOnnxDetector {
         "local-onnx"
     }
 
-    fn detect(&self, _ctx: &DetectionContext<'_>) -> Option<DetectionVerdict> {
-        warn!(id = %self.id, "local ONNX detector is a stub; returning no verdict");
-        None
+    fn judge(&self, _ctx: &DetectionContext<'_>) -> Verdict {
+        warn!(id = %self.id, "local ONNX detector is a stub; returning NoOpinion");
+        Verdict::NoOpinion
     }
 }

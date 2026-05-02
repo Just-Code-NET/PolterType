@@ -133,8 +133,10 @@ pub struct DetectionVerdict {
 /// What the engine decided to do with the just-completed word.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SwitchAction {
-    /// Leave everything alone.
-    KeepCurrent,
+    /// Leave everything alone. Carries a human-readable reason for
+    /// the tray tooltip / debug log (`"current already a dict word"`,
+    /// `"app on disabled list"`, etc.).
+    KeepCurrent { reason: String },
     /// Switch the active layout and replay the buffer as the corrected
     /// text.
     SwitchAndReplay {

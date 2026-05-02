@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, select_biased};
-use kb_detect::{Detector, looks_like_code_token};
+use kb_detect::{Detector, Verdict, looks_like_code_token};
 use kb_input::{FocusTracker, KeyEmitter, KeyEvent};
 use kb_layout::{LayoutId, LayoutSwitcher};
 use kb_types::SwitchAction;
@@ -220,9 +220,10 @@ impl SwitcherEngine {
         if keys.is_empty() {
             return;
         }
-        if keys.len() < snap.engine.min_word_length {
-            return;
-        }
+        // Note: no global min_word_length gate here. Each detector
+        // decides on its own — the dictionary detector wants to see
+        // single-letter prepositions; word-plausibility self-filters
+        // to ≥3 letters.
 
         let current_layout = match self.layout_switcher.current() {
             Ok(l) => l,
@@ -317,15 +318,25 @@ impl SwitcherEngine {
             recent_context: "",
         };
 
-        // First detector with confidence ≥ threshold wins.
-        let verdict = self
-            .detectors
-            .iter()
-            .find_map(|d| d.detect(&ctx))
-            .filter(|v| v.confidence >= snap.engine.confidence_threshold);
+        // Run detectors in priority order. The first non-NoOpinion
+        // verdict wins — including a `Keep` veto, which short-circuits
+        // the rest of the pipeline.
+        let mut chosen: Option<Verdict> = None;
+        for d in &self.detectors {
+            match d.judge(&ctx) {
+                Verdict::NoOpinion => continue,
+                v => {
+                    chosen = Some(v);
+                    break;
+                }
+            }
+        }
 
-        let action = match verdict {
-            Some(v) => {
+        let action = match chosen {
+            Some(Verdict::Keep { reason }) => SwitchAction::KeepCurrent {
+                reason: format!("veto by detector: {reason}"),
+            },
+            Some(Verdict::Switch(v)) if v.confidence >= snap.engine.confidence_threshold => {
                 let target_text = candidates
                     .iter()
                     .find(|(l, _)| l == &v.best_layout)
@@ -343,14 +354,21 @@ impl SwitcherEngine {
                     reason: v.reason,
                 }
             }
-            None => SwitchAction::KeepCurrent,
+            Some(Verdict::Switch(v)) => SwitchAction::KeepCurrent {
+                reason: format!(
+                    "detector confidence {:.2} below threshold {:.2}",
+                    v.confidence, snap.engine.confidence_threshold
+                ),
+            },
+            Some(Verdict::NoOpinion) | None => SwitchAction::KeepCurrent {
+                reason: "no detector had an opinion".into(),
+            },
         };
 
         match action {
-            SwitchAction::KeepCurrent => {
-                let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
-                    reason: "no detector cleared threshold".into(),
-                });
+            SwitchAction::KeepCurrent { reason } => {
+                debug!(%reason, "decision: keep current");
+                let _ = self.out_tx.send(SwitcherEvent::KeptCurrent { reason });
             }
             SwitchAction::SwitchAndReplay {
                 target_layout,

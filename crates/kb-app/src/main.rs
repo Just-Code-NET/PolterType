@@ -11,6 +11,7 @@ mod icon_render;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, bounded, unbounded};
@@ -20,7 +21,7 @@ use kb_core::audio::AudioPlayer;
 use kb_core::engine::{EngineCommand, SwitcherEngine, SwitcherEvent};
 use kb_core::layouts::LayoutDb;
 use kb_core::settings::SettingsStore;
-use kb_detect::{Detector, WordPlausibilityDetector};
+use kb_detect::{Detector, DictionaryDetector, WordPlausibilityDetector};
 use kb_input::{KeyEvent, create_emitter, create_focus_tracker, create_listener};
 use kb_layout::create_switcher;
 use kb_types::LayoutId;
@@ -96,12 +97,25 @@ fn main() -> Result<()> {
         "focus tracker ready"
     );
 
-    let detectors: Vec<Box<dyn Detector>> = vec![Box::new(build_plausibility_detector(&layouts))];
+    // Detector pipeline: dictionary first (highest signal — catches
+    // single-letter prepositions and tie-breaks "both look plausible"
+    // tokens), word-plausibility second as a fallback for tokens that
+    // aren't in either dictionary. Both are pure functions; engine
+    // runs them in order and stops at the first non-NoOpinion verdict.
+    let detectors: Vec<Box<dyn Detector>> = vec![
+        Box::new(build_dictionary_detector(&layouts)),
+        Box::new(build_plausibility_detector(&layouts)),
+    ];
 
     // ─── Engine ────────────────────────────────────────────────────
     let (key_tx, key_rx) = bounded::<KeyEvent>(1024);
     let (engine_event_tx, engine_event_rx) = unbounded::<SwitcherEvent>();
     let (engine_cmd_tx, engine_cmd_rx) = unbounded::<EngineCommand>();
+
+    // Clone the event sender before handing it to the engine — the
+    // layout poller below also publishes LayoutChanged events through
+    // the same channel.
+    let engine_event_tx_for_poller = engine_event_tx.clone();
 
     let engine = SwitcherEngine::new(
         Arc::clone(&settings),
@@ -193,6 +207,13 @@ fn main() -> Result<()> {
     let switch_hotkey_id = hk_switch.id();
 
     spawn_event_bridges(event_loop.create_proxy(), engine_event_rx.clone())?;
+
+    // Layout poller: the engine emits LayoutChanged for switches it
+    // performs itself, but we miss user-driven manual switches (Win+
+    // Space / Alt+Shift / language bar / ibus / kde-keyboard). Polling
+    // the OS-level current-layout query every ~250 ms catches those
+    // cheaply and keeps the tray icon in sync.
+    spawn_layout_poller(Arc::clone(&layout_switcher), engine_event_tx_for_poller)?;
 
     let settings_path: PathBuf = settings.path().to_owned();
     let log_dir: Option<PathBuf> = SettingsStore::log_dir().ok();
@@ -355,6 +376,46 @@ fn build_plausibility_detector(layouts: &Arc<LayoutDb>) -> WordPlausibilityDetec
         .map(|(id, m)| (id.clone(), m.detector_profile()))
         .collect();
     WordPlausibilityDetector::new(profiles)
+}
+
+fn build_dictionary_detector(layouts: &Arc<LayoutDb>) -> DictionaryDetector {
+    let words = layouts
+        .iter()
+        .map(|(id, m)| (id.clone(), m.words.clone()))
+        .collect();
+    DictionaryDetector::new(words)
+}
+
+/// Poll the OS for the current layout every ~250 ms; emit a
+/// `LayoutChanged` event whenever the answer differs from last time.
+/// Catches manual switches done outside our engine (language bar,
+/// Win+Space, Alt+Shift, ibus / kde keyboard, …) so the tray icon
+/// stays in sync.
+fn spawn_layout_poller(
+    switcher: Arc<dyn kb_layout::LayoutSwitcher>,
+    out_tx: crossbeam_channel::Sender<SwitcherEvent>,
+) -> Result<()> {
+    std::thread::Builder::new()
+        .name("kb-layout-poller".into())
+        .spawn(move || {
+            let mut last: Option<LayoutId> = None;
+            loop {
+                if let Ok(current) = switcher.current() {
+                    if last.as_ref() != Some(&current) {
+                        if out_tx
+                            .send(SwitcherEvent::LayoutChanged(current.clone()))
+                            .is_err()
+                        {
+                            break;
+                        }
+                        last = Some(current);
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        })
+        .context("spawn layout poller thread")?;
+    Ok(())
 }
 
 /// Init `tracing` with both a stderr layer and a file appender that

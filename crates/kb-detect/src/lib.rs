@@ -17,9 +17,33 @@ pub use kb_types::{DetectionInput, DetectionVerdict, LayoutId};
 use serde::{Deserialize, Serialize};
 
 /// A detector judges which keyboard layout the user *intended*.
+///
+/// Three possible outcomes (see [`Verdict`]):
+///
+/// * `NoOpinion` — defer to the next detector in the pipeline.
+/// * `Keep` — actively veto a switch (used by the dictionary when
+///   the current text is already a valid word).
+/// * `Switch` — request a layout change.
+///
+/// The engine runs detectors in priority order and stops at the
+/// first non-`NoOpinion`. This is the load-bearing change that lets
+/// the dictionary detector say "this is fine, don't ask anyone else"
+/// — vital for avoiding false positives on real prose words.
 pub trait Detector: Send + Sync {
     fn name(&self) -> &'static str;
-    fn detect(&self, ctx: &DetectionContext<'_>) -> Option<DetectionVerdict>;
+    fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict;
+}
+
+/// What a [`Detector`] decided.
+#[derive(Debug, Clone)]
+pub enum Verdict {
+    /// No opinion — try the next detector.
+    NoOpinion,
+    /// Strong veto: leave the buffer alone, even if later detectors
+    /// would suggest a switch.
+    Keep { reason: String },
+    /// Switch the active layout to the named one.
+    Switch(DetectionVerdict),
 }
 
 // ─── WordRewriter (Phase 7+: AI-driven post-correction tricks) ──────
@@ -207,14 +231,14 @@ impl Detector for WordPlausibilityDetector {
         "word-plausibility"
     }
 
-    fn detect(&self, ctx: &DetectionContext<'_>) -> Option<DetectionVerdict> {
+    fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
         // Need a long-enough buffer somewhere to bother deciding.
         let any_long = ctx
             .candidates
             .iter()
             .any(|(_, t)| t.chars().filter(|c| c.is_alphabetic()).count() >= self.min_letters);
         if !any_long {
-            return None;
+            return Verdict::NoOpinion;
         }
 
         let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
@@ -233,12 +257,14 @@ impl Detector for WordPlausibilityDetector {
             }
         }
 
-        let (target, target_fit) = best?;
+        let Some((target, target_fit)) = best else {
+            return Verdict::NoOpinion;
+        };
         if target_fit - current_fit < self.min_advantage {
-            return None;
+            return Verdict::NoOpinion;
         }
 
-        Some(DetectionVerdict {
+        Verdict::Switch(DetectionVerdict {
             best_layout: target.clone(),
             confidence: target_fit,
             reason: format!(
@@ -246,6 +272,88 @@ impl Detector for WordPlausibilityDetector {
                 target_fit, ctx.current_layout, current_fit
             ),
         })
+    }
+}
+
+// ─── DictionaryDetector ──────────────────────────────────────────────
+
+/// Looks the rendered text up in per-layout common-word dictionaries.
+///
+/// Decision logic:
+///
+/// * `current_text` matches its layout's dictionary  → `Keep`
+///   (strong signal: the user typed a real word; never switch).
+/// * `current_text` is **not** a word AND exactly one alternate IS  →
+///   `Switch` to that alternate, confidence ~0.95.
+/// * `current_text` is not a word AND multiple alternates are words
+///   → `Switch` to the first hit (in candidate iteration order); a
+///   later refinement could rank by alternate length / frequency.
+/// * Neither side hits the dictionary  → `NoOpinion` (defer to the
+///   plausibility detector).
+///
+/// Wins:
+/// * Catches single-letter prepositions / pronouns (`а`, `і`, `у`,
+///   `і`, `o`, `a`, `i`) which the plausibility heuristic can't see
+///   (its `min_letters` is 3 by design — too noisy below).
+/// * Catches *both-look-plausible* tokens (`vtys` ↔ `мені` —
+///   plausibility scores them ~equal; the dictionary breaks the tie
+///   decisively because `мені` is a known word and `vtys` isn't).
+pub struct DictionaryDetector {
+    words: HashMap<LayoutId, HashSet<String>>,
+}
+
+impl DictionaryDetector {
+    pub fn new(words: HashMap<LayoutId, HashSet<String>>) -> Self {
+        Self { words }
+    }
+
+    pub fn is_word(&self, layout: &LayoutId, text: &str) -> bool {
+        let lower = text.to_lowercase();
+        self.words
+            .get(layout)
+            .is_some_and(|set| set.contains(&lower))
+    }
+}
+
+impl Detector for DictionaryDetector {
+    fn name(&self) -> &'static str {
+        "dictionary"
+    }
+
+    fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
+        let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
+
+        // Need at least one alphabetic character to even consider it.
+        if !current_text.chars().any(|c| c.is_alphabetic()) {
+            return Verdict::NoOpinion;
+        }
+
+        let current_match = self.is_word(ctx.current_layout, current_text);
+
+        if current_match {
+            return Verdict::Keep {
+                reason: format!(
+                    "current `{current_text}` is a {} dictionary word",
+                    ctx.current_layout
+                ),
+            };
+        }
+
+        // Current isn't a known word. Find an alternate that is.
+        for (layout, text) in ctx.candidates {
+            if layout == ctx.current_layout {
+                continue;
+            }
+            if self.is_word(layout, text) {
+                return Verdict::Switch(DetectionVerdict {
+                    best_layout: layout.clone(),
+                    confidence: 0.95,
+                    reason: format!("`{text}` is a {layout} dictionary word"),
+                });
+            }
+        }
+
+        Verdict::NoOpinion
     }
 }
 
@@ -340,6 +448,21 @@ mod tests {
         }
     }
 
+    fn assert_switches_to(
+        detector: &impl Detector,
+        ctx: &DetectionContext<'_>,
+        expected: &LayoutId,
+    ) {
+        match detector.judge(ctx) {
+            Verdict::Switch(v) => assert_eq!(&v.best_layout, expected),
+            other => panic!("expected Switch, got {other:?}"),
+        }
+    }
+
+    fn assert_no_opinion(detector: &impl Detector, ctx: &DetectionContext<'_>) {
+        assert!(matches!(detector.judge(ctx), Verdict::NoOpinion));
+    }
+
     #[test]
     fn switches_for_typical_punto_case() {
         // user is in uk-UA, typed scancodes for "hello" → uk renders
@@ -347,8 +470,7 @@ mod tests {
         let en = LayoutId::from("en-US");
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "hello".into()), (uk.clone(), "руддщ".into())];
-        let v = detector().detect(&ctx(&uk, &cands)).expect("should fire");
-        assert_eq!(v.best_layout, en);
+        assert_switches_to(&detector(), &ctx(&uk, &cands), &en);
     }
 
     #[test]
@@ -358,8 +480,7 @@ mod tests {
         let en = LayoutId::from("en-US");
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "ghbdsn".into()), (uk.clone(), "привіт".into())];
-        let v = detector().detect(&ctx(&en, &cands)).expect("should fire");
-        assert_eq!(v.best_layout, uk);
+        assert_switches_to(&detector(), &ctx(&en, &cands), &uk);
     }
 
     #[test]
@@ -367,7 +488,7 @@ mod tests {
         let en = LayoutId::from("en-US");
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "hello".into()), (uk.clone(), "руддщ".into())];
-        assert!(detector().detect(&ctx(&en, &cands)).is_none());
+        assert_no_opinion(&detector(), &ctx(&en, &cands));
     }
 
     #[test]
@@ -375,7 +496,85 @@ mod tests {
         let en = LayoutId::from("en-US");
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "ab".into()), (uk.clone(), "фи".into())];
-        assert!(detector().detect(&ctx(&en, &cands)).is_none());
+        assert_no_opinion(&detector(), &ctx(&en, &cands));
+    }
+
+    // ─── DictionaryDetector ────────────────────────────────────────
+
+    fn dict_detector() -> DictionaryDetector {
+        let mut m = HashMap::new();
+        m.insert(
+            LayoutId::from("en-US"),
+            ["hello", "world", "the", "is", "a", "i", "to"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        );
+        m.insert(
+            LayoutId::from("uk-UA"),
+            ["що", "мені", "з", "цим", "а", "і", "у", "є", "о", "привіт"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        );
+        DictionaryDetector::new(m)
+    }
+
+    #[test]
+    fn dict_keeps_when_current_is_a_word() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "hello".into()), (uk.clone(), "руддщ".into())];
+        match dict_detector().judge(&ctx(&en, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dict_switches_for_punto_full_phrase() {
+        // user types "Що мені з цим" while still in en-US — every
+        // alt token is a known UK word; every current token is not
+        // a known EN word.
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+
+        let cases = [("Oj", "Що"), ("vtys", "мені"), ("p", "з"), ("wbv", "цим")];
+        for (en_text, uk_text) in cases {
+            let cands = vec![(en.clone(), en_text.into()), (uk.clone(), uk_text.into())];
+            assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
+        }
+    }
+
+    #[test]
+    fn dict_handles_single_letter_prepositions() {
+        // "f" in en (scancode 0x21) → "а" in uk; "f" alone isn't an
+        // EN word, "а" is the most common UK preposition.
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "f".into()), (uk.clone(), "а".into())];
+        assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
+    }
+
+    #[test]
+    fn dict_no_opinion_when_neither_is_a_word() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        // Pure noise both ways — punt to the next detector.
+        let cands = vec![(en.clone(), "qzxq".into()), (uk.clone(), "ййххй".into())];
+        assert_no_opinion(&dict_detector(), &ctx(&en, &cands));
+    }
+
+    #[test]
+    fn dict_keeps_capitalised_words() {
+        // "Hello" with the capital is still in EN dict via lowercase match.
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "Hello".into()), (uk.clone(), "Руддщ".into())];
+        match dict_detector().judge(&ctx(&en, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep, got {other:?}"),
+        }
     }
 
     // ─── code-token guard ─────────────────────────────────────────

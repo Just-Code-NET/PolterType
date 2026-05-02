@@ -5,7 +5,7 @@
 //! Adding a new layout = adding a TOML file there + listing it in
 //! [`embedded_layouts`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use kb_detect::{LayoutProfile, Script};
 use kb_types::{LayoutId, WordKey};
@@ -19,17 +19,21 @@ pub enum LayoutLoadError {
     Toml(#[from] toml::de::Error),
 }
 
-/// Embedded TOML strings for the layouts we ship in this binary.
-/// Each tuple = (file-name-for-debug, contents).
-const fn embedded_layouts() -> &'static [(&'static str, &'static str)] {
+/// Embedded layout descriptions baked into the binary at compile time.
+/// Each tuple is `(file-name-for-debug, mapping TOML, optional
+/// wordlist)`. The wordlist is one lowercase word per line and feeds
+/// the [`DictionaryDetector`](kb_detect::DictionaryDetector).
+const fn embedded_layouts() -> &'static [(&'static str, &'static str, Option<&'static str>)] {
     &[
         (
             "en_us.toml",
             include_str!("../../../data/layout-mappings/en_us.toml"),
+            Some(include_str!("../../../data/wordlists/en_us.txt")),
         ),
         (
             "uk_ua.toml",
             include_str!("../../../data/layout-mappings/uk_ua.toml"),
+            Some(include_str!("../../../data/wordlists/uk_ua.txt")),
         ),
     ]
 }
@@ -63,11 +67,22 @@ pub struct LayoutMapping {
     pub keys: HashMap<u32, (char, Option<char>)>,
     /// Pre-computed lower-case vowel set, for the detector profile.
     pub vowels: Vec<char>,
+    /// Common-word dictionary (lowercase). The dictionary detector
+    /// consults this to decide whether a candidate text is a real
+    /// word in the layout's language.
+    pub words: HashSet<String>,
 }
 
 impl LayoutMapping {
     pub fn from_toml_str(input: &str) -> Result<Self, LayoutLoadError> {
-        let raw: LayoutToml = toml::from_str(input)?;
+        Self::from_parts(input, None)
+    }
+
+    /// Parse the layout TOML and (optionally) a wordlist text file
+    /// (one lowercase word per line; blank lines / `#`-comments are
+    /// ignored) so the dictionary detector has something to match on.
+    pub fn from_parts(toml_input: &str, wordlist: Option<&str>) -> Result<Self, LayoutLoadError> {
+        let raw: LayoutToml = toml::from_str(toml_input)?;
         let id = LayoutId::new(raw.id);
         let name = raw.name.unwrap_or_else(|| id.as_str().to_owned());
         let script = raw.script;
@@ -86,6 +101,7 @@ impl LayoutMapping {
         }
 
         let vowels = derive_vowels(script);
+        let words = wordlist.map(parse_wordlist).unwrap_or_default();
 
         Ok(Self {
             id,
@@ -93,6 +109,7 @@ impl LayoutMapping {
             script,
             keys,
             vowels,
+            words,
         })
     }
 
@@ -134,6 +151,17 @@ fn parse_scancode(s: &str) -> Option<u32> {
     }
 }
 
+/// Parse a one-word-per-line text file into a lowercase HashSet.
+/// Blank lines and `#` comments are skipped.
+fn parse_wordlist(input: &str) -> HashSet<String> {
+    input
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(str::to_lowercase)
+        .collect()
+}
+
 fn first_char(s: &str) -> Option<char> {
     s.chars().next()
 }
@@ -159,19 +187,18 @@ pub struct LayoutDb {
 }
 
 impl LayoutDb {
-    /// Load every layout embedded in the binary. Panics in tests if
-    /// any TOML fails to parse — we want a loud error, not a silent
-    /// degradation, since these files ship with the build.
+    /// Load every layout embedded in the binary. Loud-but-graceful
+    /// on parse errors — we want to see them in the log without
+    /// killing the whole app, since another layout may still be
+    /// usable.
     pub fn load_embedded() -> Self {
         let mut by_id = HashMap::new();
-        for (name, body) in embedded_layouts() {
-            match LayoutMapping::from_toml_str(body) {
+        for (name, body, wordlist) in embedded_layouts() {
+            match LayoutMapping::from_parts(body, *wordlist) {
                 Ok(layout) => {
                     by_id.insert(layout.id.clone(), layout);
                 }
                 Err(e) => {
-                    // Loud, but don't kill the whole app; another
-                    // layout may still be usable.
                     tracing::error!(file = name, err = %e, "failed to load embedded layout");
                 }
             }
@@ -211,6 +238,25 @@ mod tests {
         let db = LayoutDb::load_embedded();
         assert!(db.get(&LayoutId::from("en-US")).is_some());
         assert!(db.get(&LayoutId::from("uk-UA")).is_some());
+    }
+
+    #[test]
+    fn wordlists_loaded_with_layouts() {
+        let db = LayoutDb::load_embedded();
+        let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+        let uk = db.get(&LayoutId::from("uk-UA")).expect("uk-UA");
+        // Sanity: a few words we expect on both sides, including
+        // single-letter prepositions / pronouns.
+        assert!(en.words.contains("the"));
+        assert!(en.words.contains("hello"));
+        assert!(en.words.contains("a"));
+        assert!(en.words.contains("i"));
+        assert!(uk.words.contains("що"));
+        assert!(uk.words.contains("мені"));
+        assert!(uk.words.contains("цим"));
+        assert!(uk.words.contains("а"));
+        assert!(uk.words.contains("і"));
+        assert!(uk.words.contains("у"));
     }
 
     #[test]

@@ -28,7 +28,7 @@ pub mod local;
 pub mod remote;
 pub mod rewriters;
 
-pub use kb_detect::{Detector, RewriteRequest, RewriteVerdict, WordRewriter};
+pub use kb_detect::{Detector, RewriteRequest, RewriteVerdict, Verdict, WordRewriter};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

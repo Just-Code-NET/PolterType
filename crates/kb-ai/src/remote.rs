@@ -7,7 +7,7 @@
 //! a `max_latency_ms` budget — anything slower is dropped, since the
 //! engine should never block typing.
 
-use kb_detect::{DetectionContext, DetectionVerdict, Detector};
+use kb_detect::{DetectionContext, Detector, Verdict};
 #[cfg(feature = "remote")]
 use tracing::info;
 use tracing::warn;
@@ -95,13 +95,13 @@ impl Detector for RemoteLlmDetector {
         "remote-llm"
     }
 
-    fn detect(&self, _ctx: &DetectionContext<'_>) -> Option<DetectionVerdict> {
+    fn judge(&self, _ctx: &DetectionContext<'_>) -> Verdict {
         if !self.allow_remote {
             warn!(
                 id = %self.id,
                 "remote LLM detector skipped: allow_remote = false"
             );
-            return None;
+            return Verdict::NoOpinion;
         }
         #[cfg(not(feature = "remote"))]
         {
@@ -109,7 +109,7 @@ impl Detector for RemoteLlmDetector {
                 id = %self.id,
                 "remote LLM detector skipped: built without `remote` feature"
             );
-            None
+            Verdict::NoOpinion
         }
         // Real call goes here in v0.1.x. We keep the function honest
         // about its current state rather than ship a half-baked
@@ -124,7 +124,7 @@ impl Detector for RemoteLlmDetector {
             );
             let _ = &self.client; // silence unused
             let _ = &self.api_key_ref;
-            None
+            Verdict::NoOpinion
         }
     }
 }
