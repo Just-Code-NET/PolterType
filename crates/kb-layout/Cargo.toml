@@ -24,3 +24,6 @@ windows = { version = "0.58", features = [
     "Win32_Globalization",
     "Win32_System_Threading",
 ] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"

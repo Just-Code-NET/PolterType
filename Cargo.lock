@@ -1281,6 +1281,8 @@ dependencies = [
 name = "kb-input"
 version = "0.1.0-alpha.0"
 dependencies = [
+ "core-foundation",
+ "core-graphics",
  "crossbeam-channel",
  "evdev",
  "kb-types",
@@ -1294,6 +1296,7 @@ dependencies = [
 name = "kb-layout"
 version = "0.1.0-alpha.0"
 dependencies = [
+ "core-foundation",
  "kb-types",
  "thiserror 1.0.69",
  "tracing",

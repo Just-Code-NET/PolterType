@@ -27,6 +27,10 @@ windows = { version = "0.58", features = [
     "Win32_System_Threading",
 ] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation     = "0.10"
+core-graphics       = "0.24"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # Wayland-first: evdev requires the user to be in the `input` group.
 # AT-SPI (atspi crate) is the no-sudo fallback and lands in Phase 6.
