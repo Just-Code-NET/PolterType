@@ -2,18 +2,22 @@
 
 Cross-platform automatic keyboard layout switcher.
 Lives in the system tray. Detects when you start typing in the wrong
-layout, switches it, and fixes the last word — optionally with a sound.
+layout, switches it, and fixes the last word.
 
-> **Status:** very early scaffolding. See [docs/PLAN.md](docs/PLAN.md)
-> for the full design and roadmap.
+> **Status:** v0.1.0-alpha — works end-to-end on Windows; macOS and
+> Linux backends are written from API docs and validated on CI but
+> haven't yet been runtime-tuned by hardware-equipped contributors.
+> See [docs/PLAN.md](docs/PLAN.md) for the full plan and
+> [CHANGELOG.md](CHANGELOG.md) for what's in.
 
 ## Goals
 
 - **Smart** — language detection per word; pluggable AI detectors for
   power users (off by default).
-- **Fast** — native Rust, no WebView, no perceptible typing latency.
-- **Light** — single binary in the ~10–15 MB range.
-- **Quiet** — tray-only, minimal CPU/RAM, no telemetry, no network.
+- **Fast** — pure Rust, no WebView, no perceptible typing latency.
+- **Light** — single binary, ~10–15 MB.
+- **Quiet** — tray-only, minimal CPU/RAM, **no telemetry, no network**
+  (AI subsystem requires a separate explicit toggle).
 - **Configurable** — autostart, per-language allowlist, per-app
   exceptions, hotkeys, sound themes.
 - **Open source** — MIT licensed.
@@ -22,26 +26,61 @@ layout, switches it, and fixes the last word — optionally with a sound.
 
 | OS | Status |
 |---|---|
-| Windows 10 / 11 | planned (primary target for v0.1) |
-| macOS 14+ | planned |
-| Linux (X11) | planned |
-| Linux (Wayland) | best-effort — see [docs/PLAN.md](docs/PLAN.md) |
+| Windows 10 / 11 | working (primary target for v0.1) |
+| macOS 14+ | best-effort; needs Accessibility permission |
+| Linux (Wayland, GNOME) | best-effort; run `scripts/setup-linux.sh` once |
+| Linux (X11) | stub (v0.1.x) |
+
+See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
+permissions story.
 
 ## Stack
 
-- **Pure Rust** — no WebView, no Node, no HTML stack.
-- **`iced`** — settings window UI.
-- **`tray-icon`** + **`global-hotkey`** + **`auto-launch`**.
-- **Optional AI subsystem** (`feature = "ai"`) — local ONNX or remote
-  LLM detectors and word rewriters; off by default.
+- Pure Rust — no WebView, no Node.
+- `tao` event loop + `tray-icon` + `global-hotkey` + `single-instance`.
+- Optional AI subsystem (`feature = "ai"`) — local ONNX or remote LLM
+  detectors / word rewriters; off by default.
 
-See [docs/PLAN.md §2](docs/PLAN.md) for the full rationale and the
-alternatives considered.
+See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
+
+## Hotkeys
+
+| Hotkey | Action |
+|---|---|
+| `Ctrl+Shift+Space` | Pause / resume auto-switching. |
+| `Ctrl+Shift+Backspace` | Force-switch the most recent word, ignoring the detector. |
+
+## Settings
+
+There's no GUI in v0.1; the tray "Open Settings (config.toml)…"
+entry opens a TOML file in your default editor:
+
+* Windows: `%APPDATA%\opensource\kb-switcher\config\config.toml`
+* macOS: `~/Library/Application Support/dev.opensource.kb-switcher/config.toml`
+* Linux: `~/.config/kb-switcher/config.toml`
+
+Logs land under the OS data dir; "Open Logs Folder…" in the tray
+takes you there. After editing the TOML, "Reload Settings" picks
+up the change without restarting.
+
+A full visual UI is on the v0.1.x roadmap — see
+[DECISIONS.md, 2026-05-02](docs/DECISIONS.md).
 
 ## Building
 
-> Not buildable yet — scaffolding only. Build instructions land in
-> Phase 1 (see roadmap).
+```bash
+# Default
+cargo run -p kb-app
+
+# Release
+cargo build --release -p kb-app
+
+# With the AI subsystem (architecture only in v0.1)
+cargo build --release -p kb-app --features ai
+```
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the per-OS native dep
+checklist.
 
 ## License
 

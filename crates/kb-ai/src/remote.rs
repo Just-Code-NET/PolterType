@@ -7,7 +7,7 @@
 //! a `max_latency_ms` budget — anything slower is dropped, since the
 //! engine should never block typing.
 
-use kb_detect::{Detector, DetectionContext, DetectionVerdict};
+use kb_detect::{DetectionContext, DetectionVerdict, Detector};
 #[cfg(feature = "remote")]
 use tracing::info;
 use tracing::warn;

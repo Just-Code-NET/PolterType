@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 
-use kb_detect::{Detector, DetectionContext, DetectionVerdict};
+use kb_detect::{DetectionContext, DetectionVerdict, Detector};
 use tracing::warn;
 
 use crate::AiError;

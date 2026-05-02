@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            bin: kb-switcher
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            bin: kb-switcher
+          - os: macos-13
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+            bin: kb-switcher
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+            bin: kb-switcher.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux native deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config libdbus-1-dev libudev-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libx11-dev libxi-dev libxtst-dev \
+            libgtk-3-dev libayatana-appindicator3-dev libasound2-dev
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }} -p kb-app
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          mkdir -p stage
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} stage/
+          cp README.md LICENSE CHANGELOG.md stage/
+          mkdir -p stage/docs
+          cp docs/PLAN.md docs/PERMISSIONS.md docs/AI.md docs/DECISIONS.md stage/docs/
+          if [ -f scripts/setup-linux.sh ]; then
+            mkdir -p stage/scripts
+            cp scripts/setup-linux.sh stage/scripts/
+          fi
+
+      - name: Archive (zip)
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        run: |
+          $name = "kb-switcher-${{ github.ref_name }}-${{ matrix.target }}.zip"
+          Compress-Archive -Path stage\* -DestinationPath $name
+          echo "ARCHIVE=$name" >> $env:GITHUB_ENV
+
+      - name: Archive (tar.gz)
+        if: matrix.archive_ext == 'tar.gz'
+        shell: bash
+        run: |
+          name="kb-switcher-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
+          tar -czf "$name" -C stage .
+          echo "ARCHIVE=$name" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE }}
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: true
+          fail_on_unmatched_files: true
+          generate_release_notes: true

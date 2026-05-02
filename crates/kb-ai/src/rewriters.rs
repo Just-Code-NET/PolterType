@@ -16,7 +16,9 @@ impl WordRewriter for SmartCapitalize {
 
     fn rewrite(&self, req: &RewriteRequest<'_>) -> RewriteVerdict {
         let lower = req.original.to_lowercase();
-        let names = ["github", "rust", "linux", "windows", "macos", "kyiv", "lviv"];
+        let names = [
+            "github", "rust", "linux", "windows", "macos", "kyiv", "lviv",
+        ];
         if names.contains(&lower.as_str()) {
             let mut chars = req.original.chars();
             if let Some(first) = chars.next() {
