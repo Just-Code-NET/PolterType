@@ -14,8 +14,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, select_biased};
-use kb_detect::Detector;
-use kb_input::{KeyEmitter, KeyEvent};
+use kb_detect::{Detector, looks_like_code_token};
+use kb_input::{FocusTracker, KeyEmitter, KeyEvent};
 use kb_layout::{LayoutId, LayoutSwitcher};
 use kb_types::SwitchAction;
 use parking_lot::RwLock;
@@ -66,6 +66,7 @@ pub struct SwitcherEngine {
     detectors: Vec<Box<dyn Detector>>,
     layout_switcher: Arc<dyn LayoutSwitcher>,
     key_emitter: Arc<dyn KeyEmitter>,
+    focus_tracker: Arc<dyn FocusTracker>,
     audio: Arc<AudioPlayer>,
     out_tx: Sender<SwitcherEvent>,
     paused: Arc<RwLock<bool>>,
@@ -84,12 +85,14 @@ struct LastWord {
 }
 
 impl SwitcherEngine {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         settings: Arc<SettingsStore>,
         layouts: Arc<LayoutDb>,
         detectors: Vec<Box<dyn Detector>>,
         layout_switcher: Arc<dyn LayoutSwitcher>,
         key_emitter: Arc<dyn KeyEmitter>,
+        focus_tracker: Arc<dyn FocusTracker>,
         audio: Arc<AudioPlayer>,
         out_tx: Sender<SwitcherEvent>,
     ) -> Self {
@@ -99,6 +102,7 @@ impl SwitcherEngine {
             detectors,
             layout_switcher,
             key_emitter,
+            focus_tracker,
             audio,
             out_tx,
             paused: Arc::new(RwLock::new(false)),
@@ -243,17 +247,16 @@ impl SwitcherEngine {
             .map(|(id, m)| (id.clone(), m.translate_buffer(&keys)))
             .collect();
 
-        // Stash the rendered current text for "switch-last" later.
+        // ---- Stash the rendered current text early; "force switch
+        // last" uses it whether or not auto-decision proceeds. ----
         let current_text = candidates
             .iter()
             .find(|(l, _)| l == &current_layout)
             .map(|(_, t)| t.clone())
             .unwrap_or_default();
 
-        // Resolve the boundary scancode → character under the current
-        // layout (so a Ukrainian "." lands as ".", a comma as ",", …).
-        // Falls back to a hard-coded table for keys our TOMLs don't
-        // describe (Tab/Enter/Space).
+        // Resolve boundary scancode → character (even if we skip the
+        // decision below, store it so the manual hotkey works).
         let boundary_char = self
             .layouts
             .get(&current_layout)
@@ -278,6 +281,35 @@ impl SwitcherEngine {
             layout: current_layout.clone(),
             boundary_char,
         });
+
+        // ---- Pre-decision filters (auto-switch only) ----
+        //
+        // Both filters apply *only* to automatic decisions — the
+        // manual switch-last hotkey calls force_switch_last directly
+        // and bypasses both. That's the dev-friendly contract: we
+        // stay quiet by default in code contexts, but if the user
+        // explicitly hits the hotkey we always do the switch.
+
+        // Filter 1: focused app on the disabled list.
+        if let Some(exe) = self.focus_tracker.focused_exe() {
+            if app_is_disabled(&exe, &snap.exceptions.disabled_apps) {
+                debug!(%exe, "skipping auto-switch: app on disabled_apps list");
+                let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                    reason: format!("app `{exe}` on disabled_apps list"),
+                });
+                return;
+            }
+        }
+
+        // Filter 2: token looks like an identifier (camelCase /
+        // snake_case / letter+digit / code punct).
+        if snap.engine.suppress_in_identifiers && looks_like_code_token(&current_text) {
+            debug!(token = %current_text, "skipping auto-switch: looks like code identifier");
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!("token `{current_text}` looks like an identifier"),
+            });
+            return;
+        }
 
         let ctx = kb_detect::DetectionContext {
             current_layout: &current_layout,
@@ -409,4 +441,36 @@ impl SwitcherEngine {
 enum Either<A, B> {
     Cmd(A),
     Key(B),
+}
+
+/// Case-insensitive basename match against the user's disabled-apps
+/// list. We use ASCII-lowercase rather than full Unicode lowering
+/// because every executable basename we ever match is ASCII.
+fn app_is_disabled(exe: &str, disabled: &[String]) -> bool {
+    let needle = exe.to_ascii_lowercase();
+    disabled
+        .iter()
+        .any(|entry| entry.eq_ignore_ascii_case(&needle))
+}
+
+#[cfg(test)]
+mod app_match_tests {
+    use super::app_is_disabled;
+
+    #[test]
+    fn matches_case_insensitively() {
+        let list: Vec<String> = ["Code.exe", "alacritty"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        assert!(app_is_disabled("CODE.EXE", &list));
+        assert!(app_is_disabled("code.exe", &list));
+        assert!(app_is_disabled("Alacritty", &list));
+    }
+
+    #[test]
+    fn ignores_unrelated_apps() {
+        let list: Vec<String> = ["Code.exe"].iter().map(|s| (*s).to_owned()).collect();
+        assert!(!app_is_disabled("notepad.exe", &list));
+    }
 }

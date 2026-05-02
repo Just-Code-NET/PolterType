@@ -71,7 +71,12 @@ impl Default for Settings {
     }
 }
 
+/// `#[serde(default)]` on every settings struct: any field missing
+/// from the user's `config.toml` falls back to its `Default`. That
+/// gives us forward-compat — new fields added in later versions read
+/// existing configs without scary parse errors.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct GeneralSettings {
     pub autostart: bool,
     pub sound_on_correct: bool,
@@ -93,6 +98,7 @@ impl Default for GeneralSettings {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct LanguageSettings {
     /// Layouts the engine considers when deciding. Empty = use every
     /// layout known to the OS.
@@ -105,6 +111,7 @@ pub struct LanguageSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct EngineSettings {
     pub min_word_length: usize,
     pub confidence_threshold: f32,
@@ -112,6 +119,13 @@ pub struct EngineSettings {
     /// Word-buffer idle timeout (ms) — clears the buffer if the user
     /// pauses for this long.
     pub idle_timeout_ms: u64,
+    /// Skip auto-switching when the just-typed token looks like a
+    /// programming-language identifier (snake_case, camelCase,
+    /// letter+digit, …). The manual switch hotkey
+    /// (`Ctrl+Shift+Backspace`) bypasses this filter — so users can
+    /// still fix wrong-layout identifiers explicitly. Default: on.
+    /// See `docs/DECISIONS.md` for the reasoning.
+    pub suppress_in_identifiers: bool,
 }
 
 impl Default for EngineSettings {
@@ -121,22 +135,128 @@ impl Default for EngineSettings {
             confidence_threshold: 0.55,
             ignore_in_password_fields: true,
             idle_timeout_ms: 2000,
+            suppress_in_identifiers: true,
         }
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct ExceptionSettings {
-    /// Foreground apps where auto-switching is disabled (per-OS exe /
-    /// bundle id / window-class match — interpreted by FocusTracker).
-    #[serde(default)]
+    /// Foreground apps where auto-switching is disabled. Each entry
+    /// is matched case-insensitively against the focused process's
+    /// executable basename (e.g. `Code.exe` on Windows, `code` on
+    /// Linux, `Code` on macOS). The manual switch hotkey
+    /// (`Ctrl+Shift+Backspace`) ignores this list — devs can still
+    /// explicitly fix a wrong-layout word inside an IDE.
+    ///
+    /// Defaults cover the most common modern editors / IDEs /
+    /// terminals across all three OSes; users edit `config.toml`
+    /// to adjust.
+    #[serde(default = "default_disabled_apps")]
     pub disabled_apps: Vec<String>,
     /// Words that should never be auto-corrected.
     #[serde(default)]
     pub word_whitelist: Vec<String>,
 }
 
+impl Default for ExceptionSettings {
+    fn default() -> Self {
+        Self {
+            disabled_apps: default_disabled_apps(),
+            word_whitelist: Vec::new(),
+        }
+    }
+}
+
+/// Default per-app skip-list. Conservative: we ship the apps where
+/// auto-switching is most likely to corrupt syntax. Anything else the
+/// user has to add by hand. Matched case-insensitively, basename only.
+fn default_disabled_apps() -> Vec<String> {
+    [
+        // Editors / IDEs (Windows .exe + Linux/macOS bare names).
+        "Code.exe",
+        "code",
+        "Code - Insiders.exe",
+        "code-insiders",
+        "Cursor.exe",
+        "cursor",
+        "Cursor",
+        "idea64.exe",
+        "idea.exe",
+        "idea",
+        "rustrover64.exe",
+        "rustrover",
+        "pycharm64.exe",
+        "pycharm",
+        "webstorm64.exe",
+        "webstorm",
+        "clion64.exe",
+        "clion",
+        "goland64.exe",
+        "goland",
+        "phpstorm64.exe",
+        "phpstorm",
+        "rider64.exe",
+        "rider",
+        "datagrip64.exe",
+        "datagrip",
+        "android-studio.exe",
+        "android-studio",
+        "fleet.exe",
+        "fleet",
+        "sublime_text.exe",
+        "sublime_text",
+        "Sublime Text",
+        "Notepad++.exe",
+        "Zed.exe",
+        "zed",
+        "Zed",
+        "neovide.exe",
+        "neovide",
+        "gvim.exe",
+        "gvim",
+        "nvim-qt.exe",
+        "emacs.exe",
+        // Terminals (Windows + Linux/macOS).
+        "WindowsTerminal.exe",
+        "wt.exe",
+        "powershell.exe",
+        "pwsh.exe",
+        "cmd.exe",
+        "ConEmu64.exe",
+        "ConEmu.exe",
+        "tabby.exe",
+        "tabby",
+        "alacritty.exe",
+        "alacritty",
+        "wezterm-gui.exe",
+        "wezterm",
+        "kitty.exe",
+        "kitty",
+        "konsole",
+        "gnome-terminal",
+        "gnome-terminal-server",
+        "xterm",
+        "tilix",
+        "Terminal", // macOS Terminal.app
+        "iTerm2",
+        // Terminal-hosted shells / multiplexers.
+        "git-bash.exe",
+        "mintty.exe",
+        "tmux",
+        "screen",
+        // Text-mode editors hosted in terminals — we skip them by
+        // window class only loosely; the parent terminal exe already
+        // matches above.
+    ]
+    .iter()
+    .map(|s| (*s).to_owned())
+    .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct HotkeySettings {
     pub pause_toggle: String,
     pub manual_switch_last: String,
@@ -152,6 +272,7 @@ impl Default for HotkeySettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct SoundSettings {
     pub theme: String,
     pub volume: f32,
@@ -167,6 +288,7 @@ impl Default for SoundSettings {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct AiSettings {
     pub enabled: bool,
     /// Even when `enabled = true`, network calls remain blocked until
@@ -293,5 +415,38 @@ mod tests {
         assert_eq!(s.engine.min_word_length, 3);
         assert_eq!(s.general.log_level, "info");
         assert!(!s.ai.enabled);
+        assert!(s.engine.suppress_in_identifiers);
+    }
+
+    /// Forward-compat regression: a config that's missing a struct
+    /// field added after the user wrote the file must still parse —
+    /// that's what `#[serde(default)]` on every settings struct buys
+    /// us.
+    #[test]
+    fn old_config_missing_new_field_still_parses() {
+        let raw =
+            "schema_version = 1\n\n[engine]\nmin_word_length = 4\nconfidence_threshold = 0.7\n";
+        let s: Settings = toml::from_str(raw).expect("parse");
+        assert_eq!(s.engine.min_word_length, 4);
+        // `suppress_in_identifiers` was missing from the user's file
+        // but the default kicked in.
+        assert!(s.engine.suppress_in_identifiers);
+    }
+
+    #[test]
+    fn default_disabled_apps_covers_common_editors() {
+        let s = Settings::default();
+        let lower: Vec<String> = s
+            .exceptions
+            .disabled_apps
+            .iter()
+            .map(|s| s.to_ascii_lowercase())
+            .collect();
+        for must in ["code.exe", "cursor.exe", "windowsterminal.exe", "alacritty"] {
+            assert!(
+                lower.iter().any(|s| s == must),
+                "expected `{must}` in default disabled_apps"
+            );
+        }
     }
 }

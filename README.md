@@ -48,7 +48,27 @@ See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 | Hotkey | Action |
 |---|---|
 | `Ctrl+Shift+Space` | Pause / resume auto-switching. |
-| `Ctrl+Shift+Backspace` | Force-switch the most recent word, ignoring the detector. |
+| `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. |
+
+## Dev-friendly: stays out of code
+
+If you write code, you *don't* want a layout switcher meddling with
+identifiers. Two filters ship on by default:
+
+* **Per-app skip list** (`[exceptions].disabled_apps` in
+  `config.toml`) — covers VS Code / Cursor / JetBrains family /
+  Sublime / Zed / Neovide / Windows Terminal / alacritty / kitty /
+  wezterm / PowerShell / cmd by default. Edit the list to add or
+  remove.
+* **Per-token guard** — even outside an IDE, the engine doesn't
+  auto-switch on tokens that look like identifiers: `snake_case`,
+  `camelCase`, `letter+digit`, or anything containing `\\` / `;` /
+  `` ` ``. Toggle via `engine.suppress_in_identifiers = false` in
+  `config.toml` if you'd rather the engine try.
+
+Writing a comment in another language inside an IDE? Hit
+`Ctrl+Shift+Backspace` after the word — that hotkey ignores both
+filters by design.
 
 ## Settings
 

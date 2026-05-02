@@ -75,6 +75,46 @@ events come back through the LL hook with `LLKHF_INJECTED` set. The
 engine must ignore them to avoid feedback loops where a correction
 triggers another correction.
 
+## 2026-05-02 — Dev-friendly behaviour: skip auto-switch in IDEs and on identifiers
+
+The product target audience includes developers, and they specifically
+need the corrector to **stay out of code**. Switching layouts mid-
+identifier would actively harm the user; the cost of a missed prose
+correction inside an IDE is much lower than the cost of corrupting
+a function name.
+
+The trade-off in v0.1 is two complementary filters, both
+opt-out-able via `config.toml`:
+
+* **Per-app**: `[exceptions].disabled_apps` ships with a sensible
+  default list — VS Code / Cursor, every JetBrains IDE, Sublime, Zed,
+  Neovide, Windows Terminal, alacritty / kitty / wezterm,
+  PowerShell / cmd, etc. The focus tracker (`kb-input::focus`) reads
+  the foreground process executable and the engine matches case-
+  insensitively. Match → skip auto-decision.
+* **Per-token**: even outside the IDE list, the engine checks
+  `looks_like_code_token(buffer)` from `kb-detect`. If the just-
+  finished token contains an underscore, has a mid-token capital
+  (camelCase / PascalCase), mixes letters and digits, or carries
+  code punctuation (`\\`, `;`, `` ` ``) — skip. This catches
+  identifiers in chat / browser / wiki / wherever.
+  Acronyms (`URL`, `HTML`) and ordinary capitalised prose
+  (`Hello`, `Привіт`) deliberately do NOT trip the heuristic.
+
+The **manual** switch hotkey (`Ctrl+Shift+Backspace`) bypasses both
+filters. That's the explicit user-asked-for-it path: when you actually
+do want to fix a wrong-layout identifier or a comment line, hit the
+hotkey and the engine acts unconditionally.
+
+What this does not (yet) do: distinguish "code" vs "comment" inside
+the same editor. That requires per-IDE integration — out of scope for
+v0.1. Until then, dev users hit the hotkey when writing comments in
+a non-default language.
+
+The forward-compat side: every settings struct now carries
+`#[serde(default)]`, so future versions adding new fields read
+existing user configs without scary parse errors.
+
 ## 2026-05-02 — Phase 4: deferred full GUI; settings = open `config.toml` in editor
 
 PLAN.md §10 originally pencilled `iced` settings pages for Phase 4.

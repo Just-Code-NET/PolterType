@@ -21,7 +21,7 @@ use kb_core::engine::{EngineCommand, SwitcherEngine, SwitcherEvent};
 use kb_core::layouts::LayoutDb;
 use kb_core::settings::SettingsStore;
 use kb_detect::{Detector, WordPlausibilityDetector};
-use kb_input::{KeyEvent, create_emitter, create_listener};
+use kb_input::{KeyEvent, create_emitter, create_focus_tracker, create_listener};
 use kb_layout::create_switcher;
 use kb_types::LayoutId;
 use single_instance::SingleInstance;
@@ -90,6 +90,12 @@ fn main() -> Result<()> {
     let audio = Arc::new(AudioPlayer::new());
     audio.refresh_from(&settings);
 
+    let focus_tracker = create_focus_tracker();
+    info!(
+        backend = focus_tracker.backend_name(),
+        "focus tracker ready"
+    );
+
     let detectors: Vec<Box<dyn Detector>> = vec![Box::new(build_plausibility_detector(&layouts))];
 
     // ─── Engine ────────────────────────────────────────────────────
@@ -103,6 +109,7 @@ fn main() -> Result<()> {
         detectors,
         Arc::clone(&layout_switcher),
         Arc::clone(&key_emitter),
+        Arc::clone(&focus_tracker),
         Arc::clone(&audio),
         engine_event_tx,
     );

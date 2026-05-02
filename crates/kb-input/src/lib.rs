@@ -15,9 +15,12 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod focus;
+
 use crossbeam_channel::Sender;
 use thiserror::Error;
 
+pub use focus::{FocusTracker, NoopFocusTracker, create_focus_tracker};
 pub use kb_types::{KeyDirection, KeyEvent, Modifiers};
 
 #[cfg(target_os = "linux")]

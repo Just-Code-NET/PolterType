@@ -249,6 +249,66 @@ impl Detector for WordPlausibilityDetector {
     }
 }
 
+// ─── Code-token guard ────────────────────────────────────────────────
+
+/// Heuristic: does `text` look like a programming-language identifier
+/// rather than natural-language prose? When this returns `true`, the
+/// engine suppresses *automatic* layout-switching for that buffer —
+/// it would be far more annoying to corrupt a piece of code than to
+/// leave a wrong-layout token alone. The user's manual switch hotkey
+/// (`Ctrl+Shift+Backspace`) bypasses this filter.
+///
+/// Signals (any single one is enough):
+///
+/// 1. Underscore (`_`) — snake_case is rare in EN/UK prose.
+/// 2. Mid-token capital letter (`getValue`, `MyClass`) — never in
+///    prose; common in camelCase / PascalCase identifiers.
+/// 3. Letter+digit mix (`var2`, `addr1`) — rare in prose, common in
+///    versions / symbol names.
+/// 4. Code punctuation that escaped the buffer's word-class table:
+///    backslash, semicolon, backtick.
+///
+/// Acronyms (`URL`, `HTML`) and ordinary capitalised prose
+/// (`Hello`, `Привіт`) deliberately do NOT trip the heuristic.
+pub fn looks_like_code_token(text: &str) -> bool {
+    if text.is_empty() {
+        return false;
+    }
+
+    let chars: Vec<char> = text.chars().collect();
+
+    // 1. snake_case / leading underscore.
+    if chars.contains(&'_') {
+        return true;
+    }
+
+    // 4. Code punctuation kept in the buffer.
+    if chars.iter().any(|c| matches!(*c, '\\' | ';' | '`')) {
+        return true;
+    }
+
+    // 3. Letter + digit mix.
+    let has_letter = chars.iter().any(|c| c.is_alphabetic());
+    let has_digit = chars.iter().any(|c| c.is_ascii_digit());
+    if has_letter && has_digit {
+        return true;
+    }
+
+    // 2. Mid-token capital after a lowercase letter.
+    let letters: Vec<char> = chars
+        .iter()
+        .copied()
+        .filter(|c| c.is_alphabetic())
+        .collect();
+    for w in letters.windows(2) {
+        if w[0].is_lowercase() && w[1].is_uppercase() {
+            return true;
+        }
+    }
+
+    false
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -316,6 +376,53 @@ mod tests {
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "ab".into()), (uk.clone(), "фи".into())];
         assert!(detector().detect(&ctx(&en, &cands)).is_none());
+    }
+
+    // ─── code-token guard ─────────────────────────────────────────
+
+    #[test]
+    fn code_guard_flags_snake_case() {
+        assert!(looks_like_code_token("foo_bar"));
+        assert!(looks_like_code_token("_private"));
+        assert!(looks_like_code_token("trailing_"));
+    }
+
+    #[test]
+    fn code_guard_flags_camel_and_pascal_case() {
+        assert!(looks_like_code_token("getValue"));
+        assert!(looks_like_code_token("myFunc"));
+        assert!(looks_like_code_token("XMLHttpRequest")); // multiple capitals after lowercase
+    }
+
+    #[test]
+    fn code_guard_flags_alphanumeric_mix() {
+        assert!(looks_like_code_token("var2"));
+        assert!(looks_like_code_token("h2o"));
+        assert!(looks_like_code_token("addr1"));
+    }
+
+    #[test]
+    fn code_guard_flags_code_punct() {
+        assert!(looks_like_code_token("path\\to"));
+        assert!(looks_like_code_token("a;b"));
+        assert!(looks_like_code_token("`raw`"));
+    }
+
+    #[test]
+    fn code_guard_ignores_prose() {
+        assert!(!looks_like_code_token("hello"));
+        assert!(!looks_like_code_token("Hello"));
+        assert!(!looks_like_code_token("привіт"));
+        assert!(!looks_like_code_token("Привіт"));
+        assert!(!looks_like_code_token("World"));
+        assert!(!looks_like_code_token(""));
+    }
+
+    #[test]
+    fn code_guard_ignores_acronyms() {
+        assert!(!looks_like_code_token("URL"));
+        assert!(!looks_like_code_token("HTML"));
+        assert!(!looks_like_code_token("API"));
     }
 
     #[test]

@@ -51,6 +51,24 @@ The initial scaffolding lands across Phases 0–8 documented in
 * `docs/PERMISSIONS.md` — per-OS access requirements.
 * `docs/AI.md` — AI subsystem privacy + plug-in API.
 
+### Dev-friendly: keeps quiet in IDEs and on identifiers
+
+Auto-switching skips:
+
+* the foreground app is on `[exceptions].disabled_apps` — defaults
+  cover VS Code / Cursor, every JetBrains IDE, Sublime, Zed,
+  Neovide, Windows Terminal, alacritty / kitty / wezterm, PowerShell
+  / cmd, and friends; case-insensitive basename match.
+* the just-finished token looks like a code identifier
+  (`snake_case`, `camelCase`, `letter+digit`, or contains code
+  punctuation). Acronyms and ordinary capitalised prose are not
+  flagged.
+
+Both filters apply to *automatic* decisions only — the manual switch
+hotkey `Ctrl+Shift+Backspace` always works, so devs can fix
+wrong-layout identifiers or write multi-language comments by
+explicitly asking the engine to act.
+
 ### Known limitations / v0.1.x targets
 
 * No visual settings GUI — settings live in `config.toml`. iced/egui
