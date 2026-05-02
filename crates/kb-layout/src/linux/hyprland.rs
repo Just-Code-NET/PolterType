@@ -45,7 +45,8 @@ impl LayoutSwitcher for HyprlandSwitcher {
             if let Some(rest) = line.strip_prefix("active keymap:") {
                 let name = rest.trim();
                 let xkb = name_to_xkb_code(name);
-                return Ok(LayoutId::new(xkb_to_bcp47(&xkb).unwrap_or(xkb).to_owned()));
+                let bcp = xkb_to_bcp47(&xkb).map(str::to_owned).unwrap_or(xkb);
+                return Ok(LayoutId::new(bcp));
             }
         }
         Err(LayoutError::Os(

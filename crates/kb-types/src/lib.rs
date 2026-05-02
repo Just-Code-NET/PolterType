@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// BCP-47-ish identifier for a keyboard layout (`en-US`, `uk-UA`,
 /// `kk-Cyrl-KZ`, `hy-AM`, …). Stored as an opaque string so we never
 /// have to enumerate every possible layout in Rust code.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LayoutId(pub String);
 
