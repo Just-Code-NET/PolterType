@@ -1,0 +1,22 @@
+[package]
+name                  = "kb-ai"
+description           = "Optional AI/LLM detectors and word rewriters for kb-switcher."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+
+[dependencies]
+kb-types  = { workspace = true }
+kb-detect = { workspace = true }
+serde     = { workspace = true }
+thiserror = { workspace = true }
+tracing   = { workspace = true }

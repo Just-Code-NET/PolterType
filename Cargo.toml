@@ -1,0 +1,82 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kb-app",
+    "crates/kb-core",
+    "crates/kb-input",
+    "crates/kb-layout",
+    "crates/kb-detect",
+    "crates/kb-ai",
+    "crates/kb-types",
+    "xtask",
+]
+
+[workspace.package]
+version       = "0.1.0-alpha.0"
+edition       = "2024"
+license       = "MIT"
+authors       = ["kb-switcher contributors"]
+rust-version  = "1.85"
+repository    = "https://github.com/REPLACE-ME/kb-switcher"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+all           = { level = "warn", priority = -1 }
+unwrap_used   = "warn"
+expect_used   = "warn"
+panic         = "warn"
+todo          = "allow"
+unimplemented = "allow"
+
+[workspace.dependencies]
+# Internal crates
+kb-types  = { path = "crates/kb-types" }
+kb-input  = { path = "crates/kb-input" }
+kb-layout = { path = "crates/kb-layout" }
+kb-detect = { path = "crates/kb-detect" }
+kb-core   = { path = "crates/kb-core" }
+kb-ai     = { path = "crates/kb-ai" }
+
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender   = "0.2"
+
+# Concurrency
+crossbeam-channel = "0.5"
+parking_lot       = "0.12"
+
+# Serde / config
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml       = "0.8"
+
+# OS interop
+directories = "5"
+keyring     = "3"
+
+# Errors
+thiserror = "1"
+anyhow    = "1"
+
+# Event loop / tray / hotkeys / autostart / single instance
+tao             = "0.30"
+tray-icon       = "0.19"
+global-hotkey   = "0.6"
+auto-launch     = "0.5"
+single-instance = "0.3"
+
+# Audio
+rodio = "0.20"
+
+# Notifications
+notify-rust = "4"
+
+[profile.release]
+lto           = "thin"
+codegen-units = 1
+strip         = "symbols"
+panic         = "abort"
+opt-level     = 3

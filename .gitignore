@@ -1,0 +1,33 @@
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Rust / Cargo ---
+target/
+**/*.rs.bk
+*.pdb
+Cargo.lock.bak
+
+# --- Local config / secrets ---
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# --- Logs / coverage ---
+*.log
+coverage/
+*.lcov
+
+# --- Local AI model files (large, not source) ---
+models/
+*.onnx
+*.gguf
+*.safetensors

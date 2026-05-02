@@ -1,0 +1,38 @@
+[package]
+name                  = "kb-app"
+description           = "kb-switcher: cross-platform automatic keyboard layout switcher (tray app)."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "kb-switcher"
+path = "src/main.rs"
+
+[features]
+default = []
+ai      = ["dep:kb-ai"]
+
+[dependencies]
+kb-types  = { workspace = true }
+kb-core   = { workspace = true }
+kb-input  = { workspace = true }
+kb-layout = { workspace = true }
+kb-detect = { workspace = true }
+kb-ai     = { workspace = true, optional = true }
+
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender   = { workspace = true }
+crossbeam-channel  = { workspace = true }
+
+tao             = { workspace = true }
+tray-icon       = { workspace = true }
+single-instance = { workspace = true }
