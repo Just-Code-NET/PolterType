@@ -259,7 +259,7 @@ impl KeyEmitter for MacosEmitter {
             .map_err(|()| InputError::Os("CGEventSource::new failed".into()))?;
 
         for c in text.chars() {
-            let utf16: Vec<u16> = c.encode_utf16(&mut [0u16; 2]).iter().copied().collect();
+            let utf16: Vec<u16> = c.encode_utf16(&mut [0u16; 2]).to_vec();
             let down = CGEvent::new_keyboard_event(src.clone(), 0, true)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event failed".into()))?;
             down.set_string_from_utf16_unchecked(&utf16);

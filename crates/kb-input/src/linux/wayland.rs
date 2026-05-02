@@ -276,17 +276,14 @@ fn ascii_hex_to_keycode(c: char) -> Option<KeyCode> {
 
 /// Linux evdev keycode → Win SC Set-1 scancode.
 ///
-/// evdev's `KEY_*` constants are *almost* SC Set-1 + 8, so the easy
-/// rule is `evdev - 8`. We special-case a few that don't follow it.
+/// For the alphanumeric / number / boundary rows we care about,
+/// Linux's evdev `KEY_*` codes coincide with SC Set-1 (e.g. evdev
+/// 1 = Esc = SC1 0x01, evdev 30 = A = SC1 0x1E). Extended keys
+/// (arrows, NumLock area) diverge — they're discarded by the
+/// engine's word-buffer classifier so we don't bother re-mapping
+/// them yet. Phase 6.x can add the table when X11 fallback lands.
+///
+/// Reference: https://www.kernel.org/doc/Documentation/input/event-codes.txt
 fn evdev_to_sc1(evdev: u32) -> u32 {
-    if evdev >= 1 { evdev - 0 } else { evdev }
-    // Note: evdev codes are documented at
-    // https://www.kernel.org/doc/Documentation/input/event-codes.txt
-    // The actual mapping evdev↔SC1 is:
-    //   evdev 1   = SC1 0x01 (Esc)        ← identity
-    //   evdev 30  = SC1 0x1E (A)          ← identity
-    //   evdev 105 = SC1 0xE0 0x4B (LeftArrow extended)
-    // For the rows we care about (alphanumeric main block) the codes
-    // are equal up to a one-to-one correspondence and our function is
-    // the identity. The XInput2 backend uses the same identity.
+    evdev
 }
