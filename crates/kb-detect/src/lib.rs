@@ -22,6 +22,38 @@ pub trait Detector: Send + Sync {
     fn detect(&self, ctx: &DetectionContext<'_>) -> Option<DetectionVerdict>;
 }
 
+// ─── WordRewriter (Phase 7+: AI-driven post-correction tricks) ──────
+
+/// A word rewriter operates *after* layout detection: it looks at the
+/// final text and may suggest a different one. Used for the
+/// "smart-capitalize", "expand-acronym", "slang-to-formal" kind of
+/// power-user tricks the AI subsystem (see `kb-ai`) enables.
+///
+/// Rewriters are off by default; the engine respects the
+/// `[ai].rewriters_enabled` flag and the per-rewriter
+/// `require_confirmation` toggle.
+pub trait WordRewriter: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn rewrite(&self, req: &RewriteRequest<'_>) -> RewriteVerdict;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RewriteRequest<'a> {
+    pub original: &'a str,
+    pub layout: &'a LayoutId,
+    pub recent_context: &'a str,
+}
+
+#[derive(Debug, Clone)]
+pub enum RewriteVerdict {
+    Keep,
+    Replace {
+        text: String,
+        reason: String,
+        require_confirmation: bool,
+    },
+}
+
 /// Engine-supplied context: the buffer already rendered through every
 /// candidate layout, so detectors don't depend on layout-mapping types.
 #[derive(Debug, Clone)]
