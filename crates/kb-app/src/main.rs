@@ -112,8 +112,14 @@ fn main() -> Result<()> {
     // tokens), word-plausibility second as a fallback for tokens that
     // aren't in either dictionary. Both are pure functions; engine
     // runs them in order and stops at the first non-NoOpinion verdict.
+    let dictionary = build_dictionary_detector(&layouts);
+    // Cloned handle — shares the inner Arc<RwLock> with the
+    // detector that lives inside the engine. Used by the
+    // "Reload Settings" path to swap in fresh dictionaries
+    // (re-reading user-overlay files) without restarting.
+    let dict_reload_handle = dictionary.handle();
     let detectors: Vec<Box<dyn Detector>> = vec![
-        Box::new(build_dictionary_detector(&layouts)),
+        Box::new(dictionary),
         Box::new(build_plausibility_detector(&layouts)),
     ];
 
@@ -265,13 +271,24 @@ fn main() -> Result<()> {
                         warn!("log directory unknown");
                     }
                 } else if id == reload_id {
+                    // Reload `config.toml` AND re-read user-overlay
+                    // wordlists (`<config-dir>/wordlists/<stem>.txt`).
+                    // The latter is what lets users add tech vocab
+                    // like `kubectl` / `terraform` and have it pick
+                    // up without restarting the app.
+                    let reloaded_dicts = reload_user_dictionaries(&dict_reload_handle);
                     match settings_for_loop.reload() {
-                        Ok(true) => {
-                            info!("config.toml reloaded — settings changed");
-                            let _ = cmd_tx_for_loop.send(EngineCommand::SettingsReloaded);
+                        Ok(changed) => {
+                            info!(
+                                config_changed = changed,
+                                dicts_reloaded = reloaded_dicts,
+                                "Reload Settings"
+                            );
+                            if changed {
+                                let _ = cmd_tx_for_loop.send(EngineCommand::SettingsReloaded);
+                            }
                         }
-                        Ok(false) => info!("config.toml reloaded — no changes"),
-                        Err(e) => warn!(?e, "could not reload settings"),
+                        Err(e) => warn!(?e, "could not reload config.toml"),
                     }
                 } else if id == pause_id {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
@@ -435,11 +452,35 @@ fn build_plausibility_detector(layouts: &Arc<LayoutDb>) -> WordPlausibilityDetec
 }
 
 fn build_dictionary_detector(layouts: &Arc<LayoutDb>) -> DictionaryDetector {
-    let dicts = layouts
+    DictionaryDetector::new(collect_dicts(layouts))
+}
+
+fn collect_dicts(
+    layouts: &LayoutDb,
+) -> std::collections::HashMap<kb_types::LayoutId, kb_detect::LayoutDictionary> {
+    layouts
         .iter()
         .filter_map(|(id, m)| m.dictionary.as_ref().map(|d| (id.clone(), d.clone())))
-        .collect();
-    DictionaryDetector::new(dicts)
+        .collect()
+}
+
+/// Re-read `<config-dir>/kb-switcher/wordlists/<stem>.txt` from disk
+/// and atomically swap the engine's dictionary set. Returns the
+/// number of dictionaries successfully loaded. Always rebuilds — even
+/// when the user added zero new entries — so the user gets a clear
+/// signal in the log that the reload took effect.
+fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
+    let user_dir = kb_core::layouts::user_wordlist_dir();
+    let new_layouts = LayoutDb::load_embedded_with_user_overlay(user_dir.as_deref());
+    let new_dicts = collect_dicts(&new_layouts);
+    let n = new_dicts.len();
+    handle.replace_dicts(new_dicts);
+    info!(
+        loaded = n,
+        overlay_dir = ?user_dir,
+        "user wordlist overlays reloaded"
+    );
+    n
 }
 
 /// Poll the OS for the current layout every ~250 ms; emit a

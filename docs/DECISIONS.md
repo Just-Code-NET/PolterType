@@ -74,6 +74,50 @@ Worth it for correctness.
 Regression locked in by `classifies_by_produced_char_not_scancode`
 in `kb-core::engine::buffer::tests`.
 
+## 2026-05-02 — Plausibility-keep + runtime-reloadable user overlay
+
+Two related fixes from real-world testing:
+
+### 1. `keep_threshold` on the plausibility detector
+
+User report: `kubectl` (a perfectly normal en-US word for any DevOps
+person) was getting auto-switched to `лгиусед` (the Cyrillic render
+of the same scancodes). Trace: `kubectl` isn't in the
+`dwyl/english-words` FST (general English dict, no tech vocab), so
+the dictionary detector returned NoOpinion. Plausibility then scored
+`kubectl` at 0.75 (good) vs `лгиусед` at 1.0 (also good — comparable
+vowel ratio, no consonant pile-up under uk-UA). Diff 0.25 ≥ the
+`min_advantage` threshold → switch.
+
+Fix: `WordPlausibilityDetector` now has a `keep_threshold = 0.7`. If
+the current text already scores at this level for its own layout,
+the detector emits `Verdict::Keep` instead of looking at alternates.
+That's the right semantics — "current is already plausibly its own
+language, leave it alone."
+
+This catches the whole class: surnames, brand names, modern tech
+vocabulary (kubectl, helm, terraform, docker, nginx), single-token
+abbreviations, Cyrillic forms not in the Hunspell stems file, etc.
+The Punto cases (real cross-script gibberish like `руддщ` ↔ `hello`)
+still switch correctly because gibberish scores well below 0.7.
+
+### 2. Runtime-reloadable user wordlist overlay
+
+The original "Reload Settings" only re-read `config.toml`. The
+embedded dictionaries (FST + short-stop) are baked at compile time
+and can't be reloaded — but the user-overlay files at
+`<config-dir>/kb-switcher/wordlists/<stem>.txt` SHOULD be reloadable
+so users can add tech vocab without restarting.
+
+Implementation: `DictionaryDetector` now holds its dicts behind
+`Arc<RwLock<HashMap<…>>>` so they can be swapped atomically. The app
+keeps a cheap clone (`detector.handle()`) and on "Reload Settings"
+calls `LayoutDb::load_embedded_with_user_overlay(...)` to re-read
+the user files, then `handle.replace_dicts(new)` to swap in.
+
+Read locks are taken per-word during decision; write only on reload.
+Lock contention is negligible.
+
 ## 2026-05-02 — Real Hunspell-grade dictionaries via FST
 
 The hand-curated ~280-word lists shipped earlier worked for the

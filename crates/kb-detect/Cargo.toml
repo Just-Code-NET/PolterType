@@ -12,8 +12,9 @@ repository.workspace  = true
 workspace = true
 
 [dependencies]
-kb-types  = { workspace = true }
-serde     = { workspace = true }
-thiserror = { workspace = true }
-tracing   = { workspace = true }
-fst       = { workspace = true }
+kb-types    = { workspace = true }
+serde       = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+fst         = { workspace = true }
+parking_lot = { workspace = true }

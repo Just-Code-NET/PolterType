@@ -1442,6 +1442,7 @@ version = "0.1.0-alpha.0"
 dependencies = [
  "fst",
  "kb-types",
+ "parking_lot",
  "serde",
  "thiserror 1.0.69",
  "tracing",

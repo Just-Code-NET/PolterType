@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use fst::Set as FstSet;
 pub use kb_types::{DetectionInput, DetectionVerdict, LayoutId};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 /// A detector judges which keyboard layout the user *intended*.
@@ -161,6 +162,15 @@ pub struct WordPlausibilityDetector {
     profiles: HashMap<LayoutId, LayoutProfile>,
     pub min_letters: usize,
     pub min_advantage: f32,
+    /// If the current text already scores at least this fit value
+    /// for its own layout, emit `Verdict::Keep` — don't auto-switch,
+    /// even if the alternate scores higher. Defends against false
+    /// positives on real-but-uncommon words that aren't in the FST
+    /// but read perfectly natural under their layout (think
+    /// `kubectl`, `terraform`, `docker`, `nginx`, surnames, …).
+    /// Default `0.7` — empirically a good cut between "plausibly a
+    /// real word" and "plausibly noise".
+    pub keep_threshold: f32,
 }
 
 impl WordPlausibilityDetector {
@@ -169,6 +179,7 @@ impl WordPlausibilityDetector {
             profiles,
             min_letters: 3,
             min_advantage: 0.25,
+            keep_threshold: 0.7,
         }
     }
 
@@ -245,6 +256,20 @@ impl Detector for WordPlausibilityDetector {
 
         let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
         let current_fit = self.fit(ctx.current_layout, current_text).unwrap_or(0.0);
+
+        // Conservative veto: if current already reads as plausible
+        // for its layout, don't switch even if the alternate is
+        // marginally better. This is what catches `kubectl` /
+        // `docker` / surnames that aren't in our dictionary but
+        // shouldn't get auto-corrected to Cyrillic noise.
+        if current_fit >= self.keep_threshold {
+            return Verdict::Keep {
+                reason: format!(
+                    "current `{current_text}` plausibly fits {} ({:.2} ≥ keep {:.2})",
+                    ctx.current_layout, current_fit, self.keep_threshold
+                ),
+            };
+        }
 
         let mut best: Option<(&LayoutId, f32)> = None;
         for (layout, text) in ctx.candidates {
@@ -372,26 +397,49 @@ impl LayoutDictionary {
 ///   plausibility scores them ~equal; the dictionary breaks the tie
 ///   decisively because `мені` is in the UK dict and `vtys` isn't).
 pub struct DictionaryDetector {
-    dicts: HashMap<LayoutId, LayoutDictionary>,
+    /// Wrapped in `Arc<RwLock>` so the app can swap dictionaries at
+    /// runtime — vital for the "Reload Settings" flow that picks up
+    /// user-overlay edits in `<config-dir>/kb-switcher/wordlists/`.
+    /// Read locks taken per word lookup; write only on reload.
+    /// Contention is negligible.
+    dicts: Arc<RwLock<HashMap<LayoutId, LayoutDictionary>>>,
 }
 
 impl DictionaryDetector {
     pub fn new(dicts: HashMap<LayoutId, LayoutDictionary>) -> Self {
-        Self { dicts }
+        Self {
+            dicts: Arc::new(RwLock::new(dicts)),
+        }
+    }
+
+    /// Cheap clone — shares the inner `Arc<RwLock>`. Use this to
+    /// hand the app a "reload handle" while the detector itself
+    /// lives in the engine's pipeline.
+    pub fn handle(&self) -> Self {
+        Self {
+            dicts: Arc::clone(&self.dicts),
+        }
+    }
+
+    /// Atomically swap in a fresh dictionary set. The next
+    /// `judge`/`is_word`/`is_short_stop_word` call sees the new
+    /// data; in-flight reads complete against the old data.
+    pub fn replace_dicts(&self, new: HashMap<LayoutId, LayoutDictionary>) {
+        *self.dicts.write() = new;
     }
 
     /// Full-dict word check — used for ≥ 3 letter tokens.
     pub fn is_word(&self, layout: &LayoutId, text: &str) -> bool {
         let lower = text.to_lowercase();
-        self.dicts.get(layout).is_some_and(|d| d.contains(&lower))
+        let dicts = self.dicts.read();
+        dicts.get(layout).is_some_and(|d| d.contains(&lower))
     }
 
     /// Short-token whitelist check — used for ≤ 2 letter tokens.
     pub fn is_short_stop_word(&self, layout: &LayoutId, text: &str) -> bool {
         let lower = text.to_lowercase();
-        self.dicts
-            .get(layout)
-            .is_some_and(|d| d.contains_short(&lower))
+        let dicts = self.dicts.read();
+        dicts.get(layout).is_some_and(|d| d.contains_short(&lower))
     }
 }
 
@@ -555,6 +603,26 @@ mod tests {
         assert!(matches!(detector.judge(ctx), Verdict::NoOpinion));
     }
 
+    /// Regression: `kubectl` is a real word a developer types in
+    /// EN but isn't in `dwyl/english-words`. With the old
+    /// "any-advantage-switches" rule the engine helpfully replaced
+    /// it with `лгиусед` (UK render of the same scancodes). With
+    /// `keep_threshold = 0.7` the plausibility detector vetoes the
+    /// switch because `kubectl` reads perfectly plausibly under en-US.
+    #[test]
+    fn plausibility_keeps_real_looking_uncommon_word() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![
+            (en.clone(), "kubectl".into()),
+            (uk.clone(), "лгиусед".into()),
+        ];
+        match detector().judge(&ctx(&en, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep for kubectl, got {other:?}"),
+        }
+    }
+
     #[test]
     fn switches_for_typical_punto_case() {
         // user is in uk-UA, typed scancodes for "hello" → uk renders
@@ -580,7 +648,14 @@ mod tests {
         let en = LayoutId::from("en-US");
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "hello".into()), (uk.clone(), "руддщ".into())];
-        assert_no_opinion(&detector(), &ctx(&en, &cands));
+        // `hello` scores ≥ keep_threshold for en-US, so the
+        // detector now actively vetoes the switch (Keep) instead
+        // of merely abstaining (NoOpinion). Either way the engine
+        // doesn't switch — but Keep is the stronger signal.
+        match detector().judge(&ctx(&en, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep, got {other:?}"),
+        }
     }
 
     #[test]

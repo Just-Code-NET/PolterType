@@ -41,3 +41,4 @@ to
 up
 us
 we
+kubectl

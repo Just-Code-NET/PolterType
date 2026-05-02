@@ -53,22 +53,44 @@ See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 ## Dev-friendly: stays out of code
 
 If you write code, you *don't* want a layout switcher meddling with
-identifiers. Two filters ship on by default:
+identifiers. Three layers protect you:
 
 * **Per-app skip list** (`[exceptions].disabled_apps` in
   `config.toml`) — covers VS Code / Cursor / JetBrains family /
   Sublime / Zed / Neovide / Windows Terminal / alacritty / kitty /
   wezterm / PowerShell / cmd by default. Edit the list to add or
   remove.
-* **Per-token guard** — even outside an IDE, the engine doesn't
-  auto-switch on tokens that look like identifiers: `snake_case`,
-  `camelCase`, `letter+digit`, or anything containing `\\` / `;` /
-  `` ` ``. Toggle via `engine.suppress_in_identifiers = false` in
-  `config.toml` if you'd rather the engine try.
+* **Per-token identifier guard** — even outside an IDE, the engine
+  doesn't auto-switch on tokens that look like identifiers:
+  `snake_case`, `camelCase`, `letter+digit`, or anything containing
+  `\\` / `;` / `` ` ``. Toggle via
+  `engine.suppress_in_identifiers = false` in `config.toml`.
+* **Plausibility-keep** — if the word you typed already reads as
+  plausible for the current layout (real letters, sane vowel ratio,
+  no ridiculous consonant pile-ups), the engine refuses to switch
+  even if the alternate scores higher. This is what keeps `kubectl`,
+  `terraform`, `nginx`, surnames, and other "real but uncommon"
+  vocabulary from getting auto-corrected to Cyrillic noise.
+
+### Adding your own vocabulary
+
+For specialty words the engine doesn't know yet (project-specific
+terms, slang, brand names), drop them into
+`<config-dir>/kb-switcher/wordlists/<layout>.txt`:
+
+* Windows: `%APPDATA%\opensource\kb-switcher\config\wordlists\en_us.txt`
+* macOS: `~/Library/Application Support/dev.opensource.kb-switcher/wordlists/en_us.txt`
+* Linux: `~/.config/kb-switcher/wordlists/en_us.txt`
+
+One lowercase word per line; blank lines and `#`-comments ignored.
+Hit "Reload Settings" in the tray and the new words take effect
+immediately — no restart needed. Adding to the embedded
+`data/wordlists/*.txt` files in the repo, on the other hand, requires
+rebuilding the binary (those bake into the FST at compile time).
 
 Writing a comment in another language inside an IDE? Hit
-`Ctrl+Shift+Backspace` after the word — that hotkey ignores both
-filters by design.
+`Ctrl+Shift+Backspace` after the word — that hotkey ignores every
+filter by design.
 
 ## Settings
 
