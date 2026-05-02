@@ -22,9 +22,7 @@ use super::shared::xkb_to_bcp47;
 pub struct HyprlandSwitcher;
 
 pub fn try_init() -> Option<HyprlandSwitcher> {
-    if std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_none() {
-        return None;
-    }
+    std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
     if !cmd_exists("hyprctl") {
         warn!("HYPRLAND_INSTANCE_SIGNATURE set but hyprctl not in PATH");
         return None;
