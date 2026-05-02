@@ -33,5 +33,6 @@ core-graphics       = "0.24"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Wayland-first: evdev requires the user to be in the `input` group.
-# AT-SPI (atspi crate) is the no-sudo fallback and lands in Phase 6.
-evdev = "0.13"
+# AT-SPI (atspi crate) is the no-sudo fallback and lands in Phase 6.x.
+evdev = { workspace = true }
+x11rb = { workspace = true }

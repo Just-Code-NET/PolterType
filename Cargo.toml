@@ -80,6 +80,11 @@ bitflags = "2"
 # Cross-platform "open this file in the user's default app".
 opener = "0.7"
 
+# Linux: evdev / X11 / D-Bus.
+evdev = "0.13"
+x11rb = "0.13"
+zbus  = { version = "4", default-features = false, features = ["blocking"] }
+
 # Win32 API bindings (Microsoft official). Per-target deps in the
 # crates that need them — features there select narrow modules.
 windows-version = "0.1"

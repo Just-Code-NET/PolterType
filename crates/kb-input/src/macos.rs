@@ -104,49 +104,47 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
 
     let mask = (1u64 << CGEventType::KeyDown as u64) | (1u64 << CGEventType::KeyUp as u64);
 
-    let callback = |_proxy: CGEventTapProxy,
-                    ev_type: CGEventType,
-                    event: &CGEvent|
-     -> Option<CGEvent> {
-        let direction = match ev_type {
-            CGEventType::KeyDown => Some(KeyDirection::Press),
-            CGEventType::KeyUp => Some(KeyDirection::Release),
-            _ => None,
-        };
-        if let Some(direction) = direction {
-            let vk = event.get_integer_value_field(CGEventField::KeyboardEventKeycode) as u32;
-            let scancode = mac_keycode_to_sc1(vk as u16);
-            let flags = event.get_flags();
-            // Heuristic: events posted by CGEventPost typically have a
-            // non-zero EventSourceUserData when tagged by another tool;
-            // for our own corrections we set this in a future step.
-            let injected =
-                event.get_integer_value_field(CGEventField::EventSourceUserData) != 0;
-
-            let ev_out = KeyEvent {
-                vk,
-                scancode,
-                direction,
-                modifiers: Modifiers {
-                    shift: flags.contains(CGEventFlags::CGEventFlagShift),
-                    control: flags.contains(CGEventFlags::CGEventFlagControl),
-                    alt: flags.contains(CGEventFlags::CGEventFlagAlternate),
-                    meta: flags.contains(CGEventFlags::CGEventFlagCommand),
-                },
-                injected,
-                timestamp_ms: 0,
+    let callback =
+        |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> Option<CGEvent> {
+            let direction = match ev_type {
+                CGEventType::KeyDown => Some(KeyDirection::Press),
+                CGEventType::KeyUp => Some(KeyDirection::Release),
+                _ => None,
             };
-            if let Some(slot) = EVENT_SINK.get() {
-                if let Some(sink) = slot.read().as_ref() {
-                    if let Err(err) = sink.try_send(ev_out) {
-                        debug!(?err, "dropping macOS key event");
+            if let Some(direction) = direction {
+                let vk = event.get_integer_value_field(CGEventField::KeyboardEventKeycode) as u32;
+                let scancode = mac_keycode_to_sc1(vk as u16);
+                let flags = event.get_flags();
+                // Heuristic: events posted by CGEventPost typically have a
+                // non-zero EventSourceUserData when tagged by another tool;
+                // for our own corrections we set this in a future step.
+                let injected =
+                    event.get_integer_value_field(CGEventField::EventSourceUserData) != 0;
+
+                let ev_out = KeyEvent {
+                    vk,
+                    scancode,
+                    direction,
+                    modifiers: Modifiers {
+                        shift: flags.contains(CGEventFlags::CGEventFlagShift),
+                        control: flags.contains(CGEventFlags::CGEventFlagControl),
+                        alt: flags.contains(CGEventFlags::CGEventFlagAlternate),
+                        meta: flags.contains(CGEventFlags::CGEventFlagCommand),
+                    },
+                    injected,
+                    timestamp_ms: 0,
+                };
+                if let Some(slot) = EVENT_SINK.get() {
+                    if let Some(sink) = slot.read().as_ref() {
+                        if let Err(err) = sink.try_send(ev_out) {
+                            debug!(?err, "dropping macOS key event");
+                        }
                     }
                 }
             }
-        }
-        // Pass-through; we listen but don't suppress.
-        Some(event.clone())
-    };
+            // Pass-through; we listen but don't suppress.
+            Some(event.clone())
+        };
 
     let tap = match core_graphics::event::CGEventTap::new(
         CGEventTapLocation::Session,
@@ -168,12 +166,11 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     // live as long as this thread.
     let source = unsafe {
         let mach_port_ref: CFMachPortRef = tap.mach_port().as_concrete_TypeRef();
-        let src_ref: CFRunLoopSourceRef =
-            core_foundation::runloop::CFMachPortCreateRunLoopSource(
-                std::ptr::null(),
-                mach_port_ref,
-                0,
-            );
+        let src_ref: CFRunLoopSourceRef = core_foundation::runloop::CFMachPortCreateRunLoopSource(
+            std::ptr::null(),
+            mach_port_ref,
+            0,
+        );
         if src_ref.is_null() {
             let _ = ready_tx.send(Err("CFMachPortCreateRunLoopSource returned null".into()));
             return;
@@ -200,11 +197,7 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
         unsafe {
             let _ = CFRunLoopRunInMode(kCFRunLoopCommonModes, 60.0, 0);
         }
-        if EVENT_SINK
-            .get()
-            .map(|s| s.read().is_none())
-            .unwrap_or(true)
-        {
+        if EVENT_SINK.get().map(|s| s.read().is_none()).unwrap_or(true) {
             break;
         }
     }
@@ -340,4 +333,3 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         _ => kvk as u32,
     }
 }
-

@@ -73,8 +73,7 @@ impl LayoutSwitcher for MacosLayoutSwitcher {
         // Filter for keyboard sources that the user can select.
         let filter = unsafe {
             let category_key = CFString::wrap_under_get_rule(kTISPropertyInputSourceCategory);
-            let category_val =
-                CFString::wrap_under_get_rule(kTISCategoryKeyboardInputSource);
+            let category_val = CFString::wrap_under_get_rule(kTISCategoryKeyboardInputSource);
             let select_key = CFString::wrap_under_get_rule(kTISPropertyInputSourceIsSelectCapable);
             // Build a dictionary `{ category = keyboard, select = true }`.
             let true_val = core_foundation::boolean::CFBoolean::true_value();
