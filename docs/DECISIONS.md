@@ -40,6 +40,40 @@ key events specially (e.g. games) will see the synthetic events as
 v0.1 since we're explicitly out of scope for games (per-app exception
 list handles those).
 
+## 2026-05-02 — Word-buffer classifies by produced character, not raw scancode
+
+Earlier the `WordBuffer` mapped scancodes to "letter / boundary /
+backspace / discard" via a hard-coded table that **assumed US-ANSI
+positions**. That works for en-US but is silently wrong for any
+non-Latin layout: scancode `0x33` is `,` under en-US (a sentence
+boundary) but the letter `б` under uk-UA (a word character).
+
+Concrete bug it produced: a Ukrainian user typing `будь ` was
+parsed as a wholly empty boundary (the `б` reset the word-in-progress
+to nothing), then a 3-letter word `удь` (uk render) ↔ `elm` (en
+render). `елm` is a real EN dictionary word, so the engine
+"helpfully" auto-switched and replayed `елm `. Same shape applies to
+0x34 (en `.` → uk `ю`), 0x29 backtick under any Cyrillic layout, etc.
+
+The fix: `WordBuffer::feed` now takes the character the layout
+actually produced (`Option<char>`); the engine queries
+`current_layout.translate_key(...)` per-keystroke and threads the
+result through. Classification is in two layers:
+
+1. **Control / structural keys** (Esc, Backspace, Tab, Enter,
+   Space, modifiers, function row, navigation cluster) — keyed by
+   scancode alone, layout-independent. Fast path.
+2. **Data keys** — keyed by the produced character class:
+   * `is_alphabetic` / digit / `'` `ʼ` `'` / `-` → word
+   * everything else → boundary
+
+Cost: one extra Win32 call per keystroke (`GetForegroundWindow` →
+`GetWindowThreadProcessId` → `GetKeyboardLayout`). Microseconds.
+Worth it for correctness.
+
+Regression locked in by `classifies_by_produced_char_not_scancode`
+in `kb-core::engine::buffer::tests`.
+
 ## 2026-05-02 — Real Hunspell-grade dictionaries via FST
 
 The hand-curated ~280-word lists shipped earlier worked for the

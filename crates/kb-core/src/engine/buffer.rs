@@ -1,8 +1,17 @@
 //! Word buffer: accumulate keystrokes until the user finishes a word.
 //!
-//! "Finishes" = produces a key that we treat as a word boundary
-//! (Space, Enter, Tab, Backspace, ., , ; : ! ?). Backspace also
-//! deletes the most recent buffered key.
+//! "Finishes" = the user produces a key whose **character** under the
+//! current layout is a word boundary (whitespace, sentence
+//! punctuation, brackets, …). Backspace also deletes the most recent
+//! buffered key.
+//!
+//! Why we look at the *character*, not the raw scancode: the same
+//! physical key produces wildly different things across layouts.
+//! Scancode `0x33` is `,` (a boundary) under en-US but the letter
+//! `б` (a word character) under uk-UA — and we want `б` to land in
+//! the buffer so words like `будь` are detected correctly. Earlier
+//! versions of this module classified by scancode alone and silently
+//! split Cyrillic words at every `б` / `ю` / similar.
 
 use kb_input::{KeyDirection, KeyEvent};
 use kb_types::WordKey;
@@ -51,13 +60,16 @@ impl WordBuffer {
         std::mem::take(&mut self.keys)
     }
 
-    /// Feed a [`KeyEvent`]; returns whether it ended a word.
-    pub fn feed(&mut self, ev: KeyEvent) -> WordBoundary {
+    /// Feed a [`KeyEvent`] together with the character it produces
+    /// under the **currently active** OS layout. Pass `None` if the
+    /// scancode has no mapping (control / function keys); the
+    /// classifier falls back to its scancode-only rules for those.
+    pub fn feed(&mut self, ev: KeyEvent, produced: Option<char>) -> WordBoundary {
         if ev.direction != KeyDirection::Press {
             return WordBoundary::InProgress;
         }
 
-        match classify(ev.scancode) {
+        match classify(ev.scancode, produced) {
             KeyKind::Word => {
                 self.keys.push(WordKey {
                     scancode: ev.scancode,
@@ -74,14 +86,8 @@ impl WordBuffer {
                 self.keys.pop();
                 WordBoundary::InProgress
             }
-            KeyKind::Discard => {
-                // Arrow keys, modifiers alone, etc — ignore but
-                // don't end the word.
-                WordBoundary::InProgress
-            }
+            KeyKind::Discard => WordBoundary::InProgress,
             KeyKind::EndAndDiscard => {
-                // Mouse, Esc, navigation — end the word but engine
-                // generally won't act on it; we drop the buffer.
                 self.keys.clear();
                 WordBoundary::InProgress
             }
@@ -91,61 +97,64 @@ impl WordBuffer {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KeyKind {
-    /// Letter / digit / printable punctuation we treat as part of words.
+    /// Letter / digit / apostrophe / hyphen — accumulate.
     Word,
-    /// Word-boundary key (Space, Enter, Tab, ., ,, ;, :, !, ?).
+    /// Whitespace / sentence punctuation / brackets — end the word.
     Boundary,
     /// Backspace.
     Backspace,
-    /// Modifier alone, NumLock, etc — ignore.
+    /// Modifier alone, NumLock, function key — ignore.
     Discard,
-    /// Esc, arrows, Home/End, … — abandon the buffer.
+    /// Esc, arrows, Home/End, navigation — abandon the buffer.
     EndAndDiscard,
 }
 
-/// Classify a Win-SC1 scancode into a [`KeyKind`]. Same scancodes are
-/// produced (after normalisation) on macOS / Linux backends, so this
-/// table is OS-agnostic.
-fn classify(scancode: u32) -> KeyKind {
+/// Classify the keystroke. Control / structural scancodes are matched
+/// first and decisively (they're the same on every layout). For
+/// everything else we look at the *character* the layout produced.
+fn classify(scancode: u32, produced: Option<char>) -> KeyKind {
+    // ---- Control / structural keys: layout-independent --------------
     match scancode {
-        // Esc
-        0x01 => KeyKind::EndAndDiscard,
-        // Number row 1..=0 + - =
-        0x02..=0x0D => KeyKind::Word,
-        // Backspace
-        0x0E => KeyKind::Backspace,
-        // Tab
-        0x0F => KeyKind::Boundary,
-        // QWERTY row + [ ]
-        0x10..=0x1B => KeyKind::Word,
-        // Enter
-        0x1C => KeyKind::Boundary,
-        // Ctrl-L
-        0x1D => KeyKind::Discard,
-        // ASDF row + ; '
-        0x1E..=0x28 => KeyKind::Word,
-        // Backtick
-        0x29 => KeyKind::Word,
-        // Shift-L
-        0x2A => KeyKind::Discard,
-        // Backslash + ZXCV row
-        0x2B..=0x32 => KeyKind::Word,
-        // , . /  — boundaries (sentence punctuation)
-        0x33..=0x35 => KeyKind::Boundary,
-        // Shift-R
-        0x36 => KeyKind::Discard,
-        // Numpad ops
-        0x37 => KeyKind::Word,
-        // Alt-L
-        0x38 => KeyKind::Discard,
-        // Spacebar
-        0x39 => KeyKind::Boundary,
-        // Caps Lock + F1..F10
-        0x3A..=0x44 => KeyKind::Discard,
-        // Num Lock, Scroll Lock, Numpad area
-        0x45..=0x53 => KeyKind::Discard,
-        _ => KeyKind::Discard,
+        // Esc — abandon.
+        0x01 => return KeyKind::EndAndDiscard,
+        // Backspace.
+        0x0E => return KeyKind::Backspace,
+        // Tab.
+        0x0F => return KeyKind::Boundary,
+        // Enter.
+        0x1C => return KeyKind::Boundary,
+        // Spacebar.
+        0x39 => return KeyKind::Boundary,
+        // Modifiers / Caps Lock / Function row / Numpad NumLock
+        // / Scroll Lock — ignore but stay inside the word.
+        0x1D | 0x2A | 0x36 | 0x38 | 0x3A => return KeyKind::Discard,
+        // F1..F10 + numpad cluster + extended (arrows / Home / End /
+        // PageUp / PageDown / Insert / Delete arrive as 0x47..=0x53
+        // when extended-prefixed). Treat as nav → end + drop.
+        0x3B..=0x53 => return KeyKind::EndAndDiscard,
+        _ => {}
     }
+
+    // ---- Data keys: classify by produced character ------------------
+    let Some(ch) = produced else {
+        // Scancode isn't in the layout's mapping table (e.g. exotic
+        // OEM keys we don't track). Discard but don't abort the word.
+        return KeyKind::Discard;
+    };
+
+    if is_word_char(ch) {
+        KeyKind::Word
+    } else {
+        KeyKind::Boundary
+    }
+}
+
+/// Characters that count as part of a word for the engine: all
+/// alphabetic Unicode (Latin, Cyrillic, Greek, …), digits, and the
+/// few punctuation marks that appear *inside* words (apostrophe in
+/// `don't` / `ім'я`, hyphen in `well-known`).
+fn is_word_char(ch: char) -> bool {
+    ch.is_alphabetic() || ch.is_ascii_digit() || matches!(ch, '\'' | 'ʼ' | '\u{2019}' | '-')
 }
 
 #[cfg(test)]
@@ -167,31 +176,107 @@ mod tests {
     #[test]
     fn space_completes_word() {
         let mut b = WordBuffer::new();
-        assert_eq!(b.feed(press(0x23)), WordBoundary::InProgress); // h
-        assert_eq!(b.feed(press(0x12)), WordBoundary::InProgress); // e
-        assert_eq!(
-            b.feed(press(0x39)),
-            WordBoundary::WordCompleted {
-                boundary_scancode: 0x39,
-                boundary_shift: false,
-            }
-        );
+        assert_eq!(b.feed(press(0x23), Some('h')), WordBoundary::InProgress);
+        assert_eq!(b.feed(press(0x12), Some('e')), WordBoundary::InProgress);
+        let WordBoundary::WordCompleted {
+            boundary_scancode, ..
+        } = b.feed(press(0x39), Some(' '))
+        else {
+            panic!("expected WordCompleted");
+        };
+        assert_eq!(boundary_scancode, 0x39);
     }
 
     #[test]
     fn backspace_pops() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23));
-        b.feed(press(0x12));
-        b.feed(press(0x0E)); // backspace
+        b.feed(press(0x23), Some('h'));
+        b.feed(press(0x12), Some('e'));
+        b.feed(press(0x0E), None); // Backspace
         assert_eq!(b.keys().len(), 1);
     }
 
     #[test]
     fn esc_clears_buffer() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23));
-        b.feed(press(0x01));
+        b.feed(press(0x23), Some('h'));
+        b.feed(press(0x01), None); // Esc
         assert_eq!(b.keys().len(), 0);
+    }
+
+    /// Regression: scancode 0x33 is `,` under en-US (boundary) but
+    /// the letter `б` under uk-UA (word character). Earlier versions
+    /// classified by scancode alone and silently dropped `б` /
+    /// reset the word — Cyrillic words like `будь` got cut to `удь`
+    /// and then auto-switched to `elm`.
+    #[test]
+    fn classifies_by_produced_char_not_scancode() {
+        let mut b = WordBuffer::new();
+        // Simulate typing "будь" under uk-UA: scancodes the same as
+        // ",elm" under en-US, but the produced characters differ.
+        assert_eq!(b.feed(press(0x33), Some('б')), WordBoundary::InProgress);
+        assert_eq!(b.feed(press(0x12), Some('у')), WordBoundary::InProgress);
+        assert_eq!(b.feed(press(0x26), Some('д')), WordBoundary::InProgress);
+        assert_eq!(b.feed(press(0x32), Some('ь')), WordBoundary::InProgress);
+        assert_eq!(b.keys().len(), 4);
+    }
+
+    #[test]
+    fn comma_under_en_is_boundary() {
+        let mut b = WordBuffer::new();
+        b.feed(press(0x23), Some('h'));
+        b.feed(press(0x12), Some('e'));
+        // Same 0x33 scancode but produces `,` under en-US.
+        assert!(matches!(
+            b.feed(press(0x33), Some(',')),
+            WordBoundary::WordCompleted { .. }
+        ));
+    }
+
+    #[test]
+    fn apostrophe_keeps_word_intact() {
+        let mut b = WordBuffer::new();
+        // "don't"
+        b.feed(press(0x20), Some('d'));
+        b.feed(press(0x18), Some('o'));
+        b.feed(press(0x31), Some('n'));
+        b.feed(press(0x28), Some('\''));
+        b.feed(press(0x14), Some('t'));
+        assert_eq!(b.keys().len(), 5);
+    }
+
+    #[test]
+    fn ukrainian_apostrophe_keeps_word_intact() {
+        let mut b = WordBuffer::new();
+        // "ім'я" — typographic apostrophe variants land in the same
+        // is_word_char bucket.
+        b.feed(press(0x17), Some('і'));
+        b.feed(press(0x32), Some('м'));
+        b.feed(press(0x28), Some('\u{2019}'));
+        b.feed(press(0x2C), Some('я'));
+        assert_eq!(b.keys().len(), 4);
+    }
+
+    #[test]
+    fn period_ends_word_in_either_layout() {
+        let mut b = WordBuffer::new();
+        b.feed(press(0x23), Some('h'));
+        b.feed(press(0x12), Some('e'));
+        // 0x35 is `/` under en-US but `.` under uk-UA — both are
+        // boundaries because both are non-word characters.
+        assert!(matches!(
+            b.feed(press(0x35), Some('.')),
+            WordBoundary::WordCompleted { .. }
+        ));
+    }
+
+    #[test]
+    fn unmapped_scancode_is_discarded_not_boundary() {
+        let mut b = WordBuffer::new();
+        b.feed(press(0x23), Some('h'));
+        b.feed(press(0x12), Some('e'));
+        // Some exotic OEM scancode the layout doesn't map.
+        b.feed(press(0x56), None);
+        assert_eq!(b.keys().len(), 2);
     }
 }

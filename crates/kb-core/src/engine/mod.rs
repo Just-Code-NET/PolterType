@@ -204,14 +204,34 @@ impl SwitcherEngine {
             return;
         }
 
+        // Resolve the character this scancode produces under the
+        // *currently active* layout — the buffer needs that to
+        // classify (a `,`-position scancode is `б` in uk-UA, etc.).
+        // The lookup is cheap (one Win32 call on Windows, similarly
+        // light on the other backends).
+        let produced = self.translate_via_current_layout(ev.scancode, ev.modifiers.shift);
+
         if let WordBoundary::WordCompleted {
             boundary_scancode,
             boundary_shift,
-        } = buffer.feed(ev)
+        } = buffer.feed(ev, produced)
         {
             self.decide(buffer, boundary_scancode, boundary_shift);
             buffer.start_new_word();
         }
+    }
+
+    /// Best-effort current-layout translate. Returns `None` if we
+    /// can't query the OS or the scancode isn't in the mapping
+    /// table — both are normal for control / OEM keys.
+    fn translate_via_current_layout(&self, scancode: u32, shift: bool) -> Option<char> {
+        let current = self.layout_switcher.current().ok()?;
+        let mapping = self.layouts.get(&current)?;
+        mapping.translate_key(kb_types::WordKey {
+            scancode,
+            shift,
+            timestamp_ms: 0,
+        })
     }
 
     fn decide(&self, buffer: &mut WordBuffer, boundary_scancode: u32, boundary_shift: bool) {
