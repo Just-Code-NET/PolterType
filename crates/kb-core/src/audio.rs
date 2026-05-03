@@ -6,6 +6,16 @@
 //! crossbeam channel keeps `AudioPlayer` `Send + Sync` so the engine
 //! can hold an `Arc<AudioPlayer>` on its own thread.
 //!
+//! Why we open a fresh `OutputStream` *per play*: the OS default
+//! audio device changes mid-session — typically when the user
+//! plugs / unplugs Bluetooth headphones, switches HDMI outputs, or
+//! suspends and resumes. A long-lived `OutputStream` cached at
+//! startup keeps writing to the no-longer-default device and the
+//! user hears nothing. Opening a stream per event always picks up
+//! the current default. Init costs ~10–50 ms on Windows / macOS and
+//! a few ms on Linux/PulseAudio — well under the duration of even
+//! the shortest tone we play, so it's invisible to the user.
+//!
 //! Themes live in `<config-dir>/sound-themes/<name>/<event>.ogg`.
 //! Missing files are silent — we never crash because audio is absent.
 
@@ -118,14 +128,7 @@ impl Default for AudioPlayer {
 }
 
 fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
-    let (stream, handle) = match OutputStream::try_default() {
-        Ok((s, h)) => (Some(s), Some(h)),
-        Err(e) => {
-            warn!(err = %e, "no audio output available; sounds disabled");
-            (None, None)
-        }
-    };
-    info!(audio = handle.is_some(), "audio worker started");
+    info!("audio worker started (per-play stream allocation)");
 
     let mut theme_dir: Option<PathBuf> = None;
     let mut volume: f32 = 0.6;
@@ -141,43 +144,53 @@ fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
                 debug!(?theme_dir, volume, "audio refreshed");
             }
             AudioCmd::Play(event) => {
-                let Some(handle) = handle.as_ref() else {
-                    continue;
-                };
                 // Prefer a user-supplied theme file if it exists;
                 // otherwise fall back to a synthesised tone so the
                 // user always hears *something*.
                 if let Some(dir) = theme_dir.as_ref() {
                     let path = dir.join(event.file_name());
                     if path.exists() {
-                        if let Err(e) = play_file(handle, &path, volume) {
+                        if let Err(e) = play_file(&path, volume) {
                             warn!(?path, err = %e, "could not play theme sound");
                         }
                         continue;
                     }
                 }
-                if let Err(e) = play_tone(handle, event, volume) {
+                if let Err(e) = play_tone(event, volume) {
                     warn!(?e, "could not play synthesised tone");
                 }
             }
             AudioCmd::Shutdown => break,
         }
     }
-    drop(stream);
     info!("audio worker stopped");
 }
 
+/// Open a fresh OutputStream against the current OS default device.
+/// Doing this on every play means we automatically follow Bluetooth
+/// connect/disconnect, HDMI switches, suspend/resume, default-device
+/// changes from the OS sound settings — without subscribing to any
+/// platform-specific device-change notifications.
+fn fresh_stream()
+-> Result<(OutputStream, OutputStreamHandle), Box<dyn std::error::Error + Send + Sync>> {
+    OutputStream::try_default().map_err(Into::into)
+}
+
 fn play_file(
-    handle: &OutputStreamHandle,
     path: &std::path::Path,
     volume: f32,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (_stream, handle) = fresh_stream()?;
     let file = BufReader::new(File::open(path)?);
     let decoder = Decoder::new(file)?;
-    let sink = Sink::try_new(handle)?;
+    let sink = Sink::try_new(&handle)?;
     sink.set_volume(volume);
     sink.append(decoder);
-    sink.detach();
+    // We OWN the stream for this call; dropping it before playback
+    // ends would cut the sound off. Block the audio worker thread
+    // until the sink drains. The worker thread is dedicated to us
+    // so this doesn't stall any keystroke handling.
+    sink.sleep_until_end();
     Ok(())
 }
 
@@ -185,19 +198,20 @@ fn play_file(
 /// with a brief amplitude envelope so it sounds like a soft "blip"
 /// rather than a click → pop → click. Cheap and asset-free.
 fn play_tone(
-    handle: &OutputStreamHandle,
     event: SoundEvent,
     volume: f32,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (_stream, handle) = fresh_stream()?;
     let (freq, ms) = event.synth_tone();
     let dur = Duration::from_millis(ms);
     let source = SineWave::new(freq)
-        // Soft fade-in/out to take the edge off the square boundary.
         .take_duration(dur)
         .fade_in(Duration::from_millis(10))
         .amplify((volume * 0.4).clamp(0.0, 1.0));
-    let sink = Sink::try_new(handle)?;
+    let sink = Sink::try_new(&handle)?;
     sink.append(source);
-    sink.detach();
+    // Same reason as play_file: must keep the stream alive until the
+    // tone has actually been written out.
+    sink.sleep_until_end();
     Ok(())
 }
