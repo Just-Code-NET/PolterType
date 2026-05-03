@@ -305,11 +305,32 @@ impl SwitcherEngine {
 
         // ---- Pre-decision filters (auto-switch only) ----
         //
-        // Both filters apply *only* to automatic decisions — the
-        // manual switch-last hotkey calls force_switch_last directly
-        // and bypasses both. That's the dev-friendly contract: we
-        // stay quiet by default in code contexts, but if the user
-        // explicitly hits the hotkey we always do the switch.
+        // Filters apply *only* to automatic decisions — the manual
+        // switch-last hotkey calls force_switch_last directly and
+        // bypasses all of them. That's the dev-friendly contract:
+        // we stay quiet by default in code / URL / path contexts,
+        // but if the user explicitly hits the hotkey we always do
+        // the switch.
+
+        // Filter 0: structural boundary character. If the user
+        // ended the word with `:` / `/` / `\` / `@` / `=` / `#` /
+        // `&` then they're typing a URL / path / email / config
+        // expression / code, NOT prose. Switching `http` to `реез`
+        // because they just typed `:` would corrupt the URL they're
+        // half-way through. Skip.
+        if is_structural_boundary(boundary_char) {
+            debug!(
+                token = %current_text,
+                boundary = %boundary_char,
+                "skipping auto-switch: structural boundary"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "structural boundary `{boundary_char}` after `{current_text}` — likely URL / path / email / code"
+                ),
+            });
+            return;
+        }
 
         // Filter 1: focused app on the disabled list.
         if let Some(exe) = self.focus_tracker.focused_exe() {
@@ -489,6 +510,56 @@ fn app_is_disabled(exe: &str, disabled: &[String]) -> bool {
     disabled
         .iter()
         .any(|entry| entry.eq_ignore_ascii_case(&needle))
+}
+
+/// Boundary characters that strongly suggest the user is typing a
+/// URL / file path / email address / config expression / source code
+/// rather than prose. When the engine sees one of these as the
+/// boundary it skips auto-switching: the just-completed token is
+/// almost certainly part of an address-like construct and shouldn't
+/// be re-rendered through another keyboard layout.
+///
+/// The list is conservative — only characters that are *almost
+/// always* structural in real prose, never sentence punctuation:
+///
+/// * `:` — URL scheme, time, key:value, ratio, ternary
+/// * `/` — path separator, URL, division, regex
+/// * `\` — Windows path, escape
+/// * `@` — email, mention, decorator, npm scope
+/// * `=` — assignment, query string, equality
+/// * `#` — anchor, hashtag, source comment, channel
+/// * `&` — URL query separator, bitwise
+///
+/// Notably absent: `.` (also sentence-end), `(`, `)`, `[`, `]`,
+/// `{`, `}`, `"` (all common in prose), `+`, `*`, `<`, `>`, `|`,
+/// `~`, `` ` `` (less common in prose but lower confidence as
+/// "definitely structural").
+fn is_structural_boundary(ch: char) -> bool {
+    matches!(ch, ':' | '/' | '\\' | '@' | '=' | '#' | '&')
+}
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::is_structural_boundary;
+
+    #[test]
+    fn flags_url_path_email_chars() {
+        for c in [':', '/', '\\', '@', '=', '#', '&'] {
+            assert!(is_structural_boundary(c), "expected {c:?} structural");
+        }
+    }
+
+    #[test]
+    fn ignores_natural_prose_punctuation() {
+        for c in [
+            ' ', '\t', '\n', '.', ',', ';', '!', '?', '(', ')', '"', '\'',
+        ] {
+            assert!(
+                !is_structural_boundary(c),
+                "expected {c:?} natural-prose punctuation"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

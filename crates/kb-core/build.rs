@@ -46,15 +46,24 @@ fn main() {
 
     for (stem, tag) in LAYOUTS {
         let txt_path = wordlists_dir.join(format!("{stem}.txt"));
+        let extras_path = wordlists_dir.join(format!("{stem}-extras.txt"));
         let stop_path = wordlists_dir.join(format!("{stem}-stop.txt"));
         let fst_path = out_dir.join(format!("{stem}.fst"));
 
         println!("cargo:rerun-if-changed={}", txt_path.display());
+        println!("cargo:rerun-if-changed={}", extras_path.display());
         println!("cargo:rerun-if-changed={}", stop_path.display());
 
+        // Full upstream wordlist + our hand-curated extras
+        // (modern tech vocab, common acronyms, dev jargon — the
+        // categories `dwyl/english-words` doesn't cover).
         let mut words: Vec<String> = read_wordlist(&txt_path);
+        let extras = read_wordlist(&extras_path);
+        let extras_count = extras.len();
+        words.extend(extras);
         words.sort();
         words.dedup();
+        let _ = extras_count; // surfaced via the cargo:warning below
 
         let writer =
             BufWriter::new(File::create(&fst_path).expect("could not create FST output file"));
@@ -66,7 +75,7 @@ fn main() {
 
         let stop_count = read_wordlist(&stop_path).len();
         println!(
-            "cargo:warning=wordlist {tag}: {} entries (FST) + {stop_count} short stop-words",
+            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words",
             words.len()
         );
     }

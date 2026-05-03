@@ -1,0 +1,16 @@
+# Curated additions to the embedded Ukrainian dictionary.
+#
+# `data/wordlists/uk_ua.txt` comes from the LibreOffice `uk_UA.dic`
+# Hunspell file (see CREDITS.md) and is overwritten when a
+# contributor runs `cargo xtask wordlists fetch`. Anything we add
+# here lives outside that file so upstream syncs don't clobber it.
+#
+# `build.rs` merges this list into the uk-UA FST at compile time.
+#
+# Scope: technical / online vocabulary that's part of modern
+# Ukrainian usage but not in the Hunspell stems file. (Most tech
+# vocab Ukrainian speakers type in Latin anyway via the EN extras
+# list — but list here anything you actually type in Cyrillic.)
+#
+# Format: one lowercase word per line; blank lines and `#`-comments
+# ignored.
