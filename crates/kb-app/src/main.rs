@@ -16,7 +16,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, bounded, unbounded};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
-use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
+use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use kb_core::audio::AudioPlayer;
 use kb_core::engine::{EngineCommand, SwitcherEngine, SwitcherEvent};
 use kb_core::layouts::LayoutDb;
@@ -422,6 +422,16 @@ fn spawn_event_bridges(
         .spawn(move || {
             let rx = GlobalHotKeyEvent::receiver();
             while let Ok(ev) = rx.recv() {
+                // global-hotkey 0.6+ emits BOTH `Pressed` and
+                // `Released` events for the same chord. Forwarding
+                // both meant the pause-toggle handler ran twice per
+                // user keypress — net effect: pause flipped on
+                // press, then immediately back on release, so the
+                // user only saw "paused" while physically holding
+                // the chord. Filter to Pressed only.
+                if ev.state != HotKeyState::Pressed {
+                    continue;
+                }
                 if proxy_hk.send_event(UserEvent::Hotkey(ev.id)).is_err() {
                     break;
                 }
