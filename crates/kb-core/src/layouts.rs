@@ -196,13 +196,32 @@ fn parse_wordlist(input: &str) -> HashSet<String> {
         .collect()
 }
 
-/// Construct a [`LayoutDictionary`] for `stem`: take the embedded
-/// FST blob (the full upstream dict, used for ≥ 3-letter tokens) and
-/// the embedded short-stop list (used for ≤ 2-letter tokens), then
-/// optionally merge the user's override file from
-/// `<overlay_dir>/<stem>.txt` (one word per line). Missing override
-/// files are silently fine; malformed ones are logged and skipped —
-/// the embedded data still works.
+/// Construct a [`LayoutDictionary`] for `stem`. The embedded FST
+/// (the full upstream dictionary, used for ≥3-letter tokens) and the
+/// embedded short-stop list (≤2-letter tokens) are baked at compile
+/// time. On top of those, three runtime files in `<overlay_dir>` can
+/// extend each layer without recompilation:
+///
+/// | User file                  | Merged into          | Use case                                                    |
+/// |----------------------------|----------------------|-------------------------------------------------------------|
+/// | `<stem>.txt`               | `user_overlay`       | "I want this word treated as a real word in this layout."   |
+/// | `<stem>-extras.txt`        | `user_overlay`       | Same as above; separate file for the user to organise by    |
+/// |                            |                      | category (mirrors the `data/wordlists/<stem>-extras.txt`    |
+/// |                            |                      | source-tree convention).                                    |
+/// | `<stem>-stop.txt`          | `short_stop_words`   | Curated 1- and 2-letter additions (mirrors the source-tree  |
+/// |                            |                      | `<stem>-stop.txt`). Necessary because at ≤2 letters the     |
+/// |                            |                      | embedded FST is intentionally bypassed.                     |
+///
+/// Why HashSet and not a runtime-built FST: user overlays in practice
+/// stay under ~10 000 entries, where `HashSet` wins on lookup latency
+/// (`O(1)` vs FST's `O(word_len)`) and is simpler to reason about.
+/// FST shines only at hundreds of thousands of entries — that's why
+/// it's the right pick for the embedded upstream dicts. We can bolt
+/// on a runtime FST later if a user actually accumulates that many
+/// custom words.
+///
+/// Missing files are silently fine. Read errors are logged and the
+/// embedded data continues to work.
 fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDictionary> {
     let bytes = embedded_fst_for(stem)?;
     let embedded = match FstSet::new(bytes) {
@@ -212,21 +231,24 @@ fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDict
             return None;
         }
     };
-    let short_stop_words = embedded_stop_words_for(stem)
+
+    // ── short-stop list: embedded baseline + optional user file ──
+    let mut short_stop_words = embedded_stop_words_for(stem)
         .map(parse_wordlist)
         .unwrap_or_default();
-    let user_overlay = overlay_dir
-        .and_then(|dir| {
-            let path = dir.join(format!("{stem}.txt"));
-            std::fs::read_to_string(&path)
-                .map(|s| {
-                    let n = s.lines().count();
-                    info!(?path, lines = n, "merged user wordlist override");
-                    parse_wordlist(&s)
-                })
-                .ok()
-        })
-        .unwrap_or_default();
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "-stop") {
+        short_stop_words.extend(extra);
+    }
+
+    // ── full overlay: <stem>.txt and <stem>-extras.txt merged ──
+    let mut user_overlay: HashSet<String> = HashSet::new();
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "") {
+        user_overlay.extend(extra);
+    }
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "-extras") {
+        user_overlay.extend(extra);
+    }
+
     Some(LayoutDictionary::new(
         embedded,
         user_overlay,
@@ -234,8 +256,47 @@ fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDict
     ))
 }
 
-/// Path under which user-supplied wordlist overrides live.
-/// `<config-dir>/kb-switcher/wordlists/<stem>.txt`.
+/// Read `<dir>/<stem><suffix>.txt` if present and parse it. Returns
+/// `None` for both "no overlay dir configured" and "file does not
+/// exist" — the caller treats both as "no user additions". Other I/O
+/// errors are logged and treated the same way so a transient read
+/// problem doesn't take the dict offline.
+fn load_overlay_file(
+    overlay_dir: Option<&Path>,
+    stem: &str,
+    suffix: &str,
+) -> Option<HashSet<String>> {
+    let dir = overlay_dir?;
+    let path = dir.join(format!("{stem}{suffix}.txt"));
+    match std::fs::read_to_string(&path) {
+        Ok(s) => {
+            let parsed = parse_wordlist(&s);
+            info!(
+                ?path,
+                lines = s.lines().count(),
+                words = parsed.len(),
+                "merged user wordlist override"
+            );
+            Some(parsed)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            warn!(?path, err = %e, "could not read user wordlist override");
+            None
+        }
+    }
+}
+
+/// Path under which user-supplied wordlist overrides live:
+/// `<config-dir>/kb-switcher/wordlists/`. Three optional files per
+/// layout (see [`build_dictionary`] for the per-file semantics):
+///
+/// * `<stem>.txt` — runtime additions to the dictionary
+/// * `<stem>-extras.txt` — same effect, separate file for organisation
+/// * `<stem>-stop.txt` — runtime additions to the 1-/2-letter stop list
+///
+/// Reloading is wired through the engine's "Reload Settings" command,
+/// so users can edit these without restarting the app.
 pub fn user_wordlist_dir() -> Option<std::path::PathBuf> {
     crate::settings::SettingsStore::project_dirs()
         .ok()
@@ -487,5 +548,128 @@ mod tests {
             timestamp_ms: 0,
         }];
         assert_eq!(en.translate_buffer(&buf), "H");
+    }
+
+    // ─── User overlay loading (runtime-extensible) ───────────────────
+
+    /// Tiny RAII tmpdir under `std::env::temp_dir()` — keeps these
+    /// tests self-contained without dragging `tempfile` into deps.
+    /// Builds on a per-test name + nanosecond timestamp + PID so two
+    /// tests running in parallel can't clash.
+    struct TmpDir(std::path::PathBuf);
+
+    impl TmpDir {
+        fn new(label: &str) -> Self {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = std::env::temp_dir().join(format!(
+                "kb-switcher-test-{label}-{}-{now}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&path).expect("mkdir tmp");
+            Self(path)
+        }
+
+        fn write(&self, name: &str, body: &str) {
+            std::fs::write(self.0.join(name), body).expect("write tmp file");
+        }
+    }
+
+    impl Drop for TmpDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// `<stem>.txt` and `<stem>-extras.txt` are both merged into the
+    /// runtime user overlay. Words from either file count as "real
+    /// words" for any length, thanks to `LayoutDictionary::contains`
+    /// consulting `user_overlay` first.
+    #[test]
+    fn user_overlay_picks_up_extras_file() {
+        let tmp = TmpDir::new("extras");
+        tmp.write("uk_ua.txt", "# user adds\nфайв\n");
+        tmp.write("uk_ua-extras.txt", "# more\nекстраслово\n");
+
+        let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+        let dict = db
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict");
+
+        assert!(dict.contains("файв"), "<stem>.txt entry should be in dict");
+        assert!(
+            dict.contains("екстраслово"),
+            "<stem>-extras.txt entry should be in dict"
+        );
+    }
+
+    /// `<stem>-stop.txt` extends the curated short-stop list at
+    /// runtime. This is the only path that affects ≤2-letter lookups
+    /// (the embedded FST is intentionally bypassed there).
+    #[test]
+    fn user_short_stop_file_extends_stop_list() {
+        let tmp = TmpDir::new("stop");
+        // Two letter combo not in the embedded uk stop list.
+        tmp.write("uk_ua-stop.txt", "хм\n");
+
+        let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+        let dict = db
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict");
+
+        assert!(
+            dict.contains_short("хм"),
+            "user-side -stop.txt should extend short stop list"
+        );
+    }
+
+    /// Sanity: missing user files are silently fine — embedded data
+    /// keeps working when the overlay dir is empty.
+    #[test]
+    fn missing_user_files_do_not_break_loading() {
+        let tmp = TmpDir::new("empty");
+        let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+        assert!(db.get(&LayoutId::from("en-US")).is_some());
+        assert!(db.get(&LayoutId::from("uk-UA")).is_some());
+    }
+
+    /// Reload-style test: build twice with different overlay
+    /// contents, confirming the second build sees the new data and
+    /// the first build's data is fully replaced (not accumulated).
+    /// Uses guaranteed-nonsense ASCII tokens because the embedded uk
+    /// FST contains pretty much every real Cyrillic word — testing
+    /// against real-language strings would always pass the positive
+    /// half regardless of overlay state.
+    #[test]
+    fn overlay_is_freshly_read_on_each_build() {
+        let tmp = TmpDir::new("reload");
+        let first_token = "zxqzxqfirst";
+        let second_token = "qwrqwrsecond";
+
+        tmp.write("uk_ua.txt", &format!("{first_token}\n"));
+        let first = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+        let first_dict = first
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict #1");
+        assert!(first_dict.contains(first_token));
+        assert!(!first_dict.contains(second_token));
+
+        // User edits the file; engine reloads.
+        tmp.write("uk_ua.txt", &format!("{second_token}\n"));
+        let second = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+        let second_dict = second
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict #2");
+        assert!(second_dict.contains(second_token));
+        assert!(
+            !second_dict.contains(first_token),
+            "old overlay must not leak into the fresh load"
+        );
     }
 }

@@ -166,6 +166,7 @@ fn main() -> Result<()> {
     let menu = Menu::new();
     let item_settings = MenuItem::new("Open Settings (config.toml)…", true, None);
     let item_logs = MenuItem::new("Open Logs Folder…", true, None);
+    let item_wordlists = MenuItem::new("Open User Wordlists Folder…", true, None);
     let item_reload = MenuItem::new("Reload Settings", true, None);
     let item_pause = MenuItem::new("Pause auto-switch", true, None);
     let item_about = MenuItem::new(
@@ -177,6 +178,7 @@ fn main() -> Result<()> {
     menu.append_items(&[
         &item_settings,
         &item_logs,
+        &item_wordlists,
         &item_reload,
         &PredefinedMenuItem::separator(),
         &item_pause,
@@ -187,6 +189,7 @@ fn main() -> Result<()> {
     .context("populate tray menu")?;
     let settings_id = item_settings.id().clone();
     let logs_id = item_logs.id().clone();
+    let wordlists_id = item_wordlists.id().clone();
     let reload_id = item_reload.id().clone();
     let pause_id = item_pause.id().clone();
     let quit_id = item_quit.id().clone();
@@ -269,6 +272,15 @@ fn main() -> Result<()> {
                         open_path(dir, "log directory");
                     } else {
                         warn!("log directory unknown");
+                    }
+                } else if id == wordlists_id {
+                    // First-run: the directory typically doesn't
+                    // exist yet — ensure_user_wordlist_dir creates
+                    // it (and seeds a tiny README so the user knows
+                    // what files are recognised) before we open it.
+                    match ensure_user_wordlist_dir() {
+                        Ok(dir) => open_path(&dir, "user wordlists folder"),
+                        Err(e) => warn!(?e, "could not prepare user wordlists folder"),
                     }
                 } else if id == reload_id {
                     // Reload `config.toml` AND re-read user-overlay
@@ -359,6 +371,84 @@ fn open_path(path: &std::path::Path, what: &str) {
         warn!(?e, ?path, "could not open {what} in default app");
     }
 }
+
+/// Resolve the user wordlists directory, create it if missing, and
+/// drop a `README.txt` on first creation so a user opening the
+/// folder for the first time can immediately see what files are
+/// recognised. Returns the directory path on success.
+///
+/// We seed only on actual creation — once the user has the folder,
+/// we never touch the README again, so users can delete it / rename
+/// it / replace it without our re-overwriting their changes.
+fn ensure_user_wordlist_dir() -> anyhow::Result<PathBuf> {
+    let dir = kb_core::layouts::user_wordlist_dir()
+        .context("could not determine user-config directory")?;
+    let needs_seed = !dir.exists();
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("could not create wordlists dir at {}", dir.display()))?;
+    if needs_seed {
+        let readme = dir.join("README.txt");
+        // Best-effort write — failure is logged but doesn't block
+        // opening the folder. The directory itself is the value.
+        if let Err(e) = std::fs::write(&readme, USER_WORDLISTS_README) {
+            warn!(?e, ?readme, "could not seed README in wordlists folder");
+        }
+    }
+    Ok(dir)
+}
+
+/// One-time README seeded into the user wordlists folder. Plain
+/// text (no markdown), short, and readable in any editor / preview
+/// pane. Matches the file conventions documented in
+/// `kb_core::layouts::build_dictionary`.
+const USER_WORDLISTS_README: &str = "\
+kb-switcher — user wordlists
+=============================
+
+Drop text files here to extend the built-in dictionaries without
+rebuilding the app. Changes are picked up on the next \"Reload
+Settings\" tray click (Ctrl+Shift+R if you've bound it) — no restart
+needed.
+
+Per layout, three filenames are recognised. Replace `<stem>` with the
+layout id you want to extend (`en_us`, `uk_ua`, …):
+
+    <stem>.txt          One word per line; treated as a real word
+                        in this layout, regardless of length.
+                        Use this for tech vocab, surnames, slang,
+                        product names — anything that should NOT
+                        get auto-corrected away.
+
+    <stem>-extras.txt   Same effect as <stem>.txt; separate file
+                        so you can organise (e.g. one for tech
+                        vocab, one for personal names). Both are
+                        merged into the same overlay at load time.
+
+    <stem>-stop.txt     Curated 1- and 2-letter additions. Needed
+                        when you want a SHORT (≤2 letter) token
+                        treated as a real word — at that length
+                        the embedded full dictionary is bypassed
+                        on purpose, so this is the only path that
+                        works for short tokens.
+
+Format for all three:
+    - one lowercase word per line
+    - blank lines and `# comment` lines ignored
+    - UTF-8
+
+Example (`uk_ua.txt`):
+    кубернетес
+    докерфайл
+    редіс
+
+Example (`uk_ua-stop.txt`):
+    хм
+    тю
+
+Tip: the embedded dictionaries already cover ~370k EN and ~333k UK
+entries plus a curated tech-vocab list. You only need files here for
+words you actually see auto-corrected wrongly.
+";
 
 fn handle_engine_event(
     ev: SwitcherEvent,

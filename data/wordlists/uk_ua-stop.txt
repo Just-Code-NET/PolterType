@@ -1,4 +1,4 @@
-# Hand-curated Ukrainian stop words.
+# Hand-curated Ukrainian stop words (compile-time baseline).
 #
 # Primary purpose: fill in 1- and 2-letter stop words (`а`, `і`, `у`,
 # `ці`, `цю`, …) the Hunspell uk_UA stems file lacks.
@@ -10,8 +10,15 @@
 # Secondary purpose: patch in longer inflected forms the Hunspell
 # stems list misses (`чую` from `чути`, etc.). For ≥3-letter tokens
 # this list is consulted as a *fallback* after the FST, so an entry
-# here is honoured at full length too — quicker than running
-# `cargo xtask wordlists fetch` and editing `uk_ua.txt`.
+# here is honoured at full length too.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/kb-switcher/wordlists/`:
+#   * `uk_ua-stop.txt`    → merged into THIS list at startup / reload
+#   * `uk_ua-extras.txt`  → merged into the user-overlay HashSet
+#   * `uk_ua.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via the "Reload Settings"
+# command, so an installed binary stays as customisable as a dev build.
 #
 # Format: one lowercase word per line; blank lines and `#` comments
 # ignored.

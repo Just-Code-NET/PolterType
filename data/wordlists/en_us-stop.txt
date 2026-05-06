@@ -1,4 +1,5 @@
-# Hand-curated 1- and 2-letter English stop words.
+# Hand-curated 1- and 2-letter English stop words (compile-time
+# baseline).
 #
 # DictionaryDetector consults this list (NOT the full embedded FST)
 # for buffers up to 2 letters long. Reason: large upstream English
@@ -7,6 +8,13 @@
 # "this is a real word, don't switch" signal, cause aggressive false
 # positives on Cyrillic / other-script users typing legitimate short
 # words. This list is intentionally conservative.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/kb-switcher/wordlists/`:
+#   * `en_us-stop.txt`    → merged into THIS list at startup / reload
+#   * `en_us-extras.txt`  → merged into the user-overlay HashSet
+#   * `en_us.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
 #
 # Format: one lowercase word per line; blank lines and `#` comments
 # ignored. Edit freely — entries are pure data.
