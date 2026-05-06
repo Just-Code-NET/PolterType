@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="windows-1252"?>
+<!--
+    WiX Toolset 3.x source for the kb-switcher MSI.
+
+    Built directly with `candle.exe` + `light.exe` (no cargo-wix
+    wrapper) so that all parameter-substitution is explicit:
+
+        candle  -dProductVersion=...
+                -dBinPath=...
+                -dLicensePath=...
+                -dIconPath=...   (optional; falls back to no icon)
+                installers\wix\main.wxs -out main.wixobj
+        light   main.wixobj -out kb-switcher.msi
+
+    The `installers\windows\build-msi.ps1` script wraps both calls.
+
+    UpgradeCode is *intentionally* fixed forever — it's the GUID Windows
+    keys MSI upgrades off, so changing it would orphan every existing
+    install. Per-component GUIDs are auto-generated (`Guid="*"`).
+-->
+<?define ProductName = "kb-switcher" ?>
+<?define Manufacturer = "kb-switcher contributors" ?>
+<?define UpgradeCode = "4F8B6C00-5D1E-4A3F-9B2C-1D0E2F3A4B50" ?>
+
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*"
+             Name="$(var.ProductName)"
+             Language="1033"
+             Codepage="1252"
+             Version="$(var.ProductVersion)"
+             Manufacturer="$(var.Manufacturer)"
+             UpgradeCode="$(var.UpgradeCode)">
+
+        <Package InstallerVersion="450"
+                 Compressed="yes"
+                 InstallScope="perUser"
+                 Description="Cross-platform automatic keyboard layout switcher"
+                 Manufacturer="$(var.Manufacturer)"
+                 Languages="1033"
+                 SummaryCodepage="1252" />
+
+        <!--
+            perUser scope: kb-switcher is a tray app the user launches
+            themselves — no service, no scheduled task — so installing
+            into the per-machine Program Files would gain nothing and
+            cost a UAC prompt on every install. perUser keeps the
+            install silent and contained to the current user's profile.
+        -->
+
+        <MajorUpgrade
+            DowngradeErrorMessage="A newer version of $(var.ProductName) is already installed."
+            AllowSameVersionUpgrades="yes" />
+
+        <MediaTemplate EmbedCab="yes" />
+
+        <!-- Optional EXE icon for Add/Remove Programs. The build
+             script defines IconPath only if an .ico is provided. -->
+        <?ifdef IconPath ?>
+            <Icon Id="AppIcon.exe" SourceFile="$(var.IconPath)" />
+            <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
+        <?endif ?>
+
+        <Property Id="ARPHELPLINK" Value="https://github.com/REPLACE-ME/kb-switcher" />
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/REPLACE-ME/kb-switcher" />
+
+        <Feature Id="MainFeature"
+                 Title="$(var.ProductName)"
+                 Level="1"
+                 ConfigurableDirectory="APPLICATIONROOTFOLDER">
+            <ComponentGroupRef Id="MainComponents" />
+            <ComponentRef Id="StartMenuShortcut" />
+        </Feature>
+
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <!-- LocalAppDataFolder = %LOCALAPPDATA%, perUser-friendly -->
+            <Directory Id="LocalAppDataFolder">
+                <Directory Id="ManufacturerFolder" Name="$(var.Manufacturer)">
+                    <Directory Id="APPLICATIONROOTFOLDER" Name="$(var.ProductName)" />
+                </Directory>
+            </Directory>
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="$(var.ProductName)" />
+            </Directory>
+        </Directory>
+
+        <ComponentGroup Id="MainComponents" Directory="APPLICATIONROOTFOLDER">
+            <Component Id="MainExecutable" Guid="*">
+                <File Id="ExeFile"
+                      Source="$(var.BinPath)"
+                      Name="kb-switcher.exe"
+                      KeyPath="yes" />
+                <RemoveFolder Id="RemoveAppRootFolder"
+                              Directory="APPLICATIONROOTFOLDER"
+                              On="uninstall" />
+                <RemoveFolder Id="RemoveManufacturerFolder"
+                              Directory="ManufacturerFolder"
+                              On="uninstall" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                               Name="installed"
+                               Type="integer"
+                               Value="1" />
+            </Component>
+            <Component Id="LicenseFile" Guid="*">
+                <File Id="LicenseTxt"
+                      Source="$(var.LicensePath)"
+                      Name="LICENSE"
+                      KeyPath="yes" />
+            </Component>
+        </ComponentGroup>
+
+        <DirectoryRef Id="ApplicationProgramsFolder">
+            <Component Id="StartMenuShortcut" Guid="*">
+                <Shortcut Id="StartMenuLink"
+                          Name="$(var.ProductName)"
+                          Description="Cross-platform automatic keyboard layout switcher"
+                          Target="[#ExeFile]"
+                          WorkingDirectory="APPLICATIONROOTFOLDER" />
+                <RemoveFolder Id="RemoveAppProgramsFolder"
+                              Directory="ApplicationProgramsFolder"
+                              On="uninstall" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\$(var.Manufacturer)\$(var.ProductName)"
+                               Name="shortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+            </Component>
+        </DirectoryRef>
+    </Product>
+</Wix>

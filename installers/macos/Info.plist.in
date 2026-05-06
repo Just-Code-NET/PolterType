@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Info.plist template for the kb-switcher macOS .app bundle.
+
+    `__VERSION__` is substituted by `installers/macos/build-dmg.sh`.
+    Everything else stays static across releases.
+
+    Notable choices:
+
+    * LSUIElement = true        kb-switcher is a tray-only app: no
+                                Dock icon, no main menu — same idea
+                                as Magnet, Rectangle, Bartender.
+    * LSMinimumSystemVersion    11.0 = Big Sur, the oldest version
+                                tao 0.30 + tray-icon 0.19 reliably
+                                build for. Bumped if upstream drops
+                                older targets.
+    * NSAccessibilityUsageDescription
+                                Required for the CGEventTap that the
+                                input listener installs. Without this
+                                key, macOS shows a generic permission
+                                prompt; with it, our reason is shown
+                                in System Settings → Privacy.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>kb-switcher</string>
+    <key>CFBundleExecutable</key>
+    <string>kb-switcher</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.kbswitcher.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>kb-switcher</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>__VERSION__</string>
+    <key>CFBundleVersion</key>
+    <string>__VERSION__</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>kb-switcher needs Accessibility access to detect keystrokes and switch the keyboard layout when you start typing in the wrong language.</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>kb-switcher contributors. MIT License.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>

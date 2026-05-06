@@ -1,5 +1,7 @@
 name: Release
 
+# Triggered on a `v*` tag (cuts a real release) or manually
+# (test the workflow without publishing — outputs go to artifacts only).
 on:
   push:
     tags:
@@ -13,103 +15,220 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
 
-jobs:
-  build:
-    name: build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            archive_ext: tar.gz
-            bin: kb-switcher
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            archive_ext: tar.gz
-            bin: kb-switcher
-          - os: macos-13
-            target: x86_64-apple-darwin
-            archive_ext: tar.gz
-            bin: kb-switcher
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive_ext: zip
-            bin: kb-switcher.exe
+# Per-platform packaging is intentionally split across three jobs
+# instead of being squeezed into a matrix-with-`if`s — the steps are
+# different enough (WiX vs lipo vs linuxdeploy) that one shared job
+# would just be a forest of `if: matrix.os == ...`. Three small jobs
+# make each pipeline readable, parallelise cleanly, and let a single
+# platform fail without holding up the others.
+#
+# Beta installers are *unsigned* (no Apple Developer ID, no Windows
+# code-signing cert in this phase). The release notes call out the
+# Gatekeeper / SmartScreen workaround so testers know what to do.
 
+jobs:
+  # ─── Linux: AppImage (x86_64) ────────────────────────────────────────
+  appimage:
+    name: AppImage (x86_64)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
-
+          targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
 
       - name: Install Linux native deps
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config libdbus-1-dev libudev-dev \
             libxkbcommon-dev libxkbcommon-x11-dev \
             libwayland-dev libx11-dev libxi-dev libxtst-dev libxdo-dev \
-            libgtk-3-dev libayatana-appindicator3-dev libasound2-dev
+            libgtk-3-dev libayatana-appindicator3-dev libasound2-dev \
+            file desktop-file-utils
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p kb-app
+      - name: Build release binary
+        run: cargo build --release --target x86_64-unknown-linux-gnu -p kb-app
 
-      - name: Stage artifact
-        shell: bash
+      - name: Render placeholder icon
         run: |
-          mkdir -p stage
-          cp target/${{ matrix.target }}/release/${{ matrix.bin }} stage/
-          cp README.md LICENSE CHANGELOG.md stage/
-          mkdir -p stage/docs
-          cp docs/PLAN.md docs/PERMISSIONS.md docs/AI.md docs/DECISIONS.md stage/docs/
-          if [ -f scripts/setup-linux.sh ]; then
-            mkdir -p stage/scripts
-            cp scripts/setup-linux.sh stage/scripts/
-          fi
+          mkdir -p target/dist
+          cargo xtask assets icon-png target/dist/icon-1024.png --size 1024
+          # linuxdeploy wants a 256×256 in the AppDir hierarchy.
+          # ImageMagick is preinstalled on ubuntu-latest.
+          magick target/dist/icon-1024.png -resize 256x256 target/dist/icon-256.png
 
-      - name: Archive (zip)
-        if: matrix.archive_ext == 'zip'
-        shell: pwsh
-        run: |
-          $name = "kb-switcher-${{ github.ref_name }}-${{ matrix.target }}.zip"
-          Compress-Archive -Path stage\* -DestinationPath $name
-          echo "ARCHIVE=$name" >> $env:GITHUB_ENV
-
-      - name: Archive (tar.gz)
-        if: matrix.archive_ext == 'tar.gz'
-        shell: bash
-        run: |
-          name="kb-switcher-${{ github.ref_name }}-${{ matrix.target }}.tar.gz"
-          tar -czf "$name" -C stage .
-          echo "ARCHIVE=$name" >> $GITHUB_ENV
+      - name: Build AppImage
+        env:
+          VERSION: ${{ github.ref_name }}
+          BIN_PATH: target/x86_64-unknown-linux-gnu/release/kb-switcher
+          ICON_PNG: target/dist/icon-256.png
+          OUT_DIR: target/dist
+        run: bash installers/linux/build-appimage.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARCHIVE }}
-          path: ${{ env.ARCHIVE }}
+          name: appimage-x86_64
+          path: target/dist/kb-switcher-*-x86_64.AppImage
           if-no-files-found: error
 
+  # ─── macOS: universal DMG ────────────────────────────────────────────
+  dmg:
+    name: DMG (universal)
+    # macos-latest is arm64; we cross-compile x86_64 from there. Avoids
+    # a second runner just for Intel.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries (both arches)
+        run: |
+          cargo build --release --target x86_64-apple-darwin   -p kb-app
+          cargo build --release --target aarch64-apple-darwin  -p kb-app
+
+      - name: Render and convert icon
+        run: |
+          mkdir -p target/dist
+          cargo xtask assets icon-png target/dist/icon-1024.png --size 1024
+          # Build a .icns from the source PNG using macOS's bundled
+          # `sips` + `iconutil`. The required 10 sizes per Apple's HIG.
+          mkdir -p target/dist/AppIcon.iconset
+          for size in 16 32 128 256 512; do
+            sips -z $size $size target/dist/icon-1024.png \
+                 --out target/dist/AppIcon.iconset/icon_${size}x${size}.png
+            sips -z $((size*2)) $((size*2)) target/dist/icon-1024.png \
+                 --out target/dist/AppIcon.iconset/icon_${size}x${size}@2x.png
+          done
+          iconutil --convert icns target/dist/AppIcon.iconset \
+                   --output target/dist/AppIcon.icns
+
+      - name: Build DMG
+        env:
+          VERSION: ${{ github.ref_name }}
+          BIN_X86_64: target/x86_64-apple-darwin/release/kb-switcher
+          BIN_ARM64: target/aarch64-apple-darwin/release/kb-switcher
+          ICON_ICNS: target/dist/AppIcon.icns
+          OUT_DIR: target/dist
+        run: bash installers/macos/build-dmg.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-universal
+          path: target/dist/kb-switcher-*-universal-apple-darwin.dmg
+          if-no-files-found: error
+
+  # ─── Windows: MSI (x86_64) ───────────────────────────────────────────
+  msi:
+    name: MSI (x86_64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install WiX Toolset
+        # windows-latest doesn't preinstall WiX, but Chocolatey is
+        # there. The package adds candle.exe / light.exe to PATH after
+        # this step (next steps see the new PATH).
+        run: choco install wixtoolset --no-progress -y
+        shell: pwsh
+
+      - name: Build release binary
+        run: cargo build --release --target x86_64-pc-windows-msvc -p kb-app
+
+      - name: Render icon and convert to .ico
+        # ImageMagick is preinstalled on windows-latest. We bake all
+        # the sizes Windows Explorer wants into the .ico so the file
+        # looks crisp from 16×16 (taskbar) to 256×256 (Vista+ shell).
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force target/dist | Out-Null
+          cargo xtask assets icon-png target/dist/icon-1024.png --size 1024
+          magick target/dist/icon-1024.png `
+            -define icon:auto-resize=256,128,64,48,32,16 `
+            target/dist/AppIcon.ico
+
+      - name: Build MSI
+        shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
+          BIN_PATH: target/x86_64-pc-windows-msvc/release/kb-switcher.exe
+          ICON_PATH: target/dist/AppIcon.ico
+          OUT_DIR: target/dist
+        run: |
+          # Reload PATH so the WiX install from the previous step is
+          # visible (Chocolatey updates the registry, not the current
+          # session). RefreshEnv is provided by the Chocolatey shim.
+          $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+          pwsh installers/windows/build-msi.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msi-x86_64
+          path: target/dist/kb-switcher-*-x86_64-pc-windows-msvc.msi
+          if-no-files-found: error
+
+  # ─── Publish: only when triggered by a tag ───────────────────────────
   release:
     name: GitHub Release
-    needs: build
+    needs: [appimage, dmg, msi]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
+      - name: List artifacts
+        run: ls -la dist/
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/kb-switcher-*-x86_64.AppImage
+            dist/kb-switcher-*-universal-apple-darwin.dmg
+            dist/kb-switcher-*-x86_64-pc-windows-msvc.msi
           draft: true
           fail_on_unmatched_files: true
           generate_release_notes: true
+          # Body shown above the autogen'd commit list. Tells testers
+          # what they need to know about *unsigned* beta builds — the
+          # workarounds here are the difference between "it works" and
+          # "Gatekeeper said no, I gave up".
+          body: |
+            ## kb-switcher ${{ github.ref_name }}
+
+            **Beta build — unsigned binaries.** The MSI / DMG / AppImage
+            below are produced by CI on `${{ github.sha }}`.
+
+            ### Install
+
+            * **Windows** — download the `.msi` and double-click. Per-user
+              install, no admin rights needed. SmartScreen may say
+              "Windows protected your PC"; click **More info** →
+              **Run anyway**.
+            * **macOS** — download the `.dmg`, drag `kb-switcher.app` into
+              `/Applications`. First launch shows "kb-switcher cannot be
+              opened because the developer cannot be verified" — right-
+              click the app and pick **Open**, or run
+              `xattr -dr com.apple.quarantine /Applications/kb-switcher.app`
+              once. Then grant Accessibility permission in System
+              Settings.
+            * **Linux** — download the `.AppImage`, `chmod +x` it, run.
+              On Wayland sessions, see `docs/PERMISSIONS.md` for the
+              evdev permission setup.
+
+            See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.

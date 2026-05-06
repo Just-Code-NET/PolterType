@@ -14,3 +14,9 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 ureq   = { version = "2", features = ["tls"] }
+
+# Used by the `assets icon-png` subcommand to generate the placeholder
+# 1024×1024 source PNG that release CI then converts to per-platform
+# icon formats (.ico, .icns) — keeps the repo binary-asset-free while
+# still letting the installers ship with a non-default icon.
+png    = "0.17"

@@ -114,6 +114,13 @@ data/
   layout-mappings/  declarative scancode→char tables (TOML)
 docs/
   PLAN.md / DECISIONS.md / PERMISSIONS.md / AI.md
+installers/         per-platform packaging — see "Releasing" below
+  wix/main.wxs              WiX 3.x source for the Windows MSI
+  windows/build-msi.ps1     wraps candle.exe + light.exe
+  macos/Info.plist.in       template for the .app bundle
+  macos/build-dmg.sh        universal-binary .app + .dmg via lipo + hdiutil
+  linux/kb-switcher.desktop the AppImage's .desktop entry
+  linux/build-appimage.sh   wraps linuxdeploy + appimage plugin
 scripts/
   setup-linux.sh — one-time evdev permission grant
 ```
@@ -147,6 +154,63 @@ function with a special case.
 
 Imperative mood, scope prefix when useful (`engine:`, `win:`, `ui:`,
 `ai:`). Reference the phase or doc when the change is design-bearing.
+
+## Releasing
+
+Releases are cut by pushing a `v*` tag. CI ([release.yml]) then
+builds three installers in parallel and attaches them to a draft
+GitHub Release:
+
+| Platform | Artifact | Tooling |
+|---|---|---|
+| Linux (x86_64) | `.AppImage` | `linuxdeploy` + appimage plugin |
+| macOS (universal: Intel + Apple Silicon) | `.dmg` | `lipo` + `hdiutil` |
+| Windows (x86_64) | `.msi` | WiX Toolset 3 (`candle` + `light`) |
+
+The packaging logic lives in [`installers/`](installers/) so it can
+also be run locally — useful when adjusting the WiX template or the
+DMG layout without round-tripping through GitHub Actions:
+
+```bash
+# Linux
+cargo build --release --target x86_64-unknown-linux-gnu -p kb-app
+cargo xtask assets icon-png target/dist/icon-256.png --size 256
+VERSION=local ICON_PNG=target/dist/icon-256.png \
+    bash installers/linux/build-appimage.sh
+
+# macOS (run on a Mac)
+cargo build --release --target x86_64-apple-darwin   -p kb-app
+cargo build --release --target aarch64-apple-darwin  -p kb-app
+VERSION=local \
+    BIN_X86_64=target/x86_64-apple-darwin/release/kb-switcher \
+    BIN_ARM64=target/aarch64-apple-darwin/release/kb-switcher \
+    bash installers/macos/build-dmg.sh
+
+# Windows
+cargo build --release --target x86_64-pc-windows-msvc -p kb-app
+choco install wixtoolset --no-progress -y   # one-time
+$env:VERSION = 'local'
+pwsh installers/windows/build-msi.ps1
+```
+
+Beta builds are **unsigned** — we don't yet have an Apple Developer
+ID or a Windows EV/OV cert. The release notes call out the
+Gatekeeper / SmartScreen workarounds so testers know what to click.
+
+To cut a release:
+
+1. Bump `[workspace.package].version` in the root `Cargo.toml` and
+   add a [CHANGELOG.md](CHANGELOG.md) entry.
+2. Commit, tag, push:
+   ```bash
+   git commit -am "release: v0.1.0-alpha.1"
+   git tag v0.1.0-alpha.1
+   git push origin main --tags
+   ```
+3. Wait for CI; the Release lands as a **draft** — review, edit
+   notes, and publish manually.
+
+[release.yml]: .github/workflows/release.yml
 
 ## Reporting bugs / asking for things
 

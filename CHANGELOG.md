@@ -89,6 +89,27 @@ hotkey `Ctrl+Shift+Backspace` always works, so devs can fix
 wrong-layout identifiers or write multi-language comments by
 explicitly asking the engine to act.
 
+### Beta installers via GitHub Actions
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`, which
+builds three platform-native installers in parallel and attaches
+them to a draft GitHub Release:
+
+* **Windows** — per-user `.msi` via WiX Toolset 3 (no admin needed,
+  no UAC prompt). Start menu shortcut, clean uninstall.
+* **macOS** — universal-binary `.dmg` (Intel + Apple Silicon merged
+  with `lipo`) containing a tray-only `kb-switcher.app` (`LSUIElement`
+  set; no Dock icon).
+* **Linux** — `.AppImage` (x86_64) built with `linuxdeploy`. Single
+  file, no system install.
+
+Beta builds are **unsigned** — Gatekeeper / SmartScreen will warn
+on first launch; the release notes call out the per-OS workaround.
+Code signing comes in a later phase.
+
+The packaging scripts under `installers/` are also runnable locally;
+see [CONTRIBUTING.md §Releasing](CONTRIBUTING.md#releasing).
+
 ### Known limitations / v0.1.x targets
 
 * No visual settings GUI — settings live in `config.toml`. iced/egui
@@ -98,7 +119,7 @@ explicitly asking the engine to act.
 * macOS / Linux backends are written from documentation and only
   validated by `cargo check` on CI; runtime tuning will land as
   contributors with the right hardware report issues.
-* No installers or signed binaries — released as raw artifacts on
-  GitHub Releases.
+* Beta builds are unsigned (no Apple Developer ID, no Windows EV /
+  OV cert yet) — code signing tracked for a later phase.
 
 [Unreleased]: https://github.com/REPLACE-ME/kb-switcher

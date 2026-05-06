@@ -34,6 +34,24 @@ layout, switches it, and fixes the last word.
 See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
 permissions story.
 
+## Install
+
+Beta builds are published as GitHub Releases —
+[**Releases page**](../../releases). Each release ships three
+artifacts:
+
+| OS | File | How to install |
+|---|---|---|
+| Windows 10 / 11 | `kb-switcher-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**. |
+| macOS 11+ (Intel + Apple Silicon) | `kb-switcher-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `kb-switcher.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/kb-switcher.app`). Then grant Accessibility permission. |
+| Linux (x86_64) | `kb-switcher-<ver>-x86_64.AppImage` | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland. |
+
+> Beta builds are **unsigned** — that's why Gatekeeper / SmartScreen
+> warn on first launch. Code signing comes in a later phase.
+
+Building from source is documented in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Stack
 
 - Pure Rust — no WebView, no Node.
