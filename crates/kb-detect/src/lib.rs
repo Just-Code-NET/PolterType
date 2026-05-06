@@ -257,6 +257,22 @@ impl Detector for WordPlausibilityDetector {
         let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
         let current_fit = self.fit(ctx.current_layout, current_text).unwrap_or(0.0);
 
+        // Acronym guard: a short all-uppercase token (`SQL`, `URL`,
+        // `JSON`) almost always reads as low-vowel "noise" under its
+        // own layout while the alt rendering coincidentally lands a
+        // vowel and looks Cyrillic-plausible (`SQL` ↔ `ІЙД`). The
+        // dict catches the well-known acronyms via the EN extras
+        // list; this is the safety net for the long tail. Capped at
+        // 5 letters so 6-letter words shouted in caps (`ПРИВІТ`,
+        // `HELLO`) still go through the normal scoring path.
+        if looks_like_acronym(current_text) {
+            return Verdict::Keep {
+                reason: format!(
+                    "current `{current_text}` looks like an all-caps acronym"
+                ),
+            };
+        }
+
         // Conservative veto: if current already reads as plausible
         // for its layout, don't switch even if the alternate is
         // marginally better. This is what catches `kubectl` /
@@ -364,15 +380,22 @@ impl LayoutDictionary {
     }
 
     /// Full-dict containment check (used for ≥ 3-letter tokens).
+    /// `short_stop_words` is consulted as a fallback so that anything
+    /// a user (or maintainer) adds to the curated stop list is
+    /// honoured regardless of token length — Hunspell-derived FSTs
+    /// often miss inflected / colloquial forms (`чую` from `чути`),
+    /// and the stop list is the path-of-least-friction place to
+    /// patch them in without regenerating the FST.
     pub fn contains(&self, word_lowercase: &str) -> bool {
-        if self.user_overlay.contains(word_lowercase) {
-            return true;
-        }
-        self.embedded.contains(word_lowercase.as_bytes())
+        self.user_overlay.contains(word_lowercase)
+            || self.short_stop_words.contains(word_lowercase)
+            || self.embedded.contains(word_lowercase.as_bytes())
     }
 
     /// Short-token containment check (used for ≤ 2-letter tokens).
-    /// Deliberately ignores the FST.
+    /// Deliberately ignores the FST — it ships too many spurious
+    /// 1- and 2-letter "words" (`ws`, `ax`, `oe`, …) that would
+    /// trigger false-positive Keep verdicts on short Cyrillic input.
     pub fn contains_short(&self, word_lowercase: &str) -> bool {
         self.short_stop_words.contains(word_lowercase) || self.user_overlay.contains(word_lowercase)
     }
@@ -449,9 +472,19 @@ impl Detector for DictionaryDetector {
     }
 
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
-        let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
+        let current_raw = ctx.text_for(ctx.current_layout).unwrap_or("");
 
-        let letter_count = current_text.chars().filter(|c| c.is_alphabetic()).count();
+        // Strip non-letter characters before lookup. Reason: the
+        // buffer can legitimately contain a scancode whose current-
+        // layout rendering is punctuation but whose alt-layout
+        // rendering is a letter (e.g. 0x27 → `;` in en-US, `ж` in
+        // uk-UA). The user typing a Cyrillic word in the wrong layout
+        // produces a current-render with `;` mid-string; we still
+        // want to compare against dictionary entries built from
+        // pure-letter words.
+        let current_text = letters_only_lower(current_raw);
+
+        let letter_count = current_text.chars().count();
         if letter_count == 0 {
             return Verdict::NoOpinion;
         }
@@ -471,7 +504,7 @@ impl Detector for DictionaryDetector {
         };
         let label = if short { "short-stop" } else { "dictionary" };
 
-        if lookup(ctx.current_layout, current_text) {
+        if lookup(ctx.current_layout, &current_text) {
             return Verdict::Keep {
                 reason: format!(
                     "current `{current_text}` is a {} {label} word",
@@ -484,17 +517,52 @@ impl Detector for DictionaryDetector {
             if layout == ctx.current_layout {
                 continue;
             }
-            if lookup(layout, text) {
+            // Strip the alt-layout rendering too: a buffer that
+            // contains a "letter in current, punct in alt" scancode
+            // (rare but possible — e.g. an apostrophe-position key
+            // where one layout has a letter and the other has `'`)
+            // would otherwise lose the dictionary hit on the
+            // pure-letter substring.
+            let alt_text = letters_only_lower(text);
+            if alt_text.is_empty() {
+                continue;
+            }
+            if lookup(layout, &alt_text) {
                 return Verdict::Switch(DetectionVerdict {
                     best_layout: layout.clone(),
                     confidence: 0.95,
-                    reason: format!("`{text}` is a {layout} {label} word"),
+                    reason: format!("`{alt_text}` is a {layout} {label} word"),
                 });
             }
         }
 
         Verdict::NoOpinion
     }
+}
+
+/// Strip every non-letter character from `s` and return a lowercase
+/// `String`. "Letter" here is `char::is_alphabetic`, so digits / `'` /
+/// `-` / spaces / punctuation are all dropped — the function is
+/// designed to feed clean tokens into a Hunspell-derived dictionary,
+/// which only contains pure-letter entries.
+///
+/// The motivating case: with the cross-layout-letter buffer hint, a
+/// buffer can contain a scancode whose *current* layout renders as
+/// punctuation but whose *alt* layout is a letter (0x27 → `;` in
+/// en-US, `ж` in uk-UA). The current-render then has stray `;`s
+/// mid-string and would never hit a dictionary entry. Stripping
+/// before lookup keeps the detector honest: if the *letter*
+/// substring is a real word, the verdict reflects that.
+fn letters_only_lower(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch.is_alphabetic() {
+            for low in ch.to_lowercase() {
+                out.push(low);
+            }
+        }
+    }
+    out
 }
 
 // ─── Code-token guard ────────────────────────────────────────────────
@@ -518,6 +586,38 @@ impl Detector for DictionaryDetector {
 ///
 /// Acronyms (`URL`, `HTML`) and ordinary capitalised prose
 /// (`Hello`, `Привіт`) deliberately do NOT trip the heuristic.
+/// Acronym shape: a short all-uppercase alphabetic token.
+///
+/// Used by the plausibility detector as a safety net for SQL / IDE /
+/// CLI / etc. that aren't in the embedded English dictionary. The
+/// well-known ones (URL, HTML, API, JSON, …) live in
+/// `data/wordlists/en_us-extras.txt` and are caught by the dict
+/// detector first; this function is the fallback for the long tail.
+///
+/// Length cap: 5 letters. Real acronyms are almost always ≤5 chars
+/// (HTTPS is the famous outlier). Anything longer (`HELLO`, `ПРИВІТ`)
+/// might just be shouted prose, where mis-keying is more likely than
+/// a deliberate caps acronym — let the normal plausibility pipeline
+/// decide.
+///
+/// All-letters requirement: `H2O`-style mixed letter+digit goes to
+/// `looks_like_code_token` instead.
+pub fn looks_like_acronym(text: &str) -> bool {
+    let letters: Vec<char> = text.chars().filter(|c| c.is_alphabetic()).collect();
+    if letters.is_empty() || letters.len() > 5 {
+        return false;
+    }
+    // Non-letter, non-whitespace characters disqualify (`SQL;` ≠
+    // acronym — let the code-token guard handle that).
+    if text
+        .chars()
+        .any(|c| !c.is_alphabetic() && !c.is_whitespace())
+    {
+        return false;
+    }
+    letters.iter().all(|c| c.is_uppercase())
+}
+
 pub fn looks_like_code_token(text: &str) -> bool {
     if text.is_empty() {
         return false;
@@ -787,6 +887,43 @@ mod tests {
         }
     }
 
+    /// Regression: ≥3-letter words added to the curated stop list
+    /// must also be honoured by the full-length lookup path. The
+    /// Hunspell stems file has `чути` but not the 1-sg `чую`; the
+    /// stop list is the easy fallback. The old `contains` only
+    /// checked the FST + user-overlay and would mis-classify `чую`
+    /// as "not a word" → switch to `xe.` under en-US.
+    #[test]
+    fn dict_keeps_long_word_added_to_short_stop_list() {
+        // Build a dict whose embedded FST is empty (simulating "this
+        // 3-letter word is NOT in the FST"), but whose stop list does
+        // contain it.
+        let mut m = HashMap::new();
+        let en_stop: HashSet<String> =
+            ["a", "i"].iter().map(|s| (*s).to_owned()).collect();
+        let uk_stop: HashSet<String> = ["а", "і", "у", "чую"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        m.insert(
+            LayoutId::from("en-US"),
+            LayoutDictionary::from_overlay_only(HashSet::new(), en_stop),
+        );
+        m.insert(
+            LayoutId::from("uk-UA"),
+            LayoutDictionary::from_overlay_only(HashSet::new(), uk_stop),
+        );
+        let det = DictionaryDetector::new(m);
+
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "xe.".into()), (uk.clone(), "чую".into())];
+        match det.judge(&ctx(&uk, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep for `чую` from stop list, got {other:?}"),
+        }
+    }
+
     // ─── code-token guard ─────────────────────────────────────────
 
     #[test]
@@ -832,6 +969,62 @@ mod tests {
         assert!(!looks_like_code_token("URL"));
         assert!(!looks_like_code_token("HTML"));
         assert!(!looks_like_code_token("API"));
+    }
+
+    // ─── acronym guard ─────────────────────────────────────────────
+
+    #[test]
+    fn acronym_guard_flags_short_uppercase() {
+        assert!(looks_like_acronym("SQL"));
+        assert!(looks_like_acronym("URL"));
+        assert!(looks_like_acronym("HTML"));
+        assert!(looks_like_acronym("JSON"));
+        assert!(looks_like_acronym("HTTPS"));
+        // Single letter still uppercase.
+        assert!(looks_like_acronym("I"));
+    }
+
+    #[test]
+    fn acronym_guard_ignores_too_long() {
+        // 6+ letters: more likely shouted prose than a deliberate
+        // caps acronym, so let the plausibility pipeline decide.
+        assert!(!looks_like_acronym("HELLO!"));
+        assert!(!looks_like_acronym("ПРИВІТ"));
+        assert!(!looks_like_acronym("HEAVENS"));
+    }
+
+    #[test]
+    fn acronym_guard_ignores_mixed_case() {
+        assert!(!looks_like_acronym("Sql"));
+        assert!(!looks_like_acronym("sql"));
+        assert!(!looks_like_acronym("HtmL"));
+        assert!(!looks_like_acronym("Hello"));
+        assert!(!looks_like_acronym("Привіт"));
+    }
+
+    #[test]
+    fn acronym_guard_ignores_empty_and_punctuated() {
+        assert!(!looks_like_acronym(""));
+        // Punctuation signals "not a clean acronym" — leave to
+        // looks_like_code_token / dict.
+        assert!(!looks_like_acronym("SQL;"));
+        assert!(!looks_like_acronym("h2o"));
+        assert!(!looks_like_acronym("API_KEY"));
+    }
+
+    /// Regression: typing `SQL` under en-US would render as `ІЙД`
+    /// under uk-UA (1 vowel — `і` — vs SQL's 0 vowels). Plausibility
+    /// scored the alt at ~1.0 vs current 0.25 → switch. Acronym
+    /// guard now keeps the current as-is.
+    #[test]
+    fn plausibility_keeps_short_uppercase_acronym() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "SQL".into()), (uk.clone(), "ІЙД".into())];
+        match detector().judge(&ctx(&en, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep for SQL acronym, got {other:?}"),
+        }
     }
 
     #[test]

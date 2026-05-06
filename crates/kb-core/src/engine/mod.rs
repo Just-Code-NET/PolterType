@@ -210,11 +210,15 @@ impl SwitcherEngine {
         // The lookup is cheap (one Win32 call on Windows, similarly
         // light on the other backends).
         let produced = self.translate_via_current_layout(ev.scancode, ev.modifiers.shift);
+        // Cross-layout letter hint: keeps Cyrillic words intact when
+        // typed under en-US (`б` at 0x33 would otherwise look like a
+        // `,` boundary). See `WordBuffer::feed` for the full rationale.
+        let letter_in_any_layout = self.layouts.is_letter_in_any_layout(ev.scancode);
 
         if let WordBoundary::WordCompleted {
             boundary_scancode,
             boundary_shift,
-        } = buffer.feed(ev, produced)
+        } = buffer.feed(ev, produced, letter_in_any_layout)
         {
             self.decide(buffer, boundary_scancode, boundary_shift);
             buffer.start_new_word();
@@ -345,8 +349,22 @@ impl SwitcherEngine {
 
         // Filter 2: token looks like an identifier (camelCase /
         // snake_case / letter+digit / code punct).
-        if snap.engine.suppress_in_identifiers && looks_like_code_token(&current_text) {
-            debug!(token = %current_text, "skipping auto-switch: looks like code identifier");
+        //
+        // We feed `looks_like_code_token` a *cleaned* rendering that
+        // strips cross-layout artifacts — characters whose scancode is
+        // a letter in some other layout but renders as punctuation
+        // under the current one. Without this, typing a Ukrainian word
+        // containing `ж` (scancode 0x27) under en-US produces a `;`
+        // mid-string and the heuristic would (wrongly) call the buffer
+        // "code". See `render_for_code_check` for details.
+        let token_for_code_check =
+            render_for_code_check(&keys, &current_layout, &self.layouts, &current_text);
+        if snap.engine.suppress_in_identifiers && looks_like_code_token(&token_for_code_check) {
+            debug!(
+                token = %current_text,
+                cleaned = %token_for_code_check,
+                "skipping auto-switch: looks like code identifier"
+            );
             let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
                 reason: format!("token `{current_text}` looks like an identifier"),
             });
@@ -538,6 +556,50 @@ fn is_structural_boundary(ch: char) -> bool {
     matches!(ch, ':' | '/' | '\\' | '@' | '=' | '#' | '&')
 }
 
+/// Render the buffer through the current layout, but skip every
+/// character that's a *cross-layout artifact* — i.e. punctuation
+/// under the current layout whose scancode is actually a letter
+/// somewhere else.
+///
+/// Why: with the cross-layout-letter buffer hint (see
+/// `WordBuffer::feed`), a buffer can contain scancodes whose current-
+/// layout rendering is `;` / `[` / `'` even though the user clearly
+/// meant a Cyrillic letter. The dictionary detector strips those
+/// before lookup; the code-token guard needs the same courtesy or it
+/// fires on every Ukrainian word containing `ж`, `х`, `ї`, `є`, etc.
+/// (their scancodes are punctuation in en-US: 0x27 → `;`, 0x1A → `[`,
+/// 0x28 → `'`, 0x1B → `]`). The visible bug: typing `Друже` under
+/// en-US rendered as `Lhe;t`, and the `;` made
+/// `looks_like_code_token` veto the auto-switch.
+///
+/// Falls back to the already-computed `current_text` if the current
+/// layout isn't loaded in the DB (shouldn't happen at runtime, but the
+/// engine's mid-decision path needs to keep going either way).
+fn render_for_code_check(
+    keys: &[kb_types::WordKey],
+    current_layout: &LayoutId,
+    layouts: &LayoutDb,
+    fallback: &str,
+) -> String {
+    let Some(mapping) = layouts.get(current_layout) else {
+        return fallback.to_owned();
+    };
+    let mut out = String::with_capacity(keys.len());
+    for &k in keys {
+        let Some(c) = mapping.translate_key(k) else {
+            continue;
+        };
+        // Cross-layout artifact: non-letter under current, but the
+        // scancode IS a letter in some other layout. The user meant a
+        // letter, not punctuation — drop it from the code-token view.
+        if !c.is_alphabetic() && layouts.is_letter_in_any_layout(k.scancode) {
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
 #[cfg(test)]
 mod boundary_tests {
     use super::is_structural_boundary;
@@ -559,6 +621,93 @@ mod boundary_tests {
                 "expected {c:?} natural-prose punctuation"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod code_check_render_tests {
+    use super::render_for_code_check;
+    use crate::layouts::LayoutDb;
+    use kb_layout::LayoutId;
+    use kb_types::WordKey;
+
+    fn k(scancode: u32, shift: bool) -> WordKey {
+        WordKey {
+            scancode,
+            shift,
+            timestamp_ms: 0,
+        }
+    }
+
+    /// Regression: typing the Ukrainian word `Друже` while en-US is
+    /// active produces the en-US render `Lhe;t` (because 0x27, the
+    /// uk-UA letter `ж`, is `;` under en-US). The bare `;` made
+    /// `looks_like_code_token` veto the auto-switch. The cleaned
+    /// rendering should drop that `;` and read `Lhet`.
+    #[test]
+    fn strips_cross_layout_punct_from_render() {
+        let db = LayoutDb::load_embedded();
+        let en = LayoutId::from("en-US");
+        // Scancodes for `Друже` in uk-UA — same physical keys as
+        // `L`, `h`, `e`, `;`, `t` in en-US.
+        let keys = vec![
+            k(0x26, true),  // Д / L
+            k(0x23, false), // р / h
+            k(0x12, false), // у / e
+            k(0x27, false), // ж / ;
+            k(0x14, false), // е / t
+        ];
+        let cleaned = render_for_code_check(&keys, &en, &db, "Lhe;t");
+        assert_eq!(cleaned, "Lhet");
+    }
+
+    /// Real `_` typed under en-US is genuine code intent — the
+    /// scancode (0x0C with shift) is `_` in both layouts and not a
+    /// letter anywhere. It must survive the cleanup so the
+    /// snake_case heuristic still fires on real code.
+    #[test]
+    fn keeps_genuine_underscore() {
+        let db = LayoutDb::load_embedded();
+        let en = LayoutId::from("en-US");
+        // `foo_bar` scancodes under en-US.
+        let keys = vec![
+            k(0x21, false), // f
+            k(0x18, false), // o
+            k(0x18, false), // o
+            k(0x0C, true),  // _
+            k(0x30, false), // b
+            k(0x1E, false), // a
+            k(0x13, false), // r
+        ];
+        let cleaned = render_for_code_check(&keys, &en, &db, "foo_bar");
+        assert_eq!(cleaned, "foo_bar");
+    }
+
+    /// Sanity: under uk-UA, the same `Друже` scancodes render as
+    /// pure letters; nothing to strip.
+    #[test]
+    fn cyrillic_render_unchanged() {
+        let db = LayoutDb::load_embedded();
+        let uk = LayoutId::from("uk-UA");
+        let keys = vec![
+            k(0x26, true),  // Д
+            k(0x23, false), // р
+            k(0x12, false), // у
+            k(0x27, false), // ж
+            k(0x14, false), // е
+        ];
+        let cleaned = render_for_code_check(&keys, &uk, &db, "Друже");
+        assert_eq!(cleaned, "Друже");
+    }
+
+    /// Fallback: if the current layout isn't in the DB the function
+    /// should return the supplied `fallback` string untouched.
+    #[test]
+    fn falls_back_when_layout_missing() {
+        let db = LayoutDb::load_embedded();
+        let nonexistent = LayoutId::from("xx-YY");
+        let cleaned = render_for_code_check(&[], &nonexistent, &db, "fallback");
+        assert_eq!(cleaned, "fallback");
     }
 }
 

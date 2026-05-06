@@ -61,15 +61,28 @@ impl WordBuffer {
     }
 
     /// Feed a [`KeyEvent`] together with the character it produces
-    /// under the **currently active** OS layout. Pass `None` if the
-    /// scancode has no mapping (control / function keys); the
-    /// classifier falls back to its scancode-only rules for those.
-    pub fn feed(&mut self, ev: KeyEvent, produced: Option<char>) -> WordBoundary {
+    /// under the **currently active** OS layout, plus a hint of
+    /// whether the same scancode is a *letter* under any of the
+    /// engine's known layouts. The hint catches the
+    /// "user is typing a Cyrillic word while the en-US layout is
+    /// active" case: scancode `0x27` is `;` in en-US (a boundary)
+    /// but `ж` in uk-UA (a word character). Without
+    /// `letter_in_any_layout` the buffer would split mid-word at
+    /// every such position.
+    ///
+    /// Pass `produced = None` if the scancode has no mapping at all
+    /// (control / function keys).
+    pub fn feed(
+        &mut self,
+        ev: KeyEvent,
+        produced: Option<char>,
+        letter_in_any_layout: bool,
+    ) -> WordBoundary {
         if ev.direction != KeyDirection::Press {
             return WordBoundary::InProgress;
         }
 
-        match classify(ev.scancode, produced) {
+        match classify(ev.scancode, produced, letter_in_any_layout) {
             KeyKind::Word => {
                 self.keys.push(WordKey {
                     scancode: ev.scancode,
@@ -110,9 +123,12 @@ enum KeyKind {
 }
 
 /// Classify the keystroke. Control / structural scancodes are matched
-/// first and decisively (they're the same on every layout). For
-/// everything else we look at the *character* the layout produced.
-fn classify(scancode: u32, produced: Option<char>) -> KeyKind {
+/// first and decisively (layout-independent). For data keys we use
+/// either the cross-layout "is letter somewhere" hint (covers users
+/// typing a Cyrillic word while en-US is active) or — if the
+/// scancode isn't ever a letter in any known layout — the actual
+/// character the *current* layout produced.
+fn classify(scancode: u32, produced: Option<char>, letter_in_any_layout: bool) -> KeyKind {
     // ---- Control / structural keys: layout-independent --------------
     match scancode {
         // Esc — abandon.
@@ -135,7 +151,16 @@ fn classify(scancode: u32, produced: Option<char>) -> KeyKind {
         _ => {}
     }
 
-    // ---- Data keys: classify by produced character ------------------
+    // ---- Cross-layout letter hint ----------------------------------
+    // If this scancode produces a letter in *any* known keyboard
+    // layout, treat it as part of a word — even if the *current*
+    // layout would render it as punctuation. Catches Cyrillic words
+    // typed while en-US is active (e.g. `ж`-position renders as `;`).
+    if letter_in_any_layout {
+        return KeyKind::Word;
+    }
+
+    // ---- Otherwise classify by current-layout's produced char -------
     let Some(ch) = produced else {
         // Scancode isn't in the layout's mapping table (e.g. exotic
         // OEM keys we don't track). Discard but don't abort the word.
@@ -176,11 +201,11 @@ mod tests {
     #[test]
     fn space_completes_word() {
         let mut b = WordBuffer::new();
-        assert_eq!(b.feed(press(0x23), Some('h')), WordBoundary::InProgress);
-        assert_eq!(b.feed(press(0x12), Some('e')), WordBoundary::InProgress);
+        assert_eq!(b.feed(press(0x23), Some('h'), true), WordBoundary::InProgress);
+        assert_eq!(b.feed(press(0x12), Some('e'), true), WordBoundary::InProgress);
         let WordBoundary::WordCompleted {
             boundary_scancode, ..
-        } = b.feed(press(0x39), Some(' '))
+        } = b.feed(press(0x39), Some(' '), false)
         else {
             panic!("expected WordCompleted");
         };
@@ -190,17 +215,17 @@ mod tests {
     #[test]
     fn backspace_pops() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23), Some('h'));
-        b.feed(press(0x12), Some('e'));
-        b.feed(press(0x0E), None); // Backspace
+        b.feed(press(0x23), Some('h'), true);
+        b.feed(press(0x12), Some('e'), true);
+        b.feed(press(0x0E), None, false); // Backspace
         assert_eq!(b.keys().len(), 1);
     }
 
     #[test]
     fn esc_clears_buffer() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23), Some('h'));
-        b.feed(press(0x01), None); // Esc
+        b.feed(press(0x23), Some('h'), true);
+        b.feed(press(0x01), None, false); // Esc
         assert_eq!(b.keys().len(), 0);
     }
 
@@ -208,27 +233,55 @@ mod tests {
     /// the letter `б` under uk-UA (word character). Earlier versions
     /// classified by scancode alone and silently dropped `б` /
     /// reset the word — Cyrillic words like `будь` got cut to `удь`
-    /// and then auto-switched to `elm`.
+    /// and then auto-switched to `elm`. The cross-layout-letter hint
+    /// (`true` here) is what keeps the buffer whole.
     #[test]
     fn classifies_by_produced_char_not_scancode() {
         let mut b = WordBuffer::new();
         // Simulate typing "будь" under uk-UA: scancodes the same as
         // ",elm" under en-US, but the produced characters differ.
-        assert_eq!(b.feed(press(0x33), Some('б')), WordBoundary::InProgress);
-        assert_eq!(b.feed(press(0x12), Some('у')), WordBoundary::InProgress);
-        assert_eq!(b.feed(press(0x26), Some('д')), WordBoundary::InProgress);
-        assert_eq!(b.feed(press(0x32), Some('ь')), WordBoundary::InProgress);
+        assert_eq!(
+            b.feed(press(0x33), Some('б'), true),
+            WordBoundary::InProgress
+        );
+        assert_eq!(
+            b.feed(press(0x12), Some('у'), true),
+            WordBoundary::InProgress
+        );
+        assert_eq!(
+            b.feed(press(0x26), Some('д'), true),
+            WordBoundary::InProgress
+        );
+        assert_eq!(
+            b.feed(press(0x32), Some('ь'), true),
+            WordBoundary::InProgress
+        );
         assert_eq!(b.keys().len(), 4);
     }
 
+    /// The flip side of the cross-layout hint: a scancode that's `,`
+    /// under en-US but `б` under uk-UA (`letter_in_any_layout = true`)
+    /// is treated as a word character even when the *current* layout
+    /// produced a comma. That's the deliberate trade-off — keeping
+    /// cross-script words intact wins; the comma stays in the buffer
+    /// and a never-letter boundary (Space / Enter / Tab) is what
+    /// actually ends the word.
     #[test]
-    fn comma_under_en_is_boundary() {
+    fn cross_layout_letter_scancode_absorbs_punct_under_current_layout() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23), Some('h'));
-        b.feed(press(0x12), Some('e'));
-        // Same 0x33 scancode but produces `,` under en-US.
+        b.feed(press(0x23), Some('h'), true);
+        b.feed(press(0x12), Some('e'), true);
+        // 0x33 produces `,` under en-US but is `б` under uk-UA —
+        // hint says `true`, so it's absorbed as a word character.
+        assert_eq!(
+            b.feed(press(0x33), Some(','), true),
+            WordBoundary::InProgress
+        );
+        assert_eq!(b.keys().len(), 3);
+        // Space (never a letter anywhere) is what actually ends the
+        // word.
         assert!(matches!(
-            b.feed(press(0x33), Some(',')),
+            b.feed(press(0x39), Some(' '), false),
             WordBoundary::WordCompleted { .. }
         ));
     }
@@ -236,12 +289,14 @@ mod tests {
     #[test]
     fn apostrophe_keeps_word_intact() {
         let mut b = WordBuffer::new();
-        // "don't"
-        b.feed(press(0x20), Some('d'));
-        b.feed(press(0x18), Some('o'));
-        b.feed(press(0x31), Some('n'));
-        b.feed(press(0x28), Some('\''));
-        b.feed(press(0x14), Some('t'));
+        // "don't" — 0x28 is `'` in en-US but `є` in uk-UA, so the
+        // cross-layout hint is `true` and the apostrophe is absorbed
+        // as a word character via the cross-layout path.
+        b.feed(press(0x20), Some('d'), true);
+        b.feed(press(0x18), Some('o'), true);
+        b.feed(press(0x31), Some('n'), true);
+        b.feed(press(0x28), Some('\''), true);
+        b.feed(press(0x14), Some('t'), true);
         assert_eq!(b.keys().len(), 5);
     }
 
@@ -250,22 +305,23 @@ mod tests {
         let mut b = WordBuffer::new();
         // "ім'я" — typographic apostrophe variants land in the same
         // is_word_char bucket.
-        b.feed(press(0x17), Some('і'));
-        b.feed(press(0x32), Some('м'));
-        b.feed(press(0x28), Some('\u{2019}'));
-        b.feed(press(0x2C), Some('я'));
+        b.feed(press(0x17), Some('і'), true);
+        b.feed(press(0x32), Some('м'), true);
+        b.feed(press(0x28), Some('\u{2019}'), true);
+        b.feed(press(0x2C), Some('я'), true);
         assert_eq!(b.keys().len(), 4);
     }
 
     #[test]
     fn period_ends_word_in_either_layout() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23), Some('h'));
-        b.feed(press(0x12), Some('e'));
-        // 0x35 is `/` under en-US but `.` under uk-UA — both are
-        // boundaries because both are non-word characters.
+        b.feed(press(0x23), Some('h'), true);
+        b.feed(press(0x12), Some('e'), true);
+        // 0x35 is `/` under en-US but `.` under uk-UA — neither is
+        // a letter anywhere, so `letter_in_any_layout = false` and
+        // the produced-char path classifies `.` as a boundary.
         assert!(matches!(
-            b.feed(press(0x35), Some('.')),
+            b.feed(press(0x35), Some('.'), false),
             WordBoundary::WordCompleted { .. }
         ));
     }
@@ -273,10 +329,10 @@ mod tests {
     #[test]
     fn unmapped_scancode_is_discarded_not_boundary() {
         let mut b = WordBuffer::new();
-        b.feed(press(0x23), Some('h'));
-        b.feed(press(0x12), Some('e'));
+        b.feed(press(0x23), Some('h'), true);
+        b.feed(press(0x12), Some('e'), true);
         // Some exotic OEM scancode the layout doesn't map.
-        b.feed(press(0x56), None);
+        b.feed(press(0x56), None, false);
         assert_eq!(b.keys().len(), 2);
     }
 }

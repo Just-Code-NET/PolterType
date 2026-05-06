@@ -1,11 +1,17 @@
-# Hand-curated 1- and 2-letter Ukrainian stop words.
+# Hand-curated Ukrainian stop words.
 #
-# DictionaryDetector uses this list (NOT the embedded Hunspell FST)
-# for buffers up to 2 letters long. Reason: the Hunspell uk_UA dict
-# is stem-based and lacks most short derived forms (`ці` from `цей`,
-# `цю` etc.) — without an explicit short-stop list, common 2-letter
-# Ukrainian words would be considered "not a word" and trigger
-# false-positive switches.
+# Primary purpose: fill in 1- and 2-letter stop words (`а`, `і`, `у`,
+# `ці`, `цю`, …) the Hunspell uk_UA stems file lacks.
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" (`ws`, `ax`, `oe`, …) that would block real
+# corrections.
+#
+# Secondary purpose: patch in longer inflected forms the Hunspell
+# stems list misses (`чую` from `чути`, etc.). For ≥3-letter tokens
+# this list is consulted as a *fallback* after the FST, so an entry
+# here is honoured at full length too — quicker than running
+# `cargo xtask wordlists fetch` and editing `uk_ua.txt`.
 #
 # Format: one lowercase word per line; blank lines and `#` comments
 # ignored.
@@ -49,3 +55,4 @@
 ще
 як
 що
+

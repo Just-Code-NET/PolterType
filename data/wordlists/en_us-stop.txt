@@ -41,9 +41,3 @@ to
 up
 us
 we
-kubectl
-http
-http://
-https
-https://
-ghjcrehby

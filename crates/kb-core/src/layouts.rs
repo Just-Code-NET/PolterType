@@ -264,6 +264,12 @@ fn derive_vowels(script: Script) -> Vec<char> {
 #[derive(Debug, Clone, Default)]
 pub struct LayoutDb {
     by_id: HashMap<LayoutId, LayoutMapping>,
+    /// Set of scancodes that map to an alphabetic character in *at
+    /// least one* loaded layout. Used by [`WordBuffer`] to keep
+    /// Cyrillic words intact when the user is typing them while the
+    /// en-US layout is active (and vice-versa). Precomputed on load
+    /// — cheap to query per-keystroke.
+    letter_scancodes: HashSet<u32>,
 }
 
 impl LayoutDb {
@@ -298,7 +304,11 @@ impl LayoutDb {
                 }
             }
         }
-        Self { by_id }
+        let letter_scancodes = compute_letter_scancodes(&by_id);
+        Self {
+            by_id,
+            letter_scancodes,
+        }
     }
 
     pub fn get(&self, id: &LayoutId) -> Option<&LayoutMapping> {
@@ -320,6 +330,30 @@ impl LayoutDb {
     pub fn is_empty(&self) -> bool {
         self.by_id.is_empty()
     }
+
+    /// Does this scancode map to an alphabetic character in *any* of
+    /// the loaded layouts? The word buffer uses this to keep words
+    /// intact when the user types in a script that the active OS
+    /// layout treats as punctuation (Cyrillic letters under en-US,
+    /// say). Layout-independent shifted variants count too — `є`
+    /// lives at 0x28 even though en-US treats that key as `'`.
+    pub fn is_letter_in_any_layout(&self, scancode: u32) -> bool {
+        self.letter_scancodes.contains(&scancode)
+    }
+}
+
+fn compute_letter_scancodes(by_id: &HashMap<LayoutId, LayoutMapping>) -> HashSet<u32> {
+    let mut out = HashSet::new();
+    for mapping in by_id.values() {
+        for (&sc, (plain, shift)) in &mapping.keys {
+            let plain_letter = plain.is_alphabetic();
+            let shift_letter = shift.is_some_and(char::is_alphabetic);
+            if plain_letter || shift_letter {
+                out.insert(sc);
+            }
+        }
+    }
+    out
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────

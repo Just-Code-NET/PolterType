@@ -22,10 +22,9 @@
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use crossbeam_channel::{Sender, unbounded};
-use rodio::source::{SineWave, Source};
+use rodio::buffer::SamplesBuffer;
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use thiserror::Error;
 use tracing::{debug, info, warn};
@@ -194,24 +193,121 @@ fn play_file(
     Ok(())
 }
 
-/// Play a synthesised fallback tone for `event`. Sine wave shaped
-/// with a brief amplitude envelope so it sounds like a soft "blip"
-/// rather than a click → pop → click. Cheap and asset-free.
+/// Play a synthesised fallback tone for `event`. Pre-rendered as a
+/// `SamplesBuffer` with a fade-in *and* fade-out envelope so the
+/// playback boundaries are smooth.
+///
+/// Why we render the envelope by hand instead of using rodio's
+/// chainable `fade_in` / `fade_out` adapters: rodio 0.20's
+/// `Source::fade_out` actually starts ramping at sample 0 and
+/// reaches silence at `duration`, which is the opposite of what the
+/// name suggests — the rest of the tone plays at zero amplitude.
+/// Computing the envelope ourselves lets us shape a real
+/// attack-sustain-release: 10-ms ramp up, body, 25-ms ramp down to
+/// silence at the very end.
+///
+/// The trailing taper is what fixes the "broken / glitchy" click on
+/// rapid pause/resume — cutting a sine mid-cycle leaves a sample-
+/// level discontinuity that the speaker reproduces as a hard pop.
 fn play_tone(
     event: SoundEvent,
     volume: f32,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (_stream, handle) = fresh_stream()?;
     let (freq, ms) = event.synth_tone();
-    let dur = Duration::from_millis(ms);
-    let source = SineWave::new(freq)
-        .take_duration(dur)
-        .fade_in(Duration::from_millis(10))
-        .amplify((volume * 0.4).clamp(0.0, 1.0));
+    let amp = (volume * 0.4).clamp(0.0, 1.0);
+    let source = synthesise_blip(freq, ms, amp, /* sample_rate */ 44_100);
     let sink = Sink::try_new(&handle)?;
     sink.append(source);
     // Same reason as play_file: must keep the stream alive until the
     // tone has actually been written out.
     sink.sleep_until_end();
     Ok(())
+}
+
+/// Build a single-channel `SamplesBuffer` containing a `freq`-Hz sine
+/// wave of `ms` milliseconds, with linear fade-in (10 ms) and
+/// fade-out (25 ms). Both ramps are clamped to a third of the total
+/// duration each so they never overlap on unusually short events.
+fn synthesise_blip(freq: f32, ms: u64, amp: f32, sample_rate: u32) -> SamplesBuffer<f32> {
+    let total = ((u64::from(sample_rate)).saturating_mul(ms) / 1000) as usize;
+    let cap = total / 3;
+    let fade_in = ((u64::from(sample_rate) * 10) / 1000) as usize;
+    let fade_out = ((u64::from(sample_rate) * 25) / 1000) as usize;
+    let fade_in = fade_in.min(cap);
+    let fade_out = fade_out.min(cap);
+
+    let two_pi_f = 2.0 * std::f32::consts::PI * freq;
+    let inv_sr = 1.0 / sample_rate as f32;
+
+    // Envelope: ramp from 0.0 at sample 0 to 1.0 at sample
+    // `fade_in - 1`, hold at 1.0 through the body, then ramp from 1.0
+    // back to exactly 0.0 at sample `total - 1`. Anchoring the
+    // boundary samples to silence is what kills the speaker click —
+    // a `1/fade_out` final amplitude is small but still reproduces
+    // as a faint pop on some speakers.
+    let mut samples = Vec::with_capacity(total);
+    for i in 0..total {
+        let envelope = if fade_in > 1 && i < fade_in {
+            i as f32 / (fade_in - 1) as f32
+        } else if fade_out > 1 && i >= total.saturating_sub(fade_out) {
+            let from_end = total - 1 - i;
+            from_end as f32 / (fade_out - 1) as f32
+        } else {
+            1.0
+        };
+        let t = i as f32 * inv_sr;
+        let v = (two_pi_f * t).sin() * envelope * amp;
+        samples.push(v);
+    }
+    SamplesBuffer::new(1, sample_rate, samples)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The blip must start and end at (very near) zero amplitude —
+    /// otherwise the speaker reproduces the discontinuity as a click,
+    /// which is exactly the regression we're guarding against.
+    #[test]
+    fn synthesised_blip_starts_and_ends_silent() {
+        let buf = synthesise_blip(440.0, 140, 1.0, 44_100);
+        let samples: Vec<f32> = buf.collect();
+        assert!(!samples.is_empty());
+        assert!(
+            samples.first().unwrap().abs() < 1e-3,
+            "first sample should be silent, got {}",
+            samples.first().unwrap()
+        );
+        assert!(
+            samples.last().unwrap().abs() < 1e-3,
+            "last sample should be silent, got {}",
+            samples.last().unwrap()
+        );
+    }
+
+    /// The body should reach peak amplitude — i.e. the envelope must
+    /// not collapse the whole signal (the rodio `fade_out` bug we
+    /// went around earlier did exactly that for ms > fade_dur).
+    #[test]
+    fn synthesised_blip_reaches_full_amplitude() {
+        let buf = synthesise_blip(440.0, 140, 1.0, 44_100);
+        let peak = buf
+            .map(f32::abs)
+            .fold(0.0_f32, f32::max);
+        assert!(peak > 0.95, "expected peak ≈ 1.0, got {peak}");
+    }
+
+    /// Even a 30-ms event (shorter than fade_in + fade_out together)
+    /// must still produce non-empty audio with capped ramps. This
+    /// locks in the `cap = total / 3` clamp.
+    #[test]
+    fn synthesised_blip_handles_very_short_durations() {
+        let buf = synthesise_blip(440.0, 30, 1.0, 44_100);
+        let samples: Vec<f32> = buf.collect();
+        assert_eq!(samples.len(), 44_100 * 30 / 1000);
+        assert!(samples.first().unwrap().abs() < 1e-3);
+        assert!(samples.last().unwrap().abs() < 1e-3);
+    }
 }

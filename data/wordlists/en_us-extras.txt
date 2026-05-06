@@ -158,6 +158,8 @@ wezterm
 tmux
 
 # ---- Databases / queues ----
+sql
+nosql
 postgres
 postgresql
 mysql
@@ -396,3 +398,4 @@ copilot
 gemini
 huggingface
 midjourney
+ghjcrehby
