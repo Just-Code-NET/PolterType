@@ -267,9 +267,7 @@ impl Detector for WordPlausibilityDetector {
         // `HELLO`) still go through the normal scoring path.
         if looks_like_acronym(current_text) {
             return Verdict::Keep {
-                reason: format!(
-                    "current `{current_text}` looks like an all-caps acronym"
-                ),
+                reason: format!("current `{current_text}` looks like an all-caps acronym"),
             };
         }
 
@@ -899,8 +897,7 @@ mod tests {
         // 3-letter word is NOT in the FST"), but whose stop list does
         // contain it.
         let mut m = HashMap::new();
-        let en_stop: HashSet<String> =
-            ["a", "i"].iter().map(|s| (*s).to_owned()).collect();
+        let en_stop: HashSet<String> = ["a", "i"].iter().map(|s| (*s).to_owned()).collect();
         let uk_stop: HashSet<String> = ["а", "і", "у", "чую"]
             .iter()
             .map(|s| (*s).to_owned())

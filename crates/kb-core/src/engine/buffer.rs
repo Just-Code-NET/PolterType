@@ -201,8 +201,14 @@ mod tests {
     #[test]
     fn space_completes_word() {
         let mut b = WordBuffer::new();
-        assert_eq!(b.feed(press(0x23), Some('h'), true), WordBoundary::InProgress);
-        assert_eq!(b.feed(press(0x12), Some('e'), true), WordBoundary::InProgress);
+        assert_eq!(
+            b.feed(press(0x23), Some('h'), true),
+            WordBoundary::InProgress
+        );
+        assert_eq!(
+            b.feed(press(0x12), Some('e'), true),
+            WordBoundary::InProgress
+        );
         let WordBoundary::WordCompleted {
             boundary_scancode, ..
         } = b.feed(press(0x39), Some(' '), false)

@@ -293,9 +293,7 @@ mod tests {
     #[test]
     fn synthesised_blip_reaches_full_amplitude() {
         let buf = synthesise_blip(440.0, 140, 1.0, 44_100);
-        let peak = buf
-            .map(f32::abs)
-            .fold(0.0_f32, f32::max);
+        let peak = buf.map(f32::abs).fold(0.0_f32, f32::max);
         assert!(peak > 0.95, "expected peak ≈ 1.0, got {peak}");
     }
 
