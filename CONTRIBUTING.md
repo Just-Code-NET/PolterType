@@ -25,6 +25,22 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+## `cargo xtask`
+
+The `xtask` subcommand is wired up via a cargo alias in
+[`.cargo/config.toml`](.cargo/config.toml) — no `cargo install` step
+needed, the alias is loaded automatically from any directory inside
+the workspace. If you previously did `cargo install cargo-xtask`
+because of older docs, that's an unrelated stub package — uninstall
+it with `cargo uninstall cargo-xtask` so it doesn't shadow our alias.
+
+```bash
+cargo xtask help            # list available subcommands
+cargo xtask wordlists fetch # re-download bundled dictionaries
+cargo xtask hooks install   # see below
+cargo xtask hooks uninstall
+```
+
 ## Git hooks (one-time per clone)
 
 ```bash

@@ -1,0 +1,19 @@
+# Cargo configuration shared across all contributors.
+#
+# Cargo loads this automatically when you run any `cargo` command from
+# anywhere inside the workspace — no `cargo install` step required.
+
+[alias]
+# Wires the `cargo xtask <subcommand>` shorthand to the local `xtask`
+# crate. Cargo aliases take precedence over external `cargo-*` binaries
+# on PATH, so `cargo install cargo-xtask` (which is an unrelated stub
+# package) doesn't shadow this. The trailing `--` forwards the rest of
+# the argv into our binary verbatim, so e.g.
+#     cargo xtask wordlists fetch
+# becomes
+#     cargo run --package xtask -- wordlists fetch
+#
+# `--quiet` suppresses cargo's "Compiling/Running" preamble so the
+# xtask's own output is the only thing on the user's terminal —
+# matters for the build-script-style messages our commands emit.
+xtask = "run --quiet --package xtask --"
