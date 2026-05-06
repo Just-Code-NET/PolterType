@@ -35,11 +35,36 @@ attach only to the data, not to consuming code (MPL).
   de-duplicated.
 * **Size:** ~333k entries.
 
+## ru_ru.txt, de_de.txt, es_es.txt, fr_fr.txt
+
+* **Source:** [LibreOffice/dictionaries](https://github.com/LibreOffice/dictionaries):
+  * `ru_RU/ru_RU.dic`
+  * `de/de_DE_frami.dic`
+  * `es/es_ES.dic`
+  * `fr_FR/fr.dic`
+* **License:** Each upstream dictionary ships its own licence. As of
+  2026 LibreOffice's bundled Hunspell dictionaries are most often
+  GPL-2-or-later or LGPL/MPL — review the per-language `README*.txt`
+  next to the `.dic` for the exact terms before redistributing a
+  built kb-switcher binary outside personal use. The licence applies
+  to **the wordlist data** only; the kb-switcher engine remains MIT.
+* **Processing:** the same generic Hunspell pipeline as `uk_ua.txt`
+  (strip affix flags, lowercase, keep letter-only stems).
+* **Size:** varies — typically 100–300k stems each, expanded to
+  millions of inflected forms by Hunspell at runtime, but we keep
+  only the stems for FST size.
+* **Status (2026-05-06):** layout TOML and short-stop word list
+  shipped; the bulk dictionaries are populated by `cargo xtask
+  wordlists fetch`. Until run, the FST is empty and detection falls
+  back to plausibility scoring (vowel ratio + script fit) — which
+  works well for cross-script pairs (RU vs EN) and adequately for
+  same-script pairs (DE vs EN, …) on prose, less so on short tokens.
+
 ## Refreshing
 
-Use the `xtask wordlists fetch` command to re-download and re-process
-both sources. The script verifies the upstream URLs return 200 and
-applies the same processing rules described above.
+Use the `cargo xtask wordlists fetch` command to re-download and
+re-process every source. The script verifies the upstream URLs return
+200 and applies the same processing rules described above.
 
 ## User overrides
 

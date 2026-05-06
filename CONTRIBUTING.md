@@ -25,6 +25,27 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+## Git hooks (one-time per clone)
+
+```bash
+cargo xtask hooks install
+```
+
+Wires the versioned hooks under [`.githooks/`](.githooks/):
+
+| Hook | Runs | Why |
+|---|---|---|
+| `pre-commit` | `cargo fmt --all -- --check` | No commits with formatter drift. |
+| `pre-push` | `cargo build --workspace --all-targets` | No pushes that don't compile. |
+
+Bypass a single run with `git commit --no-verify` / `git push
+--no-verify` if you really need to. Uninstall everything with
+`cargo xtask hooks uninstall`.
+
+The hooks mirror the gates CI enforces, so failing locally means
+failing on GitHub Actions — better to know in 2 seconds than in
+2 minutes after a push.
+
 ### Linux native deps
 
 Ubuntu / Debian:

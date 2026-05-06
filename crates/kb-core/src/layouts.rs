@@ -27,6 +27,17 @@ pub enum LayoutLoadError {
 
 /// Embedded layout descriptions baked into the binary at compile time.
 /// `(stem, mapping TOML, FST file stem to look up in EMBEDDED_WORDLISTS)`
+///
+/// Adding a new language at compile time = adding a triple here AND
+/// the matching entry in `crates/kb-core/build.rs::LAYOUTS`. (Build
+/// script and runtime live in different processes; the lists are kept
+/// in lock-step by hand. The build crashes loudly if the FST lookup
+/// stems don't match.)
+///
+/// For runtime-only languages (no rebuild), see `user_layout_dir()`
+/// and `LayoutDb::load_with_user_layouts`: drop a `*.toml` under
+/// `<config-dir>/kb-switcher/layouts/` and a matching `<stem>.txt`
+/// (and friends) under `<config-dir>/kb-switcher/wordlists/`.
 const fn embedded_layouts() -> &'static [(&'static str, &'static str, &'static str)] {
     &[
         (
@@ -38,6 +49,26 @@ const fn embedded_layouts() -> &'static [(&'static str, &'static str, &'static s
             "uk_ua.toml",
             include_str!("../../../data/layout-mappings/uk_ua.toml"),
             "uk_ua",
+        ),
+        (
+            "ru_ru.toml",
+            include_str!("../../../data/layout-mappings/ru_ru.toml"),
+            "ru_ru",
+        ),
+        (
+            "de_de.toml",
+            include_str!("../../../data/layout-mappings/de_de.toml"),
+            "de_de",
+        ),
+        (
+            "es_es.toml",
+            include_str!("../../../data/layout-mappings/es_es.toml"),
+            "es_es",
+        ),
+        (
+            "fr_fr.toml",
+            include_str!("../../../data/layout-mappings/fr_fr.toml"),
+            "fr_fr",
         ),
     ]
 }
@@ -135,7 +166,7 @@ impl LayoutMapping {
             }
         }
 
-        let vowels = derive_vowels(script);
+        let vowels = derive_vowels(&id, script);
 
         Ok(Self {
             id,
@@ -256,6 +287,41 @@ fn build_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDict
     ))
 }
 
+/// User-layout dictionary builder: like [`build_dictionary`] but
+/// without an embedded FST (user layouts can't ship binary blobs).
+/// The dictionary is purely the overlay files in `overlay_dir`:
+///
+/// * `<stem>.txt` and `<stem>-extras.txt` → `user_overlay`
+/// * `<stem>-stop.txt` → `short_stop_words`
+///
+/// If neither overlay file exists, returns `None` and the layout
+/// falls through to plausibility-only detection — still useful for
+/// catching wrong-layout typing on languages with distinctive scripts.
+fn build_user_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDictionary> {
+    let mut user_overlay: HashSet<String> = HashSet::new();
+    let mut short_stop_words: HashSet<String> = HashSet::new();
+    let mut any = false;
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "") {
+        user_overlay.extend(extra);
+        any = true;
+    }
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "-extras") {
+        user_overlay.extend(extra);
+        any = true;
+    }
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "-stop") {
+        short_stop_words.extend(extra);
+        any = true;
+    }
+    if !any {
+        return None;
+    }
+    Some(LayoutDictionary::from_overlay_only(
+        user_overlay,
+        short_stop_words,
+    ))
+}
+
 /// Read `<dir>/<stem><suffix>.txt` if present and parse it. Returns
 /// `None` for both "no overlay dir configured" and "file does not
 /// exist" — the caller treats both as "no user additions". Other I/O
@@ -303,20 +369,107 @@ pub fn user_wordlist_dir() -> Option<std::path::PathBuf> {
         .map(|dirs| dirs.config_dir().join("wordlists"))
 }
 
+/// Path under which user-supplied **layout mapping** TOML files live:
+/// `<config-dir>/kb-switcher/layouts/`. Any `*.toml` here is loaded
+/// alongside the embedded layouts, so a user can add support for a
+/// new keyboard / language without rebuilding the app.
+///
+/// Each user layout file:
+///
+/// * Uses the same TOML schema as the bundled `data/layout-mappings/*.toml`
+///   (see those for examples).
+/// * Has a unique `id` (BCP-47-style, e.g. `pl-PL`, `tr-TR`, `cs-CZ`).
+///   If the id collides with an embedded layout, the user file wins —
+///   so power users can override the bundled mapping.
+/// * Picks up its dictionary automatically: drop a matching
+///   `<stem>.txt` / `<stem>-extras.txt` / `<stem>-stop.txt` next door
+///   in `<config-dir>/kb-switcher/wordlists/`. (`<stem>` is the file
+///   stem, not the BCP-47 id, e.g. `pl_pl.txt` for `pl-PL`.)
+///
+/// Loading is best-effort: a malformed file logs a warning and is
+/// skipped. The rest of the app keeps working.
+pub fn user_layout_dir() -> Option<std::path::PathBuf> {
+    crate::settings::SettingsStore::project_dirs()
+        .ok()
+        .map(|dirs| dirs.config_dir().join("layouts"))
+}
+
+/// Read every `*.toml` file in `dir` and return parsed
+/// `(file_stem, body)` pairs sorted by file name. The stem is what
+/// the dictionary loader uses to find matching wordlists, so it must
+/// match the user's filename minus extension. Errors during dir-read
+/// or per-file-read are logged and skipped — this layer never fails.
+fn read_user_layout_files(dir: &Path) -> Vec<(String, String)> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(it) => it,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(e) => {
+            warn!(?dir, err = %e, "could not enumerate user layouts dir");
+            return Vec::new();
+        }
+    };
+    let mut out: Vec<(String, String)> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("toml") {
+            continue;
+        }
+        let stem = match path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s.to_owned(),
+            None => continue,
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(body) => out.push((stem, body)),
+            Err(e) => warn!(?path, err = %e, "could not read user layout file"),
+        }
+    }
+    // Stable order so logs are reproducible and the embedded-vs-user
+    // override semantics are deterministic across filesystems.
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
 fn first_char(s: &str) -> Option<char> {
     s.chars().next()
 }
 
 /// Default vowel set per script — adjusted in code for languages whose
 /// vowels diverge from the script default. Driven by the layout's `id`
-/// so that uk-UA and ru-RU (both Cyrillic) get different sets.
-fn derive_vowels(script: Script) -> Vec<char> {
-    match script {
-        Script::Latin => "aeiouy".chars().collect(),
-        Script::Cyrillic => "аеиіоуюяєїыэ".chars().collect(),
-        Script::Greek => "αεηιουω".chars().collect(),
-        Script::Armenian => "աեէիոույ".chars().collect(),
-        Script::Hebrew | Script::Arabic | Script::Other => Vec::new(),
+/// so that uk-UA and ru-RU (both Cyrillic) get different sets, and
+/// de-DE / fr-FR / es-ES get their accented vowels recognised.
+///
+/// Real-language vowels matter for the plausibility scorer: a buffer
+/// rendered through the wrong layout typically lands far outside the
+/// 0.25–0.55 vowel-ratio band of natural prose, which is the strongest
+/// signal we have when both candidate renderings are non-dictionary.
+///
+/// Per-layout overrides for languages whose vowel inventory differs
+/// meaningfully from the script default. Unknown ids fall through to
+/// the script default — fine for ad-hoc user layouts.
+fn derive_vowels(id: &LayoutId, script: Script) -> Vec<char> {
+    match id.as_str() {
+        "uk-UA" => "аеиіоуюяєї".chars().collect(),
+        "ru-RU" => "аеёиоуыэюя".chars().collect(),
+        // German vowels include the umlauts (ä, ö, ü). Native words
+        // routinely contain them; counting them as consonants would
+        // tank the plausibility score on common prose.
+        "de-DE" => "aeiouäöü".chars().collect(),
+        // Spanish vowels include the accented forms a user actually
+        // types via the dead-key flow (á, é, í, ó, ú) plus ü (in
+        // `pingüino`). We list both base and accented because both
+        // appear in finished text.
+        "es-ES" => "aeiouáéíóúü".chars().collect(),
+        // French is the most accent-heavy of the lot. The full set of
+        // vowel-bearing characters in everyday prose:
+        // a/e/i/o/u/y/à/â/é/è/ê/ë/î/ï/ô/û/ù/ü/ÿ.
+        "fr-FR" => "aeiouyàâéèêëîïôûùüÿ".chars().collect(),
+        _ => match script {
+            Script::Latin => "aeiouy".chars().collect(),
+            Script::Cyrillic => "аеиіоуюяєїыэё".chars().collect(),
+            Script::Greek => "αεηιουω".chars().collect(),
+            Script::Armenian => "աեէիոույ".chars().collect(),
+            Script::Hebrew | Script::Arabic | Script::Other => Vec::new(),
+        },
     }
 }
 
@@ -325,12 +478,20 @@ fn derive_vowels(script: Script) -> Vec<char> {
 #[derive(Debug, Clone, Default)]
 pub struct LayoutDb {
     by_id: HashMap<LayoutId, LayoutMapping>,
-    /// Set of scancodes that map to an alphabetic character in *at
-    /// least one* loaded layout. Used by [`WordBuffer`] to keep
-    /// Cyrillic words intact when the user is typing them while the
-    /// en-US layout is active (and vice-versa). Precomputed on load
-    /// — cheap to query per-keystroke.
-    letter_scancodes: HashSet<u32>,
+    /// `(scancode, shift_state)` pairs that map to an alphabetic
+    /// character in *at least one* loaded layout. Used by
+    /// [`WordBuffer`] to keep Cyrillic words intact when the user is
+    /// typing them while the en-US layout is active (and vice-versa).
+    /// Precomputed on load — cheap to query per-keystroke.
+    ///
+    /// Why shift-aware: 0x27 unshifted is `;` in en-US but `ж` in
+    /// uk-UA — a real cross-layout artifact. 0x0C *shifted* is `_` in
+    /// en-US but `?` in de-DE / `0` in fr-FR — neither alt is a
+    /// letter, so we must NOT confuse a deliberate underscore for an
+    /// artifact and strip it from `render_for_code_check`'s view.
+    /// Per-shift granularity is what makes the engine correct as the
+    /// loaded-layout count grows.
+    letter_scancodes: HashSet<(u32, bool)>,
 }
 
 impl LayoutDb {
@@ -344,9 +505,30 @@ impl LayoutDb {
     }
 
     /// Like [`load_embedded`] but lets the caller hand in the user
-    /// override directory (so tests can isolate from the real
-    /// filesystem). Production code uses `load_embedded`.
+    /// wordlist-overlay directory (so tests can isolate from the real
+    /// filesystem). User-supplied **layouts** are NOT loaded by this
+    /// path — call [`Self::load_with_user_layouts`] for that. Existing
+    /// callers that just want the bundled languages plus the
+    /// `<config-dir>/wordlists/` overlay use this.
     pub fn load_embedded_with_user_overlay(overlay_dir: Option<&Path>) -> Self {
+        Self::load_with_user_layouts(None, overlay_dir)
+    }
+
+    /// Full-fat loader: embedded layouts first, then any user layouts
+    /// from `layout_dir` (typically `<config-dir>/kb-switcher/layouts/`),
+    /// each picking up its dictionary from `overlay_dir`
+    /// (`<config-dir>/kb-switcher/wordlists/`).
+    ///
+    /// Order matters: embedded layouts go in first, then user layouts —
+    /// so a user TOML with a duplicated `id` overrides the bundled one.
+    /// That's the explicit power-user escape hatch ("the bundled fr-FR
+    /// disagrees with my keyboard, here's mine").
+    ///
+    /// Both arguments are optional. `None` for `layout_dir` is the
+    /// "embedded only" path (test default). `None` for `overlay_dir`
+    /// is "no wordlist customisation" (user dictionary file lookups
+    /// are skipped, embedded FSTs still apply).
+    pub fn load_with_user_layouts(layout_dir: Option<&Path>, overlay_dir: Option<&Path>) -> Self {
         let mut by_id = HashMap::new();
         for (name, body, fst_stem) in embedded_layouts() {
             let dictionary = build_dictionary(fst_stem, overlay_dir);
@@ -362,6 +544,32 @@ impl LayoutDb {
                 }
                 Err(e) => {
                     tracing::error!(file = name, err = %e, "failed to load embedded layout");
+                }
+            }
+        }
+        if let Some(dir) = layout_dir {
+            for (stem, body) in read_user_layout_files(dir) {
+                // User layouts don't ship an embedded FST — instead
+                // we look up their wordlist by stem, identical to the
+                // embedded path. If a same-stem dictionary doesn't
+                // exist, plausibility-only detection still works.
+                let dictionary = build_user_dictionary(&stem, overlay_dir);
+                match LayoutMapping::from_parts(&body, dictionary) {
+                    Ok(layout) => {
+                        let overriding = by_id.contains_key(&layout.id);
+                        info!(
+                            layout = %layout.id,
+                            keys = layout.keys.len(),
+                            dict = layout.dictionary.is_some(),
+                            stem,
+                            overriding,
+                            "loaded user layout"
+                        );
+                        by_id.insert(layout.id.clone(), layout);
+                    }
+                    Err(e) => {
+                        warn!(stem, err = %e, "failed to parse user layout TOML; skipping");
+                    }
                 }
             }
         }
@@ -392,25 +600,32 @@ impl LayoutDb {
         self.by_id.is_empty()
     }
 
-    /// Does this scancode map to an alphabetic character in *any* of
-    /// the loaded layouts? The word buffer uses this to keep words
-    /// intact when the user types in a script that the active OS
-    /// layout treats as punctuation (Cyrillic letters under en-US,
-    /// say). Layout-independent shifted variants count too — `є`
-    /// lives at 0x28 even though en-US treats that key as `'`.
-    pub fn is_letter_in_any_layout(&self, scancode: u32) -> bool {
-        self.letter_scancodes.contains(&scancode)
+    /// Does this `(scancode, shift)` keystroke produce an alphabetic
+    /// character in *any* of the loaded layouts? The word buffer
+    /// uses this to keep words intact when the user types in a
+    /// script the active OS layout treats as punctuation (Cyrillic
+    /// letters under en-US, say). Cross-layout-artifact stripping in
+    /// `render_for_code_check` uses the same signal.
+    ///
+    /// Shift-aware: `(0x27, false)` is `ж` in uk-UA (letter →
+    /// returns true), `(0x0C, true)` is `?` in de-DE (not letter →
+    /// returns false). The shift granularity matters once the loaded
+    /// set grows past two layouts — without it we'd start mistaking
+    /// genuine en-US punctuation for "user typed in another layout".
+    pub fn is_letter_in_any_layout(&self, scancode: u32, shift: bool) -> bool {
+        self.letter_scancodes.contains(&(scancode, shift))
     }
 }
 
-fn compute_letter_scancodes(by_id: &HashMap<LayoutId, LayoutMapping>) -> HashSet<u32> {
+fn compute_letter_scancodes(by_id: &HashMap<LayoutId, LayoutMapping>) -> HashSet<(u32, bool)> {
     let mut out = HashSet::new();
     for mapping in by_id.values() {
         for (&sc, (plain, shift)) in &mapping.keys {
-            let plain_letter = plain.is_alphabetic();
-            let shift_letter = shift.is_some_and(char::is_alphabetic);
-            if plain_letter || shift_letter {
-                out.insert(sc);
+            if plain.is_alphabetic() {
+                out.insert((sc, false));
+            }
+            if shift.is_some_and(char::is_alphabetic) {
+                out.insert((sc, true));
             }
         }
     }
@@ -426,8 +641,78 @@ mod tests {
     #[test]
     fn embedded_layouts_load() {
         let db = LayoutDb::load_embedded();
-        assert!(db.get(&LayoutId::from("en-US")).is_some());
-        assert!(db.get(&LayoutId::from("uk-UA")).is_some());
+        // The full set of bundled languages, all expected to load
+        // even when their FSTs are empty (the build script handles
+        // missing wordlists gracefully — see `crates/kb-core/build.rs`).
+        for id in ["en-US", "uk-UA", "ru-RU", "de-DE", "es-ES", "fr-FR"] {
+            assert!(
+                db.get(&LayoutId::from(id)).is_some(),
+                "embedded layout `{id}` did not load"
+            );
+        }
+    }
+
+    /// Shift-awareness regression: with de-DE in the loaded set,
+    /// scancode 0x0C unshifted is `ß` (a letter), but 0x0C *shifted*
+    /// is `?` (not a letter). Without per-shift granularity, the
+    /// `is_letter_in_any_layout` query for the shifted state would
+    /// (wrongly) return `true`, causing `render_for_code_check` to
+    /// drop genuine en-US underscores from `foo_bar` typed under en-US.
+    ///
+    /// We assert both halves explicitly so a future loaded layout
+    /// can't accidentally regress this without the test going red.
+    #[test]
+    fn letter_in_any_layout_is_shift_aware() {
+        let db = LayoutDb::load_embedded();
+        // 0x0C unshifted: en-US `-`, uk-UA `-`, ru-RU `-`,
+        //                 de-DE `ß` (letter!), es-ES `'`, fr-FR `)`.
+        //                 → letter somewhere → expect true.
+        assert!(
+            db.is_letter_in_any_layout(0x0C, false),
+            "0x0C unshifted produces `ß` in de-DE → should report letter"
+        );
+        // 0x0C shifted: en-US `_`, uk-UA `_`, ru-RU `_`,
+        //               de-DE `?`, es-ES `?`, fr-FR `°`.
+        //               → no letter anywhere → expect false.
+        assert!(
+            !db.is_letter_in_any_layout(0x0C, true),
+            "0x0C shifted is punctuation in every loaded layout → \
+             must NOT report letter (or `foo_bar` loses its underscore)"
+        );
+    }
+
+    /// New languages have their distinguishing scancodes mapped to
+    /// the right glyphs, so an engine running with a fresh build
+    /// produces correct cross-layout renderings out of the box.
+    #[test]
+    fn new_languages_translate_distinctive_keys() {
+        let db = LayoutDb::load_embedded();
+        let cases = [
+            // (layout, scancode, shift, expected)
+            ("ru-RU", 0x10u32, false, 'й'), // Russian top-row anchor
+            ("ru-RU", 0x29, false, 'ё'),    // Russian backtick row
+            ("de-DE", 0x15, false, 'z'),    // German QWERTZ
+            ("de-DE", 0x2C, false, 'y'),    // German Y
+            ("de-DE", 0x1A, false, 'ü'),    // German umlaut
+            ("es-ES", 0x27, false, 'ñ'),    // Spanish ñ
+            ("fr-FR", 0x10, false, 'a'),    // French AZERTY
+            ("fr-FR", 0x03, false, 'é'),    // French unshifted accented digit
+        ];
+        for (id, sc, shift, expected) in cases {
+            let mapping = db.get(&LayoutId::from(id)).unwrap_or_else(|| {
+                panic!("layout `{id}` not loaded");
+            });
+            let got = mapping.translate_key(WordKey {
+                scancode: sc,
+                shift,
+                timestamp_ms: 0,
+            });
+            assert_eq!(
+                got,
+                Some(expected),
+                "layout {id} sc=0x{sc:X} shift={shift}: expected `{expected}` got {got:?}"
+            );
+        }
     }
 
     #[test]
@@ -635,6 +920,138 @@ mod tests {
         let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
         assert!(db.get(&LayoutId::from("en-US")).is_some());
         assert!(db.get(&LayoutId::from("uk-UA")).is_some());
+    }
+
+    // ─── User-supplied layouts (runtime add-a-language) ────────────
+
+    /// Minimal but valid layout TOML used by the user-layout tests
+    /// below. Two scancodes is enough: the parser populates `keys`
+    /// with whatever it sees, so the count of loaded layouts (which
+    /// is what we actually assert on) doesn't depend on a specific
+    /// alphabet size.
+    fn minimal_layout_toml(id: &str, name: &str, script: &str) -> String {
+        format!(
+            r#"
+id     = "{id}"
+name   = "{name}"
+script = "{script}"
+
+[keys]
+0x10 = {{ plain = "x", shift = "X" }}
+0x11 = {{ plain = "y", shift = "Y" }}
+"#,
+        )
+    }
+
+    /// A user-layout TOML dropped under `<config-dir>/layouts/`
+    /// shows up in the loaded `LayoutDb`. This is the
+    /// "add-a-language without rebuild" path.
+    #[test]
+    fn user_layout_dir_adds_extra_layout() {
+        let layout_tmp = TmpDir::new("user-layouts-add");
+        std::fs::write(
+            layout_tmp.0.join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+        )
+        .expect("write user layout");
+
+        let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), None);
+        assert!(
+            db.get(&LayoutId::from("kk-KZ")).is_some(),
+            "user-side TOML at <dir>/kk_kz.toml should load as kk-KZ"
+        );
+        // Embedded layouts still present.
+        assert!(db.get(&LayoutId::from("en-US")).is_some());
+    }
+
+    /// A user TOML whose `id` collides with an embedded layout wins
+    /// — explicit power-user override path. We check the override by
+    /// looking at the displayed name (which we set to a unique
+    /// sentinel so the test isn't vulnerable to other fields drifting).
+    #[test]
+    fn user_layout_overrides_embedded_with_same_id() {
+        let layout_tmp = TmpDir::new("user-layouts-override");
+        std::fs::write(
+            layout_tmp.0.join("en_us.toml"),
+            minimal_layout_toml("en-US", "USER-OVERRIDE-EN", "Latin"),
+        )
+        .expect("write user layout");
+
+        let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), None);
+        let en = db.get(&LayoutId::from("en-US")).expect("en-US present");
+        assert_eq!(
+            en.name, "USER-OVERRIDE-EN",
+            "user TOML should win over embedded layout"
+        );
+    }
+
+    /// A malformed user TOML logs a warning and is skipped — the
+    /// rest of the layout DB still loads. Loud-but-graceful is the
+    /// contract; we don't want one bad config file to brick the
+    /// whole app.
+    #[test]
+    fn malformed_user_layout_is_skipped() {
+        let layout_tmp = TmpDir::new("user-layouts-malformed");
+        std::fs::write(
+            layout_tmp.0.join("bad.toml"),
+            "this is not valid TOML at all <<<>>>",
+        )
+        .expect("write bad layout");
+
+        let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), None);
+        // Embedded layouts still loaded.
+        assert!(db.get(&LayoutId::from("en-US")).is_some());
+        // The malformed one didn't crash anything; nothing was added.
+        assert!(db.get(&LayoutId::from("bad")).is_none());
+    }
+
+    /// User layouts pick up a matching wordlist overlay via the same
+    /// `<stem>` mechanism as embedded layouts. With overlay-only
+    /// dicts (no embedded FST), `contains` should still see the user-
+    /// added word — proving the user-layout / user-wordlist pipeline
+    /// is wired end-to-end.
+    #[test]
+    fn user_layout_picks_up_matching_wordlist() {
+        let layout_tmp = TmpDir::new("user-layouts-dict-l");
+        let overlay_tmp = TmpDir::new("user-layouts-dict-w");
+        std::fs::write(
+            layout_tmp.0.join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+        )
+        .expect("write user layout");
+        // A word from the user wordlist that obviously isn't in any
+        // embedded FST.
+        std::fs::write(overlay_tmp.0.join("kk_kz.txt"), "тілқолданбасы\n")
+            .expect("write user wordlist");
+
+        let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), Some(&overlay_tmp.0));
+        let dict = db
+            .get(&LayoutId::from("kk-KZ"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("kk-KZ dictionary built from overlay");
+        assert!(dict.contains("тілқолданбасы"));
+    }
+
+    /// User layout without any matching wordlist file → no
+    /// dictionary attached, but the layout itself loads. Detection
+    /// then falls back to plausibility scoring, which is fine for
+    /// distinctive scripts.
+    #[test]
+    fn user_layout_without_wordlist_still_loads() {
+        let layout_tmp = TmpDir::new("user-layouts-nodict-l");
+        let overlay_tmp = TmpDir::new("user-layouts-nodict-w"); // empty
+        std::fs::write(
+            layout_tmp.0.join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+        )
+        .expect("write user layout");
+
+        let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), Some(&overlay_tmp.0));
+        let layout = db.get(&LayoutId::from("kk-KZ")).expect("kk-KZ loaded");
+        assert!(
+            layout.dictionary.is_none(),
+            "no overlay file → no dictionary attached"
+        );
     }
 
     /// Reload-style test: build twice with different overlay

@@ -1,0 +1,33 @@
+#!/bin/sh
+# kb-switcher — pre-push hook
+#
+# Refuses to push if the workspace doesn't build cleanly. Catches
+# the most embarrassing class of CI failure (a missed file, a typo
+# in a `use`, a broken match arm) before it hits GitHub Actions.
+#
+# Why `cargo build --workspace --all-targets` and not `cargo check`:
+# the user explicitly asked for "build". This also exercises the
+# build scripts (kb-core's wordlist→FST compiler, etc.) which a
+# `cargo check` can skip caching weirdness around.
+#
+# Bypass (use sparingly):
+#     git push --no-verify
+#
+# To install / re-install all hooks:
+#     cargo xtask hooks install
+
+set -e
+
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "kb-switcher pre-push: cargo not found, skipping build check"
+    exit 0
+fi
+
+echo "kb-switcher pre-push: cargo build --workspace --all-targets"
+if ! cargo build --workspace --all-targets; then
+    echo
+    echo "kb-switcher pre-push: build failed."
+    echo "Fix the errors above, then re-push."
+    echo "(or \`git push --no-verify\` if you really need to bypass)"
+    exit 1
+fi

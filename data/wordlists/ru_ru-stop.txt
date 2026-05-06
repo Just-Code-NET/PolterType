@@ -1,0 +1,67 @@
+# Hand-curated 1- and 2-letter Russian stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections. Mirrors
+# the en_us-stop / uk_ua-stop pattern.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/kb-switcher/wordlists/`:
+#   * `ru_ru-stop.txt`    → merged into THIS list at startup / reload
+#   * `ru_ru-extras.txt`  → merged into the user-overlay HashSet
+#   * `ru_ru.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter prepositions / conjunctions / pronouns
+а
+б
+в
+ж
+и
+к
+о
+с
+у
+я
+
+# 2-letter common words: prepositions, conjunctions, pronouns, particles
+бы
+во
+да
+до
+ее
+её
+ей
+ею
+же
+за
+из
+им
+их
+ко
+ли
+мы
+на
+не
+ни
+но
+ну
+об
+он
+от
+по
+со
+то
+ту
+ты
+уж
+эх
+эй
+эк
+эм
+их
+вы

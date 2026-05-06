@@ -1,0 +1,40 @@
+# Hand-curated 1- and 2-letter German stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/kb-switcher/wordlists/`:
+#   * `de_de-stop.txt`    → merged into THIS list at startup / reload
+#   * `de_de-extras.txt`  → merged into the user-overlay HashSet
+#   * `de_de.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — German prose has no real one-letter words; deliberately
+# empty so a buffer of length 1 in the wrong layout doesn't get a
+# false-positive `Keep` veto.
+
+# 2-letter — German function words and common particles.
+ab
+am
+an
+da
+du
+ei
+er
+es
+ja
+im
+in
+je
+ob
+oh
+so
+um
+wo
+zu

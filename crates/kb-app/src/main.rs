@@ -65,15 +65,19 @@ fn main() -> Result<()> {
 
     // ─── Layouts ───────────────────────────────────────────────────
     // Embedded mappings + dictionaries baked at build time, plus
-    // optional user overlay from `<config-dir>/wordlists/<stem>.txt`.
+    // optional user-supplied layouts from `<config-dir>/layouts/*.toml`
+    // and optional wordlist overlays from `<config-dir>/wordlists/`.
     let user_wordlist_dir = kb_core::layouts::user_wordlist_dir();
-    let layouts = Arc::new(LayoutDb::load_embedded_with_user_overlay(
+    let user_layout_dir = kb_core::layouts::user_layout_dir();
+    let layouts = Arc::new(LayoutDb::load_with_user_layouts(
+        user_layout_dir.as_deref(),
         user_wordlist_dir.as_deref(),
     ));
     info!(
         loaded = layouts.len(),
         ids = ?layouts.ids().collect::<Vec<_>>(),
         wordlist_overlay = ?user_wordlist_dir,
+        layout_overlay = ?user_layout_dir,
         "layout DB ready"
     );
 
@@ -167,6 +171,7 @@ fn main() -> Result<()> {
     let item_settings = MenuItem::new("Open Settings (config.toml)…", true, None);
     let item_logs = MenuItem::new("Open Logs Folder…", true, None);
     let item_wordlists = MenuItem::new("Open User Wordlists Folder…", true, None);
+    let item_layouts = MenuItem::new("Open User Layouts Folder…", true, None);
     let item_reload = MenuItem::new("Reload Settings", true, None);
     let item_pause = MenuItem::new("Pause auto-switch", true, None);
     let item_about = MenuItem::new(
@@ -179,6 +184,7 @@ fn main() -> Result<()> {
         &item_settings,
         &item_logs,
         &item_wordlists,
+        &item_layouts,
         &item_reload,
         &PredefinedMenuItem::separator(),
         &item_pause,
@@ -190,6 +196,7 @@ fn main() -> Result<()> {
     let settings_id = item_settings.id().clone();
     let logs_id = item_logs.id().clone();
     let wordlists_id = item_wordlists.id().clone();
+    let layouts_id = item_layouts.id().clone();
     let reload_id = item_reload.id().clone();
     let pause_id = item_pause.id().clone();
     let quit_id = item_quit.id().clone();
@@ -281,6 +288,17 @@ fn main() -> Result<()> {
                     match ensure_user_wordlist_dir() {
                         Ok(dir) => open_path(&dir, "user wordlists folder"),
                         Err(e) => warn!(?e, "could not prepare user wordlists folder"),
+                    }
+                } else if id == layouts_id {
+                    // Same first-run treatment as wordlists: ensure
+                    // the directory exists and drop a README that
+                    // explains the TOML schema so the user can copy
+                    // an embedded mapping from the repo as a starting
+                    // point. New layouts in this folder are picked up
+                    // on app restart.
+                    match ensure_user_layout_dir() {
+                        Ok(dir) => open_path(&dir, "user layouts folder"),
+                        Err(e) => warn!(?e, "could not prepare user layouts folder"),
                     }
                 } else if id == reload_id {
                     // Reload `config.toml` AND re-read user-overlay
@@ -396,6 +414,81 @@ fn ensure_user_wordlist_dir() -> anyhow::Result<PathBuf> {
     }
     Ok(dir)
 }
+
+/// Resolve the user layouts directory, create it if missing, and
+/// drop a `README.txt` on first creation so a user opening it for
+/// the first time can immediately see the TOML schema and pick up
+/// an embedded mapping as a starting point. Returns the directory
+/// path on success.
+///
+/// Same single-shot behaviour as the wordlists README — once the
+/// directory exists we never touch the README again.
+fn ensure_user_layout_dir() -> anyhow::Result<PathBuf> {
+    let dir =
+        kb_core::layouts::user_layout_dir().context("could not determine user-config directory")?;
+    let needs_seed = !dir.exists();
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("could not create layouts dir at {}", dir.display()))?;
+    if needs_seed {
+        let readme = dir.join("README.txt");
+        if let Err(e) = std::fs::write(&readme, USER_LAYOUTS_README) {
+            warn!(?e, ?readme, "could not seed README in layouts folder");
+        }
+    }
+    Ok(dir)
+}
+
+/// One-time README seeded into the user layouts folder. Mirrors the
+/// wordlists README's plain-text, no-markdown style.
+const USER_LAYOUTS_README: &str = "\
+kb-switcher — user layouts
+===========================
+
+Drop layout-mapping TOML files here to add support for keyboards /
+languages the app doesn't ship out of the box. New layouts are
+picked up on the next app start.
+
+File naming:
+    Use a clear file stem matching the language code, lowercase, with
+    underscore between language and country: `pl_pl.toml`, `tr_tr.toml`,
+    `cs_cz.toml`, `nl_nl.toml`, …
+
+TOML schema (same as the bundled `data/layout-mappings/*.toml`):
+
+    id     = \"pl-PL\"          # BCP-47 ish; what config.toml refers to
+    name   = \"Polski\"         # display name in the tray (optional)
+    script = \"Latin\"          # Latin / Cyrillic / Greek / Armenian / Hebrew / Arabic / Other
+
+    [keys]
+    # Win SC Set-1 scancode → produced character.
+    # `plain` is unshifted, `shift` is the shifted variant (optional).
+    0x10 = { plain = \"q\", shift = \"Q\" }
+    0x11 = { plain = \"w\", shift = \"W\" }
+    # … and so on for the alphanumeric / punctuation rows that
+    #   matter for word-boundary detection.
+
+The bundled `en_us.toml` and `uk_ua.toml` files are excellent
+copy-paste starting points — see the kb-switcher source repo,
+`data/layout-mappings/`.
+
+Picking up dictionary support:
+    To get full word-detection (not just plausibility scoring),
+    drop matching wordlists alongside in
+    `<config-dir>/kb-switcher/wordlists/`:
+
+        <stem>.txt          # main wordlist, one lowercase word per line
+        <stem>-extras.txt   # same effect, separate file for organisation
+        <stem>-stop.txt     # 1- and 2-letter stop words
+
+    where `<stem>` is your TOML file's stem (`pl_pl` for `pl_pl.toml`).
+    See the user wordlists README in `<config-dir>/kb-switcher/wordlists/`
+    for the format.
+
+Override the bundled mapping:
+    If your TOML's `id` matches an embedded layout (e.g. `de-DE`),
+    your file wins. Use this if your physical keyboard differs from
+    the bundled mapping.
+";
 
 /// One-time README seeded into the user wordlists folder. Plain
 /// text (no markdown), short, and readable in any editor / preview
@@ -569,15 +662,29 @@ fn collect_dicts(
 /// number of dictionaries successfully loaded. Always rebuilds — even
 /// when the user added zero new entries — so the user gets a clear
 /// signal in the log that the reload took effect.
+///
+/// Scope of the reload:
+///
+/// * Wordlist overlays for **already-loaded** layouts → picked up
+///   immediately (this is the load-bearing case — adding tech vocab
+///   like `kubectl`, `terraform`, …).
+/// * Brand-new user layouts (a freshly-dropped TOML in
+///   `<config-dir>/kb-switcher/layouts/`) → require an app restart.
+///   The engine holds a snapshot `Arc<LayoutDb>`, so the new layout
+///   wouldn't be in its scancode-translation tables anyway. We log
+///   loud-and-clear if we see one, so the user knows.
 fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
-    let user_dir = kb_core::layouts::user_wordlist_dir();
-    let new_layouts = LayoutDb::load_embedded_with_user_overlay(user_dir.as_deref());
+    let wordlist_dir = kb_core::layouts::user_wordlist_dir();
+    let layout_dir = kb_core::layouts::user_layout_dir();
+    let new_layouts =
+        LayoutDb::load_with_user_layouts(layout_dir.as_deref(), wordlist_dir.as_deref());
     let new_dicts = collect_dicts(&new_layouts);
     let n = new_dicts.len();
     handle.replace_dicts(new_dicts);
     info!(
         loaded = n,
-        overlay_dir = ?user_dir,
+        wordlist_overlay = ?wordlist_dir,
+        layout_overlay = ?layout_dir,
         "user wordlist overlays reloaded"
     );
     n

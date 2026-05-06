@@ -31,7 +31,25 @@ use fst::SetBuilder;
 
 /// (`<layout-id-as-file-stem>`, expected layout BCP-47 tag for the
 /// "did we wire it up?" diagnostic — only used in the build log).
-const LAYOUTS: &[(&str, &str)] = &[("en_us", "en-US"), ("uk_ua", "uk-UA")];
+///
+/// Each entry expects three files under `data/wordlists/`:
+///
+/// * `<stem>.txt` — full wordlist (compiled into FST). May be absent
+///   or empty; the FST then carries zero entries and the layout falls
+///   back to plausibility-only detection.
+/// * `<stem>-extras.txt` — same shape as above; merged with
+///   `<stem>.txt` before FST building. May be absent.
+/// * `<stem>-stop.txt` — hand-curated 1- and 2-letter stop words.
+///   **Must exist** (this file is `include_str!`'d into the binary) —
+///   even an empty list with a header comment is fine.
+const LAYOUTS: &[(&str, &str)] = &[
+    ("en_us", "en-US"),
+    ("uk_ua", "uk-UA"),
+    ("ru_ru", "ru-RU"),
+    ("de_de", "de-DE"),
+    ("es_es", "es-ES"),
+    ("fr_fr", "fr-FR"),
+];
 
 fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

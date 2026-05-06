@@ -1,0 +1,49 @@
+# Hand-curated 1- and 2-letter Spanish stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/kb-switcher/wordlists/`:
+#   * `es_es-stop.txt`    → merged into THIS list at startup / reload
+#   * `es_es-extras.txt`  → merged into the user-overlay HashSet
+#   * `es_es.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — real prose words.
+a
+e
+o
+u
+y
+
+# 2-letter — pronouns, prepositions, articles, common particles.
+al
+de
+el
+en
+es
+ha
+he
+la
+le
+lo
+me
+mi
+ni
+no
+os
+se
+su
+te
+tu
+un
+va
+ya
+yo
+sí

@@ -1,0 +1,75 @@
+# Layout mapping: Español (Spanish, Spain — standard "Español" /
+# QWERTY-ES variant).
+#
+# Keyed by Win SC Set-1 scancode (hex). Same alphabet positions as
+# en-US except `ñ` lives on the `;` position (0x27) and accented
+# vowels are reached via the dead-key on 0x28 (´). Dead keys are
+# surfaced as their spacing equivalents — kb-switcher tracks the
+# character produced per scancode, not the OS-level dead-key state.
+#
+# Number-row Shift symbols and the punctuation around `Enter` follow
+# the Spain convention (¡, ¿, ç, º, ª).
+
+id     = "es-ES"
+name   = "Español"
+script = "Latin"
+
+[keys]
+# Backtick row
+0x29 = { plain = "º", shift = "ª" }
+
+# Number row
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "\"" }
+0x04 = { plain = "3", shift = "·" }
+0x05 = { plain = "4", shift = "$" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "&" }
+0x08 = { plain = "7", shift = "/" }
+0x09 = { plain = "8", shift = "(" }
+0x0A = { plain = "9", shift = ")" }
+0x0B = { plain = "0", shift = "=" }
+0x0C = { plain = "'", shift = "?" }
+0x0D = { plain = "¡", shift = "¿" }
+
+# Top row
+0x10 = { plain = "q", shift = "Q" }
+0x11 = { plain = "w", shift = "W" }
+0x12 = { plain = "e", shift = "E" }
+0x13 = { plain = "r", shift = "R" }
+0x14 = { plain = "t", shift = "T" }
+0x15 = { plain = "y", shift = "Y" }
+0x16 = { plain = "u", shift = "U" }
+0x17 = { plain = "i", shift = "I" }
+0x18 = { plain = "o", shift = "O" }
+0x19 = { plain = "p", shift = "P" }
+0x1A = { plain = "`", shift = "^" }
+0x1B = { plain = "+", shift = "*" }
+
+# Home row — note `ñ` on 0x27.
+0x1E = { plain = "a", shift = "A" }
+0x1F = { plain = "s", shift = "S" }
+0x20 = { plain = "d", shift = "D" }
+0x21 = { plain = "f", shift = "F" }
+0x22 = { plain = "g", shift = "G" }
+0x23 = { plain = "h", shift = "H" }
+0x24 = { plain = "j", shift = "J" }
+0x25 = { plain = "k", shift = "K" }
+0x26 = { plain = "l", shift = "L" }
+0x27 = { plain = "ñ", shift = "Ñ" }
+0x28 = { plain = "´", shift = "¨" }
+
+# Between `´` and Enter on ISO layout.
+0x2B = { plain = "ç", shift = "Ç" }
+
+# Bottom row
+0x2C = { plain = "z", shift = "Z" }
+0x2D = { plain = "x", shift = "X" }
+0x2E = { plain = "c", shift = "C" }
+0x2F = { plain = "v", shift = "V" }
+0x30 = { plain = "b", shift = "B" }
+0x31 = { plain = "n", shift = "N" }
+0x32 = { plain = "m", shift = "M" }
+0x33 = { plain = ",", shift = ";" }
+0x34 = { plain = ".", shift = ":" }
+0x35 = { plain = "-", shift = "_" }

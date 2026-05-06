@@ -213,7 +213,12 @@ impl SwitcherEngine {
         // Cross-layout letter hint: keeps Cyrillic words intact when
         // typed under en-US (`б` at 0x33 would otherwise look like a
         // `,` boundary). See `WordBuffer::feed` for the full rationale.
-        let letter_in_any_layout = self.layouts.is_letter_in_any_layout(ev.scancode);
+        // Shift-aware so adding more layouts (de-DE / fr-FR / …) doesn't
+        // accidentally classify genuine en-US punctuation as "letter
+        // in another layout".
+        let letter_in_any_layout = self
+            .layouts
+            .is_letter_in_any_layout(ev.scancode, ev.modifiers.shift);
 
         if let WordBoundary::WordCompleted {
             boundary_scancode,
@@ -590,9 +595,13 @@ fn render_for_code_check(
             continue;
         };
         // Cross-layout artifact: non-letter under current, but the
-        // scancode IS a letter in some other layout. The user meant a
-        // letter, not punctuation — drop it from the code-token view.
-        if !c.is_alphabetic() && layouts.is_letter_in_any_layout(k.scancode) {
+        // scancode-at-this-shift IS a letter in some other layout.
+        // The user meant a letter, not punctuation — drop it from the
+        // code-token view. Checking shift granularity is critical:
+        // without it, scancode 0x0C unshifted being `ß` in de-DE
+        // would (wrongly) cause the SHIFTED `_` produced under en-US
+        // to be stripped from `foo_bar`.
+        if !c.is_alphabetic() && layouts.is_letter_in_any_layout(k.scancode, k.shift) {
             continue;
         }
         out.push(c);

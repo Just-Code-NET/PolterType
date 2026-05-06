@@ -1,0 +1,31 @@
+#!/bin/sh
+# kb-switcher — pre-commit hook
+#
+# Refuses to record a commit if `cargo fmt` would change anything.
+# Same check CI runs (`cargo fmt --all -- --check`), so failing here
+# is equivalent to failing the GitHub workflow — better to find out
+# locally before pushing.
+#
+# Bypass (use sparingly, e.g. for an in-progress wip-style commit):
+#     git commit --no-verify
+#
+# To install / re-install all hooks:
+#     cargo xtask hooks install
+
+set -e
+
+# If cargo isn't on PATH the editor is probably someone working on
+# docs without a Rust toolchain. Skip silently rather than blocking.
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "kb-switcher pre-commit: cargo not found, skipping rustfmt check"
+    exit 0
+fi
+
+echo "kb-switcher pre-commit: cargo fmt --all -- --check"
+if ! cargo fmt --all -- --check; then
+    echo
+    echo "kb-switcher pre-commit: rustfmt has changes to make."
+    echo "Run \`cargo fmt --all\` to fix, then re-stage and re-commit."
+    echo "(or \`git commit --no-verify\` if you really need to bypass)"
+    exit 1
+fi

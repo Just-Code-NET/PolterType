@@ -1,0 +1,80 @@
+# Layout mapping: Français (French, AZERTY — France variant).
+#
+# Keyed by Win SC Set-1 scancode (hex). Significant differences from
+# en-US:
+#
+#   * Top letter row starts AZERTY, not QWERTY (A and Q swap, Z and W
+#     swap, M moves to end of home row).
+#   * Number row digits are SHIFTED — typing the unshifted key gives
+#     a French-prose accented letter or symbol (& é " ' ( - è _ ç à).
+#     This is what lets a French user type `français` without ever
+#     using shift.
+#   * Several accented letters reachable directly: é, è, ç, à, ù.
+#
+# Dead keys (`^`, `¨`) are surfaced as their spacing equivalents —
+# kb-switcher tracks the character produced per scancode, not the
+# OS-level dead-key state machine.
+
+id     = "fr-FR"
+name   = "Français"
+script = "Latin"
+
+[keys]
+# Backtick row — superscript 2 / 3 (Microsoft AZERTY).
+0x29 = { plain = "²", shift = "~" }
+
+# Number row — note the unshifted glyphs are NOT digits.
+0x02 = { plain = "&", shift = "1" }
+0x03 = { plain = "é", shift = "2" }
+0x04 = { plain = "\"", shift = "3" }
+0x05 = { plain = "'", shift = "4" }
+0x06 = { plain = "(", shift = "5" }
+0x07 = { plain = "-", shift = "6" }
+0x08 = { plain = "è", shift = "7" }
+0x09 = { plain = "_", shift = "8" }
+0x0A = { plain = "ç", shift = "9" }
+0x0B = { plain = "à", shift = "0" }
+0x0C = { plain = ")", shift = "°" }
+0x0D = { plain = "=", shift = "+" }
+
+# Top row (AZERTYUIOP)
+0x10 = { plain = "a", shift = "A" }
+0x11 = { plain = "z", shift = "Z" }
+0x12 = { plain = "e", shift = "E" }
+0x13 = { plain = "r", shift = "R" }
+0x14 = { plain = "t", shift = "T" }
+0x15 = { plain = "y", shift = "Y" }
+0x16 = { plain = "u", shift = "U" }
+0x17 = { plain = "i", shift = "I" }
+0x18 = { plain = "o", shift = "O" }
+0x19 = { plain = "p", shift = "P" }
+0x1A = { plain = "^", shift = "¨" }
+0x1B = { plain = "$", shift = "£" }
+
+# Home row (QSDFGHJKLM)
+0x1E = { plain = "q", shift = "Q" }
+0x1F = { plain = "s", shift = "S" }
+0x20 = { plain = "d", shift = "D" }
+0x21 = { plain = "f", shift = "F" }
+0x22 = { plain = "g", shift = "G" }
+0x23 = { plain = "h", shift = "H" }
+0x24 = { plain = "j", shift = "J" }
+0x25 = { plain = "k", shift = "K" }
+0x26 = { plain = "l", shift = "L" }
+0x27 = { plain = "m", shift = "M" }
+0x28 = { plain = "ù", shift = "%" }
+
+# Between Enter and Backslash on ISO keyboards.
+0x2B = { plain = "*", shift = "µ" }
+
+# Bottom row (WXCVBN,;:!)
+0x2C = { plain = "w", shift = "W" }
+0x2D = { plain = "x", shift = "X" }
+0x2E = { plain = "c", shift = "C" }
+0x2F = { plain = "v", shift = "V" }
+0x30 = { plain = "b", shift = "B" }
+0x31 = { plain = "n", shift = "N" }
+0x32 = { plain = ",", shift = "?" }
+0x33 = { plain = ";", shift = "." }
+0x34 = { plain = ":", shift = "/" }
+0x35 = { plain = "!", shift = "§" }
