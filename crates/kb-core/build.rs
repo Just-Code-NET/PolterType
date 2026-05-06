@@ -92,10 +92,26 @@ fn main() {
         builder.finish().expect("FST finish");
 
         let stop_count = read_wordlist(&stop_path).len();
-        println!(
-            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words",
-            words.len()
-        );
+        // Report shape: one line per layout. Two cases:
+        //
+        // * Populated dictionary (en/uk by default; ru/de/es/fr after
+        //   `cargo xtask wordlists fetch`) → the same diagnostic line
+        //   we've always printed.
+        // * Empty FST (the new languages out-of-the-box) → ONE clear
+        //   actionable hint instead of three "file not found" warnings
+        //   per language. Suppressing the missing-file warnings is the
+        //   complementary half — see `read_wordlist`.
+        if words.is_empty() {
+            println!(
+                "cargo:warning=wordlist {tag}: empty FST (run `cargo xtask wordlists fetch` to populate; \
+                 plausibility-only detection used until then). {stop_count} short stop-words present."
+            );
+        } else {
+            println!(
+                "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words",
+                words.len()
+            );
+        }
     }
 
     // Generate the dispatcher.
@@ -123,6 +139,16 @@ fn main() {
     writeln!(&mut dispatch, "];").unwrap();
 }
 
+/// Read one wordlist file (`<stem>.txt`, `<stem>-extras.txt`, or
+/// `<stem>-stop.txt`) into a deduped, lowercased Vec of words.
+///
+/// File-not-found is a *legitimate* state: the new languages
+/// (ru/de/es/fr) ship without bulk dictionaries — they're populated
+/// on demand by `cargo xtask wordlists fetch`. So ENOENT is silent.
+/// Other I/O errors (permission denied, malformed UTF-8 deeper down)
+/// are still surfaced — those are the cases worth bothering the user
+/// about. The "you have an empty FST" hint comes once per layout
+/// from the call site.
 fn read_wordlist(path: &Path) -> Vec<String> {
     match File::open(path) {
         Ok(f) => BufReader::new(f)
@@ -131,9 +157,10 @@ fn read_wordlist(path: &Path) -> Vec<String> {
             .map(|l| l.trim().to_lowercase())
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
             .collect(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => {
             println!(
-                "cargo:warning=wordlist not found at {} — skipping ({e})",
+                "cargo:warning=wordlist read failed for {}: {e}",
                 path.display()
             );
             Vec::new()
