@@ -126,16 +126,63 @@ Code signing comes in a later phase.
 The packaging scripts under `installers/` are also runnable locally;
 see [CONTRIBUTING.md §Releasing](CONTRIBUTING.md#releasing).
 
+### Externalised data + lazy load by OS-active
+
+Layout TOMLs and FST wordlists no longer ride inside the binary.
+`crates/kb-core/build.rs` writes them to `target/dist/data/`; each
+installer copies that tree into the runtime's expected location:
+
+| Platform | Data lives at |
+|---|---|
+| Windows MSI | `<exe_dir>\data\` |
+| macOS .dmg | `kb-switcher.app/Contents/Resources/data/` |
+| Linux AppImage | `<mount>/usr/share/kb-switcher/data/` |
+| dev (`cargo run`) | `target/dist/data/` |
+
+`kb_core::data_dir::resolve()` finds the live tree at startup. The
+app then queries `LayoutSwitcher::list_active()` and loads only the
+layouts the OS actually has — a user with `en-US / uk-UA / ru-RU`
+saves the FST RAM for the three other bundled languages they'd
+never query, and the detector physically can't pick an unreachable
+layout (the root cause of the original `http ` bug).
+
+Foundation for the future plug-in / language-pack marketplace —
+`<data_dir>/plugins/<pack-id>/` is reserved with the contract
+specified in [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md). v1's
+plug-in surface will be data-only (TOMLs + FSTs); native-code or
+network-enabled plug-ins are explicitly out of scope until the
+security model has been reviewed.
+
+### Settings UI (iced)
+
+Tray menu **"Settings…"** entry now opens a real GUI (iced 0.13
+with the lightweight `tiny-skia` renderer). Three panes for v1:
+
+* **Languages** — checkbox UI over OS-active layouts; toggles
+  `[languages].active` allow-list and `[languages].ignored` veto.
+* **General** — autostart, sound on correction, suppress-in-
+  identifiers, idle timeout, plus shortcut buttons to the various
+  config / log / wordlist / layout folders.
+* **About** — version, repo links, "Reset to defaults" + "Reload
+  from disk" escape hatches.
+
+Implementation note: the GUI runs as a child process
+(`kb-switcher --settings`) so the tray's `tao::EventLoop` and
+iced's `winit` event loop don't fight over the macOS main thread.
+Hotkey rebinding and exception-app management aren't in v1 —
+power users still edit the TOML via the **"Edit config.toml…"**
+menu entry.
+
 ### Known limitations / v0.1.x targets
 
-* No visual settings GUI — settings live in `config.toml`. iced/egui
-  GUI is deferred until macOS / Wayland event-loop behaviour is
-  understood (DECISIONS.md, 2026-05-02).
 * Linux X11 listener / emitter / layout switcher are stubs.
 * macOS / Linux backends are written from documentation and only
   validated by `cargo check` on CI; runtime tuning will land as
   contributors with the right hardware report issues.
 * Beta builds are unsigned (no Apple Developer ID, no Windows EV /
   OV cert yet) — code signing tracked for a later phase.
+* Settings UI: hotkey rebinding + exception-apps editor are deferred
+  to a follow-up. v1 ships the language picker, the boolean knobs,
+  and the folder shortcuts.
 
 [Unreleased]: https://github.com/REPLACE-ME/kb-switcher

@@ -104,18 +104,20 @@ binary; signed releases come in v0.2.
 
 ```
 crates/
-  kb-app/      binary  — tray + event loop + plumbing
-  kb-core/    library — engine, settings, layouts, audio
+  kb-app/      binary  — tray + event loop + plumbing + Settings UI
+  kb-core/    library — engine, settings, layouts, data_dir, audio
   kb-input/   library — InputListener / KeyEmitter trait + per-OS
   kb-layout/  library — LayoutSwitcher trait + per-OS
   kb-detect/  library — Detector / WordRewriter traits + built-ins
   kb-ai/      library — optional AI plug-ins (feature `ai`)
   kb-types/   library — shared types (LayoutId, KeyEvent, …)
-data/
-  layout-mappings/  declarative scancode→char tables (TOML)
+data/                source-of-truth, committed; consumed by build.rs
+  layout-mappings/   declarative scancode→char tables (TOML)
+  wordlists/         <stem>.txt.gz / -extras.txt / -stop.txt
 docs/
   PLAN.md / DECISIONS.md / PERMISSIONS.md / AI.md
-installers/         per-platform packaging — see "Releasing" below
+  DATA_LAYOUT.md     on-disk data tree + plug-in foundations
+installers/          per-platform packaging — see "Releasing" below
   wix/main.wxs              WiX 3.x source for the Windows MSI
   windows/build-msi.ps1     wraps candle.exe + light.exe
   macos/Info.plist.in       template for the .app bundle
@@ -126,15 +128,35 @@ scripts/
   setup-linux.sh — one-time evdev permission grant
 ```
 
+`crates/kb-core/build.rs` reads from `data/` and writes prepared
+assets (FSTs + copied TOMLs + copied stop-word txts) to
+`<workspace>/target/dist/data/` on every cargo build. The runtime
+finds that tree via `kb_core::data_dir::resolve()`. Installer
+scripts copy `target/dist/data/` into the install location. See
+[docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md) for the full picture.
+
+## Settings UI
+
+Tray menu **"Settings…"** opens an iced-based GUI for the common
+knobs (active languages, autostart, sound, idle timeout, folder
+shortcuts). Power users still hit **"Edit config.toml…"** for the
+full schema (hotkey rebinding, exception-app list, AI subsystem).
+
+The Settings GUI is the same `kb-switcher` binary launched with
+`--settings`; it runs as a child process so the tray's main-thread
+event loop doesn't have to share NSApplication on macOS. When the
+window closes the tray reloads settings automatically.
+
 ## Adding a new keyboard layout
 
 1. Drop a TOML into `data/layout-mappings/` named after the BCP-47
    tag (`de_de.toml`, `kk_cyrl_kz.toml`, …). Use one of the existing
    files as a template.
-2. Add an `include_str!` entry in
-   `crates/kb-core/src/layouts.rs::embedded_layouts()`.
-3. Send a PR. No Rust changes are required for the engine to start
-   considering the new layout — language-specific code lives in data.
+2. Add the same stem to `LAYOUTS` in `crates/kb-core/build.rs` (so
+   build.rs copies it) AND to `BUNDLED_LAYOUT_STEMS` in
+   `crates/kb-core/src/layouts.rs` (so the runtime considers it).
+3. Send a PR. No further Rust changes are required for the engine
+   to start considering the new layout — the file is the contract.
 
 If your language has unusual vowels not covered by
 `derive_vowels()` in `crates/kb-core/src/layouts.rs`, extend that

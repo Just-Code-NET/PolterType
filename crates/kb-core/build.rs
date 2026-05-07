@@ -1,48 +1,68 @@
-//! Build-time wordlist → FST conversion + short-stop-word embedding.
+//! Build-time data preparation: produce the on-disk `data/` tree that
+//! kb-switcher loads at runtime.
 //!
-//! The wordlist text files committed under `data/wordlists/` are the
-//! human-readable source of truth:
+//! ## What lands where
 //!
-//! * `<stem>.txt` — full upstream dictionary, used for ≥3-letter
-//!   tokens. Compiled into a [BurntSushi FST] blob in `OUT_DIR` for
-//!   compact lookup.
-//! * `<stem>-stop.txt` — hand-curated 1- and 2-letter stop words,
-//!   used for ≤2-letter tokens (the embedded FST is too noisy at
-//!   that length — see `kb-detect::LayoutDictionary` doc-comment).
+//! Inputs (committed in the repo, in `<workspace>/data/`):
 //!
-//! At build time we sort + dedupe the full wordlist, write the FST
-//! into `OUT_DIR`, and emit `embedded_wordlists.rs` — a tiny
-//! dispatcher exposing `EMBEDDED_WORDLISTS: &[(&str, &[u8], &str)]`
-//! (stem, FST bytes, raw stop-list text) — which the lib code picks
-//! up via `include!(concat!(env!("OUT_DIR"), "/embedded_wordlists.rs"))`.
+//! * `data/wordlists/<stem>.txt.gz` — bulk Hunspell-grade dictionary
+//!   for ≥3-letter tokens. Empty / absent → no FST for that stem
+//!   (plausibility-only detection still works).
+//! * `data/wordlists/<stem>-extras.txt` — hand-curated additions.
+//! * `data/wordlists/<stem>-stop.txt` — curated 1- / 2-letter stop
+//!   words.
+//! * `data/layout-mappings/<stem>.toml` — keyboard mapping.
 //!
-//! [BurntSushi FST]: https://docs.rs/fst
+//! Outputs (built fresh each `cargo build`, under
+//! `<workspace>/target/dist/data/`):
+//!
+//! ```text
+//! target/dist/data/
+//!   wordlists/
+//!     <stem>.fst                  ← FST built from .txt.gz + extras
+//!     <stem>-stop.txt             ← copied as-is
+//!   layout-mappings/
+//!     <stem>.toml                 ← copied as-is
+//! ```
+//!
+//! Why a stable path instead of `OUT_DIR`: the installers (WiX MSI,
+//! AppImage AppDir, macOS .app) need to know *where* to copy these
+//! files at packaging time. `OUT_DIR` is per-crate-hash and changes
+//! every cargo invocation — useless for that. `target/dist/data` is
+//! invariant, predictable, and matches the dev-mode runtime
+//! resolver in `kb-core::data_dir` (the dev fallback path).
+//!
+//! Cargo prefers build scripts to write only inside `OUT_DIR`; the
+//! warning is for portability of crates *consumed by others*. We are
+//! a workspace's own crate writing to its own workspace's own target
+//! dir — fully under our control.
+//!
+//! ## Idempotency / dev experience
+//!
+//! `cargo:rerun-if-changed=` lines mark every input. So:
+//!
+//! * Edit `data/wordlists/uk_ua-extras.txt` → only uk_ua FST rebuilds.
+//! * Tweak a TOML mapping → only that TOML is recopied.
+//! * Plain `cargo build` after no source changes → no work, no
+//!   warnings.
 
-// Build scripts are explicitly allowed to use unwrap/expect per the
-// project's CLAUDE.md style — a panic here is an honest "build is
+// Build scripts are explicitly allowed to use unwrap/expect/panic per
+// the project's CLAUDE.md style — a panic here is an honest "build is
 // broken" signal, not a runtime hazard.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
 use flate2::read::GzDecoder;
 use fst::SetBuilder;
 
-/// (`<layout-id-as-file-stem>`, expected layout BCP-47 tag for the
-/// "did we wire it up?" diagnostic — only used in the build log).
+/// (`<layout-id-as-file-stem>`, BCP-47 tag for the build-log
+/// "did we wire it up?" diagnostic).
 ///
-/// Each entry expects three files under `data/wordlists/`:
-///
-/// * `<stem>.txt` — full wordlist (compiled into FST). May be absent
-///   or empty; the FST then carries zero entries and the layout falls
-///   back to plausibility-only detection.
-/// * `<stem>-extras.txt` — same shape as above; merged with
-///   `<stem>.txt` before FST building. May be absent.
-/// * `<stem>-stop.txt` — hand-curated 1- and 2-letter stop words.
-///   **Must exist** (this file is `include_str!`'d into the binary) —
-///   even an empty list with a header comment is fine.
+/// Keep in lock-step with the runtime layout list — discrepancies
+/// surface as missing-layout warnings at startup, never silent.
 const LAYOUTS: &[(&str, &str)] = &[
     ("en_us", "en-US"),
     ("uk_ua", "uk-UA"),
@@ -54,120 +74,142 @@ const LAYOUTS: &[(&str, &str)] = &[
 
 fn main() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // crates/kb-core → repo root → data/wordlists
-    let wordlists_dir = manifest_dir
+    // crates/kb-core → repo root
+    let repo_root = manifest_dir
         .parent()
         .and_then(|p| p.parent())
-        .map(|p| p.join("data").join("wordlists"))
-        .expect("repo root not found");
+        .expect("repo root not found from CARGO_MANIFEST_DIR")
+        .to_path_buf();
 
-    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"));
+    let src_wordlists = repo_root.join("data").join("wordlists");
+    let src_mappings = repo_root.join("data").join("layout-mappings");
 
+    let out_root = workspace_target_dir().join("dist").join("data");
+    let out_wordlists = out_root.join("wordlists");
+    let out_mappings = out_root.join("layout-mappings");
+
+    fs::create_dir_all(&out_wordlists).expect("mkdir target/dist/data/wordlists");
+    fs::create_dir_all(&out_mappings).expect("mkdir target/dist/data/layout-mappings");
+
+    // ─── Wordlists: build FST + copy stop-word list ────────────────
     for (stem, tag) in LAYOUTS {
-        let txt_gz_path = wordlists_dir.join(format!("{stem}.txt.gz"));
-        let txt_path = wordlists_dir.join(format!("{stem}.txt"));
-        let extras_path = wordlists_dir.join(format!("{stem}-extras.txt"));
-        let stop_path = wordlists_dir.join(format!("{stem}-stop.txt"));
-        let fst_path = out_dir.join(format!("{stem}.fst"));
-
-        println!("cargo:rerun-if-changed={}", txt_gz_path.display());
-        println!("cargo:rerun-if-changed={}", txt_path.display());
-        println!("cargo:rerun-if-changed={}", extras_path.display());
-        println!("cargo:rerun-if-changed={}", stop_path.display());
-
-        // Full upstream wordlist + our hand-curated extras
-        // (modern tech vocab, common acronyms, dev jargon — the
-        // categories `dwyl/english-words` doesn't cover).
-        //
-        // Bulk wordlist source ships gzipped — the uk_ua expanded
-        // form list is 84 MB raw, ~25 MB gzipped, and lives in the
-        // repo as `data/wordlists/<stem>.txt.gz`. The plain `.txt`
-        // path is honoured as a fallback so a contributor inspecting
-        // a wordlist can `gunzip -k <stem>.txt.gz` and re-build
-        // without re-running xtask.
-        let mut words: Vec<String> = read_wordlist(&txt_gz_path);
-        if words.is_empty() {
-            words = read_wordlist(&txt_path);
-        }
-        let extras = read_wordlist(&extras_path);
-        let extras_count = extras.len();
-        words.extend(extras);
-        words.sort();
-        words.dedup();
-        let _ = extras_count; // surfaced via the cargo:warning below
-
-        let writer =
-            BufWriter::new(File::create(&fst_path).expect("could not create FST output file"));
-        let mut builder = SetBuilder::new(writer).expect("FST set builder");
-        for w in &words {
-            builder.insert(w).expect("FST insert");
-        }
-        builder.finish().expect("FST finish");
-
-        let stop_count = read_wordlist(&stop_path).len();
-        // Report shape: one line per layout. Two cases:
-        //
-        // * Populated dictionary (en/uk by default; ru/de/es/fr after
-        //   `cargo xtask wordlists fetch`) → the same diagnostic line
-        //   we've always printed.
-        // * Empty FST (the new languages out-of-the-box) → ONE clear
-        //   actionable hint instead of three "file not found" warnings
-        //   per language. Suppressing the missing-file warnings is the
-        //   complementary half — see `read_wordlist`.
-        if words.is_empty() {
-            println!(
-                "cargo:warning=wordlist {tag}: empty FST (run `cargo xtask wordlists fetch` to populate; \
-                 plausibility-only detection used until then). {stop_count} short stop-words present."
-            );
-        } else {
-            println!(
-                "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words",
-                words.len()
-            );
-        }
+        prepare_wordlist(&src_wordlists, &out_wordlists, stem, tag);
     }
 
-    // Generate the dispatcher.
-    let dispatch_path = out_dir.join("embedded_wordlists.rs");
-    let mut dispatch = BufWriter::new(File::create(&dispatch_path).expect("dispatch file"));
-    writeln!(
-        &mut dispatch,
-        "/// Generated by build.rs — (stem, FST bytes, short-stop list raw text)."
-    )
-    .unwrap();
-    writeln!(
-        &mut dispatch,
-        "pub const EMBEDDED_WORDLISTS: &[(&str, &[u8], &str)] = &["
-    )
-    .unwrap();
+    // ─── Layout mappings: copy TOMLs ───────────────────────────────
     for (stem, _) in LAYOUTS {
-        writeln!(
-            &mut dispatch,
-            "    (\"{stem}\", \
-             include_bytes!(concat!(env!(\"OUT_DIR\"), \"/{stem}.fst\")), \
-             include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/../../data/wordlists/{stem}-stop.txt\"))),"
-        )
-        .unwrap();
+        let src = src_mappings.join(format!("{stem}.toml"));
+        let dst = out_mappings.join(format!("{stem}.toml"));
+        println!("cargo:rerun-if-changed={}", src.display());
+        if let Err(e) = fs::copy(&src, &dst) {
+            // Don't panic on missing TOML — same forgiving spirit as
+            // the wordlist path. If a user removes a mapping the
+            // runtime simply won't see it.
+            println!(
+                "cargo:warning=mapping copy {} → {} failed: {e}",
+                src.display(),
+                dst.display()
+            );
+        }
     }
-    writeln!(&mut dispatch, "];").unwrap();
+}
+
+/// Locate the workspace's `target/` dir. We deduce it from `OUT_DIR`,
+/// which cargo guarantees is somewhere under `target`. Walking up to
+/// the first ancestor named `target` is reliable across:
+///
+/// * default layout (`<workspace>/target/...`)
+/// * `CARGO_TARGET_DIR` overrides
+/// * cargo workspaces with custom `[build.target-dir]`
+fn workspace_target_dir() -> PathBuf {
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"));
+    for ancestor in out_dir.ancestors() {
+        if ancestor.file_name().is_some_and(|n| n == "target") {
+            return ancestor.to_path_buf();
+        }
+    }
+    panic!(
+        "could not deduce workspace target dir from OUT_DIR={}",
+        out_dir.display()
+    );
+}
+
+/// Build `<stem>.fst` from `<stem>.txt.gz` + `<stem>-extras.txt` and
+/// copy `<stem>-stop.txt` as-is. Empty / absent inputs yield an empty
+/// FST and no stop-word file — both states are graceful at runtime.
+fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
+    let txt_gz = src_dir.join(format!("{stem}.txt.gz"));
+    let txt = src_dir.join(format!("{stem}.txt"));
+    let extras = src_dir.join(format!("{stem}-extras.txt"));
+    let stop = src_dir.join(format!("{stem}-stop.txt"));
+
+    println!("cargo:rerun-if-changed={}", txt_gz.display());
+    println!("cargo:rerun-if-changed={}", txt.display());
+    println!("cargo:rerun-if-changed={}", extras.display());
+    println!("cargo:rerun-if-changed={}", stop.display());
+
+    // Bulk wordlist source ships gzipped (uk_ua alone is 84 MB raw,
+    // ~10 MB gzipped). Plain `.txt` honoured as a fallback so a
+    // contributor inspecting a wordlist can `gunzip -k` and rebuild.
+    let mut words: Vec<String> = read_wordlist(&txt_gz);
+    if words.is_empty() {
+        words = read_wordlist(&txt);
+    }
+    let extras_words = read_wordlist(&extras);
+    let extras_count = extras_words.len();
+    words.extend(extras_words);
+    words.sort();
+    words.dedup();
+
+    let fst_path = out_dir.join(format!("{stem}.fst"));
+    let writer = BufWriter::new(File::create(&fst_path).expect("create FST output"));
+    let mut builder = SetBuilder::new(writer).expect("FST set builder");
+    for w in &words {
+        builder.insert(w).expect("FST insert");
+    }
+    builder.finish().expect("FST finish");
+
+    // Copy the stop-words file straight through. Missing source → no
+    // destination file, which the runtime treats as "empty stop list".
+    let stop_dst = out_dir.join(format!("{stem}-stop.txt"));
+    let stop_count = match fs::copy(&stop, &stop_dst) {
+        Ok(_) => read_wordlist(&stop).len(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Make sure no stale copy from a previous build hangs
+            // around — clean state matters for `cargo clean`-less
+            // workflows where target/dist/data persists.
+            let _ = fs::remove_file(&stop_dst);
+            0
+        }
+        Err(e) => {
+            println!(
+                "cargo:warning=stop-words copy {} → {} failed: {e}",
+                stop.display(),
+                stop_dst.display()
+            );
+            0
+        }
+    };
+
+    if words.is_empty() {
+        println!(
+            "cargo:warning=wordlist {tag}: empty FST (run `cargo xtask wordlists fetch` to populate; \
+             plausibility-only detection used until then). {stop_count} short stop-words present."
+        );
+    } else {
+        println!(
+            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words",
+            words.len()
+        );
+    }
 }
 
 /// Read one wordlist file into a deduped, lowercased Vec of words.
 ///
 /// Honours both raw `<stem>.txt` and gzipped `<stem>.txt.gz` —
-/// dispatch is by file extension. Bulk wordlists are gzipped because
-/// the expanded uk_ua dictionary alone is 84 MB raw; the small
-/// hand-curated `-extras.txt` / `-stop.txt` files are still plain
-/// text so contributors can edit them in any text editor without a
-/// decompress / recompress dance.
-///
-/// File-not-found is a *legitimate* state — the new languages
-/// (ru/de/es/fr) shipped empty originally, and a contributor who
-/// hasn't run `cargo xtask wordlists fetch` yet will be missing the
-/// `.txt.gz` file. So ENOENT is silent. Other I/O errors (permission
-/// denied, malformed UTF-8 deeper down) are still surfaced — those
-/// are the cases worth bothering the user about. The "you have an
-/// empty FST" hint comes once per layout from the call site.
+/// dispatch is by file extension. File-not-found is silent (some
+/// languages ship without a `-extras` file, etc.); other I/O errors
+/// surface as cargo warnings.
 fn read_wordlist(path: &Path) -> Vec<String> {
     let f = match File::open(path) {
         Ok(f) => f,

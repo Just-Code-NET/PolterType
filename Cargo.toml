@@ -83,6 +83,17 @@ fst = "0.4"
 # Cross-platform "open this file in the user's default app".
 opener = "0.7"
 
+# GUI for the Settings window. `tiny-skia` is iced's pure-CPU
+# renderer (no wgpu / GPU stack) — keeps the binary small and the
+# build snappy, which matters because we open this window rarely.
+# `advanced` exposes the lower-level layout/widget API used for the
+# custom side-nav.
+iced = { version = "0.13", default-features = false, features = [
+    "tiny-skia",
+    "advanced",
+    "auto-detect-theme",
+] }
+
 # Linux: evdev / X11. (D-Bus access is via shell-out to canonical
 # CLI tools — see crates/kb-layout/src/linux/. Saves dragging
 # zbus + an async runtime into the build.)

@@ -6,6 +6,8 @@
 #   BIN_X86_64     — path to the x86_64-apple-darwin release binary.
 #   BIN_ARM64      — path to the aarch64-apple-darwin release binary.
 #                    Required: lipo refuses to merge a single arch.
+#   DATA_DIR       — path to the prepared `data/` tree from
+#                    `crates/kb-core/build.rs` (default: target/dist/data).
 #   ICON_ICNS      — optional .icns; copied into Contents/Resources.
 #   OUT_DIR        — output directory (default: target/dist).
 #
@@ -16,8 +18,14 @@
 #       └── kb-switcher.app/
 #           └── Contents/
 #               ├── Info.plist
-#               ├── MacOS/kb-switcher    (universal: x86_64 + arm64)
-#               └── Resources/AppIcon.icns
+#               ├── MacOS/kb-switcher       (universal: x86_64 + arm64)
+#               └── Resources/
+#                   ├── AppIcon.icns
+#                   └── data/               (layout-mappings + wordlists)
+#
+# `Resources/data/` is the macOS-bundle slot the runtime resolver in
+# `kb_core::data_dir` checks for first on darwin. The exe lives in
+# `Contents/MacOS/`, so `<exe_dir>/../Resources/data` lands here.
 #
 # The DMG is *unsigned and unnotarised* — fine for closed beta, not
 # for the App Store. macOS Gatekeeper will say "kb-switcher cannot be
@@ -31,8 +39,19 @@ VERSION="${VERSION:-0.0.0}"
 VERSION="${VERSION#v}"  # strip a leading "v" (tag-like)
 BIN_X86_64="${BIN_X86_64:?BIN_X86_64 is required}"
 BIN_ARM64="${BIN_ARM64:?BIN_ARM64 is required}"
+DATA_DIR="${DATA_DIR:-target/dist/data}"
 ICON_ICNS="${ICON_ICNS:-}"
 OUT_DIR="${OUT_DIR:-target/dist}"
+
+# Sanity: the data tree is built by `cargo build` (kb-core's build.rs).
+# CI runs the cargo step right before this script, so absent data
+# almost always means "this script was run from a clean tree without
+# building first" — which we want to surface loudly.
+if [[ ! -f "${DATA_DIR}/wordlists/en_us.fst" ]]; then
+    echo "Data tree not found at '${DATA_DIR}' (no wordlists/en_us.fst)." >&2
+    echo "Build kb-core first: cargo build --release -p kb-app" >&2
+    exit 1
+fi
 
 APP_NAME="kb-switcher"
 APP_DIR_NAME="${APP_NAME}.app"
@@ -71,6 +90,12 @@ else
         "${APP_DIR}/Contents/Info.plist" 2>/dev/null || true
     echo "icon: none — bundle uses default Finder icon"
 fi
+
+# ─── data tree (layout mappings + FST wordlists) ──────────────────────
+# Copy the prepared tree into Contents/Resources/data/. The runtime
+# resolver finds it via the `<exe_dir>/../Resources/data` rule.
+echo "data: ${DATA_DIR} → Contents/Resources/data"
+cp -R "${DATA_DIR}" "${APP_DIR}/Contents/Resources/data"
 
 # ─── DMG ──────────────────────────────────────────────────────────────
 mkdir -p "${OUT_DIR}"

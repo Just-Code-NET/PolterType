@@ -41,3 +41,4 @@ tray-icon       = { workspace = true }
 single-instance = { workspace = true }
 global-hotkey   = { workspace = true }
 opener          = { workspace = true }
+iced            = { workspace = true }

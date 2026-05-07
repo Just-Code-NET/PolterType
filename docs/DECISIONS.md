@@ -381,3 +381,101 @@ The expander itself has eight unit tests under
 `xtask::hunspell::tests` covering the SFX / PFX / class / negclass
 / FLAG-mode / continuation / unknown-directive / FLAG-num-rejection
 shapes.
+
+
+## 2026-05-07 — Data files externalised + lazy-loading by OS-active
+
+Two structural problems with the v0.1 baked-in data approach:
+
+1. **Wasteful RAM** — `include_bytes!` baked all six bundled FSTs
+   into `kb-switcher.exe`. A user with `en-US / uk-UA / ru-RU`
+   active in Windows still paid for the fr-FR / de-DE / es-ES FSTs
+   sitting resident.
+2. **The `http ` bug.** `LayoutDb` exposed every bundled layout to
+   the detector regardless of whether the user could actually
+   switch to it. fr-FR scored well on `http` (latin script, no
+   vowels, all letters legal) and the detector picked it; the
+   layout switcher then returned `LayoutError::NotActive` *after*
+   `apply_correction` had already sent the backspaces, destroying
+   the user's word.
+
+### What changed
+
+* **`crates/kb-core/build.rs`** writes layout TOMLs, FSTs, and
+  stop-word lists to `<workspace>/target/dist/data/` instead of
+  embedding them. The workspace target dir is deduced from
+  `OUT_DIR` (walks up to a `target` ancestor), which keeps
+  `CARGO_TARGET_DIR` overrides working.
+* **`crates/kb-core/src/data_dir.rs`** — new module that resolves
+  the data directory at runtime. Order: `KB_SWITCHER_DATA_DIR` env
+  → `<exe_dir>/data` (Windows MSI, AppImage AppDir) →
+  `<exe_dir>/../Resources/data` (macOS .app) →
+  `<exe_dir>/../share/kb-switcher/data` (FHS Linux) →
+  `<workspace>/target/dist/data` (dev fallback). Unit-tested
+  against synthesised exe paths so the per-platform shape is
+  pinned.
+* **`LayoutDb::load(LoadOptions { active_filter, … })`** — new
+  loader that takes the OS-active layout list and skips bundled
+  TOMLs whose `id` isn't in it. Pre-parsing the `id` line via the
+  small `peek_layout_id` helper means we don't even read the FST
+  for filtered-out languages.
+* **`crates/kb-app`** queries `LayoutSwitcher::list_active()` at
+  startup (right after building the switcher, before loading
+  layouts) and feeds the result into `LoadOptions::active_filter`.
+  Adding a language in the OS now needs a kb-switcher restart,
+  which is a documented trade — the alternative is OS-event
+  plumbing on three platforms for a one-line restart cost.
+
+### Installer changes
+
+Each installer copies the prepared `data/` tree into the
+expected runtime location:
+
+* WiX MSI — two new `<Component>` entries (`DataLayoutMappings`,
+  `DataWordlists`) under a fresh `<Directory Id="DataDir" Name="data">`
+  inside `APPLICATIONROOTFOLDER`. Component GUIDs are fixed (CNDL0230
+  forbids `Guid="*"` once a Component holds both Files and a
+  RegistryValue keypath, and ICE38 forces the perUser registry
+  keypath). `RemoveFolder` directives walk the tree on uninstall.
+* macOS DMG — `cp -R ${DATA_DIR} ${APP_DIR}/Contents/Resources/data`,
+  matching `<exe_dir>/../Resources/data`.
+* Linux AppImage — `mkdir -p ${APPDIR}/usr/share/${APP_NAME}/data &&
+  cp -R ${DATA_DIR}/. <there>/`, the FHS layout the resolver looks
+  for at rule 4.
+
+### Plug-in foundations
+
+The data layout reserves `<data_dir>/plugins/<pack-id>/` for the
+future language-pack marketplace. v1's plug-in surface will be
+**data-only** — TOMLs and FSTs, no native code, no network calls,
+no settings hooks — to keep the security review small and the
+release cycle quick. Full contract documented in `docs/DATA_LAYOUT.md`.
+
+### Settings UI
+
+Added an iced 0.13–based Settings window (`tiny-skia` renderer to
+keep build time and binary size tame). Exposed via:
+
+* Tray menu **"Settings…"** entry — spawns
+  `kb-switcher --settings` as a child process. The subprocess form
+  side-steps the macOS main-thread fight between `tray-icon` and
+  `iced/winit`: each gets its own process and its own NSApplication.
+  When the child exits, the tray sends `EngineCommand::SettingsReloaded`
+  so changes apply without an explicit "Reload" click.
+
+Three panes for v1:
+
+* **Languages** — checkboxes for every OS-active layout against
+  `[languages].active` (allow-list) and `[languages].ignored`
+  (veto). Empty allow-list = "use every OS-active layout", which
+  is the default and what most users want.
+* **General** — autostart, sound on correction, suppress-in-
+  identifiers, idle timeout. Plus shortcut buttons to open the
+  raw config.toml, logs dir, user-wordlists dir, user-layouts dir.
+* **About** — version, repo links, "Reset to defaults" + "Reload
+  from disk" power-user escape hatches.
+
+Hotkey rebinding and exception-app management aren't in v1 — both
+need richer UI and live config diffing. Power users still edit the
+TOML via the **"Edit config.toml…"** tray entry (which the GUI
+"Open config.toml" button also exposes).

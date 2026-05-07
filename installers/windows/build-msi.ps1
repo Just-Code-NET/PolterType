@@ -6,6 +6,9 @@
 #                      before being passed to WiX, which only accepts
 #                      M.m.b[.r] numeric versions).
 #   $env:BIN_PATH    — path to the already-built kb-switcher.exe
+#   $env:DATA_DIR    — path to the prepared data tree (FSTs + TOMLs);
+#                      defaults to `target/dist/data`, which is where
+#                      `kb-core/build.rs` writes them.
 #   $env:OUT_DIR     — directory for the .msi (created if missing)
 #   $env:ICON_PATH   — optional .ico for Add/Remove Programs entry
 #
@@ -51,6 +54,18 @@ if (-not (Test-Path $binPath)) {
 }
 $binAbs = (Resolve-Path $binPath).Path
 
+# `target/dist/data/` is populated by `crates/kb-core/build.rs` on
+# every cargo build of kb-core (kb-app pulls it in transitively).
+# CI runs the cargo build right before this script, so the directory
+# is guaranteed-fresh by the time we get here. If someone runs
+# build-msi.ps1 standalone without a recent build, the explicit
+# Test-Path below makes the failure mode obvious.
+$dataDir = if ($env:DATA_DIR) { $env:DATA_DIR } else { 'target\dist\data' }
+if (-not (Test-Path (Join-Path $dataDir 'wordlists\en_us.fst'))) {
+    throw "Data tree not found at '$dataDir' (no en_us.fst). Build kb-core first: `cargo build --release -p kb-app`."
+}
+$dataDirAbs = (Resolve-Path $dataDir).Path
+
 $outDir = if ($env:OUT_DIR) { $env:OUT_DIR } else { 'target\dist' }
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $outDirAbs = (Resolve-Path $outDir).Path
@@ -77,6 +92,7 @@ Write-Host "candle: $wxsPath  →  $wixobj"
     "-dProductVersion=$msiVersion" `
     "-dBinPath=$binAbs" `
     "-dLicensePath=$licenseAbs" `
+    "-dDataDir=$dataDirAbs" `
     @iconArgs `
     -arch x64 `
     -out $wixobj `

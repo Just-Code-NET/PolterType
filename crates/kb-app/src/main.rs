@@ -8,13 +8,14 @@
 #![forbid(unsafe_code)]
 
 mod icon_render;
+mod settings_ui;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use crossbeam_channel::{Receiver, bounded, unbounded};
+use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 use kb_core::audio::AudioPlayer;
@@ -44,6 +45,35 @@ enum UserEvent {
 }
 
 fn main() -> Result<()> {
+    // CLI dispatch: `kb-switcher --settings` opens the Settings GUI
+    // and exits when the window closes. Anything else falls through
+    // to the tray. We do this BEFORE `init_tracing` / single-instance
+    // because:
+    //
+    // * The settings UI is a short-lived child process spawned by the
+    //   tray. Hitting the single-instance lock would kill it on
+    //   startup; logging would steal the tray's log file rotation.
+    // * `--help` / `--version` need to be cheap and side-effect-free.
+    let mut args = std::env::args().skip(1);
+    if let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--settings" | "-s" | "settings" => return settings_ui::run(),
+            "--version" | "-V" => {
+                println!("{APP_NAME} {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            "--help" | "-h" => {
+                print_help();
+                return Ok(());
+            }
+            other => {
+                eprintln!("kb-switcher: unknown argument `{other}`");
+                print_help();
+                return Err(anyhow::anyhow!("unknown CLI argument"));
+            }
+        }
+    }
+
     let _log_guard = init_tracing();
     info!(version = env!("CARGO_PKG_VERSION"), "{APP_NAME} starting");
 
@@ -63,26 +93,9 @@ fn main() -> Result<()> {
     };
     info!(path = ?settings.path(), "settings loaded");
 
-    // ─── Layouts ───────────────────────────────────────────────────
-    // Embedded mappings + dictionaries baked at build time, plus
-    // optional user-supplied layouts from `<config-dir>/layouts/*.toml`
-    // and optional wordlist overlays from `<config-dir>/wordlists/`.
-    let user_wordlist_dir = kb_core::layouts::user_wordlist_dir();
-    let user_layout_dir = kb_core::layouts::user_layout_dir();
-    let layouts = Arc::new(LayoutDb::load_with_user_layouts(
-        user_layout_dir.as_deref(),
-        user_wordlist_dir.as_deref(),
-    ));
-    info!(
-        loaded = layouts.len(),
-        ids = ?layouts.ids().collect::<Vec<_>>(),
-        wordlist_overlay = ?user_wordlist_dir,
-        layout_overlay = ?user_layout_dir,
-        "layout DB ready"
-    );
-
-    // ─── Subsystems ────────────────────────────────────────────────
-    let layout_switcher = match create_switcher() {
+    // ─── Layout switcher (built first so we can query active OS
+    //                     layouts before loading the DB) ────────────
+    let layout_switcher: Arc<dyn kb_layout::LayoutSwitcher> = match create_switcher() {
         Ok(s) => {
             info!(backend = s.backend_name(), "layout switcher ready");
             Arc::from(s)
@@ -92,6 +105,61 @@ fn main() -> Result<()> {
             return Err(anyhow::anyhow!(e));
         }
     };
+
+    // ─── Layouts ───────────────────────────────────────────────────
+    // We now ship layout mappings + FST wordlists as plain files in
+    // a `data/` directory next to the executable (Windows MSI),
+    // inside `Contents/Resources/data/` (macOS .app), or
+    // `usr/share/kb-switcher/data/` (Linux AppImage). The runtime
+    // resolver in `kb_core::data_dir` figures out which path is
+    // live; in dev mode it falls back to `target/dist/data/` where
+    // `kb-core/build.rs` writes prepared assets.
+    //
+    // We then ask the OS which layouts the user has actually
+    // enabled (`list_active`) and only load **those** wordlists into
+    // memory. A user with `en-US / uk-UA / ru-RU` saves the FST RAM
+    // for the four other bundled languages they'd never query — and
+    // the detector can no longer pick an unreachable layout (the
+    // root cause of the original `http ` bug).
+    let data_dir = kb_core::resolve_data_dir().context("resolve data directory")?;
+    info!(?data_dir, "data directory resolved");
+
+    let active_os_layouts = match layout_switcher.list_active() {
+        Ok(list) => {
+            info!(active = ?list, count = list.len(), "OS active layouts");
+            Some(list)
+        }
+        Err(e) => {
+            // Fail-open: we can't decide what's reachable, so load
+            // every bundled layout (the previous baked-in behaviour).
+            // The detector + apply_correction pre-flight guard will
+            // still catch any unreachable target at runtime.
+            warn!(
+                ?e,
+                "could not query active OS layouts; loading every bundled layout"
+            );
+            None
+        }
+    };
+
+    let user_wordlist_dir = kb_core::layouts::user_wordlist_dir();
+    let user_layout_dir = kb_core::layouts::user_layout_dir();
+    let layouts = Arc::new(
+        LayoutDb::load(kb_core::layouts::LoadOptions {
+            data_dir: Some(&data_dir),
+            active_filter: active_os_layouts.as_deref(),
+            user_layout_dir: user_layout_dir.as_deref(),
+            user_wordlist_dir: user_wordlist_dir.as_deref(),
+        })
+        .context("load layout DB")?,
+    );
+    info!(
+        loaded = layouts.len(),
+        ids = ?layouts.ids().collect::<Vec<_>>(),
+        wordlist_overlay = ?user_wordlist_dir,
+        layout_overlay = ?user_layout_dir,
+        "layout DB ready"
+    );
     let key_emitter = match create_emitter() {
         Ok(e) => {
             info!(backend = e.backend_name(), "key emitter ready");
@@ -168,7 +236,8 @@ fn main() -> Result<()> {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
     let menu = Menu::new();
-    let item_settings = MenuItem::new("Open Settings (config.toml)…", true, None);
+    let item_settings_ui = MenuItem::new("Settings…", true, None);
+    let item_settings_file = MenuItem::new("Edit config.toml…", true, None);
     let item_logs = MenuItem::new("Open Logs Folder…", true, None);
     let item_wordlists = MenuItem::new("Open User Wordlists Folder…", true, None);
     let item_layouts = MenuItem::new("Open User Layouts Folder…", true, None);
@@ -181,7 +250,8 @@ fn main() -> Result<()> {
     );
     let item_quit = MenuItem::new("Quit", true, None);
     menu.append_items(&[
-        &item_settings,
+        &item_settings_ui,
+        &item_settings_file,
         &item_logs,
         &item_wordlists,
         &item_layouts,
@@ -193,7 +263,8 @@ fn main() -> Result<()> {
         &item_quit,
     ])
     .context("populate tray menu")?;
-    let settings_id = item_settings.id().clone();
+    let settings_ui_id = item_settings_ui.id().clone();
+    let settings_file_id = item_settings_file.id().clone();
     let logs_id = item_logs.id().clone();
     let wordlists_id = item_wordlists.id().clone();
     let layouts_id = item_layouts.id().clone();
@@ -271,7 +342,9 @@ fn main() -> Result<()> {
                         listener.stop();
                     }
                     *control_flow = ControlFlow::Exit;
-                } else if id == settings_id {
+                } else if id == settings_ui_id {
+                    spawn_settings_ui(&cmd_tx_for_loop);
+                } else if id == settings_file_id {
                     open_path(&settings_path, "settings file");
                 } else if id == logs_id {
                     if let Some(dir) = log_dir.as_ref() {
@@ -388,6 +461,69 @@ fn open_path(path: &std::path::Path, what: &str) {
     if let Err(e) = opener::open(path) {
         warn!(?e, ?path, "could not open {what} in default app");
     }
+}
+
+/// CLI help text. Kept short and stable — most users never invoke
+/// kb-switcher with arguments, but `--help` should still answer the
+/// "what does this thing do" question without a manpage.
+fn print_help() {
+    println!(
+        "{APP_NAME} {ver}\n\
+        \n\
+        USAGE:\n  \
+            kb-switcher              start the tray app\n  \
+            kb-switcher --settings   open the settings window\n  \
+            kb-switcher --version    print version and exit\n  \
+            kb-switcher --help       show this help",
+        ver = env!("CARGO_PKG_VERSION"),
+    );
+}
+
+/// Spawn the Settings GUI as a child process (`kb-switcher
+/// --settings`) and tell the engine to reload its config when the
+/// window closes. Subprocess instead of in-process for the macOS
+/// main-thread reason documented at the top of `settings_ui.rs`.
+///
+/// Best-effort: if we can't even locate our own exe (highly unusual,
+/// e.g. running from a deleted binary) we log + skip rather than
+/// taking down the tray.
+fn spawn_settings_ui(reload_tx: &Sender<EngineCommand>) {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            warn!(?e, "could not locate own exe; can't open settings UI");
+            return;
+        }
+    };
+    info!(?exe, "launching settings UI");
+    let child = match std::process::Command::new(&exe).arg("--settings").spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!(?e, ?exe, "settings UI subprocess failed to start");
+            return;
+        }
+    };
+
+    // Wait for the child in a worker thread so the tray doesn't
+    // block. On exit we send `SettingsReloaded` regardless of the
+    // child's status — the user may have edited config.toml from
+    // the GUI's "Open config.toml" button even if they then closed
+    // the window without clicking Save, so a reload-on-exit gives
+    // the most predictable refresh semantics.
+    let reload_tx = reload_tx.clone();
+    std::thread::Builder::new()
+        .name("kb-switcher-settings-waiter".into())
+        .spawn(move || {
+            let mut child = child;
+            match child.wait() {
+                Ok(status) => info!(?status, "settings UI exited"),
+                Err(e) => warn!(?e, "could not wait on settings UI child"),
+            }
+            if let Err(e) = reload_tx.send(EngineCommand::SettingsReloaded) {
+                warn!(?e, "could not enqueue SettingsReloaded after UI exit");
+            }
+        })
+        .ok();
 }
 
 /// Resolve the user wordlists directory, create it if missing, and

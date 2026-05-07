@@ -8,6 +8,7 @@
         candle  -dProductVersion=...
                 -dBinPath=...
                 -dLicensePath=...
+                -dDataDir=...    (target/dist/data — bundled at install)
                 -dIconPath=...   (optional; falls back to no icon)
                 installers\wix\main.wxs -out main.wixobj
         light   main.wixobj -out kb-switcher.msi
@@ -16,11 +17,11 @@
 
     UpgradeCode is *intentionally* fixed forever — it's the GUID Windows
     keys MSI upgrades off, so changing it would orphan every existing
-    install. Per-component GUIDs are also fixed (see `MainExecutable*`
-    and `LicenseFile*ComponentGuid` defines below) — auto-generation
-    via `Guid="*"` is rejected by `CNDL0230` for components that hold
-    BOTH a `File` AND a `RegistryValue` keypath, which is exactly our
-    shape (see ICE38 rationale below).
+    install. Per-component GUIDs are also fixed (see `*ComponentGuid`
+    defines below) — auto-generation via `Guid="*"` is rejected by
+    `CNDL0230` for components that hold BOTH a `File` AND a
+    `RegistryValue` keypath, which is exactly our shape (see ICE38
+    rationale below).
 
     perUser-install authoring rules (ICE38 / ICE43 / ICE69 / ICE19):
 
@@ -37,6 +38,21 @@
         be a `File`. Combined with the rule above, that's an outright
         contradiction for perUser installs — so our shortcuts are
         *non-advertised* with an explicit `Target="[#ExeFile]"`.
+
+    Data-bundle layout (matches `kb_core::data_dir` resolver order #2,
+    "<exe_dir>/data/"):
+
+        APPLICATIONROOTFOLDER/
+          kb-switcher.exe
+          LICENSE
+          data/
+            layout-mappings/   (one .toml per bundled language)
+            wordlists/         (one .fst + one -stop.txt per language)
+
+    The `data/` tree is produced by `crates/kb-core/build.rs` and
+    written to `target/dist/data/`; the build script passes that path
+    in as `$(var.DataDir)` so the File `Source=` references are
+    runner-portable.
 -->
 <?define ProductName = "kb-switcher" ?>
 <?define Manufacturer = "kb-switcher contributors" ?>
@@ -47,22 +63,17 @@
     Component GUIDs are FIXED, not auto-generated (`Guid="*"`).
     Reason: each Component below holds BOTH a `File` AND a
     `RegistryValue` with `KeyPath="yes"`. WiX's CNDL0230 rejects
-    `Guid="*"` for that combination — auto-GUIDs require a single
-    keyable resource the GUID can deterministically derive from. We
-    need both because:
+    `Guid="*"` for that combination. Stable across versions on
+    purpose — Windows Installer keys major upgrades off these so
+    existing installs upgrade cleanly.
 
-      * The `File` is what we want to install.
-      * The `RegistryValue` is the per-user keypath ICE38 requires
-        for a `perUser` install (a file alone can't be the keypath
-        when installing into the user profile).
-
-    Stable across versions on purpose — Windows Installer keys major
-    upgrades off these so existing installs upgrade cleanly. Pick a
-    fresh GUID only if you're splitting a component or breaking the
-    upgrade chain on purpose.
+    Pick a fresh GUID only if you're splitting a component or
+    breaking the upgrade chain on purpose.
 -->
-<?define MainExecutableComponentGuid = "4F8B6C01-5D1E-4A3F-9B2C-1D0E2F3A4B51" ?>
-<?define LicenseFileComponentGuid    = "4F8B6C02-5D1E-4A3F-9B2C-1D0E2F3A4B52" ?>
+<?define MainExecutableComponentGuid    = "4F8B6C01-5D1E-4A3F-9B2C-1D0E2F3A4B51" ?>
+<?define LicenseFileComponentGuid       = "4F8B6C02-5D1E-4A3F-9B2C-1D0E2F3A4B52" ?>
+<?define DataLayoutMappingsComponentGuid = "4F8B6C03-5D1E-4A3F-9B2C-1D0E2F3A4B53" ?>
+<?define DataWordlistsComponentGuid      = "4F8B6C04-5D1E-4A3F-9B2C-1D0E2F3A4B54" ?>
 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="*"
@@ -102,21 +113,118 @@
             <Property Id="ARPPRODUCTICON" Value="AppIcon.exe" />
         <?endif ?>
 
-        <Property Id="ARPHELPLINK" Value="https://github.com/REPLACE-ME/kb-switcher" />
-        <Property Id="ARPURLINFOABOUT" Value="https://github.com/REPLACE-ME/kb-switcher" />
+        <Property Id="ARPHELPLINK" Value="https://github.com/Just-Code-NET/kb-switcher" />
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/Just-Code-NET/kb-switcher" />
 
         <Feature Id="MainFeature"
                  Title="$(var.ProductName)"
                  Level="1"
                  ConfigurableDirectory="APPLICATIONROOTFOLDER">
             <ComponentGroupRef Id="MainComponents" />
+            <ComponentRef Id="DataLayoutMappings" />
+            <ComponentRef Id="DataWordlists" />
         </Feature>
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <!-- LocalAppDataFolder = %LOCALAPPDATA%, perUser-friendly -->
             <Directory Id="LocalAppDataFolder">
                 <Directory Id="ManufacturerFolder" Name="$(var.Manufacturer)">
-                    <Directory Id="APPLICATIONROOTFOLDER" Name="$(var.ProductName)" />
+                    <Directory Id="APPLICATIONROOTFOLDER" Name="$(var.ProductName)">
+                        <!--
+                            Bundled data tree: layout TOMLs and FST
+                            wordlists. Loaded at runtime by the
+                            `kb_core::data_dir` resolver, which checks
+                            `<exe_dir>/data/` first.
+                        -->
+                        <Directory Id="DataDir" Name="data">
+                            <Directory Id="DataLayoutMappingsDir" Name="layout-mappings">
+                                <Component Id="DataLayoutMappings"
+                                           Guid="$(var.DataLayoutMappingsComponentGuid)">
+                                    <!-- HKCU KeyPath required by ICE38
+                                         for perUser; one per Component. -->
+                                    <RegistryValue Root="HKCU"
+                                                   Key="$(var.InstallRegKey)"
+                                                   Name="DataLayoutMappings"
+                                                   Type="integer"
+                                                   Value="1"
+                                                   KeyPath="yes" />
+                                    <File Id="MapEnUs"
+                                          Source="$(var.DataDir)\layout-mappings\en_us.toml"
+                                          Name="en_us.toml" />
+                                    <File Id="MapUkUa"
+                                          Source="$(var.DataDir)\layout-mappings\uk_ua.toml"
+                                          Name="uk_ua.toml" />
+                                    <File Id="MapRuRu"
+                                          Source="$(var.DataDir)\layout-mappings\ru_ru.toml"
+                                          Name="ru_ru.toml" />
+                                    <File Id="MapDeDe"
+                                          Source="$(var.DataDir)\layout-mappings\de_de.toml"
+                                          Name="de_de.toml" />
+                                    <File Id="MapEsEs"
+                                          Source="$(var.DataDir)\layout-mappings\es_es.toml"
+                                          Name="es_es.toml" />
+                                    <File Id="MapFrFr"
+                                          Source="$(var.DataDir)\layout-mappings\fr_fr.toml"
+                                          Name="fr_fr.toml" />
+                                    <RemoveFolder Id="RemoveDataLayoutMappingsDir"
+                                                  Directory="DataLayoutMappingsDir"
+                                                  On="uninstall" />
+                                </Component>
+                            </Directory>
+                            <Directory Id="DataWordlistsDir" Name="wordlists">
+                                <Component Id="DataWordlists"
+                                           Guid="$(var.DataWordlistsComponentGuid)">
+                                    <RegistryValue Root="HKCU"
+                                                   Key="$(var.InstallRegKey)"
+                                                   Name="DataWordlists"
+                                                   Type="integer"
+                                                   Value="1"
+                                                   KeyPath="yes" />
+                                    <!-- FSTs (built from data/wordlists/<stem>.txt.gz). -->
+                                    <File Id="FstEnUs"
+                                          Source="$(var.DataDir)\wordlists\en_us.fst"
+                                          Name="en_us.fst" />
+                                    <File Id="FstUkUa"
+                                          Source="$(var.DataDir)\wordlists\uk_ua.fst"
+                                          Name="uk_ua.fst" />
+                                    <File Id="FstRuRu"
+                                          Source="$(var.DataDir)\wordlists\ru_ru.fst"
+                                          Name="ru_ru.fst" />
+                                    <File Id="FstDeDe"
+                                          Source="$(var.DataDir)\wordlists\de_de.fst"
+                                          Name="de_de.fst" />
+                                    <File Id="FstEsEs"
+                                          Source="$(var.DataDir)\wordlists\es_es.fst"
+                                          Name="es_es.fst" />
+                                    <File Id="FstFrFr"
+                                          Source="$(var.DataDir)\wordlists\fr_fr.fst"
+                                          Name="fr_fr.fst" />
+                                    <!-- Curated 1-/2-letter stop-word lists. -->
+                                    <File Id="StopEnUs"
+                                          Source="$(var.DataDir)\wordlists\en_us-stop.txt"
+                                          Name="en_us-stop.txt" />
+                                    <File Id="StopUkUa"
+                                          Source="$(var.DataDir)\wordlists\uk_ua-stop.txt"
+                                          Name="uk_ua-stop.txt" />
+                                    <File Id="StopRuRu"
+                                          Source="$(var.DataDir)\wordlists\ru_ru-stop.txt"
+                                          Name="ru_ru-stop.txt" />
+                                    <File Id="StopDeDe"
+                                          Source="$(var.DataDir)\wordlists\de_de-stop.txt"
+                                          Name="de_de-stop.txt" />
+                                    <File Id="StopEsEs"
+                                          Source="$(var.DataDir)\wordlists\es_es-stop.txt"
+                                          Name="es_es-stop.txt" />
+                                    <File Id="StopFrFr"
+                                          Source="$(var.DataDir)\wordlists\fr_fr-stop.txt"
+                                          Name="fr_fr-stop.txt" />
+                                    <RemoveFolder Id="RemoveDataWordlistsDir"
+                                                  Directory="DataWordlistsDir"
+                                                  On="uninstall" />
+                                </Component>
+                            </Directory>
+                        </Directory>
+                    </Directory>
                 </Directory>
             </Directory>
             <Directory Id="ProgramMenuFolder">
@@ -132,21 +240,24 @@
                 keeps cleanup atomic — uninstalling the binary
                 automatically removes its shortcut and the start-menu
                 folder.
+
+                The data folder cleanup (`data/`, `data/layout-mappings/`,
+                `data/wordlists/`) is handled inside the data Components
+                themselves via `RemoveFolder`. The root `data/` folder
+                gets cleaned up when the parent `APPLICATIONROOTFOLDER`
+                is removed below.
             -->
             <Component Id="MainExecutable" Guid="$(var.MainExecutableComponentGuid)">
                 <File Id="ExeFile"
                       Source="$(var.BinPath)"
                       Name="kb-switcher.exe" />
                 <!--
-                    Non-advertised shortcut. Tried `Advertise="yes"`
-                    first, but ICE19 rejects that combination — an
-                    advertised shortcut requires the component's
-                    KeyPath to be a `File`, and ours is a
-                    `RegistryValue` (forced by ICE38 for perUser).
-                    The explicit `Target="[#ExeFile]"` is fine here
-                    because `ExeFile` is in *this* same component, so
-                    ICE69 (cross-component shortcut target) doesn't
-                    fire either.
+                    Non-advertised shortcut. `Advertise="yes"` requires
+                    the component's KeyPath to be a `File`, but ours is
+                    a `RegistryValue` (forced by ICE38 for perUser).
+                    `Target="[#ExeFile]"` is fine because `ExeFile` is
+                    in *this* same component, so ICE69 (cross-component
+                    shortcut target) doesn't fire either.
                 -->
                 <Shortcut Id="StartMenuLink"
                           Directory="ApplicationProgramsFolder"
@@ -157,13 +268,15 @@
                 <RemoveFolder Id="RemoveAppProgramsFolder"
                               Directory="ApplicationProgramsFolder"
                               On="uninstall" />
+                <RemoveFolder Id="RemoveDataDir"
+                              Directory="DataDir"
+                              On="uninstall" />
                 <RemoveFolder Id="RemoveAppRootFolder"
                               Directory="APPLICATIONROOTFOLDER"
                               On="uninstall" />
                 <RemoveFolder Id="RemoveManufacturerFolder"
                               Directory="ManufacturerFolder"
                               On="uninstall" />
-                <!-- HKCU KeyPath required by ICE38 for perUser. -->
                 <RegistryValue Root="HKCU"
                                Key="$(var.InstallRegKey)"
                                Name="MainExecutable"
