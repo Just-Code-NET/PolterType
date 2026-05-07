@@ -22,7 +22,7 @@
     BOTH a `File` AND a `RegistryValue` keypath, which is exactly our
     shape (see ICE38 rationale below).
 
-    perUser-install authoring rules (ICE38 / ICE43 / ICE69):
+    perUser-install authoring rules (ICE38 / ICE43 / ICE69 / ICE19):
 
       * Every component installing files into the user profile MUST
         have an HKCU `RegistryValue` element marked `KeyPath="yes"`
@@ -33,6 +33,10 @@
       * A `Shortcut` whose `Target` references a file in another
         component triggers ICE69. Easiest fix: declare the shortcut
         inside the same component as the file it points at.
+      * `Advertise="yes"` shortcuts require the component KeyPath to
+        be a `File`. Combined with the rule above, that's an outright
+        contradiction for perUser installs — so our shortcuts are
+        *non-advertised* with an explicit `Target="[#ExeFile]"`.
 -->
 <?define ProductName = "kb-switcher" ?>
 <?define Manufacturer = "kb-switcher contributors" ?>
@@ -133,12 +137,23 @@
                 <File Id="ExeFile"
                       Source="$(var.BinPath)"
                       Name="kb-switcher.exe" />
+                <!--
+                    Non-advertised shortcut. Tried `Advertise="yes"`
+                    first, but ICE19 rejects that combination — an
+                    advertised shortcut requires the component's
+                    KeyPath to be a `File`, and ours is a
+                    `RegistryValue` (forced by ICE38 for perUser).
+                    The explicit `Target="[#ExeFile]"` is fine here
+                    because `ExeFile` is in *this* same component, so
+                    ICE69 (cross-component shortcut target) doesn't
+                    fire either.
+                -->
                 <Shortcut Id="StartMenuLink"
                           Directory="ApplicationProgramsFolder"
                           Name="$(var.ProductName)"
                           Description="Cross-platform automatic keyboard layout switcher"
-                          WorkingDirectory="APPLICATIONROOTFOLDER"
-                          Advertise="yes" />
+                          Target="[#ExeFile]"
+                          WorkingDirectory="APPLICATIONROOTFOLDER" />
                 <RemoveFolder Id="RemoveAppProgramsFolder"
                               Directory="ApplicationProgramsFolder"
                               On="uninstall" />
