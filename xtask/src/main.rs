@@ -15,11 +15,18 @@
 //! Renders the placeholder app icon (used by the release installers
 //! before someone designs a real brand mark) to a PNG. See
 //! `assets.rs` for the rationale on why this is procedural.
+//!
+//! ## `cargo xtask version [bump | set <X.Y.Z>] [--dry-run]`
+//!
+//! Bumps the workspace version in lock-step across `Cargo.toml`,
+//! `CHANGELOG.md`, and `Cargo.lock`. See `version.rs` for the
+//! auto-bump rule and the rationale for the small action surface.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)] // build/dev tool
 
 mod assets;
 mod hunspell;
+mod version;
 
 use std::collections::BTreeSet;
 use std::fs::{self, File};
@@ -78,6 +85,7 @@ fn main() -> Result<()> {
         (Some("hooks"), Some("install")) => install_hooks(),
         (Some("hooks"), Some("uninstall")) => uninstall_hooks(),
         (Some("assets"), Some("icon-png")) => render_icon_command(&rest[2..]),
+        (Some("version"), _) => version::run(&rest[1..]),
         (Some(other), _) => bail!("unknown xtask command: {other} (try `cargo xtask help`)"),
     }
 }
@@ -92,6 +100,11 @@ fn print_help() {
     println!(
         "                         Render the placeholder app icon as a PNG (default size 1024)."
     );
+    println!("  version               Print the current workspace version.");
+    println!("  version bump          Bump the workspace version (auto: pre-release counter,");
+    println!("                         else patch). Updates Cargo.toml, CHANGELOG.md, Cargo.lock.");
+    println!("  version set <X.Y.Z>   Set the workspace version exactly. Same files updated.");
+    println!("  version <subcmd> --dry-run   Print what would change without writing.");
 }
 
 /// Parse `<out-path> [--size N]` and render the icon.

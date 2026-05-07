@@ -220,18 +220,11 @@ Beta builds are **unsigned** — we don't yet have an Apple Developer
 ID or a Windows EV/OV cert. The release notes call out the
 Gatekeeper / SmartScreen workarounds so testers know what to click.
 
-To cut a release:
-
-1. Bump `[workspace.package].version` in the root `Cargo.toml` and
-   add a [CHANGELOG.md](CHANGELOG.md) entry.
-2. Commit, tag, push:
-   ```bash
-   git commit -am "release: v0.1.0-alpha.1"
-   git tag v0.1.0-alpha.1
-   git push origin main --tags
-   ```
-3. Wait for CI; the Release lands as a **draft** — review, edit
-   notes, and publish manually.
+To cut a release: see [docs/RELEASING.md](docs/RELEASING.md) for
+the full step-by-step checklist (pre-flight, version bump,
+commit + tag + push, recovery from common mistakes). The TL;DR
+is at the bottom of that doc if you've cut releases before and
+just need the command sequence.
 
 [release.yml]: .github/workflows/release.yml
 
