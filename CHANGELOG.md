@@ -155,23 +155,49 @@ security model has been reviewed.
 
 ### Settings UI (iced)
 
-Tray menu **"Settings…"** entry now opens a real GUI (iced 0.13
-with the lightweight `tiny-skia` renderer). Three panes for v1:
+Tray menu **"Settings…"** entry opens a real GUI (iced 0.13 with
+the lightweight `tiny-skia` renderer). Five panes:
 
-* **Languages** — checkbox UI over OS-active layouts; toggles
-  `[languages].active` allow-list and `[languages].ignored` veto.
+* **Languages** — checkbox UI over OS-active layouts. Renders the
+  *effective* state, so the default (empty allow-list = "use
+  every OS layout") shows every box ticked. Un-ticking a box from
+  that state materialises the allow-list as "everything except
+  this one", preserving the user's intent across save.
+* **Hotkeys** — current pause / switch-last bindings + a Rebind
+  button per row. Click → "Press a combination…" → the next
+  `<modifier>+<key>` combo is captured and written. Lone modifier
+  presses are filtered, single-letter combos refused, `Esc`
+  cancels. Round-trip through `global-hotkey::HotKey::from_str`
+  is unit-tested so the GUI can never produce a combo the next
+  tray launch silently drops. `crates/kb-app` now reads bindings
+  from `[hotkeys]` in settings (used to be hardcoded).
 * **General** — autostart, sound on correction, suppress-in-
   identifiers, idle timeout, plus shortcut buttons to the various
   config / log / wordlist / layout folders.
+* **Exceptions** — list-edit for `[exceptions].disabled_apps`.
+  One row per entry with a delete `×`, plus an Add field at the
+  bottom (Enter or Add-button). Case-insensitive dedup matches
+  the engine's runtime comparison.
 * **About** — version, repo links, "Reset to defaults" + "Reload
   from disk" escape hatches.
 
 Implementation note: the GUI runs as a child process
 (`kb-switcher --settings`) so the tray's `tao::EventLoop` and
 iced's `winit` event loop don't fight over the macOS main thread.
-Hotkey rebinding and exception-app management aren't in v1 —
-power users still edit the TOML via the **"Edit config.toml…"**
-menu entry.
+
+### Plug-in loader v1
+
+`<data_dir>/plugins/<pack-id>/` is now enumerated at `LayoutDb`
+load. Pack shape: `manifest.toml` + `layout-mappings/*.toml` +
+`wordlists/<stem>.fst[+ -stop.txt]`. Precedence chain
+`bundled ← plug-ins ← user-overlay` — a user can still override
+a plug-in by dropping a TOML with the same id in their config dir.
+
+**v1 surface is data-only** — no native code, no network calls,
+no settings injection (see [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md)
+§ "What plug-ins won't be"). The loader is ~80 LOC, every error
+path warns and skips, four unit tests cover happy-path /
+missing-manifest / invalid-manifest / user-override.
 
 ### Known limitations / v0.1.x targets
 
@@ -181,8 +207,13 @@ menu entry.
   contributors with the right hardware report issues.
 * Beta builds are unsigned (no Apple Developer ID, no Windows EV /
   OV cert yet) — code signing tracked for a later phase.
-* Settings UI: hotkey rebinding + exception-apps editor are deferred
-  to a follow-up. v1 ships the language picker, the boolean knobs,
-  and the folder shortcuts.
+* **Hotkey capture on Wayland** — works inside the focused Settings
+  window, but Wayland's security model means we don't see global
+  key presses while another app has focus. Acceptable for v1 (you'd
+  rebind from inside the window anyway), revisited if a use case
+  surfaces.
+* **Plug-in marketplace UX** — install / sign / update flow is a
+  separate phase. The loader is ready; the network + UI plumbing
+  has its own security review queued.
 
 [Unreleased]: https://github.com/REPLACE-ME/kb-switcher

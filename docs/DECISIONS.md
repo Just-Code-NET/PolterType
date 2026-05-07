@@ -479,3 +479,100 @@ Hotkey rebinding and exception-app management aren't in v1 — both
 need richer UI and live config diffing. Power users still edit the
 TOML via the **"Edit config.toml…"** tray entry (which the GUI
 "Open config.toml" button also exposes).
+
+## 2026-05-07 (later) — Settings UI completion + plug-in loader v1
+
+Three follow-ups landed in the same day as the externalisation:
+
+### 1. Languages pane: render *effective* state, not the raw list
+
+`[languages].active = []` means "every OS layout is considered" (the
+default). The earlier UI rendered the raw list, which meant a fresh
+install showed zero ticked checkboxes even though every layout was
+working. User-reported confusion.
+
+Fix: the Active checkbox now reflects the engine's actual decision
+rule (`list.is_empty() || list.contains(id)`), so on first open every
+OS-active layout is shown ticked. When the user un-ticks a box from
+that implicit-all state, we materialise the allow-list as "every OS
+layout *except* this one" — preserving the user's intent across save.
+
+The narrow alternative — auto-populating `[languages].active` with
+every OS layout on first save — would have been simpler but breaks
+the "use whatever the OS reports today" semantic. Materialising only
+on the first un-tick keeps that semantic free for users who never
+visit this pane.
+
+### 2. Hotkey rebinding — capture mode + persisted bindings
+
+`crates/kb-app/src/main.rs` now reads `[hotkeys]` from settings
+(previously hardcoded `Ctrl+Shift+Space` / `Ctrl+Shift+Backspace`).
+Parser is `global-hotkey`'s native `FromStr`, which accepts the same
+`Ctrl+Shift+Space` shape we already document. Bad strings fall back
+to the documented default with a warn — same loud-but-graceful
+contract as malformed user-layout TOMLs.
+
+Settings UI gains a **Hotkeys** pane with one row per binding +
+"Rebind" button. Clicking flips the app into capture mode; an iced
+`keyboard::on_key_press` subscription routes the next combo. Rules:
+
+* Lone modifier presses (`Ctrl`, `Shift`, `Alt`, `Meta`) are filtered
+  — the user hasn't finished composing yet.
+* At least one modifier required — single-letter hotkeys would clash
+  with normal typing.
+* `Esc` cancels capture without rebinding.
+
+The capture serialiser is unit-tested for round-trip through
+`global-hotkey::HotKey::from_str` so the GUI can never produce a
+combo that the next tray launch silently drops.
+
+Why a subscription rather than per-widget event hooks: capture is
+window-global (the user shouldn't have to focus the "Press a
+combination..." field first), and a Subscription lets us toggle
+listening on/off via the captured `Option<HotkeyKind>`. Outside
+capture mode the subscription is `Subscription::none()`, so the
+window doesn't allocate a Message on every keystroke.
+
+### 3. Exceptions pane
+
+Simple list-edit over `[exceptions].disabled_apps`: one row per
+entry with a `×` button, plus an Add row at the bottom. Add accepts
+both Enter-key and Add-button. Case-insensitive dedup (matches the
+engine's runtime comparison via `eq_ignore_ascii_case`).
+
+### 4. Plug-in loader v1
+
+`<data_dir>/plugins/<pack-id>/` is now enumerated at every `LayoutDb`
+load. Pack shape (per `docs/DATA_LAYOUT.md`):
+
+```
+<pack-dir>/
+  manifest.toml          {id, name, version, supported_layouts}
+  layout-mappings/*.toml
+  wordlists/<stem>.fst   (optional; falls back to plausibility-only)
+  wordlists/<stem>-stop.txt  (optional)
+```
+
+Precedence: `bundled ← plug-ins ← user-overlay` (last writer wins
+on `id` collision). Pack dirs sorted alphabetically for
+deterministic load order.
+
+**v1 surface is data-only** — no native code, no network, no
+settings injection. The loader function is ~80 LOC, every error
+path warns and skips, and four unit tests cover happy-path /
+missing-manifest / invalid-manifest / user-override-of-plug-in.
+This keeps the security review tractable for the eventual
+marketplace launch — when remote downloads + signed packs land,
+the existing loader's "data only" assumptions stay sound.
+
+### What's still on the bench
+
+* **Hotkey capture on Wayland** — iced's keyboard subscription
+  works on Windows / X11 / macOS today; Wayland clients don't
+  receive grab-style global events while unfocused. The current
+  capture works fine when the Settings window is focused (the
+  common case for rebinding) but not from a background "rebind via
+  hotkey" gesture. Fine for v1.
+* **Plug-in marketplace UX** — installation, signing, updates. The
+  loader is ready for them; the UI / network plumbing is a separate
+  phase whose security model needs its own DECISIONS entry.

@@ -293,18 +293,25 @@ fn main() -> Result<()> {
     // is internally Arc-shared, so this clone bumps a refcount.
     let item_pause_for_loop = item_pause.clone();
 
-    // Global hotkeys
+    // Global hotkeys — strings come from `[hotkeys]` in config.toml.
+    // We parse them with `global-hotkey`'s `FromStr` (see
+    // `parse_hotkey_or_default`); on a malformed entry we fall back to
+    // the documented default so the user never ends up with a tray app
+    // that silently lost its hotkeys after a typo.
     let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
-    let hk_pause = HotKey::new(Some(HkMods::CONTROL | HkMods::SHIFT), Code::Space);
-    let hk_switch = HotKey::new(Some(HkMods::CONTROL | HkMods::SHIFT), Code::Backspace);
+    let hk_pause = parse_hotkey_or_default(
+        &settings.snapshot().hotkeys.pause_toggle,
+        "Ctrl+Shift+Space",
+    );
+    let hk_switch = parse_hotkey_or_default(
+        &settings.snapshot().hotkeys.manual_switch_last,
+        "Ctrl+Shift+Backspace",
+    );
     if let Err(e) = hotkey_manager.register(hk_pause) {
-        warn!(?e, "could not register pause hotkey (Ctrl+Shift+Space)");
+        warn!(?e, hotkey = ?hk_pause, "could not register pause hotkey");
     }
     if let Err(e) = hotkey_manager.register(hk_switch) {
-        warn!(
-            ?e,
-            "could not register switch-last hotkey (Ctrl+Shift+Backspace)"
-        );
+        warn!(?e, hotkey = ?hk_switch, "could not register switch-last hotkey");
     }
     let pause_hotkey_id = hk_pause.id();
     let switch_hotkey_id = hk_switch.id();
@@ -460,6 +467,31 @@ fn open_path(path: &std::path::Path, what: &str) {
     debug!(?path, "opening {what}");
     if let Err(e) = opener::open(path) {
         warn!(?e, ?path, "could not open {what} in default app");
+    }
+}
+
+/// Parse a hotkey string from `[hotkeys]` (e.g. `"Ctrl+Shift+Space"`)
+/// using `global-hotkey`'s native `FromStr`. On parse failure we log
+/// a warning and fall back to `default_str` so the app boots with a
+/// usable hotkey rather than nothing — matches the Settings UI's
+/// "loud-but-graceful" approach to bad config values.
+fn parse_hotkey_or_default(s: &str, default_str: &str) -> HotKey {
+    match s.parse::<HotKey>() {
+        Ok(h) => h,
+        Err(e) => {
+            warn!(
+                ?e,
+                raw = s,
+                fallback = default_str,
+                "could not parse hotkey; using fallback"
+            );
+            // The fallback is itself a parse — built from a known-good
+            // literal. If even that fails we hard-code the matching
+            // (Ctrl+Shift)+key combo so we always return a real hotkey.
+            default_str
+                .parse::<HotKey>()
+                .unwrap_or_else(|_| HotKey::new(Some(HkMods::CONTROL | HkMods::SHIFT), Code::Space))
+        }
     }
 }
 

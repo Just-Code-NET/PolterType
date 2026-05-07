@@ -399,6 +399,176 @@ fn first_char(s: &str) -> Option<char> {
     s.chars().next()
 }
 
+// ─── Plug-in packs ──────────────────────────────────────────────────
+
+/// Manifest schema for a plug-in language pack. Lives at
+/// `<data_dir>/plugins/<dir-name>/manifest.toml`. Mirrors the contract
+/// documented in `docs/DATA_LAYOUT.md`.
+///
+/// Forward-compat: every field is `#[serde(default)]` so future
+/// additions (signing, capability flags) won't break older app
+/// versions; old fields stay parseable as the schema grows.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct PluginManifest {
+    /// Pack identifier (NOT a layout id — it's the pack's own name,
+    /// for log messages and conflict diagnostics).
+    id: String,
+    /// Human-readable display name.
+    name: String,
+    /// Pack version string. Free-form; we don't enforce semver yet.
+    version: String,
+    /// Optional self-declared layouts. Currently only used for log
+    /// output; the loader actually enumerates the pack's
+    /// `layout-mappings/` directory regardless.
+    #[serde(default)]
+    supported_layouts: Vec<String>,
+}
+
+/// Enumerate `<data_dir>/plugins/*/` and merge each pack's layouts
+/// into `by_id`. Loud-but-graceful at every level — a single broken
+/// pack never takes down the rest of the load.
+///
+/// **v1 surface is data-only.** A pack ships:
+///
+///   * `manifest.toml` — required; missing → skip pack.
+///   * `layout-mappings/*.toml` — keyboard maps; same TOML schema as
+///     bundled / user layouts.
+///   * `wordlists/<stem>.fst` + optional `<stem>-stop.txt` — same
+///     shape as the bundled `<data_dir>/wordlists/`.
+///
+/// Native code, network calls, and settings injection are explicitly
+/// out of scope (see `docs/DATA_LAYOUT.md` § "What plug-ins won't be").
+/// Until those land, the loader can stay this small and reviewable.
+fn load_plugin_packs(
+    data_dir: &Path,
+    user_wordlist_dir: Option<&Path>,
+    by_id: &mut HashMap<LayoutId, LayoutMapping>,
+) {
+    let plugins_dir = data_dir.join("plugins");
+    let entries = match std::fs::read_dir(&plugins_dir) {
+        Ok(it) => it,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            warn!(?plugins_dir, err = %e, "could not enumerate plugins dir");
+            return;
+        }
+    };
+
+    // Sort for deterministic load order — two packs claiming the
+    // same layout id should resolve in alphabetical order, not
+    // whatever the filesystem felt like today.
+    let mut pack_dirs: Vec<PathBuf> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.path())
+        .collect();
+    pack_dirs.sort();
+
+    for pack_dir in pack_dirs {
+        load_one_pack(&pack_dir, user_wordlist_dir, by_id);
+    }
+}
+
+fn load_one_pack(
+    pack_dir: &Path,
+    user_wordlist_dir: Option<&Path>,
+    by_id: &mut HashMap<LayoutId, LayoutMapping>,
+) {
+    let manifest_path = pack_dir.join("manifest.toml");
+    let manifest_text = match std::fs::read_to_string(&manifest_path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            warn!(
+                ?pack_dir,
+                "plug-in directory missing manifest.toml — skipping"
+            );
+            return;
+        }
+        Err(e) => {
+            warn!(?manifest_path, err = %e, "could not read plug-in manifest");
+            return;
+        }
+    };
+    let manifest: PluginManifest = match toml::from_str(&manifest_text) {
+        Ok(m) => m,
+        Err(e) => {
+            warn!(?manifest_path, err = %e, "invalid plug-in manifest TOML; skipping");
+            return;
+        }
+    };
+    info!(
+        pack_id = %manifest.id,
+        name = %manifest.name,
+        version = %manifest.version,
+        supported = ?manifest.supported_layouts,
+        ?pack_dir,
+        "loading plug-in pack"
+    );
+
+    let layouts_dir = pack_dir.join("layout-mappings");
+    let entries = match std::fs::read_dir(&layouts_dir) {
+        Ok(it) => it,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            warn!(
+                ?layouts_dir,
+                "plug-in pack has no layout-mappings/ directory"
+            );
+            return;
+        }
+        Err(e) => {
+            warn!(?layouts_dir, err = %e, "could not enumerate plug-in layouts");
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let toml_path = entry.path();
+        if toml_path.extension().and_then(|s| s.to_str()) != Some("toml") {
+            continue;
+        }
+        let stem = match toml_path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s.to_owned(),
+            None => continue,
+        };
+        let body = match std::fs::read_to_string(&toml_path) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(?toml_path, err = %e, "could not read plug-in TOML");
+                continue;
+            }
+        };
+
+        // Plug-in's own FST + optional stop-word txt sit alongside
+        // its TOML, in the pack's `wordlists/` directory. We reuse
+        // `build_dictionary` with `pack_dir` standing in for
+        // `data_dir` — the function only looks at `<data_dir>/wordlists/`,
+        // so this is exactly the right shape.
+        //
+        // User-side wordlist overlay still applies on top, so a user
+        // can extend a plug-in's vocabulary the same way they extend
+        // the bundled one.
+        let dictionary = build_dictionary(pack_dir, &stem, user_wordlist_dir);
+        match LayoutMapping::from_parts(&body, dictionary) {
+            Ok(layout) => {
+                let overriding = by_id.contains_key(&layout.id);
+                info!(
+                    layout = %layout.id,
+                    keys = layout.keys.len(),
+                    dict = layout.dictionary.is_some(),
+                    pack = %manifest.id,
+                    overriding,
+                    "loaded plug-in layout"
+                );
+                by_id.insert(layout.id.clone(), layout);
+            }
+            Err(e) => {
+                warn!(?toml_path, pack = %manifest.id, err = %e, "failed to parse plug-in TOML; skipping");
+            }
+        }
+    }
+}
+
 /// Default vowel set per script — adjusted in code for languages whose
 /// vowels diverge from the script default.
 fn derive_vowels(id: &LayoutId, script: Script) -> Vec<char> {
@@ -523,6 +693,15 @@ impl LayoutDb {
                 }
             }
         }
+
+        // ── Plug-in packs (read-only data drops next to bundled
+        //                  set — see docs/DATA_LAYOUT.md) ───────────
+        //
+        // Loaded BEFORE user-side TOMLs so the precedence chain is:
+        //   bundled  ←  plug-ins  ←  user-overlay
+        // i.e. a user can still override a plug-in by dropping a TOML
+        // with the same id under `<config-dir>/kb-switcher/layouts/`.
+        load_plugin_packs(data_dir, opts.user_wordlist_dir, &mut by_id);
 
         // ── User-side TOMLs (always loaded, never filtered) ───────
         if let Some(dir) = opts.user_layout_dir {
@@ -1038,6 +1217,192 @@ script = "{script}"
             .and_then(|l| l.dictionary.as_ref())
             .expect("kk-KZ dictionary built from overlay");
         assert!(dict.contains("тілқолданбасы"));
+    }
+
+    // ─── Plug-in pack loader ───────────────────────────────────────
+
+    /// Minimal but real FST blob for "must compile, must read back"
+    /// tests. We don't need a populated dictionary to verify the
+    /// loader picks up the file — we just need the bytes to parse as
+    /// a valid `FstSet`.
+    fn empty_fst_bytes() -> Vec<u8> {
+        let builder = fst::SetBuilder::memory();
+        builder.into_inner().expect("empty FST builder")
+    }
+
+    /// Happy path: drop a complete plug-in tree under
+    /// `<data_dir>/plugins/<pack>/` and verify the contained layout
+    /// shows up in the loaded `LayoutDb` with its dictionary attached.
+    #[test]
+    fn plugin_pack_layout_loads() {
+        let data_dir = TmpDir::new("plugin-happy");
+        let pack_dir = data_dir.0.join("plugins").join("test-pack");
+        std::fs::create_dir_all(pack_dir.join("layout-mappings")).unwrap();
+        std::fs::create_dir_all(pack_dir.join("wordlists")).unwrap();
+
+        std::fs::write(
+            pack_dir.join("manifest.toml"),
+            r#"
+id = "test-pack"
+name = "Test pack"
+version = "0.0.1"
+supported_layouts = ["kk-KZ"]
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            pack_dir.join("layout-mappings").join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+        )
+        .unwrap();
+        std::fs::write(
+            pack_dir.join("wordlists").join("kk_kz.fst"),
+            empty_fst_bytes(),
+        )
+        .unwrap();
+
+        let db = LayoutDb::load(LoadOptions {
+            data_dir: Some(&data_dir.0),
+            ..Default::default()
+        })
+        .expect("load plugin pack");
+
+        let layout = db
+            .get(&LayoutId::from("kk-KZ"))
+            .expect("plug-in's kk-KZ layout should be loaded");
+        // Dictionary attached because we shipped an FST in the pack.
+        assert!(
+            layout.dictionary.is_some(),
+            "plug-in with shipped FST should have a dictionary"
+        );
+    }
+
+    /// A plug-in directory without a `manifest.toml` is skipped, but
+    /// the rest of the load proceeds. Without this guard, a stray
+    /// folder under `plugins/` (e.g. `.git/`, `__MACOSX/` from an
+    /// extracted zip) could derail every other pack.
+    #[test]
+    fn plugin_missing_manifest_skipped_gracefully() {
+        let data_dir = TmpDir::new("plugin-no-manifest");
+        let pack_dir = data_dir.0.join("plugins").join("broken-pack");
+        std::fs::create_dir_all(pack_dir.join("layout-mappings")).unwrap();
+        // No manifest.toml. There's even a TOML in layout-mappings
+        // that *would* parse — but since the pack lacks a manifest
+        // we should refuse to load anything from it.
+        std::fs::write(
+            pack_dir.join("layout-mappings").join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+        )
+        .unwrap();
+
+        let db = LayoutDb::load(LoadOptions {
+            data_dir: Some(&data_dir.0),
+            ..Default::default()
+        })
+        .expect("load with broken pack");
+        assert!(
+            db.get(&LayoutId::from("kk-KZ")).is_none(),
+            "layout from a manifest-less pack must not be loaded"
+        );
+    }
+
+    /// Plug-in's TOML with an unparseable manifest is skipped. The
+    /// pack is logged + ignored; other packs in the same plug-ins
+    /// directory keep loading.
+    #[test]
+    fn plugin_invalid_manifest_skipped() {
+        let data_dir = TmpDir::new("plugin-bad-manifest");
+        let bad_pack = data_dir.0.join("plugins").join("bad-pack");
+        std::fs::create_dir_all(bad_pack.join("layout-mappings")).unwrap();
+        std::fs::write(bad_pack.join("manifest.toml"), "not = valid = toml === ").unwrap();
+        std::fs::write(
+            bad_pack.join("layout-mappings").join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+        )
+        .unwrap();
+
+        // A second pack alongside, this one well-formed — must still
+        // load to prove the bad pack didn't poison the whole load.
+        let good_pack = data_dir.0.join("plugins").join("good-pack");
+        std::fs::create_dir_all(good_pack.join("layout-mappings")).unwrap();
+        std::fs::create_dir_all(good_pack.join("wordlists")).unwrap();
+        std::fs::write(
+            good_pack.join("manifest.toml"),
+            r#"id="good-pack"
+name="Good"
+version="0.1.0""#,
+        )
+        .unwrap();
+        std::fs::write(
+            good_pack.join("layout-mappings").join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "Қазақ from good pack", "Cyrillic"),
+        )
+        .unwrap();
+        std::fs::write(
+            good_pack.join("wordlists").join("kk_kz.fst"),
+            empty_fst_bytes(),
+        )
+        .unwrap();
+
+        let db = LayoutDb::load(LoadOptions {
+            data_dir: Some(&data_dir.0),
+            ..Default::default()
+        })
+        .expect("load with mixed packs");
+        let layout = db
+            .get(&LayoutId::from("kk-KZ"))
+            .expect("good pack should still load even though bad pack lives next to it");
+        assert_eq!(
+            layout.name, "Қазақ from good pack",
+            "the good pack's layout should win — not the bad pack's TOML"
+        );
+    }
+
+    /// User overlay TOML overrides a plug-in TOML with the same id.
+    /// This is the documented precedence chain
+    /// `bundled ← plug-ins ← user-overlay`. A user dropping a
+    /// matching TOML under `<config-dir>/kb-switcher/layouts/` should
+    /// always win.
+    #[test]
+    fn user_overlay_overrides_plugin() {
+        let data_dir = TmpDir::new("plugin-vs-user-data");
+        let user_dir = TmpDir::new("plugin-vs-user-layouts");
+
+        let pack = data_dir.0.join("plugins").join("p");
+        std::fs::create_dir_all(pack.join("layout-mappings")).unwrap();
+        std::fs::create_dir_all(pack.join("wordlists")).unwrap();
+        std::fs::write(
+            pack.join("manifest.toml"),
+            r#"id="p"
+name="Pack"
+version="0.0.1""#,
+        )
+        .unwrap();
+        std::fs::write(
+            pack.join("layout-mappings").join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "FROM-PACK", "Cyrillic"),
+        )
+        .unwrap();
+        std::fs::write(pack.join("wordlists").join("kk_kz.fst"), empty_fst_bytes()).unwrap();
+
+        // The user's own copy of `kk-KZ`.
+        std::fs::write(
+            user_dir.0.join("kk_kz.toml"),
+            minimal_layout_toml("kk-KZ", "FROM-USER", "Cyrillic"),
+        )
+        .unwrap();
+
+        let db = LayoutDb::load(LoadOptions {
+            data_dir: Some(&data_dir.0),
+            user_layout_dir: Some(&user_dir.0),
+            ..Default::default()
+        })
+        .expect("load with plugin + user overlap");
+        let layout = db.get(&LayoutId::from("kk-KZ")).expect("kk-KZ");
+        assert_eq!(
+            layout.name, "FROM-USER",
+            "user overlay must win over plug-in for the same id"
+        );
     }
 
     #[test]

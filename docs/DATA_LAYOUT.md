@@ -134,10 +134,14 @@ overriding a bundled language) is the same `id` collision rule
 already in place for user-side TOMLs in
 `<config-dir>/kb-switcher/layouts/`.
 
-Until the marketplace ships, `plugins/` is enumerated but does
-nothing — kb-switcher logs a one-line "no plug-in packs found" debug
-message and moves on. This keeps the installer / data layout stable
-across the release where plug-ins land.
+The loader is **live as of 0.1.0-alpha.0**. `<data_dir>/plugins/`
+is enumerated at every `LayoutDb` load; each pack's
+`layout-mappings/*.toml` (with optional `wordlists/<stem>.fst` next
+to it) is merged into the runtime layout DB the same way bundled
+layouts are. Until the marketplace UI ships, the only way to install
+a pack is to drop the directory tree there yourself — useful for
+internal teams shipping a custom layout set, or for testing your own
+pack before publishing.
 
 ### What plug-ins won't be (in v1)
 
