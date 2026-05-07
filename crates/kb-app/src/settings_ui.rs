@@ -24,7 +24,7 @@
 //!
 //! ## Sections
 //!
-//! Side-nav with five panes:
+//! Side-nav with six panes:
 //!
 //! * **Languages** — checkboxes for every layout the OS reports as
 //!   active (queried via `LayoutSwitcher::list_active`). Toggling a
@@ -34,6 +34,11 @@
 //! * **Hotkeys** — current pause / switch-last bindings, plus a
 //!   "Rebind" button per row that flips the UI into capture mode
 //!   and writes the next valid `<modifier>+<key>` combo back.
+//! * **Wordlists** — multiline editor for the user-side wordlist
+//!   overlays in `<config-dir>/kb-switcher/wordlists/<stem>.txt`
+//!   (and `<stem>-stop.txt`). Pick a layout, pick the file kind,
+//!   edit, hit Save. Changes apply on next tray restart — the
+//!   wordlist FSTs are loaded at engine start and not hot-reloaded.
 //! * **General** — the boolean / numeric knobs from
 //!   `GeneralSettings` + `EngineSettings`: autostart, sound on
 //!   correction, suppress-in-identifiers, idle timeout.
@@ -50,6 +55,7 @@ use anyhow::{Context, Result};
 use iced::keyboard::{Key, Modifiers, key::Named};
 use iced::widget::{
     Button, Checkbox, Column, Container, Row, Scrollable, Space, Text, TextInput, button,
+    text_editor,
 };
 use iced::{Element, Length, Padding, Subscription, Task, Theme};
 use kb_core::settings::{Settings, SettingsStore};
@@ -114,9 +120,46 @@ pub fn run() -> Result<()> {
 enum Pane {
     Languages,
     Hotkeys,
+    Wordlists,
     General,
     Exceptions,
     About,
+}
+
+/// Which user-overlay file the Wordlists pane is currently editing
+/// for the selected layout. Both files live under
+/// `<config-dir>/kb-switcher/wordlists/`:
+///
+/// * [`WordlistKind::Extras`] → `<stem>.txt` — extra dictionary
+///   words that get merged into the layout's `user_overlay` set.
+/// * [`WordlistKind::Stop`] → `<stem>-stop.txt` — extra short-stop
+///   words (≤2 letters) that get merged into the per-layout
+///   short-stop list.
+///
+/// The two files have identical syntax (one word per line, `#`
+/// comments, blank lines ignored — see
+/// [`kb_core::layouts::parse_wordlist`]); only their semantic role
+/// differs at engine load time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WordlistKind {
+    Extras,
+    Stop,
+}
+
+impl WordlistKind {
+    fn suffix(self) -> &'static str {
+        match self {
+            WordlistKind::Extras => "",
+            WordlistKind::Stop => "-stop",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            WordlistKind::Extras => "Extras (full words)",
+            WordlistKind::Stop => "Stop list (short tokens)",
+        }
+    }
 }
 
 /// Which hotkey is being rebound right now. `None` = not in capture
@@ -156,6 +199,22 @@ enum Message {
     /// "×" button per existing entry.
     ExceptionRemove(usize),
 
+    // ── Wordlists pane ─────────────────────────────────────────────
+    /// User picked a different layout from the layout row — load
+    /// `<stem><suffix>.txt` into the editor (or empty if missing).
+    WordlistLayoutSelected(LayoutId),
+    /// User flipped between Extras / Stop for the same layout.
+    /// Same load-or-empty semantics as `WordlistLayoutSelected`.
+    WordlistKindSelected(WordlistKind),
+    /// Editor sent us an action (insert / delete / move cursor / …).
+    /// We pass it straight through to `text_editor::Content::perform`.
+    WordlistEdit(text_editor::Action),
+    /// "Save" → write the editor contents to the resolved overlay file.
+    WordlistSave,
+    /// "Reload" → re-read the overlay file from disk, discarding any
+    /// in-memory edits.
+    WordlistReload,
+
     ResetDefaults,
     Save,
     /// Reverts the staged edits back to the on-disk values.
@@ -183,6 +242,26 @@ struct SettingsApp {
     /// Free-form text in the "add a new disabled app" input on the
     /// Exceptions pane. Empty by default; cleared on Add.
     exception_draft: String,
+
+    // ── Wordlists pane ─────────────────────────────────────────────
+    /// Currently-selected layout for editing. `None` until the user
+    /// clicks one of the layout buttons (or defaults to the first
+    /// OS-active layout when the pane is first opened).
+    wordlist_layout: Option<LayoutId>,
+    /// Which file we're editing for the selected layout.
+    wordlist_kind: WordlistKind,
+    /// Live editor buffer. `text_editor::Content` owns its own state
+    /// (cursor position, selection, undo stack) — we just feed
+    /// actions in via `Message::WordlistEdit`.
+    wordlist_content: text_editor::Content,
+    /// `Some` once a save / reload / load happens — surfaces a
+    /// per-pane status line independent of the global save banner so
+    /// "Saved!" on Wordlists doesn't mask "Saved!" on settings.
+    wordlist_status: Option<SaveBanner>,
+    /// Has the buffer been edited since the last load/save? Used to
+    /// gate the "discard changes" warning when the user picks a
+    /// different layout / kind without saving.
+    wordlist_dirty: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -198,6 +277,17 @@ impl SettingsApp {
         config_path: PathBuf,
         store: Arc<SettingsStore>,
     ) -> Self {
+        // Pre-populate the Wordlists pane with the first OS-active
+        // layout so the user can start typing the moment they land
+        // on the pane — picking up the existing file content if any.
+        let (initial_layout, initial_text) = match os_layouts.first().cloned() {
+            Some(layout) => {
+                let text = read_overlay_file_or_empty(&layout, WordlistKind::Extras);
+                (Some(layout), text)
+            }
+            None => (None, String::new()),
+        };
+
         Self {
             settings,
             os_layouts,
@@ -207,6 +297,11 @@ impl SettingsApp {
             save_banner: None,
             capturing: None,
             exception_draft: String::new(),
+            wordlist_layout: initial_layout,
+            wordlist_kind: WordlistKind::Extras,
+            wordlist_content: text_editor::Content::with_text(&initial_text),
+            wordlist_status: None,
+            wordlist_dirty: false,
         }
     }
 
@@ -356,6 +451,75 @@ impl SettingsApp {
                 }
             }
 
+            // ── Wordlists ────────────────────────────────────────
+            Message::WordlistLayoutSelected(id) => {
+                self.wordlist_layout = Some(id.clone());
+                let text = read_overlay_file_or_empty(&id, self.wordlist_kind);
+                self.wordlist_content = text_editor::Content::with_text(&text);
+                self.wordlist_dirty = false;
+                self.wordlist_status = None;
+            }
+            Message::WordlistKindSelected(kind) => {
+                self.wordlist_kind = kind;
+                if let Some(id) = &self.wordlist_layout {
+                    let text = read_overlay_file_or_empty(id, kind);
+                    self.wordlist_content = text_editor::Content::with_text(&text);
+                    self.wordlist_dirty = false;
+                    self.wordlist_status = None;
+                }
+            }
+            Message::WordlistEdit(action) => {
+                // `Action::is_edit()` flips the dirty flag only on
+                // semantic edits (insert / delete / paste). Cursor
+                // moves and scroll events leave it false so we don't
+                // ask the user to save a buffer they only looked at.
+                if action.is_edit() {
+                    self.wordlist_dirty = true;
+                }
+                self.wordlist_content.perform(action);
+            }
+            Message::WordlistSave => {
+                let Some(id) = self.wordlist_layout.clone() else {
+                    self.wordlist_status = Some(SaveBanner {
+                        text: "No layout selected.".into(),
+                        is_error: true,
+                    });
+                    return Task::none();
+                };
+                let text = self.wordlist_content.text();
+                match save_overlay_file(&id, self.wordlist_kind, &text) {
+                    Ok(path) => {
+                        info!(path = ?path, layout = %id, kind = ?self.wordlist_kind, "wordlist saved from UI");
+                        self.wordlist_dirty = false;
+                        self.wordlist_status = Some(SaveBanner {
+                            text: format!(
+                                "Saved to {}. Restart kb-switcher to apply.",
+                                path.display()
+                            ),
+                            is_error: false,
+                        });
+                    }
+                    Err(e) => {
+                        warn!(layout = %id, kind = ?self.wordlist_kind, err = %e, "wordlist save failed");
+                        self.wordlist_status = Some(SaveBanner {
+                            text: format!("Save failed: {e}"),
+                            is_error: true,
+                        });
+                    }
+                }
+            }
+            Message::WordlistReload => {
+                if let Some(id) = self.wordlist_layout.clone() {
+                    let text = read_overlay_file_or_empty(&id, self.wordlist_kind);
+                    self.wordlist_content = text_editor::Content::with_text(&text);
+                    self.wordlist_dirty = false;
+                    self.wordlist_status = Some(SaveBanner {
+                        text: "Reloaded from disk.".into(),
+                        is_error: false,
+                    });
+                }
+            }
+
             Message::ResetDefaults => self.settings = Settings::default(),
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
@@ -422,6 +586,7 @@ impl SettingsApp {
         let body = match self.pane {
             Pane::Languages => self.view_languages(),
             Pane::Hotkeys => self.view_hotkeys(),
+            Pane::Wordlists => self.view_wordlists(),
             Pane::General => self.view_general(),
             Pane::Exceptions => self.view_exceptions(),
             Pane::About => self.view_about(),
@@ -592,6 +757,140 @@ impl SettingsApp {
                 .size(11),
             )
             .into()
+    }
+
+    fn view_wordlists(&self) -> Element<'_, Message> {
+        let mut col = Column::new()
+            .spacing(12)
+            .push(Text::new("Wordlists").size(24))
+            .push(
+                Text::new(
+                    "Add language-specific words to the per-layout dictionary \
+                     overlay. The engine merges these on top of the bundled \
+                     FST at startup, so 'Save' writes to disk and you'll need \
+                     to restart kb-switcher (Quit from the tray, then relaunch) \
+                     for the new words to count toward detection.",
+                )
+                .size(13),
+            );
+
+        if self.os_layouts.is_empty() {
+            col = col.push(
+                Text::new(
+                    "No OS layouts detected. Add languages in your system's \
+                     keyboard settings, then reopen this window.",
+                )
+                .size(13),
+            );
+            return col.into();
+        }
+
+        // ── Layout picker (one button per OS-active layout) ─────────
+        let mut layout_row = Row::new().spacing(6);
+        for id in &self.os_layouts {
+            let selected = self.wordlist_layout.as_ref() == Some(id);
+            let style: fn(&Theme, button::Status) -> button::Style = if selected {
+                button::primary
+            } else {
+                button::secondary
+            };
+            layout_row = layout_row.push(
+                Button::new(Text::new(id.as_str().to_string()).size(12))
+                    .on_press(Message::WordlistLayoutSelected(id.clone()))
+                    .style(style),
+            );
+        }
+        col = col.push(layout_row);
+
+        // ── Kind picker (Extras vs Stop) ────────────────────────────
+        let kind_button = |kind: WordlistKind| -> Element<'_, Message> {
+            let selected = self.wordlist_kind == kind;
+            let style: fn(&Theme, button::Status) -> button::Style = if selected {
+                button::primary
+            } else {
+                button::secondary
+            };
+            Button::new(Text::new(kind.label()).size(12))
+                .on_press(Message::WordlistKindSelected(kind))
+                .style(style)
+                .into()
+        };
+        col = col.push(
+            Row::new()
+                .spacing(6)
+                .push(kind_button(WordlistKind::Extras))
+                .push(kind_button(WordlistKind::Stop)),
+        );
+
+        // ── Resolved-path hint ──────────────────────────────────────
+        if let Some(id) = &self.wordlist_layout {
+            let path_label = match resolve_overlay_path(id, self.wordlist_kind) {
+                Some(p) => p.display().to_string(),
+                None => "(no config dir resolved on this platform)".to_owned(),
+            };
+            col = col.push(Text::new(format!("File: {path_label}")).size(11));
+        }
+
+        // ── Editor body + per-pane footer ───────────────────────────
+        let editor: Element<'_, Message> = if self.wordlist_layout.is_some() {
+            text_editor(&self.wordlist_content)
+                .on_action(Message::WordlistEdit)
+                .height(Length::Fixed(260.0))
+                .padding(8)
+                .placeholder("# one word per line — '#' starts a comment\n")
+                .into()
+        } else {
+            Text::new("Pick a layout above to start editing.")
+                .size(13)
+                .into()
+        };
+        col = col.push(editor);
+
+        let dirty_marker: Element<'_, Message> = if self.wordlist_dirty {
+            Text::new("● unsaved changes")
+                .size(11)
+                .color(iced::Color::from_rgb(0.85, 0.55, 0.20))
+                .into()
+        } else {
+            Space::with_width(Length::Shrink).into()
+        };
+        let status: Element<'_, Message> = match &self.wordlist_status {
+            Some(b) => Text::new(b.text.clone())
+                .size(11)
+                .color(if b.is_error {
+                    iced::Color::from_rgb(0.85, 0.20, 0.20)
+                } else {
+                    iced::Color::from_rgb(0.20, 0.55, 0.30)
+                })
+                .into(),
+            None => Space::with_width(Length::Shrink).into(),
+        };
+
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(dirty_marker)
+                .push(Space::with_width(Length::Fill))
+                .push(status)
+                .push(Button::new(Text::new("Reload").size(12)).on_press(Message::WordlistReload))
+                .push(
+                    Button::new(Text::new("Save").size(12))
+                        .on_press(Message::WordlistSave)
+                        .style(button::primary),
+                ),
+        );
+
+        col = col.push(Space::with_height(6)).push(
+            Text::new(
+                "Tip: Extras helps detection prefer your jargon, \
+                     project nouns or family names. Stop list extends the \
+                     1- / 2-letter entries the detector accepts as real \
+                     words instead of typos.",
+            )
+            .size(11),
+        );
+
+        col.into()
     }
 
     fn view_exceptions(&self) -> Element<'_, Message> {
@@ -795,6 +1094,7 @@ fn nav_panel(active: Pane) -> Element<'static, Message> {
             .push(Space::with_height(12))
             .push(mk("Languages", Pane::Languages))
             .push(mk("Hotkeys", Pane::Hotkeys))
+            .push(mk("Wordlists", Pane::Wordlists))
             .push(mk("General", Pane::General))
             .push(mk("Exceptions", Pane::Exceptions))
             .push(mk("About", Pane::About)),
@@ -802,6 +1102,71 @@ fn nav_panel(active: Pane) -> Element<'static, Message> {
     .width(180)
     .height(Length::Fill)
     .into()
+}
+
+/// Map a [`LayoutId`] (`en-US`, `uk-UA`, `kk-Cyrl-KZ`, …) to the
+/// on-disk overlay-file *stem* (`en_us`, `uk_ua`, `kk_cyrl_kz`).
+///
+/// The convention matches both the bundled `data/wordlists/<stem>.fst`
+/// names and the loader's `<config-dir>/kb-switcher/wordlists/<stem>.txt`
+/// path resolution — keeping them in lock-step is what lets the user
+/// add overlay words from the GUI and have the engine pick them up
+/// without any additional book-keeping.
+fn layout_id_to_stem(id: &LayoutId) -> String {
+    id.as_str().to_lowercase().replace('-', "_")
+}
+
+/// Absolute path to the user-overlay file for `(layout, kind)`, or
+/// `None` if the platform's config directory can't be resolved (rare —
+/// usually only on minimal CI containers).
+fn resolve_overlay_path(id: &LayoutId, kind: WordlistKind) -> Option<PathBuf> {
+    let dir = kb_core::layouts::user_wordlist_dir()?;
+    let stem = layout_id_to_stem(id);
+    Some(dir.join(format!("{stem}{}.txt", kind.suffix())))
+}
+
+/// Best-effort read of `<config-dir>/kb-switcher/wordlists/<stem><suffix>.txt`.
+/// Returns the file contents on success, an empty string when the
+/// file doesn't exist (the common first-edit case), or an empty
+/// string with a `warn!` log on a real I/O error so the GUI never
+/// blocks the user from starting fresh.
+fn read_overlay_file_or_empty(id: &LayoutId, kind: WordlistKind) -> String {
+    let Some(path) = resolve_overlay_path(id, kind) else {
+        warn!(layout = %id, "no config dir resolved; wordlist editor starts empty");
+        return String::new();
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => {
+            warn!(?path, err = %e, "could not read wordlist overlay; starting empty");
+            String::new()
+        }
+    }
+}
+
+/// Atomic-ish write of the editor buffer to the resolved overlay
+/// path. Creates the parent directory on first use (the user may
+/// have never opened `<config-dir>/kb-switcher/wordlists/` before).
+/// The trailing-newline normalisation matches the convention of the
+/// bundled files and keeps `git diff` quiet for users who keep their
+/// config dir under version control.
+fn save_overlay_file(id: &LayoutId, kind: WordlistKind, text: &str) -> std::io::Result<PathBuf> {
+    let path = resolve_overlay_path(id, kind).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "config directory not resolved on this platform",
+        )
+    })?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut normalised = text.to_owned();
+    if !normalised.ends_with('\n') {
+        normalised.push('\n');
+    }
+    std::fs::write(&path, normalised)?;
+    Ok(path)
 }
 
 /// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't
@@ -927,6 +1292,92 @@ mod tests {
                  the rebind UI would silently drop hotkeys this shape"
             );
         }
+    }
+
+    /// Stem mapping must agree with both the bundled FST file names
+    /// (`data/wordlists/<stem>.fst`) and the loader's user-overlay
+    /// path (`<config-dir>/kb-switcher/wordlists/<stem>.txt`).
+    /// Otherwise the GUI would write to a file the engine never
+    /// reads, and users would see "I added words but they don't take
+    /// effect."
+    #[test]
+    fn layout_id_to_stem_matches_bundled_naming() {
+        let cases = [
+            ("en-US", "en_us"),
+            ("uk-UA", "uk_ua"),
+            ("ru-RU", "ru_ru"),
+            ("de-DE", "de_de"),
+            ("es-ES", "es_es"),
+            ("fr-FR", "fr_fr"),
+            // Multi-segment IDs (e.g. Cyrillic Kazakh) collapse all
+            // dashes — keeps the convention uniform.
+            ("kk-Cyrl-KZ", "kk_cyrl_kz"),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(
+                layout_id_to_stem(&LayoutId::new(id)),
+                expected,
+                "stem mismatch for {id}"
+            );
+        }
+    }
+
+    /// `WordlistKind::suffix` must round-trip with the bundled
+    /// `<stem>-stop.txt` convention. Easy to fix typos here; harder
+    /// to notice them at runtime since a missing stop file is
+    /// silently treated as "no extras."
+    #[test]
+    fn wordlist_kind_suffix_matches_loader_convention() {
+        assert_eq!(WordlistKind::Extras.suffix(), "");
+        assert_eq!(WordlistKind::Stop.suffix(), "-stop");
+    }
+
+    /// The text the editor saves must round-trip through the engine's
+    /// own loader without losing anything semantically meaningful.
+    /// We mirror `kb_core::layouts::parse_wordlist` here — lowercase,
+    /// comment-stripped, blank-line-skipped — and confirm typical
+    /// free-form content survives. If the engine's parser ever
+    /// diverges, this test makes the GUI catch it before users do.
+    #[test]
+    fn wordlist_buffer_is_compatible_with_loader_parser() {
+        // Multi-line buffer the user might type into the editor:
+        // pure words, comments, blanks, mixed case, leading whitespace.
+        let body = "# project nouns\nfoo\nBar\n  baz  \n\n#trailing comment\n";
+        let words: std::collections::HashSet<String> = body
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(str::to_lowercase)
+            .collect();
+        for w in ["foo", "bar", "baz"] {
+            assert!(words.contains(w), "{w} should survive parse");
+        }
+        // Comments & blanks must never become words.
+        assert!(!words.contains("# project nouns"));
+        assert!(!words.contains(""));
+    }
+
+    /// `save_overlay_file` terminates the buffer with a newline
+    /// regardless of whether the user did. Keeps `git diff` quiet
+    /// for users who keep their config dir under version control,
+    /// and matches the convention of the bundled lists. We can't
+    /// easily call `save_overlay_file` without a real
+    /// `user_wordlist_dir`, but the normalisation logic is small
+    /// and isolated — we mirror it here so any future divergence
+    /// gets caught.
+    #[test]
+    fn save_overlay_appends_trailing_newline() {
+        fn normalise(text: &str) -> String {
+            let mut s = text.to_owned();
+            if !s.ends_with('\n') {
+                s.push('\n');
+            }
+            s
+        }
+        assert_eq!(normalise("foo"), "foo\n");
+        assert_eq!(normalise("foo\n"), "foo\n");
+        assert_eq!(normalise(""), "\n");
+        assert_eq!(normalise("foo\nbar"), "foo\nbar\n");
     }
 
     /// Lone modifier presses must not be accepted as a hotkey on

@@ -156,7 +156,7 @@ security model has been reviewed.
 ### Settings UI (iced)
 
 Tray menu **"Settings…"** entry opens a real GUI (iced 0.13 with
-the lightweight `tiny-skia` renderer). Five panes:
+the lightweight `tiny-skia` renderer). Six panes:
 
 * **Languages** — checkbox UI over OS-active layouts. Renders the
   *effective* state, so the default (empty allow-list = "use
@@ -171,6 +171,15 @@ the lightweight `tiny-skia` renderer). Five panes:
   is unit-tested so the GUI can never produce a combo the next
   tray launch silently drops. `crates/kb-app` now reads bindings
   from `[hotkeys]` in settings (used to be hardcoded).
+* **Wordlists** — multiline editor over the per-layout user-overlay
+  files in `<config-dir>/kb-switcher/wordlists/<stem>.txt` (Extras)
+  and `<stem>-stop.txt` (Stop list). Pick a layout button, pick a
+  kind, edit, hit Save — the file is written with a trailing
+  newline (matches the bundled convention) and the resolved path
+  is shown above the editor so users can verify where the bytes
+  land. Changes apply on next tray restart since wordlist FSTs
+  are loaded at engine start, not hot-reloaded; the pane spells
+  this out so users don't expect live reload.
 * **General** — autostart, sound on correction, suppress-in-
   identifiers, idle timeout, plus shortcut buttons to the various
   config / log / wordlist / layout folders.

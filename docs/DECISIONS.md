@@ -565,6 +565,64 @@ This keeps the security review tractable for the eventual
 marketplace launch — when remote downloads + signed packs land,
 the existing loader's "data only" assumptions stay sound.
 
+### 5. Wordlists pane
+
+A sixth pane in the Settings window for editing the per-layout
+user-overlay text files in `<config-dir>/kb-switcher/wordlists/`.
+Two files per layout, mirroring the loader contract documented in
+`crates/kb-core/src/layouts.rs::build_dictionary`:
+
+* `<stem>.txt` — Extras: full-form words merged into the layout's
+  `user_overlay` set.
+* `<stem>-stop.txt` — Stop list: short tokens (≤2 letters) merged
+  into the layout's `short_stop_words`.
+
+The layout id → stem mapping (`en-US` → `en_us`, `kk-Cyrl-KZ` →
+`kk_cyrl_kz`) is the same convention used by the bundled
+`data/wordlists/<stem>.fst` filenames and by the loader itself, so
+the GUI never writes to a path the engine doesn't read. A unit
+test pins this mapping for the canonical 6 bundled layouts plus a
+hyphen-rich edge case to catch any future drift.
+
+**Why a separate pane and not inline on Languages**
+
+Languages is a yes / no / ignore decision per layout — checkboxes
+fit. Wordlist editing is free-form multiline text — needs a real
+editor widget (`iced::widget::text_editor`). Combining the two
+would cram a dropdown + editor into every language row and dwarf
+the simple toggles users hit most often.
+
+**Why no hot-reload**
+
+The engine loads `<stem>.txt` once at startup via
+`LayoutDb::load(...)` and merges it into a `LayoutDictionary`
+that's then frozen for the life of the process. Hot-reloading
+would mean rebuilding every dictionary on the fly while the engine
+might be in the middle of a detector pass — extra synchronisation
+for a feature users hit rarely (you tweak your wordlist a couple
+times a week, max). The pane shows "Saved to ... Restart
+kb-switcher to apply" so the constraint is visible.
+
+**Buffer normalisation**
+
+Saves append a trailing newline if the user didn't type one. The
+bundled curated lists all end with `\n`, so this keeps `git diff`
+quiet for users who keep their config dir under version control.
+Parsing on the engine side (`parse_wordlist`) is identical
+whether the file ends with `\n` or not — the normalisation is
+purely cosmetic.
+
+**Layout picker UX**
+
+A row of layout buttons (one per OS-active layout) rather than a
+`pick_list` dropdown. Two reasons: (1) the typical user has 2-3
+layouts, so a row of buttons is faster than opening a dropdown to
+pick from a 2-element list; (2) the Languages pane already uses
+inline checkboxes, so the visual style stays consistent. If the
+OS-active list ever grew large (rare even for polyglots) we'd
+revisit, but every UI primitive iced ships works on either shape
+of input.
+
 ### What's still on the bench
 
 * **Hotkey capture on Wayland** — iced's keyboard subscription
