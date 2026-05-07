@@ -16,7 +16,11 @@
 
     UpgradeCode is *intentionally* fixed forever — it's the GUID Windows
     keys MSI upgrades off, so changing it would orphan every existing
-    install. Per-component GUIDs are auto-generated (`Guid="*"`).
+    install. Per-component GUIDs are also fixed (see `MainExecutable*`
+    and `LicenseFile*ComponentGuid` defines below) — auto-generation
+    via `Guid="*"` is rejected by `CNDL0230` for components that hold
+    BOTH a `File` AND a `RegistryValue` keypath, which is exactly our
+    shape (see ICE38 rationale below).
 
     perUser-install authoring rules (ICE38 / ICE43 / ICE69):
 
@@ -34,6 +38,27 @@
 <?define Manufacturer = "kb-switcher contributors" ?>
 <?define UpgradeCode = "4F8B6C00-5D1E-4A3F-9B2C-1D0E2F3A4B50" ?>
 <?define InstallRegKey = "Software\$(var.Manufacturer)\$(var.ProductName)" ?>
+
+<!--
+    Component GUIDs are FIXED, not auto-generated (`Guid="*"`).
+    Reason: each Component below holds BOTH a `File` AND a
+    `RegistryValue` with `KeyPath="yes"`. WiX's CNDL0230 rejects
+    `Guid="*"` for that combination — auto-GUIDs require a single
+    keyable resource the GUID can deterministically derive from. We
+    need both because:
+
+      * The `File` is what we want to install.
+      * The `RegistryValue` is the per-user keypath ICE38 requires
+        for a `perUser` install (a file alone can't be the keypath
+        when installing into the user profile).
+
+    Stable across versions on purpose — Windows Installer keys major
+    upgrades off these so existing installs upgrade cleanly. Pick a
+    fresh GUID only if you're splitting a component or breaking the
+    upgrade chain on purpose.
+-->
+<?define MainExecutableComponentGuid = "4F8B6C01-5D1E-4A3F-9B2C-1D0E2F3A4B51" ?>
+<?define LicenseFileComponentGuid    = "4F8B6C02-5D1E-4A3F-9B2C-1D0E2F3A4B52" ?>
 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="*"
@@ -104,7 +129,7 @@
                 automatically removes its shortcut and the start-menu
                 folder.
             -->
-            <Component Id="MainExecutable" Guid="*">
+            <Component Id="MainExecutable" Guid="$(var.MainExecutableComponentGuid)">
                 <File Id="ExeFile"
                       Source="$(var.BinPath)"
                       Name="kb-switcher.exe" />
@@ -131,7 +156,7 @@
                                Value="1"
                                KeyPath="yes" />
             </Component>
-            <Component Id="LicenseFile" Guid="*">
+            <Component Id="LicenseFile" Guid="$(var.LicenseFileComponentGuid)">
                 <File Id="LicenseTxt"
                       Source="$(var.LicensePath)"
                       Name="LICENSE" />
