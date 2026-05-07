@@ -35,6 +35,11 @@ thiserror         = { workspace = true }
 tracing           = { workspace = true }
 rodio             = { workspace = true }
 fst               = { workspace = true }
+# Used by smart-command actions (`OpenPath`) to launch files / URLs
+# in the user's default handler. Same crate kb-app uses for its
+# tray "Open …" menu entries — keeps the platform-specific glue
+# in one place.
+opener            = { workspace = true }
 
 [dev-dependencies]
 # nothing yet

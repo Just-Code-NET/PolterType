@@ -356,6 +356,16 @@ pub fn user_wordlist_dir() -> Option<PathBuf> {
         .map(|dirs| dirs.config_dir().join("wordlists"))
 }
 
+/// Path to the per-profile wordlist directory:
+/// `<config-dir>/kb-switcher/wordlists/profiles/<profile-id>/`.
+/// The id is taken verbatim — the caller is responsible for
+/// rejecting path-unsafe ids before letting them reach this
+/// function (see `wordlist_profiles::WordlistProfile::id` docs
+/// for the expected shape).
+pub fn user_profile_wordlist_dir(profile_id: &str) -> Option<PathBuf> {
+    user_wordlist_dir().map(|d| d.join("profiles").join(profile_id))
+}
+
 /// Path under which user-supplied **layout mapping** TOML files live:
 /// `<config-dir>/kb-switcher/layouts/`. Any `*.toml` here is loaded
 /// alongside the bundled layouts.
@@ -785,6 +795,60 @@ impl LayoutDb {
 
     pub fn ids(&self) -> impl Iterator<Item = &LayoutId> {
         self.by_id.keys()
+    }
+
+    /// Build a profile-specific dictionary set — the same shape
+    /// `DictionaryDetector::replace_dicts` accepts — using the
+    /// overlay files in `profile_overlay_dir` instead of the
+    /// global one.
+    ///
+    /// Each entry uses the layout's existing bundled FST (cheap —
+    /// `LayoutDictionary` already shares the FST through `Arc`) but
+    /// reads the user-overlay text files from the profile directory.
+    /// The result is callers can build a per-profile dictionary set
+    /// at startup, cache it, and atomically swap on focus change
+    /// without rebuilding any FSTs.
+    ///
+    /// Layouts that have no FST in the data dir (user-supplied
+    /// layouts that came in via `<config-dir>/layouts/`) get an
+    /// overlay-only dictionary if any of the profile's overlay
+    /// files mention them, or are skipped if not.
+    ///
+    /// ## Why not `&self`-only
+    ///
+    /// We need the data dir for the FST path; resolving it
+    /// internally would lose the explicit-config-dir test path. The
+    /// caller already has the resolved dir from `LoadOptions` so we
+    /// take it as a parameter — same convention as the rest of
+    /// this module's public API.
+    pub fn build_profile_dictionaries(
+        &self,
+        data_dir: &Path,
+        profile_overlay_dir: &Path,
+    ) -> HashMap<LayoutId, kb_detect::LayoutDictionary> {
+        let mut out = HashMap::new();
+        for (id, mapping) in &self.by_id {
+            // Stem inference for bundled layouts is "lowercase the
+            // BCP-47 id, replace `-` with `_`" — same convention the
+            // bundled FST file names follow. For user layouts the
+            // stem is whatever the TOML's filename was, which we
+            // don't track here; fall back to the same lowercased-id
+            // shape so user layouts that follow the convention
+            // (most do) pick up profile overlays automatically.
+            let stem = mapping.id.as_str().to_lowercase().replace('-', "_");
+            if let Some(dict) = build_dictionary(data_dir, &stem, Some(profile_overlay_dir)) {
+                out.insert(id.clone(), dict);
+            } else {
+                // No bundled FST AND no profile overlay file. Try
+                // overlay-only — useful for user layouts that don't
+                // ship an FST but whose users still want to add
+                // profile-specific words.
+                if let Some(dict) = build_user_dictionary(&stem, Some(profile_overlay_dir)) {
+                    out.insert(id.clone(), dict);
+                }
+            }
+        }
+        out
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&LayoutId, &LayoutMapping)> {

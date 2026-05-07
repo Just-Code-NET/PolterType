@@ -10,6 +10,7 @@
 mod icon_render;
 mod settings_ui;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +23,7 @@ use kb_core::audio::AudioPlayer;
 use kb_core::engine::{EngineCommand, SwitcherEngine, SwitcherEvent};
 use kb_core::layouts::LayoutDb;
 use kb_core::settings::SettingsStore;
+use kb_core::wordlist_profiles::{WordlistSettings, resolve_active_profile};
 use kb_detect::{Detector, DictionaryDetector, WordPlausibilityDetector};
 use kb_input::{KeyEvent, create_emitter, create_focus_tracker, create_listener};
 use kb_layout::create_switcher;
@@ -188,12 +190,49 @@ fn main() -> Result<()> {
     // Cloned handle — shares the inner Arc<RwLock> with the
     // detector that lives inside the engine. Used by the
     // "Reload Settings" path to swap in fresh dictionaries
-    // (re-reading user-overlay files) without restarting.
+    // (re-reading user-overlay files) without restarting, AND by
+    // the focus-driven wordlist profile watcher below to swap
+    // per-app overlays as the user moves between editors / chat /
+    // browser / IDE.
     let dict_reload_handle = dictionary.handle();
     let detectors: Vec<Box<dyn Detector>> = vec![
         Box::new(dictionary),
         Box::new(build_plausibility_detector(&layouts)),
     ];
+
+    // ── Wordlist profile cache + focus watcher ───────────────────────
+    //
+    // Build one dictionary set per configured `[[wordlists.profiles]]`
+    // entry up front. The FSTs are already Arc-shared inside
+    // LayoutDictionary, so this is "rebuild the user-overlay HashSets
+    // once per profile" — milliseconds, even for 5+ profiles.
+    //
+    // The focus watcher thread (spawned right after the engine is
+    // running) polls `focus_tracker.focused_exe()` every ~250 ms,
+    // resolves the active profile via `wordlist_profiles::resolve`,
+    // and atomically swaps the dictionary set when it changes. The
+    // swap is a single `RwLock::write()` — same primitive the manual
+    // "Reload Settings" path uses.
+    let mut profile_dict_cache =
+        build_profile_dictionary_cache(&layouts, &data_dir, &settings.snapshot().wordlists);
+    // Stash the global overlay under the empty-string key so the
+    // watcher can swap back to it when focus leaves a profiled app.
+    // Without this, leaving "code" → going to Chrome would keep the
+    // code overlay loaded forever, which is the opposite of what
+    // the user expects.
+    if !profile_dict_cache.is_empty() {
+        let global = layouts.build_profile_dictionaries(
+            &data_dir,
+            user_wordlist_dir
+                .as_deref()
+                .unwrap_or_else(|| std::path::Path::new("")),
+        );
+        profile_dict_cache.insert(String::new(), global);
+    }
+    info!(
+        profiles = profile_dict_cache.len(),
+        "wordlist profile cache built (including global baseline)"
+    );
 
     // ─── Engine ────────────────────────────────────────────────────
     let (key_tx, key_rx) = bounded::<KeyEvent>(1024);
@@ -316,6 +355,12 @@ fn main() -> Result<()> {
     let pause_hotkey_id = hk_pause.id();
     let switch_hotkey_id = hk_switch.id();
 
+    // User-defined "smart commands" (text triggers like `anrl ` →
+    // `Anatomical Reference List`) are NOT registered as global
+    // hotkeys — they're consulted by the engine on every word
+    // boundary. See `kb_core::commands` for the architecture and
+    // `SwitcherEngine::decide` for the dispatch path.
+
     spawn_event_bridges(event_loop.create_proxy(), engine_event_rx.clone())?;
 
     // Layout poller: the engine emits LayoutChanged for switches it
@@ -324,6 +369,18 @@ fn main() -> Result<()> {
     // the OS-level current-layout query every ~250 ms catches those
     // cheaply and keeps the tray icon in sync.
     spawn_layout_poller(Arc::clone(&layout_switcher), engine_event_tx_for_poller)?;
+
+    // Focus-driven wordlist profile watcher: same cadence as the
+    // layout poller. Cheap when no profiles are configured (the
+    // profile-cache HashMap is empty so the swap path is a no-op).
+    if !profile_dict_cache.is_empty() {
+        spawn_profile_watcher(
+            Arc::clone(&focus_tracker),
+            Arc::clone(&settings),
+            profile_dict_cache.clone(),
+            dict_reload_handle.handle(),
+        )?;
+    }
 
     let settings_path: PathBuf = settings.path().to_owned();
     let log_dir: Option<PathBuf> = SettingsStore::log_dir().ok();
@@ -493,6 +550,108 @@ fn parse_hotkey_or_default(s: &str, default_str: &str) -> HotKey {
                 .unwrap_or_else(|_| HotKey::new(Some(HkMods::CONTROL | HkMods::SHIFT), Code::Space))
         }
     }
+}
+
+/// Build one dictionary set per configured wordlist profile, ready
+/// to swap into [`kb_detect::DictionaryDetector`] when focus enters
+/// the matching app(s). Empty `wordlists.profiles` → empty cache;
+/// the focus watcher is then never spawned, so this is zero-cost
+/// for the common no-profile case.
+///
+/// Each profile reuses the bundled FSTs through the `Arc` inside
+/// `LayoutDictionary` — only the user-overlay HashSets are
+/// re-derived. So building 5 profiles takes 5 × (number-of-layouts)
+/// disk-cheap text-file reads, not 5 × FST decode.
+fn build_profile_dictionary_cache(
+    layouts: &Arc<LayoutDb>,
+    data_dir: &std::path::Path,
+    wordlists: &WordlistSettings,
+) -> HashMap<String, HashMap<LayoutId, kb_detect::LayoutDictionary>> {
+    let mut out: HashMap<String, HashMap<LayoutId, kb_detect::LayoutDictionary>> = HashMap::new();
+    for profile in &wordlists.profiles {
+        let Some(dir) = kb_core::layouts::user_profile_wordlist_dir(&profile.id) else {
+            warn!(
+                profile = %profile.id,
+                "no config dir resolved; profile cache entry skipped"
+            );
+            continue;
+        };
+        let dicts = layouts.build_profile_dictionaries(data_dir, &dir);
+        info!(
+            profile = %profile.id,
+            ?dir,
+            dicts = dicts.len(),
+            "profile dictionaries cached"
+        );
+        out.insert(profile.id.clone(), dicts);
+    }
+    out
+}
+
+/// Poll `FocusTracker::focused_exe()` every ~250 ms; swap the
+/// dictionary set when the resolved profile changes. Same cadence
+/// as `spawn_layout_poller` so the two stay in lock-step at the
+/// human perception level (the user perceives "I focused VS Code,
+/// my code dictionary kicked in").
+///
+/// The poller swallows transient FocusTracker errors silently —
+/// a flaky Wayland tracker isn't worth log spam, and the next
+/// successful poll catches up. We log once per profile *transition*
+/// so the user can verify in the log file that swaps are happening.
+///
+/// Profile cache + dict_reload_handle are cloned cheaply (Arc
+/// internals); the thread owns its copies and runs forever.
+fn spawn_profile_watcher(
+    focus_tracker: Arc<dyn kb_input::FocusTracker>,
+    settings: Arc<SettingsStore>,
+    profile_cache: HashMap<String, HashMap<LayoutId, kb_detect::LayoutDictionary>>,
+    dict_handle: kb_detect::DictionaryDetector,
+) -> Result<()> {
+    std::thread::Builder::new()
+        .name("kb-profile-watcher".into())
+        .spawn(move || {
+            // Empty string = "no profile / global overlay active".
+            let mut active: String = String::new();
+            loop {
+                let exe = focus_tracker.focused_exe();
+                let basename = exe.as_deref().and_then(|e| {
+                    std::path::Path::new(e)
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                });
+                let snap = settings.snapshot();
+                let resolved = resolve_active_profile(&snap.wordlists, basename)
+                    .map(str::to_owned)
+                    .unwrap_or_default();
+
+                if resolved != active {
+                    // The cache always holds the empty-string ("")
+                    // key as the global baseline (built at startup
+                    // from the user's `<config-dir>/wordlists/` dir),
+                    // so a profile transition — including back to
+                    // global — is always a single map lookup + swap.
+                    if let Some(dicts) = profile_cache.get(&resolved) {
+                        info!(
+                            previous = %active,
+                            new_profile = if resolved.is_empty() { "<global>" } else { resolved.as_str() },
+                            dicts = dicts.len(),
+                            "wordlist profile transition"
+                        );
+                        dict_handle.replace_dicts(dicts.clone());
+                    } else {
+                        warn!(
+                            profile = %resolved,
+                            "resolved profile has no cache entry; keeping current dicts"
+                        );
+                    }
+                    active = resolved;
+                }
+
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        })
+        .context("spawn profile watcher thread")?;
+    Ok(())
 }
 
 /// CLI help text. Kept short and stable — most users never invoke

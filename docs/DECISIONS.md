@@ -623,6 +623,113 @@ OS-active list ever grew large (rare even for polyglots) we'd
 revisit, but every UI primitive iced ships works on either shape
 of input.
 
+## 2026-05-07 (later still) — Smart commands + per-app wordlist profiles
+
+### 1. Smart commands as text triggers, not hotkeys
+
+The first cut wired user commands as additional global hotkeys via
+`GlobalHotKeyManager`. We pivoted to text triggers (Espanso /
+TextExpander style) for three reasons:
+
+* **OS hotkey limits.** Windows / macOS / X11 all cap the number
+  of registered global hotkeys, and any combo a user might pick
+  could already be claimed by the system or another app. Text
+  triggers have no such limit — users can have hundreds.
+* **Visibility.** A hotkey is invisible state ("did I just press
+  Ctrl+Alt+S? what did it do?"). A text trigger is right there in
+  your buffer — you see what you typed.
+* **Architecture fit.** kb-switcher already runs a word-boundary
+  pipeline for layout corrections. Text triggers slot in BEFORE
+  the corrector's filters — same `WordBuffer::feed` boundary
+  detection, same `KeyEmitter` for backspace + replay. Zero new
+  threads, zero new OS surfaces.
+
+The Hotkeys pane stays as it was (the two built-in pause /
+switch-last bindings). The new Commands pane is text-trigger only.
+
+### 2. Trigger lookup before auto-switch filters
+
+The smart-command match runs in `decide()` immediately after the
+last_word stash, BEFORE the structural-boundary / disabled-app /
+identifier filters. Reasoning: those filters exist to suppress
+auto-switching when the engine might be wrong (URL context, IDE
+context, code-shaped tokens). Text expansion is direct user intent
+("I typed `anrl<space>` because I want it expanded") — the engine
+is not guessing. So the suppression rules don't apply.
+
+This makes `=>` work as a trigger inside an IDE, where
+`looks_like_code_token` would otherwise veto the whole word.
+
+### 3. v1 action surface kept tiny
+
+Three actions (`type_text`, `switch_layout`, `open_path`).
+Deliberately small. `run_shell` was tempting but a stolen config
+file becomes a remote-execution vector — separate security review.
+Multi-token triggers (`best regards` → `…`) would need a sliding
+window across word boundaries we don't have today.
+
+Adding new variants is forward-compat through serde: an old binary
+encountering a `type = "future_thing"` entry warns and skips that
+single command, the rest still load.
+
+### 4. Inline dispatch on the engine thread
+
+The engine's smart-command path runs `send_backspaces` →
+`send_text` (or `switch_to` / `opener::open`) inline. Same thread
+as the corrector. All three actions complete in well under 50 ms
+on the common path; if a future variant becomes slow (network call,
+heavy file I/O) the right call is for THAT variant to spawn a
+worker — don't pessimise the fast path.
+
+For `TypeText`, the boundary character is re-emitted after the
+expansion so the user's typing flow continues — they typed
+`anrl<space>`, they expect `<expansion><space>` to land. For
+`SwitchLayout` / `OpenPath` the boundary stays consumed (the user
+wanted a side-effect, not text continuation).
+
+### 5. Auto-id from display name
+
+The form auto-generates a kebab-case id from the user's display
+name (e.g. `"Insert Email Signature"` → `insert-email-signature`).
+Empty name falls back to action-typed ids (`type-text`,
+`switch-layout`, `open-path`); collisions append `-2`, `-3`, …
+deterministically. Users never need to think about ids — they're
+exposed in logs and the saved TOML, but the UI surfaces only
+display names.
+
+### 6. Per-app wordlist profiles: cache + swap, not rebuild
+
+Profile activation switches the engine's dictionary set in one
+`RwLock::write()` — the same `DictionaryDetector::replace_dicts`
+primitive the manual "Reload Settings" path already uses. We
+build one cached `HashMap<LayoutId, LayoutDictionary>` per
+profile up front and stash the global baseline under the empty-
+string key, so a focus transition is always a single map lookup +
+atomic swap. Building 5 profiles takes 5×N text-file reads (cheap)
+because the bundled FSTs are already `Arc`-shared inside
+`LayoutDictionary` — only the per-profile `user_overlay`
+HashSets are re-derived.
+
+### 7. Focus watcher: 250 ms poll, not OS event
+
+Same cadence as `spawn_layout_poller` already uses. We considered
+hooking each platform's "focus changed" event but the gain
+(maybe 100 ms faster swap) doesn't justify three platform
+implementations + three failure modes. 250 ms is well below the
+"I switched apps" perceptual threshold for wordlist purposes,
+which only matters at word-boundary time anyway.
+
+### 8. Profile-list management not in v1 UI
+
+The Wordlists pane gets a Profile picker row (Global + each
+configured profile), but adding / removing profiles is editable
+only in `config.toml` for v1. Reasoning: the profile-management
+form needs name + id + apps-list editor + on-disk-cleanup-on-
+delete, that's another 200+ LOC of UI on top of an already-
+1500-LOC settings_ui.rs. Once users have feedback on which
+shapes of profiles they actually want, building the management
+UI on top is straightforward.
+
 ### What's still on the bench
 
 * **Hotkey capture on Wayland** — iced's keyboard subscription
@@ -634,3 +741,9 @@ of input.
 * **Plug-in marketplace UX** — installation, signing, updates. The
   loader is ready for them; the UI / network plumbing is a separate
   phase whose security model needs its own DECISIONS entry.
+* **Profile-list management UI** — see point 7 above. The schema
+  + engine wiring + per-profile wordlist editing are all live;
+  add/delete/configure-apps in the GUI is queued.
+* **Smart command actions** — `run_shell`, multi-token triggers,
+  and case-insensitive / case-preserving expansion are deliberately
+  out of v1. Each unlocks a different security or UX surface.

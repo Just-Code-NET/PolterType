@@ -20,6 +20,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{info, warn};
 
+use crate::commands::UserCommand;
+use crate::wordlist_profiles::WordlistSettings;
+
 const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Error)]
@@ -49,6 +52,19 @@ pub struct Settings {
     pub exceptions: ExceptionSettings,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
+    /// User-defined "smart commands" — additional `[[commands]]`
+    /// hotkey entries beyond the two built-in pause / switch-last
+    /// actions in `[hotkeys]`. See [`crate::commands`] for the
+    /// schema and the rationale behind keeping the built-in two in
+    /// `[hotkeys]` and the rest here.
+    #[serde(default)]
+    pub commands: Vec<UserCommand>,
+    /// Per-application wordlist profiles. Each profile points at
+    /// its own subdirectory under `<config-dir>/kb-switcher/wordlists/profiles/<id>/`
+    /// and gets activated when the foreground app matches the
+    /// profile's `apps` list. See [`crate::wordlist_profiles`].
+    #[serde(default)]
+    pub wordlists: WordlistSettings,
     #[serde(default)]
     pub sounds: SoundSettings,
     /// Reserved for the AI subsystem (Phase 7). Disabled by default.
@@ -65,6 +81,8 @@ impl Default for Settings {
             engine: EngineSettings::default(),
             exceptions: ExceptionSettings::default(),
             hotkeys: HotkeySettings::default(),
+            commands: Vec::new(),
+            wordlists: WordlistSettings::default(),
             sounds: SoundSettings::default(),
             ai: AiSettings::default(),
         }
@@ -431,6 +449,53 @@ mod tests {
         // `suppress_in_identifiers` was missing from the user's file
         // but the default kicked in.
         assert!(s.engine.suppress_in_identifiers);
+    }
+
+    /// User commands sit in their own `[[commands]]` table. A full
+    /// config block including one must round-trip through the live
+    /// `Settings` struct — the regression we care about is that
+    /// `CommandsSettings` is wired in correctly (no `serde(skip)`,
+    /// no `default` collision dropping the user data on save).
+    #[test]
+    fn commands_section_round_trips_inside_full_settings() {
+        let raw = r#"
+schema_version = 1
+
+[[commands]]
+id      = "anrl"
+trigger = "anrl"
+action  = { type = "type_text", text = "Anatomical Reference List" }
+"#;
+        let parsed: Settings = toml::from_str(raw).expect("parse with commands");
+        assert_eq!(parsed.commands.len(), 1);
+        assert_eq!(parsed.commands[0].id, "anrl");
+        assert_eq!(parsed.commands[0].trigger, "anrl");
+
+        // And the round-trip back to TOML must preserve the entry —
+        // a `Default` collision or stray `serde(skip)` would silently
+        // drop it on first save, which is the worst kind of bug.
+        let serialised = toml::to_string_pretty(&parsed).expect("serialise");
+        let back: Settings = toml::from_str(&serialised).expect("parse round-trip");
+        assert_eq!(back.commands.len(), 1);
+        assert_eq!(back.commands[0].id, "anrl");
+        assert_eq!(back.commands[0].trigger, "anrl");
+    }
+
+    /// Legacy configs from beta.4 and earlier had no `[[commands]]`
+    /// section. They must still parse — the user shouldn't have to
+    /// edit their config to keep the app starting.
+    #[test]
+    fn legacy_config_without_commands_still_parses() {
+        let raw = r#"
+schema_version = 1
+
+[hotkeys]
+pause_toggle = "Ctrl+Shift+Space"
+manual_switch_last = "Ctrl+Shift+Backspace"
+"#;
+        let parsed: Settings = toml::from_str(raw).expect("parse legacy");
+        assert!(parsed.commands.is_empty());
+        assert_eq!(parsed.hotkeys.pause_toggle, "Ctrl+Shift+Space");
     }
 
     #[test]

@@ -6,6 +6,115 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — 0.1.0-beta.5
 
+### Smart commands — text-trigger expansions and shortcuts
+
+Inspired by classic text expanders (TextExpander, Espanso,
+AutoHotkey hotstrings): the user types a short token like
+`anrl ` (acronym + space), the engine recognises it on the word
+boundary, deletes the token + boundary, and runs an action —
+typically expanding to a longer phrase.
+
+`config.toml` accepts `[[commands]]` entries:
+
+```toml
+[[commands]]
+id      = "anrl"
+name    = "Anatomical reference list"
+trigger = "anrl"
+action  = { type = "type_text", text = "Anatomical Reference List" }
+
+[[commands]]
+id      = "to-english"
+trigger = "((en))"
+action  = { type = "switch_layout", layout = "en-US" }
+
+[[commands]]
+id      = ";cfg"
+trigger = ";cfg"
+action  = { type = "open_path", path = "%LOCALAPPDATA%/kb-switcher/config.toml" }
+```
+
+Three v1 actions:
+
+* `type_text` — backspace trigger + boundary, emit the literal
+  text, re-emit the boundary. So `anrl<space>` → `<expansion><space>`,
+  the user's flow continues naturally.
+* `switch_layout` — backspace trigger + boundary, switch the OS
+  layout to the given BCP-47 id. Same `list_active` pre-flight as
+  the corrector — unreachable layouts are rejected loudly.
+* `open_path` — backspace trigger + boundary, hand the path to
+  `opener::open` (default handler / browser).
+
+Optional `apps = [...]` filter scopes a command to specific
+foreground applications using the same case-insensitive basename
+match `[exceptions].disabled_apps` already uses.
+
+The trigger lookup runs BEFORE the structural-boundary /
+disabled-app / identifier filters: text expansion is direct user
+intent, not a guess, so those auto-switch filters don't apply.
+That's what makes `=>` snippets work inside an IDE.
+
+A new **Commands** pane in the Settings UI lets users add and
+remove commands. Form fields: name, trigger (text input), action
+kind (TypeText / SwitchLayout / OpenPath), action param, optional
+apps filter. Auto-generates kebab-case ids from the display name;
+collisions append `-2`, `-3`, … deterministically.
+
+What v1 deliberately doesn't include:
+
+* `run_shell` — arbitrary command execution. The blast radius
+  (a malicious config could mass-exfiltrate) makes this a
+  separate security review, queued for later.
+* Multi-token triggers (`best regards` → `…`). The buffer resets
+  at every word boundary; matching across boundaries needs a
+  sliding window we don't have today.
+* Case-insensitive / case-preserving expansion. v1 matches
+  exactly — pick triggers that don't collide with prose.
+
+### Per-application wordlist profiles
+
+Adds `[wordlists]` to `config.toml`:
+
+```toml
+[wordlists]
+default_profile = ""
+
+[[wordlists.profiles]]
+id     = "code"
+name   = "Programming"
+apps   = ["Code.exe", "Cursor.exe", "idea64.exe"]
+
+[[wordlists.profiles]]
+id     = "writing"
+name   = "Long-form prose"
+apps   = ["WINWORD.EXE", "obsidian.exe"]
+```
+
+Each profile points at its own subdirectory under
+`<config-dir>/kb-switcher/wordlists/profiles/<id>/<stem>.txt` (and
+`<stem>-stop.txt`). A new background watcher polls
+`FocusTracker::focused_exe()` every ~250 ms and atomically swaps
+the active dictionary set when the focused app changes — using
+the same `DictionaryDetector::replace_dicts` primitive the
+"Reload Settings" path already uses.
+
+The Settings UI's **Wordlists** pane now shows a **Profile** row
+above the existing Layout / Kind pickers (only when at least one
+profile is configured) — pick "Global" or any of your profiles to
+edit that profile's overlay files. Profile list management
+(add / delete profiles, edit `apps` lists) is queued for a follow-up;
+v1 expects users to declare profiles in `config.toml` once, then
+edit their wordlists from the GUI.
+
+What v1 deliberately doesn't include:
+
+* Profile inheritance — each profile is its own overlay set, no
+  merging. Adds load-time complexity ("which profile wins?")
+  without a clear UX win.
+* Hot reload — same constraint as the global overlay; profile
+  edits apply on tray restart.
+
+
 The initial scaffolding lands across Phases 0–8 documented in
 [docs/PLAN.md](docs/PLAN.md). Highlights:
 

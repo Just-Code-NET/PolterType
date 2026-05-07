@@ -58,6 +58,7 @@ use iced::widget::{
     text_editor,
 };
 use iced::{Element, Length, Padding, Subscription, Task, Theme};
+use kb_core::commands::{CommandAction, UserCommand};
 use kb_core::settings::{Settings, SettingsStore};
 use kb_layout::LayoutId;
 use kb_layout::create_switcher;
@@ -120,10 +121,40 @@ pub fn run() -> Result<()> {
 enum Pane {
     Languages,
     Hotkeys,
+    Commands,
     Wordlists,
     General,
     Exceptions,
     About,
+}
+
+/// Action kind picker in the "Add command" form. Maps 1:1 to
+/// [`kb_core::commands::CommandAction`] variants but as a Copy enum
+/// so it can drive radio-button state without holding the action's
+/// payload (which lives in `command_draft_param` until Add).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CommandActionKind {
+    TypeText,
+    SwitchLayout,
+    OpenPath,
+}
+
+impl CommandActionKind {
+    fn label(self) -> &'static str {
+        match self {
+            CommandActionKind::TypeText => "Type text (snippet)",
+            CommandActionKind::SwitchLayout => "Switch layout",
+            CommandActionKind::OpenPath => "Open file / URL",
+        }
+    }
+
+    fn placeholder(self) -> &'static str {
+        match self {
+            CommandActionKind::TypeText => "Best regards,\\nDmytro",
+            CommandActionKind::SwitchLayout => "en-US",
+            CommandActionKind::OpenPath => "https://… or C:\\path\\to\\file.md",
+        }
+    }
 }
 
 /// Which user-overlay file the Wordlists pane is currently editing
@@ -199,7 +230,32 @@ enum Message {
     /// "×" button per existing entry.
     ExceptionRemove(usize),
 
+    // ── Commands pane ──────────────────────────────────────────────
+    /// "Add command" form: name field changed.
+    CommandDraftNameChanged(String),
+    /// "Add command" form: trigger text input changed (the typed
+    /// token like `anrl` or `((en))`).
+    CommandDraftTriggerChanged(String),
+    /// "Add command" form: action kind radio changed (TypeText /
+    /// SwitchLayout / OpenPath). Clears the param field — different
+    /// actions take wildly different content.
+    CommandDraftActionKindChanged(CommandActionKind),
+    /// "Add command" form: action-specific param field changed.
+    CommandDraftParamChanged(String),
+    /// "Add command" form: apps filter input (comma-separated).
+    CommandDraftAppsChanged(String),
+    /// "Add command" form: Add button pressed. Validates and pushes
+    /// to `settings.commands`; clears the form on success.
+    CommandAdd,
+    /// "×" button on an existing command row.
+    CommandRemove(usize),
+
     // ── Wordlists pane ─────────────────────────────────────────────
+    /// User clicked one of the profile buttons. Empty string =
+    /// global overlay; non-empty = profile id matching one of the
+    /// configured `[[wordlists.profiles]]` entries. Same load-or-
+    /// empty behaviour as `WordlistLayoutSelected`.
+    WordlistProfileSelected(String),
     /// User picked a different layout from the layout row — load
     /// `<stem><suffix>.txt` into the editor (or empty if missing).
     WordlistLayoutSelected(LayoutId),
@@ -243,7 +299,38 @@ struct SettingsApp {
     /// Exceptions pane. Empty by default; cleared on Add.
     exception_draft: String,
 
+    // ── Commands pane: draft of a new command ──────────────────────
+    /// Free-form display name. Falls back to id if blank at Add time.
+    command_draft_name: String,
+    /// Trigger token the user types to fire this command. Stored
+    /// verbatim — validation happens on the Add path so users
+    /// can fix in-place (a `TextInput` with a forced trim would
+    /// fight common typing patterns). See [`UserCommand::trigger`].
+    command_draft_trigger: String,
+    /// Which action variant the user picked. Maps to
+    /// [`CommandAction`] at Add time using `command_draft_param`.
+    command_draft_action_kind: CommandActionKind,
+    /// Free-form param string. Interpretation depends on
+    /// `command_draft_action_kind`:
+    ///
+    /// * `TypeText`     → literal text snippet (`\n` escapes preserved)
+    /// * `SwitchLayout` → BCP-47 id (e.g. `en-US`)
+    /// * `OpenPath`     → file path or URL (passed to `opener::open`)
+    command_draft_param: String,
+    /// Optional comma-separated app filter. Empty = all apps.
+    command_draft_apps: String,
+    /// Per-pane status banner (independent of the global save banner
+    /// so "Added!" doesn't get clobbered by save state).
+    command_status: Option<SaveBanner>,
+
     // ── Wordlists pane ─────────────────────────────────────────────
+    /// Currently-selected profile id for editing. Empty string =
+    /// the global overlay (`<config-dir>/wordlists/<stem>.txt`);
+    /// any non-empty value picks the per-profile directory at
+    /// `<config-dir>/wordlists/profiles/<id>/<stem>.txt`. Defaults
+    /// to global when the pane opens — same baseline the engine
+    /// uses before any focus-driven profile swap happens.
+    wordlist_profile: String,
     /// Currently-selected layout for editing. `None` until the user
     /// clicks one of the layout buttons (or defaults to the first
     /// OS-active layout when the pane is first opened).
@@ -282,7 +369,10 @@ impl SettingsApp {
         // on the pane — picking up the existing file content if any.
         let (initial_layout, initial_text) = match os_layouts.first().cloned() {
             Some(layout) => {
-                let text = read_overlay_file_or_empty(&layout, WordlistKind::Extras);
+                // Default profile is always "" (global) on first open
+                // — same baseline the engine uses before any focus-
+                // driven swap fires.
+                let text = read_overlay_file_or_empty("", &layout, WordlistKind::Extras);
                 (Some(layout), text)
             }
             None => (None, String::new()),
@@ -297,6 +387,13 @@ impl SettingsApp {
             save_banner: None,
             capturing: None,
             exception_draft: String::new(),
+            command_draft_name: String::new(),
+            command_draft_trigger: String::new(),
+            command_draft_action_kind: CommandActionKind::TypeText,
+            command_draft_param: String::new(),
+            command_draft_apps: String::new(),
+            command_status: None,
+            wordlist_profile: String::new(),
             wordlist_layout: initial_layout,
             wordlist_kind: WordlistKind::Extras,
             wordlist_content: text_editor::Content::with_text(&initial_text),
@@ -451,10 +548,68 @@ impl SettingsApp {
                 }
             }
 
+            // ── Commands ────────────────────────────────────────
+            Message::CommandDraftNameChanged(s) => self.command_draft_name = s,
+            Message::CommandDraftTriggerChanged(s) => self.command_draft_trigger = s,
+            Message::CommandDraftActionKindChanged(kind) => {
+                if self.command_draft_action_kind != kind {
+                    // Different action variants take wildly different
+                    // content (snippet vs layout id vs URL); flipping
+                    // the radio without clearing the field would leave
+                    // a confusing half-typed value behind.
+                    self.command_draft_param.clear();
+                }
+                self.command_draft_action_kind = kind;
+            }
+            Message::CommandDraftParamChanged(s) => self.command_draft_param = s,
+            Message::CommandDraftAppsChanged(s) => self.command_draft_apps = s,
+            Message::CommandAdd => match build_command_from_draft(self) {
+                Ok(cmd) => {
+                    info!(id = %cmd.id, "adding user command from UI");
+                    self.settings.commands.push(cmd);
+                    // Clear the draft on success.
+                    self.command_draft_name.clear();
+                    self.command_draft_trigger.clear();
+                    self.command_draft_param.clear();
+                    self.command_draft_apps.clear();
+                    self.command_status = Some(SaveBanner {
+                        text: "Added. Press Save to persist, then restart kb-switcher.".into(),
+                        is_error: false,
+                    });
+                }
+                Err(e) => {
+                    self.command_status = Some(SaveBanner {
+                        text: e,
+                        is_error: true,
+                    });
+                }
+            },
+            Message::CommandRemove(idx) => {
+                if idx < self.settings.commands.len() {
+                    let removed = self.settings.commands.remove(idx);
+                    info!(id = %removed.id, "removed user command from UI");
+                    self.command_status = Some(SaveBanner {
+                        text: format!("Removed `{}`.", removed.id),
+                        is_error: false,
+                    });
+                }
+            }
+
             // ── Wordlists ────────────────────────────────────────
+            Message::WordlistProfileSelected(profile_id) => {
+                self.wordlist_profile = profile_id;
+                if let Some(id) = self.wordlist_layout.clone() {
+                    let text =
+                        read_overlay_file_or_empty(&self.wordlist_profile, &id, self.wordlist_kind);
+                    self.wordlist_content = text_editor::Content::with_text(&text);
+                    self.wordlist_dirty = false;
+                    self.wordlist_status = None;
+                }
+            }
             Message::WordlistLayoutSelected(id) => {
                 self.wordlist_layout = Some(id.clone());
-                let text = read_overlay_file_or_empty(&id, self.wordlist_kind);
+                let text =
+                    read_overlay_file_or_empty(&self.wordlist_profile, &id, self.wordlist_kind);
                 self.wordlist_content = text_editor::Content::with_text(&text);
                 self.wordlist_dirty = false;
                 self.wordlist_status = None;
@@ -462,7 +617,7 @@ impl SettingsApp {
             Message::WordlistKindSelected(kind) => {
                 self.wordlist_kind = kind;
                 if let Some(id) = &self.wordlist_layout {
-                    let text = read_overlay_file_or_empty(id, kind);
+                    let text = read_overlay_file_or_empty(&self.wordlist_profile, id, kind);
                     self.wordlist_content = text_editor::Content::with_text(&text);
                     self.wordlist_dirty = false;
                     self.wordlist_status = None;
@@ -487,9 +642,15 @@ impl SettingsApp {
                     return Task::none();
                 };
                 let text = self.wordlist_content.text();
-                match save_overlay_file(&id, self.wordlist_kind, &text) {
+                match save_overlay_file(&self.wordlist_profile, &id, self.wordlist_kind, &text) {
                     Ok(path) => {
-                        info!(path = ?path, layout = %id, kind = ?self.wordlist_kind, "wordlist saved from UI");
+                        info!(
+                            path = ?path,
+                            layout = %id,
+                            kind = ?self.wordlist_kind,
+                            profile = %self.wordlist_profile,
+                            "wordlist saved from UI"
+                        );
                         self.wordlist_dirty = false;
                         self.wordlist_status = Some(SaveBanner {
                             text: format!(
@@ -500,7 +661,13 @@ impl SettingsApp {
                         });
                     }
                     Err(e) => {
-                        warn!(layout = %id, kind = ?self.wordlist_kind, err = %e, "wordlist save failed");
+                        warn!(
+                            layout = %id,
+                            kind = ?self.wordlist_kind,
+                            profile = %self.wordlist_profile,
+                            err = %e,
+                            "wordlist save failed"
+                        );
                         self.wordlist_status = Some(SaveBanner {
                             text: format!("Save failed: {e}"),
                             is_error: true,
@@ -510,7 +677,8 @@ impl SettingsApp {
             }
             Message::WordlistReload => {
                 if let Some(id) = self.wordlist_layout.clone() {
-                    let text = read_overlay_file_or_empty(&id, self.wordlist_kind);
+                    let text =
+                        read_overlay_file_or_empty(&self.wordlist_profile, &id, self.wordlist_kind);
                     self.wordlist_content = text_editor::Content::with_text(&text);
                     self.wordlist_dirty = false;
                     self.wordlist_status = Some(SaveBanner {
@@ -586,6 +754,7 @@ impl SettingsApp {
         let body = match self.pane {
             Pane::Languages => self.view_languages(),
             Pane::Hotkeys => self.view_hotkeys(),
+            Pane::Commands => self.view_commands(),
             Pane::Wordlists => self.view_wordlists(),
             Pane::General => self.view_general(),
             Pane::Exceptions => self.view_exceptions(),
@@ -759,6 +928,179 @@ impl SettingsApp {
             .into()
     }
 
+    fn view_commands(&self) -> Element<'_, Message> {
+        let mut col = Column::new()
+            .spacing(12)
+            .push(Text::new("Commands").size(24))
+            .push(
+                Text::new(
+                    "Type a short token, get a phrase — like classic snippet expanders. \
+                     For example: trigger `anrl` + space → `Anatomical Reference List `. \
+                     The engine watches every word boundary and fires when the typed \
+                     token matches. Pause / switch-last live separately on the Hotkeys \
+                     pane. New commands take effect after Save + restart.",
+                )
+                .size(13),
+            );
+
+        // ── Existing commands list ──────────────────────────────────
+        if self.settings.commands.is_empty() {
+            col = col.push(
+                Text::new("No commands yet — fill the form below to add one.")
+                    .size(12)
+                    .color(iced::Color::from_rgb(0.45, 0.45, 0.45)),
+            );
+        } else {
+            for (idx, cmd) in self.settings.commands.iter().enumerate() {
+                let summary = format_command_summary(cmd);
+                col = col.push(
+                    Row::new()
+                        .spacing(10)
+                        .push(Text::new(cmd.trigger.clone()).width(Length::FillPortion(2)))
+                        .push(Text::new(summary).size(12).width(Length::FillPortion(5)))
+                        .push(
+                            Button::new(Text::new("×").size(14))
+                                .on_press(Message::CommandRemove(idx))
+                                .style(button::danger),
+                        ),
+                );
+            }
+        }
+
+        col = col.push(Space::with_height(8));
+
+        // ── "Add new command" form ──────────────────────────────────
+        col = col.push(Text::new("Add a new command").size(16));
+
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(Text::new("Name").size(12).width(Length::FillPortion(1)))
+                .push(
+                    TextInput::new("e.g. Insert email signature", &self.command_draft_name)
+                        .on_input(Message::CommandDraftNameChanged)
+                        .width(Length::FillPortion(4)),
+                ),
+        );
+
+        // Trigger row: text input for the typed token (e.g. `anrl`).
+        // The buffer resets at every word boundary, so triggers must
+        // be a single token — the validation path on Add will refuse
+        // any whitespace.
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(Text::new("Trigger").size(12).width(Length::FillPortion(1)))
+                .push(
+                    TextInput::new("e.g. anrl, ;sig, ((en))", &self.command_draft_trigger)
+                        .on_input(Message::CommandDraftTriggerChanged)
+                        .width(Length::FillPortion(4)),
+                ),
+        );
+
+        // Action kind picker (radio-style buttons).
+        let mk_kind_btn = |kind: CommandActionKind| -> Element<'_, Message> {
+            let selected = self.command_draft_action_kind == kind;
+            let style: fn(&Theme, button::Status) -> button::Style = if selected {
+                button::primary
+            } else {
+                button::secondary
+            };
+            Button::new(Text::new(kind.label()).size(12))
+                .on_press(Message::CommandDraftActionKindChanged(kind))
+                .style(style)
+                .into()
+        };
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(Text::new("Action").size(12).width(Length::FillPortion(1)))
+                .push(mk_kind_btn(CommandActionKind::TypeText))
+                .push(mk_kind_btn(CommandActionKind::SwitchLayout))
+                .push(mk_kind_btn(CommandActionKind::OpenPath)),
+        );
+
+        // Param input (placeholder swaps based on action kind).
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(
+                    Text::new(match self.command_draft_action_kind {
+                        CommandActionKind::TypeText => "Text",
+                        CommandActionKind::SwitchLayout => "Layout id",
+                        CommandActionKind::OpenPath => "Path / URL",
+                    })
+                    .size(12)
+                    .width(Length::FillPortion(1)),
+                )
+                .push(
+                    TextInput::new(
+                        self.command_draft_action_kind.placeholder(),
+                        &self.command_draft_param,
+                    )
+                    .on_input(Message::CommandDraftParamChanged)
+                    .width(Length::FillPortion(4)),
+                ),
+        );
+
+        // Optional apps filter.
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(
+                    Text::new("Apps (optional)")
+                        .size(12)
+                        .width(Length::FillPortion(1)),
+                )
+                .push(
+                    TextInput::new(
+                        "comma-separated, e.g. Code.exe,idea64.exe",
+                        &self.command_draft_apps,
+                    )
+                    .on_input(Message::CommandDraftAppsChanged)
+                    .on_submit(Message::CommandAdd)
+                    .width(Length::FillPortion(4)),
+                ),
+        );
+
+        // Status + Add row.
+        let status: Element<'_, Message> = match &self.command_status {
+            Some(b) => Text::new(b.text.clone())
+                .size(11)
+                .color(if b.is_error {
+                    iced::Color::from_rgb(0.85, 0.20, 0.20)
+                } else {
+                    iced::Color::from_rgb(0.20, 0.55, 0.30)
+                })
+                .into(),
+            None => Space::with_width(Length::Shrink).into(),
+        };
+        col = col.push(
+            Row::new()
+                .spacing(8)
+                .push(status)
+                .push(Space::with_width(Length::Fill))
+                .push(
+                    Button::new(Text::new("Add command").size(12))
+                        .on_press(Message::CommandAdd)
+                        .style(button::primary),
+                ),
+        );
+
+        col = col.push(Space::with_height(6)).push(
+            Text::new(
+                "Tips: pick triggers that don't collide with words you actually type — \
+                 `the` would expand on every English sentence; `;sig` or `((email))` \
+                 are safer. Match is exact and case-sensitive. Leave 'Apps' empty for \
+                 a global command, or list `OUTLOOK.EXE,thunderbird.exe` to scope a \
+                 command (case-insensitive basename match).",
+            )
+            .size(11),
+        );
+
+        col.into()
+    }
+
     fn view_wordlists(&self) -> Element<'_, Message> {
         let mut col = Column::new()
             .spacing(12)
@@ -783,6 +1125,38 @@ impl SettingsApp {
                 .size(13),
             );
             return col.into();
+        }
+
+        // ── Profile picker (Global + each configured profile) ──────
+        // Only shown when the user has at least one profile configured;
+        // otherwise the row would be a redundant single "Global"
+        // button. Add profiles via `[[wordlists.profiles]]` in
+        // config.toml — full profile-list management UI is queued for
+        // a follow-up.
+        if !self.settings.wordlists.profiles.is_empty() {
+            let profile_btn = |id: &str, label: &str| -> Element<'_, Message> {
+                let selected = self.wordlist_profile == id;
+                let style: fn(&Theme, button::Status) -> button::Style = if selected {
+                    button::primary
+                } else {
+                    button::secondary
+                };
+                Button::new(Text::new(label.to_owned()).size(12))
+                    .on_press(Message::WordlistProfileSelected(id.to_owned()))
+                    .style(style)
+                    .into()
+            };
+            let mut profile_row = Row::new().spacing(6).push(Text::new("Profile").size(12));
+            profile_row = profile_row.push(profile_btn("", "Global"));
+            for p in &self.settings.wordlists.profiles {
+                let label = if p.name.is_empty() {
+                    p.id.clone()
+                } else {
+                    p.name.clone()
+                };
+                profile_row = profile_row.push(profile_btn(&p.id, &label));
+            }
+            col = col.push(profile_row);
         }
 
         // ── Layout picker (one button per OS-active layout) ─────────
@@ -824,10 +1198,11 @@ impl SettingsApp {
 
         // ── Resolved-path hint ──────────────────────────────────────
         if let Some(id) = &self.wordlist_layout {
-            let path_label = match resolve_overlay_path(id, self.wordlist_kind) {
-                Some(p) => p.display().to_string(),
-                None => "(no config dir resolved on this platform)".to_owned(),
-            };
+            let path_label =
+                match resolve_overlay_path(&self.wordlist_profile, id, self.wordlist_kind) {
+                    Some(p) => p.display().to_string(),
+                    None => "(no config dir resolved on this platform)".to_owned(),
+                };
             col = col.push(Text::new(format!("File: {path_label}")).size(11));
         }
 
@@ -1094,6 +1469,7 @@ fn nav_panel(active: Pane) -> Element<'static, Message> {
             .push(Space::with_height(12))
             .push(mk("Languages", Pane::Languages))
             .push(mk("Hotkeys", Pane::Hotkeys))
+            .push(mk("Commands", Pane::Commands))
             .push(mk("Wordlists", Pane::Wordlists))
             .push(mk("General", Pane::General))
             .push(mk("Exceptions", Pane::Exceptions))
@@ -1102,6 +1478,161 @@ fn nav_panel(active: Pane) -> Element<'static, Message> {
     .width(180)
     .height(Length::Fill)
     .into()
+}
+
+/// Validate the "Add command" form and produce a [`UserCommand`]
+/// ready to push into `settings.commands`. Returns `Err(message)`
+/// describing the first failed check — message is shown to the user
+/// in the Commands pane's status banner so they know what to fix.
+///
+/// Validation:
+///
+/// * Trigger is non-empty and contains no whitespace (the buffer
+///   resets at every word boundary so a multi-token trigger could
+///   never match).
+/// * Param is non-empty (every action variant needs payload —
+///   "type empty text" / "switch to ''" / "open ''" all wrong).
+/// * For `SwitchLayout`, the layout id matches the loose BCP-47
+///   shape we already accept elsewhere (`xx-XX[-VARIANT...]`).
+/// * Generated id is unique against existing `settings.commands`.
+fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String> {
+    let trigger = app.command_draft_trigger.trim().to_owned();
+    if trigger.is_empty() {
+        return Err("Set a trigger first (e.g. `anrl`).".into());
+    }
+    if trigger.chars().any(char::is_whitespace) {
+        return Err(
+            "Trigger must be a single token — no spaces. The buffer resets at every \
+             word boundary, so a multi-word trigger can never match."
+                .into(),
+        );
+    }
+    let param = app.command_draft_param.trim().to_owned();
+    if param.is_empty() {
+        return Err("Action parameter is empty.".into());
+    }
+    let action = match app.command_draft_action_kind {
+        CommandActionKind::TypeText => CommandAction::TypeText { text: param },
+        CommandActionKind::SwitchLayout => {
+            // Loose BCP-47 sanity — reject strings that obviously
+            // can't be a layout id (whitespace, lowercase-only,
+            // wrong shape) to save the user a mystery silent-no-op.
+            if !looks_like_layout_id(&param) {
+                return Err(format!(
+                    "`{param}` doesn't look like a layout id (e.g. `en-US`)."
+                ));
+            }
+            CommandAction::SwitchLayout {
+                layout: LayoutId::new(param),
+            }
+        }
+        CommandActionKind::OpenPath => CommandAction::OpenPath { path: param },
+    };
+
+    let name = app.command_draft_name.trim();
+    let id = derive_command_id(name, &action, &app.settings.commands);
+    if app.settings.commands.iter().any(|c| c.id == id) {
+        return Err(format!(
+            "A command with id `{id}` already exists — pick a different name."
+        ));
+    }
+
+    let apps: Vec<String> = app
+        .command_draft_apps
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToOwned::to_owned)
+        .collect();
+
+    Ok(UserCommand {
+        id,
+        name: name.to_owned(),
+        trigger,
+        action,
+        apps,
+    })
+}
+
+/// Loose validation of "this string could plausibly be a BCP-47
+/// layout id". Accepts `en-US`, `uk-UA`, `kk-Cyrl-KZ`, etc. —
+/// we let the OS reject genuinely-wrong values at switch time
+/// (the engine logs a warning + no-ops in that case).
+fn looks_like_layout_id(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    // First segment must be 2-3 ascii letters; rest must contain
+    // at least one `-` and only ascii alphanumerics + dashes.
+    if !s.contains('-') {
+        return false;
+    }
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// Generate a stable kebab-case id from the user's display name —
+/// or fall back to `cmd-<n>` if name is empty / collides. Handles
+/// the "I just want to add a hotkey, don't make me name it" case
+/// without forcing the user to pick an id manually.
+fn derive_command_id(name: &str, action: &CommandAction, existing: &[UserCommand]) -> String {
+    let from_name: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let base = if !from_name.is_empty() {
+        from_name
+    } else {
+        match action {
+            CommandAction::TypeText { .. } => "type-text".into(),
+            CommandAction::SwitchLayout { .. } => "switch-layout".into(),
+            CommandAction::OpenPath { .. } => "open-path".into(),
+        }
+    };
+    // Disambiguate by appending `-2`, `-3`, … as needed.
+    let mut candidate = base.clone();
+    let mut n: u32 = 2;
+    while existing.iter().any(|c| c.id == candidate) {
+        candidate = format!("{base}-{n}");
+        n += 1;
+    }
+    candidate
+}
+
+/// Single-line description of a command for the existing-list view.
+/// Renders the action concisely so the user can scan a long list of
+/// trigger rows and see what each does without expanding rows.
+fn format_command_summary(cmd: &UserCommand) -> String {
+    let display_name = if cmd.name.is_empty() {
+        cmd.id.clone()
+    } else {
+        cmd.name.clone()
+    };
+    let action_blurb = match &cmd.action {
+        CommandAction::TypeText { text } => {
+            // Truncate long snippets so one row stays one row.
+            let preview = text.chars().take(40).collect::<String>();
+            let suffix = if text.chars().count() > 40 { "…" } else { "" };
+            format!("type `{preview}{suffix}`")
+        }
+        CommandAction::SwitchLayout { layout } => format!("→ {layout}"),
+        CommandAction::OpenPath { path } => format!("open `{path}`"),
+    };
+    let apps_blurb = if cmd.apps.is_empty() {
+        String::new()
+    } else {
+        format!(" (in {})", cmd.apps.join(", "))
+    };
+    format!("{display_name} — {action_blurb}{apps_blurb}")
 }
 
 /// Map a [`LayoutId`] (`en-US`, `uk-UA`, `kk-Cyrl-KZ`, …) to the
@@ -1116,23 +1647,34 @@ fn layout_id_to_stem(id: &LayoutId) -> String {
     id.as_str().to_lowercase().replace('-', "_")
 }
 
-/// Absolute path to the user-overlay file for `(layout, kind)`, or
-/// `None` if the platform's config directory can't be resolved (rare —
-/// usually only on minimal CI containers).
-fn resolve_overlay_path(id: &LayoutId, kind: WordlistKind) -> Option<PathBuf> {
-    let dir = kb_core::layouts::user_wordlist_dir()?;
+/// Absolute path to the user-overlay file for `(profile_id, layout, kind)`.
+/// Empty `profile_id` resolves to the global overlay directory
+/// (`<config-dir>/kb-switcher/wordlists/<stem><suffix>.txt`);
+/// non-empty resolves into the per-profile subdirectory
+/// (`<config-dir>/kb-switcher/wordlists/profiles/<profile_id>/<stem><suffix>.txt`).
+/// Returns `None` if the platform's config directory can't be
+/// resolved (rare — usually only on minimal CI containers).
+fn resolve_overlay_path(profile_id: &str, id: &LayoutId, kind: WordlistKind) -> Option<PathBuf> {
+    let dir = if profile_id.is_empty() {
+        kb_core::layouts::user_wordlist_dir()?
+    } else {
+        kb_core::layouts::user_profile_wordlist_dir(profile_id)?
+    };
     let stem = layout_id_to_stem(id);
     Some(dir.join(format!("{stem}{}.txt", kind.suffix())))
 }
 
-/// Best-effort read of `<config-dir>/kb-switcher/wordlists/<stem><suffix>.txt`.
-/// Returns the file contents on success, an empty string when the
-/// file doesn't exist (the common first-edit case), or an empty
-/// string with a `warn!` log on a real I/O error so the GUI never
-/// blocks the user from starting fresh.
-fn read_overlay_file_or_empty(id: &LayoutId, kind: WordlistKind) -> String {
-    let Some(path) = resolve_overlay_path(id, kind) else {
-        warn!(layout = %id, "no config dir resolved; wordlist editor starts empty");
+/// Best-effort read of the resolved overlay file. Returns the
+/// contents on success, empty string on `NotFound` (the common
+/// first-edit case), or empty string with a warn log on real I/O
+/// error so the GUI never blocks the user from starting fresh.
+fn read_overlay_file_or_empty(profile_id: &str, id: &LayoutId, kind: WordlistKind) -> String {
+    let Some(path) = resolve_overlay_path(profile_id, id, kind) else {
+        warn!(
+            layout = %id,
+            profile = %profile_id,
+            "no config dir resolved; wordlist editor starts empty"
+        );
         return String::new();
     };
     match std::fs::read_to_string(&path) {
@@ -1147,12 +1689,18 @@ fn read_overlay_file_or_empty(id: &LayoutId, kind: WordlistKind) -> String {
 
 /// Atomic-ish write of the editor buffer to the resolved overlay
 /// path. Creates the parent directory on first use (the user may
-/// have never opened `<config-dir>/kb-switcher/wordlists/` before).
-/// The trailing-newline normalisation matches the convention of the
-/// bundled files and keeps `git diff` quiet for users who keep their
-/// config dir under version control.
-fn save_overlay_file(id: &LayoutId, kind: WordlistKind, text: &str) -> std::io::Result<PathBuf> {
-    let path = resolve_overlay_path(id, kind).ok_or_else(|| {
+/// have never opened `<config-dir>/kb-switcher/wordlists/` or the
+/// per-profile subdirectory before). The trailing-newline
+/// normalisation matches the convention of the bundled files and
+/// keeps `git diff` quiet for users who keep their config dir under
+/// version control.
+fn save_overlay_file(
+    profile_id: &str,
+    id: &LayoutId,
+    kind: WordlistKind,
+    text: &str,
+) -> std::io::Result<PathBuf> {
+    let path = resolve_overlay_path(profile_id, id, kind).ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "config directory not resolved on this platform",
@@ -1292,6 +1840,88 @@ mod tests {
                  the rebind UI would silently drop hotkeys this shape"
             );
         }
+    }
+
+    /// Auto-id must be deterministic and collision-free. The UI
+    /// silently dedupes by appending `-2`, `-3`, … so users don't
+    /// need to think about ids — but the dedup must be stable, since
+    /// duplicate ids in the saved config would be a load-time error.
+    #[test]
+    fn derive_command_id_is_kebab_case_and_unique() {
+        let action = CommandAction::TypeText { text: "x".into() };
+        let id = derive_command_id("Insert Email Signature!", &action, &[]);
+        assert_eq!(id, "insert-email-signature");
+
+        // Empty name → action-typed fallback.
+        let blank = derive_command_id("", &action, &[]);
+        assert_eq!(blank, "type-text");
+
+        // Collision → `-2` suffix.
+        let existing = vec![UserCommand {
+            id: "type-text".into(),
+            name: String::new(),
+            trigger: "anrl".into(),
+            action: action.clone(),
+            apps: Vec::new(),
+        }];
+        let dedup = derive_command_id("", &action, &existing);
+        assert_eq!(dedup, "type-text-2");
+    }
+
+    /// `looks_like_layout_id` is a hint, not a strict validator —
+    /// must accept the canonical bundled set + multi-segment ids
+    /// (Cyrillic Kazakh) and reject obviously-not-an-id strings.
+    #[test]
+    fn looks_like_layout_id_accepts_real_ids_and_rejects_garbage() {
+        for ok in ["en-US", "uk-UA", "kk-Cyrl-KZ", "zh-Hans-CN"] {
+            assert!(
+                looks_like_layout_id(ok),
+                "{ok} should be accepted as a layout id"
+            );
+        }
+        for bad in ["", "english", "EN", "en US", "fr.fr", "uk--UA…"] {
+            assert!(
+                !looks_like_layout_id(bad),
+                "{bad} should NOT be accepted as a layout id"
+            );
+        }
+    }
+
+    /// Summary format is what users scan first when they have a
+    /// long list of commands. It must include the display name (or
+    /// id fallback), the action description, and the apps filter
+    /// when set — and stay on one line for any reasonable input.
+    #[test]
+    fn format_command_summary_is_concise_and_complete() {
+        let cmd = UserCommand {
+            id: "sig".into(),
+            name: "Email signature".into(),
+            trigger: ";sig".into(),
+            action: CommandAction::TypeText {
+                text: "Best regards".into(),
+            },
+            apps: vec!["OUTLOOK.EXE".into()],
+        };
+        let s = format_command_summary(&cmd);
+        assert!(s.contains("Email signature"));
+        assert!(s.contains("Best regards"));
+        assert!(s.contains("OUTLOOK.EXE"));
+
+        // Falls back to id when name is empty.
+        let cmd2 = UserCommand {
+            id: "go-en".into(),
+            name: String::new(),
+            trigger: "((en))".into(),
+            action: CommandAction::SwitchLayout {
+                layout: LayoutId::new("en-US"),
+            },
+            apps: Vec::new(),
+        };
+        let s2 = format_command_summary(&cmd2);
+        assert!(s2.starts_with("go-en"));
+        assert!(s2.contains("en-US"));
+        // No apps blurb when the filter is empty.
+        assert!(!s2.contains(" (in "));
     }
 
     /// Stem mapping must agree with both the bundled FST file names

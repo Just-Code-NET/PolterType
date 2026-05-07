@@ -2389,6 +2389,7 @@ dependencies = [
  "kb-input",
  "kb-layout",
  "kb-types",
+ "opener",
  "parking_lot 0.12.5",
  "rodio",
  "serde",

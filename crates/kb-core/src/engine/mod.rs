@@ -22,6 +22,7 @@ use parking_lot::RwLock;
 use tracing::{debug, info, warn};
 
 use crate::audio::{AudioPlayer, SoundEvent};
+use crate::commands::{CommandAction, UserCommand, find_matching_command};
 use crate::layouts::LayoutDb;
 use crate::settings::SettingsStore;
 
@@ -336,6 +337,34 @@ impl SwitcherEngine {
             boundary_char,
         });
 
+        // ---- Smart commands (text triggers) ----
+        //
+        // Consult the user's `[[commands]]` list BEFORE the auto-
+        // switch filters: text expansion is a direct user
+        // intent ("I typed `anrl ` because I want it expanded"),
+        // not a guess the engine is making, so the structural-
+        // boundary / disabled-app / identifier filters don't apply.
+        //
+        // The match is on the rendering in the CURRENT layout —
+        // typing `anrl ` under en-US matches `anrl`, but typing the
+        // same physical keys under uk-UA produces a Cyrillic
+        // rendering that won't match (which is the right behaviour:
+        // an English acronym typed accidentally in Ukrainian layout
+        // should go through normal layout-correction, not
+        // expansion).
+        let focused_basename = self.focus_tracker.focused_exe().and_then(|exe| {
+            std::path::Path::new(&exe)
+                .file_name()
+                .and_then(|f| f.to_str())
+                .map(str::to_owned)
+        });
+        if let Some(cmd) =
+            find_matching_command(&snap.commands, &current_text, focused_basename.as_deref())
+        {
+            self.dispatch_smart_command(cmd, current_text.chars().count() + 1, boundary_char);
+            return;
+        }
+
         // ---- Pre-decision filters (auto-switch only) ----
         //
         // Filters apply *only* to automatic decisions — the manual
@@ -548,6 +577,91 @@ impl SwitcherEngine {
             reason: reason.to_owned(),
         });
         let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
+    }
+
+    /// Run a matched smart command. The shape is the same for every
+    /// action variant: backspace the typed trigger plus the
+    /// boundary character (so the magic word disappears from the
+    /// user's text), then dispatch the action.
+    ///
+    /// `backspace_count` is precomputed by the caller as
+    /// `current_text.chars().count() + 1` — counting characters not
+    /// bytes, because that's what the OS-level emit_backspace uses
+    /// across Cyrillic / multibyte triggers.
+    ///
+    /// For `TypeText` we re-emit the boundary character after the
+    /// expansion so the user's flow continues naturally — typing
+    /// `anrl<space>` ends up with the cursor after a trailing space
+    /// in the expansion, not glued to the last word. For
+    /// `SwitchLayout` and `OpenPath` the boundary stays consumed
+    /// (the user wanted a side-effect, not text).
+    fn dispatch_smart_command(
+        &self,
+        cmd: &UserCommand,
+        backspace_count: usize,
+        boundary_char: char,
+    ) {
+        info!(
+            id = %cmd.id,
+            trigger = %cmd.trigger,
+            action = ?cmd.action,
+            "smart command fired"
+        );
+        if let Err(e) = self.key_emitter.send_backspaces(backspace_count) {
+            warn!(?e, id = %cmd.id, "smart command: send_backspaces failed");
+            return;
+        }
+        match &cmd.action {
+            CommandAction::TypeText { text } => {
+                if let Err(e) = self.key_emitter.send_text(text) {
+                    warn!(?e, id = %cmd.id, "smart command: send_text failed");
+                    return;
+                }
+                // Re-emit the boundary so the user's typing flow
+                // continues — they typed `anrl<space>`, they expect
+                // `<expansion><space>` afterward, not the cursor
+                // glued to the end.
+                let mut buf = [0u8; 4];
+                let s = boundary_char.encode_utf8(&mut buf);
+                if let Err(e) = self.key_emitter.send_text(s) {
+                    warn!(?e, id = %cmd.id, "smart command: re-emit boundary failed");
+                }
+            }
+            CommandAction::SwitchLayout { layout } => {
+                // Same pre-flight as `apply_correction`: confirm the
+                // layout is reachable before doing anything else.
+                // Backspaces have already happened — if the switch
+                // is impossible we can't recover the deleted text,
+                // but we log loudly so the user notices.
+                match self.layout_switcher.list_active() {
+                    Ok(list) if !list.contains(layout) => {
+                        warn!(
+                            target = %layout,
+                            active = ?list,
+                            id = %cmd.id,
+                            "smart command: target layout not active in OS"
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        warn!(
+                            ?e,
+                            id = %cmd.id,
+                            "could not verify target layout availability; trying anyway"
+                        );
+                    }
+                    _ => {}
+                }
+                if let Err(e) = self.layout_switcher.switch_to(layout) {
+                    warn!(?e, id = %cmd.id, target = %layout, "smart command: switch failed");
+                }
+            }
+            CommandAction::OpenPath { path } => {
+                if let Err(e) = opener::open(path) {
+                    warn!(?e, id = %cmd.id, path = %path, "smart command: open failed");
+                }
+            }
+        }
     }
 
     fn force_switch_last(&self, last: LastWord) {
