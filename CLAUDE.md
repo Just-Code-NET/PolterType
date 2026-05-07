@@ -19,20 +19,22 @@ Stack:
 - **`auto-launch`** for autostart on login.
 - See [docs/PLAN.md §2](docs/PLAN.md) for the full rationale.
 
-## Workspace layout (target — see PLAN §4)
+## Workspace layout
 
 | Crate | Purpose |
 |---|---|
-| `crates/kb-app` | binary: tray, window, IPC orchestration |
-| `crates/kb-core` | engine, settings, focus tracker, audio, autostart |
+| `crates/kb-app` | binary: tray, settings UI subprocess, global hotkeys, IPC orchestration |
+| `crates/kb-core` | engine, settings, layouts, smart-commands, wordlist profiles, focus tracker, audio |
 | `crates/kb-input` | OS keyboard hooks (`InputListener` trait + per-OS) |
 | `crates/kb-layout` | OS layout switching (`LayoutSwitcher` trait + per-OS) |
 | `crates/kb-detect` | language detector pipeline (heuristic, dictionary, …) |
 | `crates/kb-ai` | optional AI/LLM detectors & rewriters (`feature = "ai"`) |
 | `crates/kb-types` | shared types (`LayoutId`, `KeyEvent`, …) |
+| `xtask` | dev tooling: wordlist fetch + Hunspell expand, git-hook install, icon render, `version bump` / `set` |
 | `data/layout-mappings/` | TOML files describing keyboard overlays per layout |
+| `data/wordlists/` | bundled FST dictionaries + curated short-stop lists |
 | `assets/sound-themes/` | sound packs (folder per theme) |
-| `docs/` | PLAN, ARCHITECTURE, PERMISSIONS, AI, ADDING_A_LANGUAGE |
+| `docs/` | PLAN, DECISIONS, DATA_LAYOUT, PERMISSIONS, AI, ADDING_A_LANGUAGE, RELEASING |
 
 ## Hard rules
 
@@ -53,23 +55,34 @@ Stack:
 - **Languages live in data, not code.** Adding a new layout =
   adding a TOML file under `data/layout-mappings/`.
 
-## Common commands (will exist after Phase 1)
+## Common commands
 
 ```bash
-# build & run the tray app
+# Build & run the tray app
 cargo run -p kb-app
 
-# release build
+# Release build
 cargo build --release -p kb-app
 
-# build with AI subsystem enabled
+# Build with AI subsystem enabled (architecture only in v0.1)
 cargo build --release -p kb-app --features ai
 
-# Rust checks
+# Open the Settings GUI directly (the tray spawns this as a child
+# process when the user clicks "Settings…"; useful in dev to skip
+# the tray and see the window)
+cargo run -p kb-app -- --settings
+
+# Rust checks (CI runs the same set; do these before pushing)
 cargo fmt --all
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 cargo deny check
+
+# Dev tooling (cargo xtask)
+cargo xtask help                 # full list
+cargo xtask wordlists fetch      # re-download + re-expand bundled dicts
+cargo xtask hooks install        # wire .githooks/ into this clone
+cargo xtask version bump         # release flow — see docs/RELEASING.md
 ```
 
 ## Style
@@ -91,8 +104,20 @@ cargo deny check
 
 ## Out of scope for v0.1
 
-- Installers, code signing, store submissions (Microsoft Store, brew,
-  winget, AUR) — separate phase.
-- Wayland full support (best-effort + clear docs only).
-- WASM plugin marketplace.
-- Telemetry of any kind.
+- **Code signing** — beta installers ship UNSIGNED. Apple
+  Developer ID + Windows EV/OV cert tracked for a later phase.
+  (Per-platform installers themselves *do* exist — see
+  `installers/` and `.github/workflows/release.yml`.)
+- **Store submissions** — Microsoft Store, Homebrew Cask, winget,
+  AUR. Separate phase per store; users install from the GitHub
+  Release page in v0.1.
+- **Wayland full support** — best-effort + clear docs only.
+  Hotkey capture inside the focused Settings window works; global
+  hotkey + listener on Wayland sees what `evdev` can give us.
+- **Plug-in marketplace UI** — the loader is live (data-only
+  packs in `<data_dir>/plugins/<id>/`), but installation /
+  signing / updates flow is queued.
+- **`run_shell` smart-command action and multi-token triggers** —
+  separate security review.
+- **WASM plug-in marketplace.**
+- **Telemetry of any kind.**

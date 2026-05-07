@@ -4,7 +4,7 @@ Cross-platform automatic keyboard layout switcher.
 Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and fixes the last word.
 
-> **Status:** v0.1.0-alpha — works end-to-end on Windows; macOS and
+> **Status:** v0.1.0-beta — works end-to-end on Windows; macOS and
 > Linux backends are written from API docs and validated on CI but
 > haven't yet been runtime-tuned by hardware-equipped contributors.
 > See [docs/PLAN.md](docs/PLAN.md) for the full plan and
@@ -63,10 +63,44 @@ See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 
 ## Hotkeys
 
-| Hotkey | Action |
+Two built-in hotkeys, both rebindable on the **Hotkeys** pane of
+the Settings window:
+
+| Default | Action |
 |---|---|
 | `Ctrl+Shift+Space` | Pause / resume auto-switching. |
 | `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. |
+
+## Smart commands (text triggers)
+
+On top of the two built-in hotkeys, you can define `[[commands]]`
+entries — short typed tokens that expand or trigger an action when
+the engine sees them at a word boundary. The shape mirrors classic
+text expanders (TextExpander, Espanso, AutoHotkey hotstrings):
+
+```toml
+[[commands]]
+id      = "anrl"
+trigger = "anrl"
+action  = { type = "type_text", text = "Anatomical Reference List" }
+
+[[commands]]
+id      = "to-english"
+trigger = "((en))"
+action  = { type = "switch_layout", layout = "en-US" }
+
+[[commands]]
+id      = "open-config"
+trigger = ";cfg"
+action  = { type = "open_path", path = "C:/Users/me/AppData/Roaming/kb-switcher/config.toml" }
+apps    = ["Code.exe"]
+```
+
+Three v1 actions: `type_text` (snippet expansion), `switch_layout`
+(BCP-47 id), `open_path` (file or URL). Optional `apps = [...]`
+scopes a command to specific foreground apps using the same
+basename match `[exceptions].disabled_apps` already uses. Manage
+them on the **Commands** pane in Settings.
 
 ## Dev-friendly: stays out of code
 
@@ -93,18 +127,34 @@ identifiers. Three layers protect you:
 ### Adding your own vocabulary
 
 For specialty words the engine doesn't know yet (project-specific
-terms, slang, brand names), drop them into
-`<config-dir>/kb-switcher/wordlists/<layout>.txt`:
+terms, slang, brand names), the easiest path is the **Wordlists**
+pane in the Settings window — pick a layout, type words one per
+line, hit Save.
+
+The same files live under `<config-dir>/kb-switcher/wordlists/`
+if you'd rather edit them by hand (the Wordlists pane writes to
+exactly these locations). The stem is the BCP-47 id with `-`
+replaced by `_` (e.g. `en-US` → `en_us.txt`):
 
 * Windows: `%APPDATA%\opensource\kb-switcher\config\wordlists\en_us.txt`
 * macOS: `~/Library/Application Support/dev.opensource.kb-switcher/wordlists/en_us.txt`
 * Linux: `~/.config/kb-switcher/wordlists/en_us.txt`
 
 One lowercase word per line; blank lines and `#`-comments ignored.
-Hit "Reload Settings" in the tray and the new words take effect
-immediately — no restart needed. Adding to the embedded
-`data/wordlists/*.txt` files in the repo, on the other hand, requires
-rebuilding the binary (those bake into the FST at compile time).
+Adding to the bundled `data/wordlists/*.txt` files in the repo,
+on the other hand, requires rebuilding the binary (those bake
+into the FST at compile time).
+
+**Per-app profiles** — if `kubectl` should count as a real word
+inside VS Code but not in chat, declare a `[[wordlists.profiles]]`
+entry in `config.toml` and drop the per-profile overlays under
+`<config-dir>/kb-switcher/wordlists/profiles/<id>/<stem>.txt`.
+The engine swaps the active overlay set when the focused app
+changes. See [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md) for the
+full schema.
+
+Wordlist edits apply on next tray restart — the FSTs are built
+into the engine's dictionary set at start, not hot-reloaded.
 
 Writing a comment in another language inside an IDE? Hit
 `Ctrl+Shift+Backspace` after the word — that hotkey ignores every
@@ -112,19 +162,34 @@ filter by design.
 
 ## Settings
 
-There's no GUI in v0.1; the tray "Open Settings (config.toml)…"
-entry opens a TOML file in your default editor:
+Two ways to configure:
 
-* Windows: `%APPDATA%\opensource\kb-switcher\config\config.toml`
-* macOS: `~/Library/Application Support/dev.opensource.kb-switcher/config.toml`
-* Linux: `~/.config/kb-switcher/config.toml`
+1. **Tray → "Settings…"** opens a real GUI (`iced 0.13` with the
+   lightweight `tiny-skia` renderer). Seven panes: **Languages**,
+   **Hotkeys**, **Commands** (text-trigger snippet expanders),
+   **Wordlists** (per-layout user-overlay editor with optional
+   per-app profile picker), **General**, **Exceptions**, **About**.
+2. **Tray → "Edit config.toml…"** opens the raw TOML file in your
+   default editor — useful for things the GUI doesn't expose yet
+   (creating a new wordlist profile entry, listing
+   `[[commands]]` in bulk, …):
+
+   * Windows: `%APPDATA%\opensource\kb-switcher\config\config.toml`
+   * macOS: `~/Library/Application Support/dev.opensource.kb-switcher/config.toml`
+   * Linux: `~/.config/kb-switcher/config.toml`
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray
 takes you there. After editing the TOML, "Reload Settings" picks
-up the change without restarting.
+up the change for live-reloadable settings (general flags,
+exceptions, hotkey bindings) without a restart. Wordlist /
+profile changes still need a tray restart — they're built into
+the engine's dictionary set at start.
 
-A full visual UI is on the v0.1.x roadmap — see
-[DECISIONS.md, 2026-05-02](docs/DECISIONS.md).
+The GUI runs as a child process (`kb-switcher --settings`) so
+the tray's `tao::EventLoop` and iced's `winit` event loop don't
+fight over the macOS main thread. Crashes in the UI never bring
+down the engine; see [DECISIONS.md](docs/DECISIONS.md) for the
+full rationale.
 
 ## Building
 

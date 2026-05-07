@@ -4,7 +4,7 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.7
+## [Unreleased] — 0.1.0-beta.8
 
 ### Smart commands — text-trigger expansions and shortcuts
 
@@ -114,6 +114,35 @@ What v1 deliberately doesn't include:
 * Hot reload — same constraint as the global overlay; profile
   edits apply on tray restart.
 
+### Tooling — `cargo xtask version`
+
+New helper to bump the workspace version in lock-step across
+`Cargo.toml`, `CHANGELOG.md` (the `## [Unreleased] — <ver>`
+heading), and `Cargo.lock`. Surface:
+
+```bash
+cargo xtask version              # print current
+cargo xtask version bump         # auto-bump (pre-release counter or patch)
+cargo xtask version set X.Y.Z    # exact value
+cargo xtask version <subcmd> --dry-run
+```
+
+Hand-rolled parser, no `semver` / `regex` deps. Surgical
+Cargo.toml edit anchored on `[workspace.package].version` so
+dep-pin `version = "..."` entries elsewhere in the file are left
+alone. Refuses to write if the file shapes drift — see
+`docs/RELEASING.md` for the full release flow.
+
+## [0.1.0-alpha.0 → 0.1.0-beta.6] — pre-release iterations
+
+Pre-release tags up through `v0.1.0-beta.6` (one per merged
+batch of work) shipped against this single rolling block while
+the project bootstrapped. Per-tag notes weren't kept — the
+git log is the authoritative record for which commit landed in
+which tag. From `v0.1.0-beta.7` onward, each release gets its
+own dated section above.
+
+### Initial scaffolding
 
 The initial scaffolding lands across Phases 0–8 documented in
 [docs/PLAN.md](docs/PLAN.md). Highlights:
@@ -334,4 +363,5 @@ missing-manifest / invalid-manifest / user-override.
   separate phase. The loader is ready; the network + UI plumbing
   has its own security review queued.
 
-[Unreleased]: https://github.com/REPLACE-ME/kb-switcher
+[Unreleased]: https://github.com/Just-Code-NET/kb-switcher/compare/v0.1.0-beta.6...HEAD
+[0.1.0-alpha.0 → 0.1.0-beta.6]: https://github.com/Just-Code-NET/kb-switcher/releases

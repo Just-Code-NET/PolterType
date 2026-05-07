@@ -1,9 +1,17 @@
 //! kb-switcher application entry point.
 //!
-//! Phase 4 scaffold: tray, global keyboard listener, layout switcher,
-//! `SwitcherEngine`, global hotkeys, file logging, and the
-//! Open-Settings / Open-Logs / Reload-Settings tray entries. Full
-//! visual GUI is deferred to Phase 8 (see `docs/DECISIONS.md`).
+//! Wires the tray + global keyboard listener + layout switcher +
+//! `SwitcherEngine` together, registers the two built-in global
+//! hotkeys (pause / switch-last), and spawns the focus-driven
+//! wordlist-profile watcher when the user has profiles configured.
+//!
+//! The Settings GUI is a **separate process** spawned via
+//! `kb-switcher --settings` — see `settings_ui.rs` for the
+//! rationale (macOS main-thread contention, crash isolation).
+//! User-defined "smart commands" (`[[commands]]` in `config.toml`)
+//! are NOT wired here as global hotkeys; they're text triggers
+//! consulted by the engine on every word boundary. See
+//! `kb_core::commands` for the design.
 
 #![forbid(unsafe_code)]
 
@@ -407,7 +415,7 @@ fn main() -> Result<()> {
                     }
                     *control_flow = ControlFlow::Exit;
                 } else if id == settings_ui_id {
-                    spawn_settings_ui(&cmd_tx_for_loop);
+                    spawn_settings_ui(Arc::clone(&settings_for_loop), &cmd_tx_for_loop);
                 } else if id == settings_file_id {
                     open_path(&settings_path, "settings file");
                 } else if id == logs_id {
@@ -678,7 +686,7 @@ fn print_help() {
 /// Best-effort: if we can't even locate our own exe (highly unusual,
 /// e.g. running from a deleted binary) we log + skip rather than
 /// taking down the tray.
-fn spawn_settings_ui(reload_tx: &Sender<EngineCommand>) {
+fn spawn_settings_ui(settings: Arc<SettingsStore>, reload_tx: &Sender<EngineCommand>) {
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -696,11 +704,24 @@ fn spawn_settings_ui(reload_tx: &Sender<EngineCommand>) {
     };
 
     // Wait for the child in a worker thread so the tray doesn't
-    // block. On exit we send `SettingsReloaded` regardless of the
-    // child's status — the user may have edited config.toml from
-    // the GUI's "Open config.toml" button even if they then closed
-    // the window without clicking Save, so a reload-on-exit gives
-    // the most predictable refresh semantics.
+    // block. On exit we re-read config.toml from disk into the
+    // parent's `SettingsStore` AND send `SettingsReloaded` to the
+    // engine. Both halves matter:
+    //
+    // * The reload picks up edits the subprocess made — `[[commands]]`
+    //   text-trigger entries, hotkey rebindings, exception list edits.
+    //   Without this, the tray's in-memory view of settings would
+    //   stay stale until the user manually clicked "Reload Settings"
+    //   from the tray menu, which is exactly the surprise we want
+    //   to avoid right after closing the GUI.
+    // * The engine command tells the worker thread to clear its
+    //   buffer + refresh audio for the new settings snapshot.
+    //
+    // We send the engine command regardless of whether reload
+    // returned `changed` — the subprocess may have edited
+    // config.toml from the "Open config.toml" button without
+    // clicking Save, so reload-and-tell gives the most predictable
+    // refresh semantics.
     let reload_tx = reload_tx.clone();
     std::thread::Builder::new()
         .name("kb-switcher-settings-waiter".into())
@@ -709,6 +730,10 @@ fn spawn_settings_ui(reload_tx: &Sender<EngineCommand>) {
             match child.wait() {
                 Ok(status) => info!(?status, "settings UI exited"),
                 Err(e) => warn!(?e, "could not wait on settings UI child"),
+            }
+            match settings.reload() {
+                Ok(changed) => info!(changed, "config.toml reloaded after settings UI exit"),
+                Err(e) => warn!(?e, "could not reload config.toml after settings UI exit"),
             }
             if let Err(e) = reload_tx.send(EngineCommand::SettingsReloaded) {
                 warn!(?e, "could not enqueue SettingsReloaded after UI exit");
@@ -992,14 +1017,34 @@ fn collect_dicts(
 ///
 /// Scope of the reload:
 ///
-/// * Wordlist overlays for **already-loaded** layouts → picked up
-///   immediately (this is the load-bearing case — adding tech vocab
-///   like `kubectl`, `terraform`, …).
-/// * Brand-new user layouts (a freshly-dropped TOML in
+/// * **Global wordlist overlays** for already-loaded layouts →
+///   picked up immediately (this is the load-bearing case — adding
+///   tech vocab like `kubectl`, `terraform`, …).
+/// * **Brand-new user layouts** (a freshly-dropped TOML in
 ///   `<config-dir>/kb-switcher/layouts/`) → require an app restart.
 ///   The engine holds a snapshot `Arc<LayoutDb>`, so the new layout
 ///   wouldn't be in its scancode-translation tables anyway. We log
 ///   loud-and-clear if we see one, so the user knows.
+/// * **Per-profile wordlist overlays**
+///   (`<config-dir>/kb-switcher/wordlists/profiles/<id>/<stem>.txt`)
+///   → require an app restart. The profile dictionary cache built
+///   at startup isn't rebuilt by Reload Settings; the focus-watcher
+///   re-applies the cached set on the next focus transition. The
+///   Wordlists pane already tells users to restart for profile
+///   edits; this matches that contract.
+/// * **`[[wordlists.profiles]]` schema changes** → require an app
+///   restart. The profile cache is built once at startup; adding a
+///   new profile entry without restarting means the cache has no
+///   dictionary set for it and the focus-watcher can't activate it.
+/// * **`[[commands]]` schema changes** → live for text triggers,
+///   restart for hotkey rebinds. The engine reads the commands
+///   list from `settings.snapshot()` on every word boundary, so a
+///   text-trigger command added/removed via the Settings UI takes
+///   effect on the next typed word (the parent SettingsStore
+///   reloads config.toml when the GUI subprocess exits). The two
+///   built-in hotkeys (`[hotkeys].pause_toggle` /
+///   `manual_switch_last`) are registered with the OS once at
+///   startup, so rebinding them still needs a tray restart.
 fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
     let wordlist_dir = kb_core::layouts::user_wordlist_dir();
     let layout_dir = kb_core::layouts::user_layout_dir();
