@@ -2343,7 +2343,7 @@ dependencies = [
 
 [[package]]
 name = "kb-ai"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "kb-detect",
  "kb-types",
@@ -2356,7 +2356,7 @@ dependencies = [
 
 [[package]]
 name = "kb-app"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "kb-core"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "crossbeam-channel",
  "directories",
@@ -2399,7 +2399,7 @@ dependencies = [
 
 [[package]]
 name = "kb-detect"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "fst",
  "kb-types",
@@ -2411,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "kb-input"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
@@ -2427,7 +2427,7 @@ dependencies = [
 
 [[package]]
 name = "kb-layout"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "core-foundation 0.10.1",
  "kb-types",
@@ -2439,7 +2439,7 @@ dependencies = [
 
 [[package]]
 name = "kb-types"
-version = "0.1.0-alpha.0"
+version = "0.1.0-beta.5"
 dependencies = [
  "serde",
  "thiserror 1.0.69",

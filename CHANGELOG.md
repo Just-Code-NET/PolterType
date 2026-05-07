@@ -4,7 +4,7 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-alpha.0
+## [Unreleased] — 0.1.0-beta.5
 
 The initial scaffolding lands across Phases 0–8 documented in
 [docs/PLAN.md](docs/PLAN.md). Highlights:
