@@ -17,7 +17,7 @@ edition       = "2024"
 license       = "MIT"
 authors       = ["kb-switcher contributors"]
 rust-version  = "1.85"
-repository    = "https://github.com/REPLACE-ME/kb-switcher"
+repository    = "https://github.com/Just-Code-NET/kb-switcher"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"

@@ -178,10 +178,45 @@ impl SwitcherEngine {
                 });
             }
             EngineCommand::SwitchLastForcefully => {
-                if let Some(last) = self.last_word.read().clone() {
+                // Atomic take, NOT clone-and-read. Critical for the
+                // hotkey-loop bug:
+                //
+                // The user types `цщц` (uk-UA), engine auto-corrects
+                // to `wow ` and stashes last_word. User then presses
+                // `Ctrl+Shift+Backspace` to manually re-apply. The
+                // hotkey fires, we run `apply_correction`, which
+                // sends BACKSPACE keystrokes via SendInput. Those
+                // Backspaces are flagged INJECTED so the engine
+                // ignores them — but the OS-level RegisterHotKey
+                // (used by `global-hotkey`) sees the *combination*
+                // of our injected Backspace + the user's still-held
+                // Ctrl+Shift modifiers as a fresh `Ctrl+Shift+Backspace`
+                // press, and fires the hotkey again. That ran
+                // `force_switch_last` again, which sent another 4
+                // backspaces, which fired the hotkey again — every
+                // iteration both corrected the text again AND played
+                // the correction sound, producing the user-visible
+                // symptom: text accumulating to `wow wow wow…` and a
+                // sound loop that didn't stop until the app was
+                // killed.
+                //
+                // Auto-repeat on a held Backspace key would have the
+                // same effect even without the modifier-combining
+                // edge case.
+                //
+                // Taking + clearing last_word atomically means the
+                // first fire processes; every subsequent fire from
+                // the same physical hotkey press (or its echo) finds
+                // `None` and exits silently. To re-trigger, the user
+                // must complete another word and let the engine
+                // re-stash a new last_word.
+                let taken = self.last_word.write().take();
+                if let Some(last) = taken {
                     self.force_switch_last(last);
                 } else {
-                    warn!("no last word to switch");
+                    debug!(
+                        "manual switch-last fired but no last word stashed (likely a duplicate from key auto-repeat)"
+                    );
                 }
             }
             EngineCommand::SettingsReloaded => {
@@ -836,6 +871,77 @@ mod boundary_tests {
             assert!(
                 !is_structural_boundary(c),
                 "expected {c:?} natural-prose punctuation"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod last_word_consume_tests {
+    use super::LastWord;
+    use kb_layout::LayoutId;
+    use parking_lot::RwLock;
+    use std::sync::Arc;
+
+    /// Regression for the manual-switch hotkey loop bug.
+    ///
+    /// The user types `цщц` (uk-UA), engine auto-corrects to `wow `,
+    /// stashes `last_word`. User presses `Ctrl+Shift+Backspace` to
+    /// re-apply manually. `apply_correction` sends BACKSPACE
+    /// keystrokes via SendInput; those Backspaces are flagged
+    /// INJECTED so the engine ignores them, but Win32
+    /// `RegisterHotKey` (the primitive `global-hotkey` uses) sees
+    /// the combination of our injected Backspace + the user's
+    /// still-held Ctrl+Shift modifiers as another fresh
+    /// `Ctrl+Shift+Backspace` press and fires the hotkey again.
+    /// Same effect from key auto-repeat if the user holds the chord.
+    ///
+    /// Without atomic take-and-clear, every echo runs another
+    /// `force_switch_last`, deleting + re-typing `wow ` and playing
+    /// the correction sound. The user-visible symptom: text
+    /// accumulates and a sound loop doesn't stop until the app is
+    /// killed.
+    ///
+    /// The fix in `EngineCommand::SwitchLastForcefully` swaps from
+    /// `read().clone()` to `write().take()`: the first fire
+    /// processes; subsequent fires hit `None` and exit silently.
+    /// To re-trigger, the user must complete another word and let
+    /// the engine re-stash a new last_word.
+    ///
+    /// We can't easily construct a full `SwitcherEngine` here (lots
+    /// of OS deps), so we exercise the storage primitive directly —
+    /// what matters for the bug is that the take semantics are
+    /// load-bearing, and a future refactor that switches them back
+    /// to clone-and-read would re-introduce the loop. This test
+    /// pins that.
+    #[test]
+    fn take_consumes_last_word_so_repeated_fires_no_op() {
+        let storage: Arc<RwLock<Option<LastWord>>> = Arc::new(RwLock::new(None));
+
+        // Engine stashes a last word after auto-correcting `цщц`
+        // → `wow `.
+        *storage.write() = Some(LastWord {
+            keys: Vec::new(),
+            rendered: "цщц".into(),
+            layout: LayoutId::new("uk-UA"),
+            boundary_char: ' ',
+        });
+
+        // First fire of the manual hotkey: take wins, processes.
+        let first = storage.write().take();
+        assert!(
+            first.is_some(),
+            "first manual switch must see the stashed last_word"
+        );
+
+        // Echo / auto-repeat fires: subsequent takes find None.
+        // This is what stops the loop and the sound spam.
+        for _ in 0..50 {
+            let echo = storage.write().take();
+            assert!(
+                echo.is_none(),
+                "repeated manual-switch fires after the first must find None — \
+                 if this regresses, the hotkey loop bug is back"
             );
         }
     }

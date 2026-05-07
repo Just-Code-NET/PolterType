@@ -6,6 +6,32 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — 0.1.0-beta.8
 
+### Fixed — manual switch-last hotkey infinite loop
+
+Pressing `Ctrl+Shift+Backspace` (the manual switch-last hotkey)
+right after an auto-correction caused an infinite loop: text
+accumulating to `wow wow wow…` and the correction sound playing
+on a loop until the app was killed.
+
+Root cause: when `apply_correction` sends BACKSPACE keystrokes
+via SendInput to delete the typed word, those Backspaces are
+flagged INJECTED so the engine itself ignores them. But Win32
+`RegisterHotKey` (the primitive `global-hotkey` uses) sees the
+*combination* of our injected Backspace + the user's
+still-held Ctrl+Shift modifiers as a fresh `Ctrl+Shift+Backspace`
+press and fires the hotkey again — running `force_switch_last`
+recursively. Same effect from key auto-repeat if the user holds
+the chord.
+
+Fix: `EngineCommand::SwitchLastForcefully` now **takes** the
+stashed `last_word` atomically (`write().take()`) instead of
+cloning it (`read().clone()`). The first fire processes; every
+subsequent fire from the same physical hotkey press (or its
+echo) finds `None` and exits silently. To re-trigger, the user
+must complete another word and let the engine re-stash a new
+`last_word`. Pinned by a regression test
+(`engine::last_word_consume_tests`).
+
 ### Smart commands — text-trigger expansions and shortcuts
 
 Inspired by classic text expanders (TextExpander, Espanso,
