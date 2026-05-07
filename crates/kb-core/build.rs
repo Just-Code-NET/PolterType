@@ -27,6 +27,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
+use flate2::read::GzDecoder;
 use fst::SetBuilder;
 
 /// (`<layout-id-as-file-stem>`, expected layout BCP-47 tag for the
@@ -63,11 +64,13 @@ fn main() {
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"));
 
     for (stem, tag) in LAYOUTS {
+        let txt_gz_path = wordlists_dir.join(format!("{stem}.txt.gz"));
         let txt_path = wordlists_dir.join(format!("{stem}.txt"));
         let extras_path = wordlists_dir.join(format!("{stem}-extras.txt"));
         let stop_path = wordlists_dir.join(format!("{stem}-stop.txt"));
         let fst_path = out_dir.join(format!("{stem}.fst"));
 
+        println!("cargo:rerun-if-changed={}", txt_gz_path.display());
         println!("cargo:rerun-if-changed={}", txt_path.display());
         println!("cargo:rerun-if-changed={}", extras_path.display());
         println!("cargo:rerun-if-changed={}", stop_path.display());
@@ -75,7 +78,17 @@ fn main() {
         // Full upstream wordlist + our hand-curated extras
         // (modern tech vocab, common acronyms, dev jargon — the
         // categories `dwyl/english-words` doesn't cover).
-        let mut words: Vec<String> = read_wordlist(&txt_path);
+        //
+        // Bulk wordlist source ships gzipped — the uk_ua expanded
+        // form list is 84 MB raw, ~25 MB gzipped, and lives in the
+        // repo as `data/wordlists/<stem>.txt.gz`. The plain `.txt`
+        // path is honoured as a fallback so a contributor inspecting
+        // a wordlist can `gunzip -k <stem>.txt.gz` and re-build
+        // without re-running xtask.
+        let mut words: Vec<String> = read_wordlist(&txt_gz_path);
+        if words.is_empty() {
+            words = read_wordlist(&txt_path);
+        }
         let extras = read_wordlist(&extras_path);
         let extras_count = extras.len();
         words.extend(extras);
@@ -139,31 +152,47 @@ fn main() {
     writeln!(&mut dispatch, "];").unwrap();
 }
 
-/// Read one wordlist file (`<stem>.txt`, `<stem>-extras.txt`, or
-/// `<stem>-stop.txt`) into a deduped, lowercased Vec of words.
+/// Read one wordlist file into a deduped, lowercased Vec of words.
 ///
-/// File-not-found is a *legitimate* state: the new languages
-/// (ru/de/es/fr) ship without bulk dictionaries — they're populated
-/// on demand by `cargo xtask wordlists fetch`. So ENOENT is silent.
-/// Other I/O errors (permission denied, malformed UTF-8 deeper down)
-/// are still surfaced — those are the cases worth bothering the user
-/// about. The "you have an empty FST" hint comes once per layout
-/// from the call site.
+/// Honours both raw `<stem>.txt` and gzipped `<stem>.txt.gz` —
+/// dispatch is by file extension. Bulk wordlists are gzipped because
+/// the expanded uk_ua dictionary alone is 84 MB raw; the small
+/// hand-curated `-extras.txt` / `-stop.txt` files are still plain
+/// text so contributors can edit them in any text editor without a
+/// decompress / recompress dance.
+///
+/// File-not-found is a *legitimate* state — the new languages
+/// (ru/de/es/fr) shipped empty originally, and a contributor who
+/// hasn't run `cargo xtask wordlists fetch` yet will be missing the
+/// `.txt.gz` file. So ENOENT is silent. Other I/O errors (permission
+/// denied, malformed UTF-8 deeper down) are still surfaced — those
+/// are the cases worth bothering the user about. The "you have an
+/// empty FST" hint comes once per layout from the call site.
 fn read_wordlist(path: &Path) -> Vec<String> {
-    match File::open(path) {
-        Ok(f) => BufReader::new(f)
-            .lines()
-            .map_while(Result::ok)
-            .map(|l| l.trim().to_lowercase())
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .collect(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+    let f = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
         Err(e) => {
             println!(
                 "cargo:warning=wordlist read failed for {}: {e}",
                 path.display()
             );
-            Vec::new()
+            return Vec::new();
         }
-    }
+    };
+    let lines: Box<dyn BufRead> = if path
+        .extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("gz"))
+    {
+        Box::new(BufReader::new(GzDecoder::new(f)))
+    } else {
+        Box::new(BufReader::new(f))
+    };
+    lines
+        .lines()
+        .map_while(Result::ok)
+        .map(|l| l.trim().to_lowercase())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect()
 }

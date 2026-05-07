@@ -202,12 +202,27 @@ impl WordPlausibilityDetector {
             .count();
         let script_fit = script_hits as f32 / letters.len() as f32;
 
-        // (2) Vowel ratio: real words in EN/UK land roughly 0.25..=0.55.
+        // (2) Vowel ratio: real words land in a fairly wide band — most
+        //     EN / UK / RU prose averages ~0.4 over long text, but
+        //     individual short words fan out either way. The plateau
+        //     reaches up to 2/3 to cover legitimate V-C-V patterns:
+        //     `має` / `оса` / `уса` (Cyrillic) and `eye` / `our` / `ear`
+        //     (English) all have vowel-ratio = 0.667 and would
+        //     otherwise miss the plateau by a hair, scoring just below
+        //     `keep_threshold` and getting auto-switched away —
+        //     exactly the regression `має` triggered after the de-DE /
+        //     fr-FR layouts joined the candidate set (the German render
+        //     `vfä` happens to score 1.0 plausibility because `ä`
+        //     lands the vowel-ratio at 1/3 = 0.333). The plateau
+        //     centred at 0.46 (midpoint of 0.25 / 0.67) with slope 2.5
+        //     matches the previous shape elsewhere — gibberish like
+        //     `руддщ` (1 vowel of 5 = 0.2) still falls off as before.
+        //     See DECISIONS.md (2026-05-07).
         let vowels = letters.iter().filter(|c| prof.vowels.contains(c)).count();
         let vowel_ratio = vowels as f32 / letters.len() as f32;
         let vowel_fit: f32 = match vowel_ratio {
-            r if (0.25..=0.55).contains(&r) => 1.0,
-            r => (1.0 - (r - 0.4).abs() * 2.5).clamp(0.0, 1.0),
+            r if (0.25..=0.67).contains(&r) => 1.0,
+            r => (1.0 - (r - 0.46).abs() * 2.5).clamp(0.0, 1.0),
         };
 
         // (3) Consonant clusters: count the longest run of non-vowel
@@ -1021,6 +1036,76 @@ mod tests {
         match detector().judge(&ctx(&en, &cands)) {
             Verdict::Keep { .. } => (),
             other => panic!("expected Keep for SQL acronym, got {other:?}"),
+        }
+    }
+
+    /// Regression (2026-05-07): user types `має` under uk-UA, every
+    /// candidate set:
+    ///
+    ///   en-US: `vf'`   uk-UA: `має` (current)   ru-RU: `маэ`
+    ///   de-DE: `vfä`   es-ES: `vf´`             fr-FR: `vfù`
+    ///
+    /// Before the fix: `має` (2/3 vowel ratio = 0.667) sat just outside
+    /// the old `0.25..=0.55` plateau and scored 0.66, *below* the 0.7
+    /// `keep_threshold`. The German render `vfä` (1/3 vowel ratio =
+    /// 0.333) sat *inside* the plateau and scored 1.0 — advantage 0.34
+    /// over the current → auto-switch fired, deleting the user's
+    /// Ukrainian word and replacing it with `vfä`.
+    ///
+    /// After the fix: plateau widened to `0.25..=0.67`, so `має` itself
+    /// scores 1.0 ≥ keep_threshold → Keep. The fact that German /
+    /// French alts also score 1.0 is irrelevant — Keep wins.
+    #[test]
+    fn plausibility_keeps_short_vcv_cyrillic_word() {
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let ru = LayoutId::from("ru-RU");
+        let de = LayoutId::from("de-DE");
+        let es = LayoutId::from("es-ES");
+        let fr = LayoutId::from("fr-FR");
+
+        let mut profiles = HashMap::new();
+        profiles.insert(
+            en.clone(),
+            LayoutProfile::new(en.clone(), Script::Latin, "aeiouy".chars()),
+        );
+        profiles.insert(
+            uk.clone(),
+            LayoutProfile::new(uk.clone(), Script::Cyrillic, "аеиіоуюяєї".chars()),
+        );
+        profiles.insert(
+            ru.clone(),
+            LayoutProfile::new(ru.clone(), Script::Cyrillic, "аеёиоуыэюя".chars()),
+        );
+        profiles.insert(
+            de.clone(),
+            LayoutProfile::new(de.clone(), Script::Latin, "aeiouäöü".chars()),
+        );
+        profiles.insert(
+            es.clone(),
+            LayoutProfile::new(es.clone(), Script::Latin, "aeiouáéíóúü".chars()),
+        );
+        profiles.insert(
+            fr.clone(),
+            LayoutProfile::new(fr.clone(), Script::Latin, "aeiouyàâéèêëîïôûùüÿ".chars()),
+        );
+        let det = WordPlausibilityDetector::new(profiles);
+
+        // Same scancode buffer (`0x2F 0x21 0x28`) rendered through
+        // each layout — exact strings the production engine produces.
+        let cands = vec![
+            (en.clone(), "vf'".into()),
+            (uk.clone(), "має".into()),
+            (ru.clone(), "маэ".into()),
+            (de.clone(), "vfä".into()),
+            (es.clone(), "vf´".into()),
+            (fr.clone(), "vfù".into()),
+        ];
+        match det.judge(&ctx(&uk, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!(
+                "expected Keep for `має` under uk-UA across the 6-layout candidate set, got {other:?}"
+            ),
         }
     }
 

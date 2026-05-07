@@ -253,3 +253,131 @@ So Phase 4 ships:
 Full visual settings UI (iced or egui) is deferred to Phase 8 / v0.2,
 when we already know how macOS / Linux event loops behave from
 Phases 5 / 6.
+
+
+## 2026-05-07 — Hunspell stems gap + plateau widening (multi-layout regression)
+
+### The bug
+
+A user typing `має` (Ukrainian for "has") under uk-UA reported the
+word being silently deleted. Tracing the pipeline:
+
+1. Buffer captured scancodes `0x2F 0x21 0x28` (the keys `M`, `A`,
+   `'` on a US-physical keyboard).
+2. Renders, by layout: `vf'` (en-US), `має` (uk-UA), `маэ` (ru-RU),
+   **`vfä`** (de-DE), `vf´` (es-ES), `vfù` (fr-FR).
+3. `DictionaryDetector` ran first — `має` is **not** in the embedded
+   uk-UA FST (next paragraph) — and returned `NoOpinion` because the
+   alt renderings also miss the dictionaries.
+4. `WordPlausibilityDetector`:
+   * `має` (uk-UA) — vowel-ratio = 2/3 = **0.667**, just outside the
+     plateau `0.25..=0.55` → `vowel_fit = 0.325`, **`fit = 0.66`**.
+     Below the `keep_threshold = 0.7` → no Keep.
+   * `vfä` (de-DE) — vowel-ratio = 1/3 = 0.333, *inside* plateau →
+     `vowel_fit = 1.0`, `fit = 1.0`. Best alt.
+   * Advantage `1.0 − 0.66 = 0.34 ≥ min_advantage 0.25` → **Switch
+     to de-DE**.
+5. The corrector backspaced `має ` and re-emitted `vfä `. Visually
+   the user saw their Ukrainian word vanish under a layout switch.
+
+The regression was introduced when the de-DE / fr-FR layouts joined
+the candidate set — with only en-US ↔ uk-UA, the EN render `vf'`
+has no Latin vowels and scores ≈ 0.5, never beating `має`'s 0.66 by
+the required advantage.
+
+### Why `має` isn't in the FST
+
+The LibreOffice `uk_UA.dic` Hunspell file ships **stems only** —
+`мати`, `робити`, `знати` — and expects an `.aff` rules file to
+expand them at runtime into the actual inflected forms (`має`,
+`робить`, `знає`, …). Our `cargo xtask wordlists fetch` pipeline
+processes the `.dic` *without* applying the affix rules, so the
+~600+ inflected forms of common verbs are missing from the FST.
+
+A proper Hunspell-aware expander would solve this categorically.
+The fix landed in three stages:
+
+### Fix A — extras list (data, the immediate plug)
+
+`data/wordlists/uk_ua-extras.txt` initially shipped the present /
+past / future forms of the ~30 highest-frequency Ukrainian verbs
+(167 entries). Generated locally by cross-checking against the FST
+and keeping only the missing forms. Once Fix C below was in place,
+all 167 entries were redundant and the file is back to its
+original "escape hatch for genuine gaps" content — but the data
+fix is documented here because it's the right reach when a future
+gap surfaces and the expander hasn't caught up yet.
+
+### Fix B — plateau widening (algorithm)
+
+`WordPlausibilityDetector::fit` now uses a `0.25..=0.67` plateau
+(was `0.25..=0.55`). The wider band catches V-C-V short words like
+`має` / `оса` / `eye` / `our` (vowel-ratio = 0.667) which read as
+perfectly normal language but missed the old plateau by a hair.
+The decay formula's centre shifted from 0.4 to 0.46 (midpoint of
+the new range) to keep the off-plateau slope symmetric.
+
+Verified: `руддщ` (gibberish, vowel-ratio = 0.2) still scores 0.42
+— below `keep_threshold` — so the symmetric "user typed Cyrillic
+but uk-UA was the *active* layout for what was meant to be EN
+prose" auto-switch still fires correctly.
+
+### Fix C — Hunspell affix expander (long-term, structural)
+
+`xtask/src/hunspell.rs` implements a small Hunspell `.aff` parser +
+`.dic` expander that reads each stem's flag string and produces
+all surface forms via the rules. The xtask `wordlists fetch`
+command was rewritten to download both `.dic` AND `.aff` from
+LibreOffice/dictionaries (we already had `.dic`) and run the
+expansion at fetch time rather than just stripping affix flags.
+
+Coverage results (per `cargo xtask wordlists fetch` log):
+
+| Lang | Stems  | Surface forms | Multiplier |
+|------|-------:|--------------:|-----------:|
+| uk   | 350656 | 3 486 848     |  9.9 ×     |
+| ru   | 146269 | 1 436 553     |  9.8 ×     |
+| de   | 258202 |   789 398     |  3.1 ×     |
+| es   |  58221 |   652 463     | 11.2 ×     |
+| fr   |  84139 | 2 139 550     | 25.4 ×     |
+
+The expander is a deliberately *lossy* port — it skips compound-
+word generation, PFX × SFX cross-products, and the `ICONV` /
+`OCONV` machinery (the latter only matters for spell-check input
+normalisation, not vocabulary). The file's module doc-comment
+spells out exactly what's in and out of scope so the next person
+to extend it knows where to look.
+
+Encoding handling: most modern dictionaries ship UTF-8, but
+`de_DE_frami` is still ISO-8859-1. `read_hunspell_text` tries
+UTF-8 first, falls back to scanning for the `SET` directive in the
+first 2 KB, and decodes byte-for-byte as Latin-1 if the source says
+`ISO8859-*` / `LATIN1` / `WINDOWS-1252`. Adding a new dictionary
+in another encoding is a single match arm.
+
+Storage on disk: bulk wordlists ship as `data/wordlists/<id>.txt.gz`
+rather than raw `.txt`. Raw, the six languages total ~165 MB
+(uk_ua alone is 84 MB after expansion); gzipped they're ~24 MB.
+Both `kb-core/build.rs` (`flate2::read::GzDecoder`) and the xtask
+generator (`flate2::write::GzEncoder`) handle the format
+transparently, and the build script falls back to a plain `.txt`
+of the same stem if the `.gz` is absent — useful when a contributor
+has decompressed one to grep through it. Curated `-extras.txt` and
+`-stop.txt` files stay plain text; they're small enough that
+compression has zero meaningful impact and editing them in any
+text editor needs to keep working.
+
+### Why three layers
+
+Defense in depth. The data fix (A) is what closes a real gap on a
+specific build; the algorithm fix (B) is what keeps the engine
+honest when *some other* legitimate word also misses the dict;
+the structural fix (C) is what removes the gap class altogether
+for ~95 % of inflected verb forms going forward.
+
+Regression test lives at `kb_detect::tests::plausibility_keeps_short_vcv_cyrillic_word`
+and replays the exact 6-layout candidate set the engine produces.
+The expander itself has eight unit tests under
+`xtask::hunspell::tests` covering the SFX / PFX / class / negclass
+/ FLAG-mode / continuation / unknown-directive / FLAG-num-rejection
+shapes.

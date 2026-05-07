@@ -12,7 +12,13 @@ repository.workspace  = true
 workspace = true
 
 [build-dependencies]
-fst = { workspace = true }
+fst    = { workspace = true }
+# Wordlist sources are gzipped on disk (`data/wordlists/<id>.txt.gz`)
+# so the repo stays under 30 MB — uncompressed they balloon to ~165 MB
+# after Hunspell affix expansion. `flate2` decodes the stream on the
+# fly inside `build.rs`; the FST builder consumes the decompressed
+# words directly without an intermediate decompressed file.
+flate2 = "1"
 
 [dependencies]
 kb-types          = { workspace = true }

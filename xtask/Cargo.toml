@@ -20,3 +20,9 @@ ureq   = { version = "2", features = ["tls"] }
 # icon formats (.ico, .icns) — keeps the repo binary-asset-free while
 # still letting the installers ship with a non-default icon.
 png    = "0.17"
+
+# Bulk wordlist outputs are gzipped (`data/wordlists/<id>.txt.gz`)
+# because uk_ua alone hits 84 MB raw after Hunspell affix expansion.
+# Same crate (`flate2`) used at build time in `kb-core/build.rs` for
+# decoding.
+flate2 = "1"

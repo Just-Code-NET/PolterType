@@ -51,25 +51,41 @@ The initial scaffolding lands across Phases 0–8 documented in
 * `docs/PERMISSIONS.md` — per-OS access requirements.
 * `docs/AI.md` — AI subsystem privacy + plug-in API.
 
-### Real Hunspell-grade dictionaries (~700k words)
+### Real Hunspell-grade dictionaries (~8M inflected forms)
 
 Detection now consults proper per-language dictionaries instead of a
 hand-curated 280-word list. Sources (see `data/wordlists/CREDITS.md`):
 
 * **EN**: `dwyl/english-words` — Public Domain — ~370k entries.
-* **UK**: LibreOffice `uk_UA.dic` — MPL 1.1 — ~333k entries.
+* **UK / RU / DE / ES / FR**: LibreOffice Hunspell dictionaries
+  (`*.dic` + `*.aff`) — MPL / GPL / etc., per-language.
+
+`xtask/src/hunspell.rs` parses each language's `.aff` rules and
+expands every `<stem>/<flags>` entry in the `.dic` into the full
+set of inflected surface forms. Coverage per language:
+
+| Lang | Stems  | Surface forms |
+|------|-------:|--------------:|
+| en   | —      |    370 105    |
+| uk   | 350656 |  3 486 848    |
+| ru   | 146269 |  1 436 553    |
+| de   | 258202 |    789 398    |
+| es   |  58221 |    652 463    |
+| fr   |  84139 |  2 139 550    |
 
 Storage is a [BurntSushi FST](https://docs.rs/fst) Set built at
 compile time from `data/wordlists/<id>.txt` and embedded via
-`include_bytes!`. Cost: +1.85 MB to the release binary, ~3 MB
-resident memory; lookup is O(len(word)) with no per-word allocation.
+`include_bytes!`. The FST encoding keeps lookup at O(len(word))
+with no per-word allocation; the on-disk size grows roughly
+linearly with the form count.
 
 User overlay: drop additional words into
 `<config-dir>/kb-switcher/wordlists/<id>.txt` to extend any
 dictionary with project-specific vocabulary at startup.
 
-Refresh upstream: `cargo xtask wordlists fetch` re-downloads and
-re-processes the source files.
+Refresh upstream: `cargo xtask wordlists fetch` re-downloads `.dic`
++ `.aff` for each language, re-runs the expander, and writes a
+fresh `data/wordlists/<id>.txt`.
 
 ### Dev-friendly: keeps quiet in IDEs and on identifiers
 

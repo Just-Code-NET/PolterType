@@ -1423,6 +1423,7 @@ version = "0.1.0-alpha.0"
 dependencies = [
  "crossbeam-channel",
  "directories",
+ "flate2",
  "fst",
  "kb-detect",
  "kb-input",
@@ -3913,6 +3914,7 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "flate2",
  "png",
  "ureq",
 ]
