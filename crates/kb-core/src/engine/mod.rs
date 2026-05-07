@@ -262,17 +262,41 @@ impl SwitcherEngine {
             }
         };
 
-        // Filter the candidate set by the `[languages]` settings.
-        // Empty `active` = "every loaded layout"; `ignored` always wins.
+        // Filter the candidate set down to layouts the engine can
+        // actually switch to. Three layers, all must pass:
+        //
+        //   1. `[languages].active` from settings — empty means "every
+        //      loaded layout".
+        //   2. `[languages].ignored` from settings — always vetoes.
+        //   3. The OS's current active-layouts list — anything not
+        //      installed/enabled in the OS is unreachable. Including it
+        //      here previously caused the detector to pick e.g. `fr-FR`
+        //      for `http` even when the user only has en-US / ru-RU /
+        //      uk-UA installed — `switch_to()` would then reject it,
+        //      and because backspaces had already been emitted the word
+        //      was simply destroyed. Filtering here means the detector
+        //      never sees the unreachable layout to begin with.
+        //
+        // If the OS query fails we fail-open (skip layer 3), matching
+        // the previous behaviour. The pre-flight check inside
+        // `apply_correction` is the second line of defence.
+        let os_active: Option<Vec<LayoutId>> = match self.layout_switcher.list_active() {
+            Ok(list) => Some(list),
+            Err(e) => {
+                warn!(
+                    ?e,
+                    "could not list active OS layouts; skipping OS-active filter"
+                );
+                None
+            }
+        };
         let active: &[LayoutId] = &snap.languages.active;
         let ignored: &[LayoutId] = &snap.languages.ignored;
         let candidates: Vec<(LayoutId, String)> = self
             .layouts
             .iter()
             .filter(|(id, _)| {
-                let allowed = active.is_empty() || active.contains(id) || **id == current_layout;
-                let blocked = ignored.contains(id);
-                allowed && !blocked
+                is_layout_eligible(id, &current_layout, active, ignored, os_active.as_deref())
             })
             .map(|(id, m)| (id.clone(), m.translate_buffer(&keys)))
             .collect();
@@ -465,6 +489,42 @@ impl SwitcherEngine {
         play_sound: bool,
     ) {
         debug!(%from, %to, %original, %corrected, %reason, "applying correction");
+
+        // Pre-flight: confirm the target layout is currently active in
+        // the OS BEFORE we touch the user's text. Sending the
+        // backspaces first and then discovering the switch is
+        // impossible would leave the word deleted with nothing typed
+        // back — which is exactly the failure mode that destroyed
+        // `http ` when the detector picked an OS-inactive layout.
+        //
+        // The candidate filter inside `decide()` should already make
+        // this impossible for auto-decisions, but keeping the check
+        // here closes two more holes:
+        //   * `force_switch_last` (manual hotkey) bypasses the
+        //     candidate filter and can target any layout in `LayoutDb`.
+        //   * Race: settings reload / OS layout list change between
+        //     `decide()` and the actual key emission.
+        //
+        // On query failure we fall through and let `switch_to` surface
+        // the original error (still safe — backspaces haven't run yet).
+        match self.layout_switcher.list_active() {
+            Ok(list) if !list.contains(to) => {
+                warn!(
+                    target = %to,
+                    active = ?list,
+                    "target layout not active in OS; aborting correction before any keystrokes"
+                );
+                return;
+            }
+            Err(e) => {
+                warn!(
+                    ?e,
+                    "could not list active layouts before correction; continuing"
+                );
+            }
+            _ => {} // active list contains target — proceed.
+        }
+
         if let Err(e) = self.key_emitter.send_backspaces(backspaces) {
             warn!(?e, "send_backspaces failed; aborting correction");
             return;
@@ -559,6 +619,40 @@ fn app_is_disabled(exe: &str, disabled: &[String]) -> bool {
 /// "definitely structural").
 fn is_structural_boundary(ch: char) -> bool {
     matches!(ch, ':' | '/' | '\\' | '@' | '=' | '#' | '&')
+}
+
+/// Decide whether `id` belongs in the candidate set the detectors get
+/// to score against. Three filters, AND'd together:
+///
+/// * **Settings allow-list (`active`)** — empty means "no allow-list,
+///   every loaded layout passes". Non-empty means only listed layouts
+///   pass; the *current* layout always passes regardless, so a Switch
+///   verdict is never silently locked-in by virtue of the user typing
+///   in a layout they haven't whitelisted.
+/// * **Settings veto (`ignored`)** — anything in this list never
+///   passes, period.
+/// * **OS-active list (`os_active`)** — `Some(list)` means "filter to
+///   only layouts the OS reports as currently installed/enabled" (with
+///   the current layout always passing as a safety net for the rare
+///   case where the OS list omits it transiently). `None` means the
+///   query failed and we fail-open — same behaviour as before this
+///   filter existed.
+///
+/// Pulled out as a standalone fn so it's unit-testable without
+/// constructing a full engine.
+fn is_layout_eligible(
+    id: &LayoutId,
+    current: &LayoutId,
+    settings_active: &[LayoutId],
+    settings_ignored: &[LayoutId],
+    os_active: Option<&[LayoutId]>,
+) -> bool {
+    let allowed = settings_active.is_empty() || settings_active.contains(id) || id == current;
+    let blocked = settings_ignored.contains(id);
+    let os_ok = os_active
+        .map(|a| a.contains(id) || id == current)
+        .unwrap_or(true);
+    allowed && !blocked && os_ok
 }
 
 /// Render the buffer through the current layout, but skip every
@@ -717,6 +811,116 @@ mod code_check_render_tests {
         let nonexistent = LayoutId::from("xx-YY");
         let cleaned = render_for_code_check(&[], &nonexistent, &db, "fallback");
         assert_eq!(cleaned, "fallback");
+    }
+}
+
+#[cfg(test)]
+mod layout_eligibility_tests {
+    use super::is_layout_eligible;
+    use kb_layout::LayoutId;
+
+    fn id(s: &str) -> LayoutId {
+        LayoutId::from(s)
+    }
+
+    /// The original "http " bug: detector picked `fr-FR` even though
+    /// the user only had en-US / ru-RU / uk-UA active in the OS, and
+    /// `switch_to(fr-FR)` then aborted *after* backspaces had already
+    /// destroyed the word. The OS-active filter must drop fr-FR from
+    /// the candidate set before the detector ever sees it.
+    #[test]
+    fn os_inactive_layout_is_dropped_from_candidates() {
+        let current = id("uk-UA");
+        let os_active = vec![id("en-US"), id("ru-RU"), id("uk-UA")];
+        let settings_active: Vec<LayoutId> = vec![]; // empty = "all loaded"
+        let settings_ignored: Vec<LayoutId> = vec![];
+
+        // fr-FR is in LayoutDb but NOT in the OS-active list.
+        assert!(
+            !is_layout_eligible(
+                &id("fr-FR"),
+                &current,
+                &settings_active,
+                &settings_ignored,
+                Some(&os_active),
+            ),
+            "fr-FR must be filtered out — user can't switch to a layout they don't have"
+        );
+        // en-US is OS-active and not blocked → eligible.
+        assert!(is_layout_eligible(
+            &id("en-US"),
+            &current,
+            &settings_active,
+            &settings_ignored,
+            Some(&os_active),
+        ));
+    }
+
+    /// The current layout always passes, even if the OS list
+    /// transiently doesn't report it. Without this, a query race could
+    /// strip the layout the user is *currently typing in* from the
+    /// candidate set, leaving the engine unable to render the buffer
+    /// for the "keep current" code path.
+    #[test]
+    fn current_layout_always_passes() {
+        let current = id("uk-UA");
+        let os_active = vec![id("en-US")]; // uk-UA missing
+        assert!(is_layout_eligible(
+            &current,
+            &current,
+            &[],
+            &[],
+            Some(&os_active),
+        ));
+    }
+
+    /// When the OS query fails (`None`) we fail open — fall back to the
+    /// pre-fix behaviour where settings are the only filter. Better to
+    /// occasionally pick an unreachable layout (caught by the
+    /// apply_correction pre-flight) than freeze the engine entirely.
+    #[test]
+    fn fail_open_when_os_query_unavailable() {
+        let current = id("uk-UA");
+        assert!(is_layout_eligible(&id("fr-FR"), &current, &[], &[], None,));
+    }
+
+    /// Settings `ignored` always wins, even over OS-active. If a user
+    /// disables a layout in our settings, we honour that regardless of
+    /// what the OS reports.
+    #[test]
+    fn ignored_wins_over_os_active() {
+        let current = id("uk-UA");
+        let os_active = vec![id("en-US"), id("uk-UA"), id("ru-RU")];
+        let ignored = vec![id("ru-RU")];
+        assert!(!is_layout_eligible(
+            &id("ru-RU"),
+            &current,
+            &[],
+            &ignored,
+            Some(&os_active),
+        ));
+    }
+
+    /// Settings allow-list narrows further on top of OS-active.
+    #[test]
+    fn allow_list_narrows_os_active() {
+        let current = id("uk-UA");
+        let os_active = vec![id("en-US"), id("uk-UA"), id("ru-RU")];
+        let allow = vec![id("en-US"), id("uk-UA")]; // ru-RU not whitelisted
+        assert!(!is_layout_eligible(
+            &id("ru-RU"),
+            &current,
+            &allow,
+            &[],
+            Some(&os_active),
+        ));
+        assert!(is_layout_eligible(
+            &id("en-US"),
+            &current,
+            &allow,
+            &[],
+            Some(&os_active),
+        ));
     }
 }
 
