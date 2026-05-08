@@ -4,7 +4,7 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.9
+## [Unreleased] — 0.1.0-beta.10
 
 ### Fixed — wordlist edits via the GUI now apply on window close
 
