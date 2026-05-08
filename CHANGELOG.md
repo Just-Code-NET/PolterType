@@ -4,7 +4,42 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.10
+## [Unreleased] — 0.1.0-beta.11
+
+### Fixed — wordlist edits no longer get silently dropped
+
+Three related ways the Wordlists pane could lose a typed-but-not-
+saved edit, all fixed:
+
+* **Footer "Save" didn't save the wordlist.** The bottom-right
+  primary-styled "Save" button only wrote `config.toml` —
+  wordlist content lived in a separate `text_editor::Content`
+  buffer that the per-pane Save (smaller, in the pane footer)
+  was responsible for flushing. A user clicking the more
+  prominent footer button and then closing the window would
+  lose their edit. Footer Save now also flushes any dirty
+  wordlist content before writing config.toml.
+* **Switching layout / profile / kind dropped unsaved content.**
+  Clicking a different layout / profile / kind button used to
+  unconditionally re-read the file for the new selection and
+  overwrite the editor buffer — silently discarding anything the
+  user had typed. The selectors now auto-flush first, with a
+  separate "Auto-saved unsaved edit to ..." banner so the user
+  understands the side effect.
+* **Closing the window dropped unsaved content.** The window's
+  X button (or Alt+F4 / Cmd+W) used to take the buffer to the
+  grave. Iced's `exit_on_close_request(false)` plus a
+  `iced::window::close_requests()` subscription let us intercept
+  the close, flush, then close manually.
+
+The actual save logic is now a single `flush_wordlist_to_disk`
+helper called by all four paths (per-pane Save, footer Save,
+selector switch, window close), so adding new triggers in the
+future stays consistent. `WordlistFlushOutcome` carries enough
+detail (Nothing / NoLayout / Saved(path) / Failed(msg)) for each
+caller to pick banner phrasing that matches what actually
+happened — silent for no-op auto-saves, explicit for user-clicked
+saves.
 
 ### Fixed — wordlist edits via the GUI now apply on window close
 

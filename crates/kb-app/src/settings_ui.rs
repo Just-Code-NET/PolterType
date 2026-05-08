@@ -100,9 +100,16 @@ pub fn run() -> Result<()> {
     // resolved config path so the user sees exactly which file the
     // window is editing — useful when running multiple installs side
     // by side or under a non-default `XDG_CONFIG_HOME`.
+    // `exit_on_close_request(false)` lets us intercept the
+    // window-close request, flush any unsaved wordlist edit to
+    // disk, then close manually. Without this, a user who typed a
+    // word in the Wordlists pane and clicked the window's close
+    // button (instead of the per-pane Save) would lose the edit
+    // silently — the bug report that prompted this fix.
     let app = iced::application(SettingsApp::title, SettingsApp::update, SettingsApp::view)
         .theme(SettingsApp::theme)
         .subscription(SettingsApp::subscription)
+        .exit_on_close_request(false)
         .window_size((720.0, 540.0))
         .centered();
 
@@ -280,6 +287,14 @@ enum Message {
     OpenLogsDir,
     OpenWordlistsDir,
     OpenLayoutsDir,
+
+    /// User clicked the window close button (or otherwise asked
+    /// the OS to close the window). We intercept this to auto-save
+    /// any unsaved wordlist edit before letting the window close —
+    /// see `subscription` and the matching `update` arm for the
+    /// rationale. Carries the `window::Id` so we close the right
+    /// window in case iced ever multi-windows the Settings UI.
+    WindowCloseRequested(iced::window::Id),
 }
 
 struct SettingsApp {
@@ -413,17 +428,19 @@ impl SettingsApp {
         Theme::default()
     }
 
-    /// Active keyboard subscription. Returns `Subscription::none()`
-    /// when we're not capturing a hotkey — important, otherwise every
-    /// keystroke in the window allocates a `Message` and re-renders.
-    /// During capture we listen for `key_press` events, ignore lone
-    /// modifier presses, and emit `HotkeyCaptured` once a non-modifier
-    /// key arrives with a non-empty modifier set. `Escape` cancels.
+    /// Active subscription. Always listens for window-close requests
+    /// (so we can auto-save unsaved wordlist edits before the window
+    /// goes away), and *additionally* listens for keyboard events
+    /// while we're in hotkey-capture mode. Outside capture mode the
+    /// keyboard sub is dropped — otherwise every keystroke in the
+    /// window would allocate a `Message` and re-render.
     fn subscription(&self) -> Subscription<Message> {
+        let close_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
+
         if self.capturing.is_none() {
-            return Subscription::none();
+            return close_sub;
         }
-        iced::keyboard::on_key_press(|key, modifiers| {
+        let capture_sub = iced::keyboard::on_key_press(|key, modifiers| {
             // Esc bails out without rebinding. Important: a lot of
             // people will hit Esc when they realise they didn't want
             // to rebind, and silently swallowing it would feel like
@@ -444,7 +461,8 @@ impl SettingsApp {
                 return None;
             }
             Some(Message::HotkeyCaptured(format_hotkey(&key, modifiers)))
-        })
+        });
+        Subscription::batch([close_sub, capture_sub])
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {
@@ -597,31 +615,44 @@ impl SettingsApp {
             }
 
             // ── Wordlists ────────────────────────────────────────
+            //
+            // All three selectors below auto-flush the editor to
+            // disk before switching context. Without this, a user
+            // who typed words and clicked another layout/profile/kind
+            // button to "see what's there" would silently lose the
+            // unsaved content — the next handler unconditionally
+            // overwrites the buffer with the freshly-loaded file.
+            // Flushing first is friendlier than an unsaved-changes
+            // dialog and matches what most editors do on file
+            // switch.
             Message::WordlistProfileSelected(profile_id) => {
+                let outcome = self.flush_wordlist_to_disk();
                 self.wordlist_profile = profile_id;
                 if let Some(id) = self.wordlist_layout.clone() {
                     let text =
                         read_overlay_file_or_empty(&self.wordlist_profile, &id, self.wordlist_kind);
                     self.wordlist_content = text_editor::Content::with_text(&text);
                     self.wordlist_dirty = false;
-                    self.wordlist_status = None;
+                    self.wordlist_status = banner_for_auto_save(outcome);
                 }
             }
             Message::WordlistLayoutSelected(id) => {
+                let outcome = self.flush_wordlist_to_disk();
                 self.wordlist_layout = Some(id.clone());
                 let text =
                     read_overlay_file_or_empty(&self.wordlist_profile, &id, self.wordlist_kind);
                 self.wordlist_content = text_editor::Content::with_text(&text);
                 self.wordlist_dirty = false;
-                self.wordlist_status = None;
+                self.wordlist_status = banner_for_auto_save(outcome);
             }
             Message::WordlistKindSelected(kind) => {
+                let outcome = self.flush_wordlist_to_disk();
                 self.wordlist_kind = kind;
                 if let Some(id) = &self.wordlist_layout {
                     let text = read_overlay_file_or_empty(&self.wordlist_profile, id, kind);
                     self.wordlist_content = text_editor::Content::with_text(&text);
                     self.wordlist_dirty = false;
-                    self.wordlist_status = None;
+                    self.wordlist_status = banner_for_auto_save(outcome);
                 }
             }
             Message::WordlistEdit(action) => {
@@ -635,46 +666,8 @@ impl SettingsApp {
                 self.wordlist_content.perform(action);
             }
             Message::WordlistSave => {
-                let Some(id) = self.wordlist_layout.clone() else {
-                    self.wordlist_status = Some(SaveBanner {
-                        text: "No layout selected.".into(),
-                        is_error: true,
-                    });
-                    return Task::none();
-                };
-                let text = self.wordlist_content.text();
-                match save_overlay_file(&self.wordlist_profile, &id, self.wordlist_kind, &text) {
-                    Ok(path) => {
-                        info!(
-                            path = ?path,
-                            layout = %id,
-                            kind = ?self.wordlist_kind,
-                            profile = %self.wordlist_profile,
-                            "wordlist saved from UI"
-                        );
-                        self.wordlist_dirty = false;
-                        self.wordlist_status = Some(SaveBanner {
-                            text: format!(
-                                "Saved to {}. Close this window to apply.",
-                                path.display()
-                            ),
-                            is_error: false,
-                        });
-                    }
-                    Err(e) => {
-                        warn!(
-                            layout = %id,
-                            kind = ?self.wordlist_kind,
-                            profile = %self.wordlist_profile,
-                            err = %e,
-                            "wordlist save failed"
-                        );
-                        self.wordlist_status = Some(SaveBanner {
-                            text: format!("Save failed: {e}"),
-                            is_error: true,
-                        });
-                    }
-                }
+                let outcome = self.flush_wordlist_to_disk();
+                self.wordlist_status = Some(banner_for_wordlist_save(outcome));
             }
             Message::WordlistReload => {
                 if let Some(id) = self.wordlist_layout.clone() {
@@ -706,6 +699,22 @@ impl SettingsApp {
                 }
             },
             Message::Save => {
+                // Footer "Save" saves EVERYTHING — config.toml AND
+                // any unsaved edits in the Wordlists pane. Without
+                // this, a user who typed a word, hit the prominent
+                // footer Save (more visually weighted than the
+                // per-pane Save), and closed the window would lose
+                // their wordlist edit silently — exactly the bug
+                // report that prompted this fix.
+                //
+                // We flush the wordlist FIRST so the pane's own
+                // banner reflects what happened (per-pane state
+                // wins), then save config.toml and update the
+                // global save banner.
+                let wordlist_outcome = self.flush_wordlist_to_disk();
+                if !matches!(wordlist_outcome, WordlistFlushOutcome::Nothing) {
+                    self.wordlist_status = Some(banner_for_wordlist_save(wordlist_outcome));
+                }
                 let staged = self.settings.clone();
                 match self.store.update(|s| *s = staged) {
                     Ok(()) => {
@@ -746,8 +755,72 @@ impl SettingsApp {
                     let _ = opener::open(&dir);
                 }
             }
+
+            Message::WindowCloseRequested(id) => {
+                // Last chance to flush any unsaved wordlist edit
+                // before the window goes away. Failures are logged
+                // (already done inside flush) but don't block the
+                // close — leaving a window the user explicitly
+                // asked to close in some half-closed state would be
+                // worse than losing one save.
+                let _ = self.flush_wordlist_to_disk();
+                return iced::window::close(id);
+            }
         }
         Task::none()
+    }
+
+    /// Write the current wordlist editor buffer to its resolved
+    /// overlay file. Returns an outcome describing what happened so
+    /// the caller can pick the right banner phrasing.
+    ///
+    /// This is the single shared "save the wordlist now" path,
+    /// called by:
+    ///
+    /// * `Message::WordlistSave` — explicit per-pane Save click.
+    /// * `Message::Save` — footer Save click (must save everything,
+    ///   not just `config.toml`).
+    /// * `Message::WordlistProfileSelected` /
+    ///   `WordlistLayoutSelected` / `WordlistKindSelected` —
+    ///   auto-save before switching context, so a user who typed
+    ///   words and toggled to "see another layout" doesn't lose
+    ///   their edit.
+    ///
+    /// On success, clears the dirty flag. Doesn't touch
+    /// `wordlist_status` — the caller picks the banner text via
+    /// `banner_for_wordlist_save` / `banner_for_auto_save` so the
+    /// phrasing matches the trigger ("Saved." vs "Auto-saved.").
+    fn flush_wordlist_to_disk(&mut self) -> WordlistFlushOutcome {
+        if !self.wordlist_dirty {
+            return WordlistFlushOutcome::Nothing;
+        }
+        let Some(id) = self.wordlist_layout.clone() else {
+            return WordlistFlushOutcome::NoLayout;
+        };
+        let text = self.wordlist_content.text();
+        match save_overlay_file(&self.wordlist_profile, &id, self.wordlist_kind, &text) {
+            Ok(path) => {
+                info!(
+                    path = ?path,
+                    layout = %id,
+                    kind = ?self.wordlist_kind,
+                    profile = %self.wordlist_profile,
+                    "wordlist flushed to disk"
+                );
+                self.wordlist_dirty = false;
+                WordlistFlushOutcome::Saved(path)
+            }
+            Err(e) => {
+                warn!(
+                    layout = %id,
+                    kind = ?self.wordlist_kind,
+                    profile = %self.wordlist_profile,
+                    err = %e,
+                    "wordlist flush failed"
+                );
+                WordlistFlushOutcome::Failed(e.to_string())
+            }
+        }
     }
 
     fn view(&self) -> Element<'_, Message> {
@@ -1445,6 +1518,72 @@ impl SettingsApp {
                     .style(button::primary),
             )
             .into()
+    }
+}
+
+/// Result of `SettingsApp::flush_wordlist_to_disk`. The variants
+/// let the caller pick banner phrasing that matches what actually
+/// happened — silent for "nothing to do", neutral for "saved",
+/// loud for failures.
+#[derive(Debug, Clone)]
+enum WordlistFlushOutcome {
+    /// Buffer wasn't dirty — nothing to save, nothing to report.
+    /// Auto-save callers (layout/profile/kind switch) suppress the
+    /// banner in this case so the UI doesn't spam "Auto-saved." on
+    /// every navigation click.
+    Nothing,
+    /// No layout selected when the flush was attempted. Only
+    /// reachable via the per-pane Save click before any layout
+    /// has been picked — auto-save callers always have a layout
+    /// because the dirty flag implies the user typed in the editor,
+    /// which only opens once a layout is picked.
+    NoLayout,
+    /// Successful write to the resolved overlay path.
+    Saved(PathBuf),
+    /// Disk error — message contains the I/O error rendering.
+    Failed(String),
+}
+
+/// Banner text for the explicit per-pane Save button outcome.
+fn banner_for_wordlist_save(outcome: WordlistFlushOutcome) -> SaveBanner {
+    match outcome {
+        WordlistFlushOutcome::Nothing => SaveBanner {
+            text: "Nothing to save (buffer is unchanged).".into(),
+            is_error: false,
+        },
+        WordlistFlushOutcome::NoLayout => SaveBanner {
+            text: "No layout selected.".into(),
+            is_error: true,
+        },
+        WordlistFlushOutcome::Saved(path) => SaveBanner {
+            text: format!("Saved to {}. Close this window to apply.", path.display()),
+            is_error: false,
+        },
+        WordlistFlushOutcome::Failed(e) => SaveBanner {
+            text: format!("Save failed: {e}"),
+            is_error: true,
+        },
+    }
+}
+
+/// Banner text for the auto-save path (layout / profile / kind
+/// switch). Different phrasing than the explicit Save so the user
+/// understands the save happened as a side effect of switching, not
+/// because they clicked Save.
+///
+/// Returns `None` for the no-op case so we don't surface a banner
+/// at all on every navigation click. Failures are still surfaced.
+fn banner_for_auto_save(outcome: WordlistFlushOutcome) -> Option<SaveBanner> {
+    match outcome {
+        WordlistFlushOutcome::Nothing | WordlistFlushOutcome::NoLayout => None,
+        WordlistFlushOutcome::Saved(path) => Some(SaveBanner {
+            text: format!("Auto-saved unsaved edit to {}.", path.display()),
+            is_error: false,
+        }),
+        WordlistFlushOutcome::Failed(e) => Some(SaveBanner {
+            text: format!("Auto-save failed: {e}"),
+            is_error: true,
+        }),
     }
 }
 
