@@ -19,9 +19,12 @@ mod icon_render;
 mod settings_ui;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+
+use parking_lot::RwLock;
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
@@ -221,26 +224,28 @@ fn main() -> Result<()> {
     // and atomically swaps the dictionary set when it changes. The
     // swap is a single `RwLock::write()` — same primitive the manual
     // "Reload Settings" path uses.
-    let mut profile_dict_cache =
-        build_profile_dictionary_cache(&layouts, &data_dir, &settings.snapshot().wordlists);
-    // Stash the global overlay under the empty-string key so the
-    // watcher can swap back to it when focus leaves a profiled app.
-    // Without this, leaving "code" → going to Chrome would keep the
-    // code overlay loaded forever, which is the opposite of what
-    // the user expects.
-    if !profile_dict_cache.is_empty() {
-        let global = layouts.build_profile_dictionaries(
-            &data_dir,
-            user_wordlist_dir
-                .as_deref()
-                .unwrap_or_else(|| std::path::Path::new("")),
-        );
-        profile_dict_cache.insert(String::new(), global);
-    }
+    // Profile cache is shared (Arc<RwLock>) so the close-handler in
+    // `spawn_settings_ui` can rebuild it from disk when the user
+    // saves wordlist edits via the GUI; without that, per-profile
+    // wordlist edits would only apply after a tray restart.
+    let profile_dict_cache: ProfileDictCache = Arc::new(RwLock::new(build_full_profile_cache(
+        &layouts,
+        &data_dir,
+        &settings.snapshot().wordlists,
+        user_wordlist_dir.as_deref(),
+    )));
     info!(
-        profiles = profile_dict_cache.len(),
+        profiles = profile_dict_cache.read().len(),
         "wordlist profile cache built (including global baseline)"
     );
+
+    // Force-reapply flag: set by the close-handler after rebuilding
+    // the cache so the watcher re-applies on its next tick (~250 ms)
+    // even though the resolved profile didn't change. Without this
+    // the watcher only swaps on profile transitions, which means a
+    // user editing words while focused on a profiled app would see
+    // no effect until they alt-tabbed away and back.
+    let profile_force_reapply: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     // ─── Engine ────────────────────────────────────────────────────
     let (key_tx, key_rx) = bounded::<KeyEvent>(1024);
@@ -381,11 +386,12 @@ fn main() -> Result<()> {
     // Focus-driven wordlist profile watcher: same cadence as the
     // layout poller. Cheap when no profiles are configured (the
     // profile-cache HashMap is empty so the swap path is a no-op).
-    if !profile_dict_cache.is_empty() {
+    if !profile_dict_cache.read().is_empty() {
         spawn_profile_watcher(
             Arc::clone(&focus_tracker),
             Arc::clone(&settings),
-            profile_dict_cache.clone(),
+            Arc::clone(&profile_dict_cache),
+            Arc::clone(&profile_force_reapply),
             dict_reload_handle.handle(),
         )?;
     }
@@ -415,7 +421,16 @@ fn main() -> Result<()> {
                     }
                     *control_flow = ControlFlow::Exit;
                 } else if id == settings_ui_id {
-                    spawn_settings_ui(Arc::clone(&settings_for_loop), &cmd_tx_for_loop);
+                    spawn_settings_ui(SettingsCloseDeps {
+                        settings: Arc::clone(&settings_for_loop),
+                        layouts: Arc::clone(&layouts),
+                        data_dir: data_dir.clone(),
+                        user_wordlist_dir: user_wordlist_dir.clone(),
+                        dict_reload_handle: dict_reload_handle.handle(),
+                        profile_dict_cache: Arc::clone(&profile_dict_cache),
+                        profile_force_reapply: Arc::clone(&profile_force_reapply),
+                        reload_tx: cmd_tx_for_loop.clone(),
+                    });
                 } else if id == settings_file_id {
                     open_path(&settings_path, "settings file");
                 } else if id == logs_id {
@@ -596,11 +611,29 @@ fn build_profile_dictionary_cache(
     out
 }
 
+/// Type alias for the shared profile dictionary cache. Behind an
+/// `Arc<RwLock<...>>` so the close-handler in `spawn_settings_ui`
+/// can rebuild it from disk after the user saves wordlist edits via
+/// the GUI. Watcher takes a read lock per tick; rebuilds (rare —
+/// only on Settings UI close) take a write lock briefly.
+type ProfileDictCache =
+    Arc<RwLock<HashMap<String, HashMap<LayoutId, kb_detect::LayoutDictionary>>>>;
+
 /// Poll `FocusTracker::focused_exe()` every ~250 ms; swap the
-/// dictionary set when the resolved profile changes. Same cadence
-/// as `spawn_layout_poller` so the two stay in lock-step at the
-/// human perception level (the user perceives "I focused VS Code,
-/// my code dictionary kicked in").
+/// dictionary set when the resolved profile changes OR when the
+/// `force_reapply` flag has been set. Same cadence as
+/// `spawn_layout_poller` so the two stay in lock-step at the human
+/// perception level (the user perceives "I focused VS Code, my code
+/// dictionary kicked in").
+///
+/// The `force_reapply` flag exists because the watcher's normal
+/// "swap on profile change" rule misses the case where the cache
+/// itself was rebuilt while the user stayed on the same app. That
+/// happens when the user saves wordlist edits via the Settings UI
+/// while focused on a profiled app — the close-handler rebuilds the
+/// cache, but the resolved profile didn't change, so the watcher
+/// would otherwise sit on stale dicts until the user alt-tabbed.
+/// Setting the flag forces one re-apply on the next tick.
 ///
 /// The poller swallows transient FocusTracker errors silently —
 /// a flaky Wayland tracker isn't worth log spam, and the next
@@ -612,7 +645,8 @@ fn build_profile_dictionary_cache(
 fn spawn_profile_watcher(
     focus_tracker: Arc<dyn kb_input::FocusTracker>,
     settings: Arc<SettingsStore>,
-    profile_cache: HashMap<String, HashMap<LayoutId, kb_detect::LayoutDictionary>>,
+    profile_cache: ProfileDictCache,
+    force_reapply: Arc<AtomicBool>,
     dict_handle: kb_detect::DictionaryDetector,
 ) -> Result<()> {
     std::thread::Builder::new()
@@ -632,20 +666,27 @@ fn spawn_profile_watcher(
                     .map(str::to_owned)
                     .unwrap_or_default();
 
-                if resolved != active {
+                let forced = force_reapply.swap(false, Ordering::AcqRel);
+                if resolved != active || forced {
                     // The cache always holds the empty-string ("")
-                    // key as the global baseline (built at startup
-                    // from the user's `<config-dir>/wordlists/` dir),
-                    // so a profile transition — including back to
-                    // global — is always a single map lookup + swap.
-                    if let Some(dicts) = profile_cache.get(&resolved) {
+                    // key as the global baseline, so a profile
+                    // transition — including back to global — is
+                    // always a single map lookup + swap. `forced`
+                    // means the cache itself was rebuilt while the
+                    // resolved profile didn't change (e.g. user
+                    // saved wordlist edits via the GUI); we still
+                    // re-apply the same key so the engine sees the
+                    // fresh dicts.
+                    let dicts_opt = profile_cache.read().get(&resolved).cloned();
+                    if let Some(dicts) = dicts_opt {
                         info!(
                             previous = %active,
                             new_profile = if resolved.is_empty() { "<global>" } else { resolved.as_str() },
                             dicts = dicts.len(),
-                            "wordlist profile transition"
+                            forced,
+                            "wordlist profile (re-)applied"
                         );
-                        dict_handle.replace_dicts(dicts.clone());
+                        dict_handle.replace_dicts(dicts);
                     } else {
                         warn!(
                             profile = %resolved,
@@ -660,6 +701,34 @@ fn spawn_profile_watcher(
         })
         .context("spawn profile watcher thread")?;
     Ok(())
+}
+
+/// Build the full per-profile dictionary cache including the
+/// global-baseline entry under the empty-string key. Called both
+/// at startup (initial cache) and from the Settings UI close
+/// handler (after user saves wordlist edits, to pick them up
+/// without a tray restart).
+///
+/// The empty-string key is critical: without it, the watcher
+/// would have nowhere to swap back to when focus leaves a
+/// profiled app, so e.g. moving from VS Code (profile=`code`) to
+/// Chrome would keep the code overlay loaded forever — opposite
+/// of the user's intent. Adding it is cheap (just one more pass
+/// through the layouts) so we always include it once any profile
+/// is configured.
+fn build_full_profile_cache(
+    layouts: &Arc<LayoutDb>,
+    data_dir: &Path,
+    wordlists: &WordlistSettings,
+    user_wordlist_dir: Option<&Path>,
+) -> HashMap<String, HashMap<LayoutId, kb_detect::LayoutDictionary>> {
+    let mut cache = build_profile_dictionary_cache(layouts, data_dir, wordlists);
+    if !cache.is_empty() {
+        let global = layouts
+            .build_profile_dictionaries(data_dir, user_wordlist_dir.unwrap_or(Path::new("")));
+        cache.insert(String::new(), global);
+    }
+    cache
 }
 
 /// CLI help text. Kept short and stable — most users never invoke
@@ -678,15 +747,50 @@ fn print_help() {
     );
 }
 
+/// Bag of dependencies the settings-UI close handler needs to do
+/// the full reload (config.toml + global wordlists + per-profile
+/// cache + force-reapply on the watcher). Grouped as a struct so
+/// the call site at the menu handler isn't a wall of args.
+struct SettingsCloseDeps {
+    settings: Arc<SettingsStore>,
+    layouts: Arc<LayoutDb>,
+    data_dir: PathBuf,
+    user_wordlist_dir: Option<PathBuf>,
+    dict_reload_handle: kb_detect::DictionaryDetector,
+    profile_dict_cache: ProfileDictCache,
+    profile_force_reapply: Arc<AtomicBool>,
+    reload_tx: Sender<EngineCommand>,
+}
+
 /// Spawn the Settings GUI as a child process (`kb-switcher
-/// --settings`) and tell the engine to reload its config when the
-/// window closes. Subprocess instead of in-process for the macOS
-/// main-thread reason documented at the top of `settings_ui.rs`.
+/// --settings`) and refresh the engine when the window closes.
+/// Subprocess instead of in-process for the macOS main-thread
+/// reason documented at the top of `settings_ui.rs`.
+///
+/// What "refresh" means in practice — we run all three on close so
+/// every kind of edit the user could have made via the GUI takes
+/// effect by the time the focus returns to their app:
+///
+/// 1. **`config.toml` reload** — picks up `[[commands]]` text-trigger
+///    entries, hotkey rebindings, exception list edits, profile
+///    schema changes.
+/// 2. **Global wordlist reload** — `<config-dir>/wordlists/<stem>.txt`
+///    re-read; the engine's dictionary set swapped via
+///    `DictionaryDetector::replace_dicts` (same primitive the tray
+///    "Reload Settings" entry uses).
+/// 3. **Per-profile wordlist cache rebuild + force-reapply** — the
+///    profile dictionary cache is rebuilt from disk, and we set the
+///    watcher's `force_reapply` flag so the *currently active*
+///    profile's freshly-loaded dicts get re-applied on the next tick
+///    (~250 ms). Without this, the watcher only swaps on profile
+///    transitions, so a user editing words while focused on a
+///    profiled app would see no effect until they alt-tabbed away
+///    and back.
 ///
 /// Best-effort: if we can't even locate our own exe (highly unusual,
 /// e.g. running from a deleted binary) we log + skip rather than
 /// taking down the tray.
-fn spawn_settings_ui(settings: Arc<SettingsStore>, reload_tx: &Sender<EngineCommand>) {
+fn spawn_settings_ui(deps: SettingsCloseDeps) {
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -704,25 +808,13 @@ fn spawn_settings_ui(settings: Arc<SettingsStore>, reload_tx: &Sender<EngineComm
     };
 
     // Wait for the child in a worker thread so the tray doesn't
-    // block. On exit we re-read config.toml from disk into the
-    // parent's `SettingsStore` AND send `SettingsReloaded` to the
-    // engine. Both halves matter:
-    //
-    // * The reload picks up edits the subprocess made — `[[commands]]`
-    //   text-trigger entries, hotkey rebindings, exception list edits.
-    //   Without this, the tray's in-memory view of settings would
-    //   stay stale until the user manually clicked "Reload Settings"
-    //   from the tray menu, which is exactly the surprise we want
-    //   to avoid right after closing the GUI.
-    // * The engine command tells the worker thread to clear its
-    //   buffer + refresh audio for the new settings snapshot.
-    //
-    // We send the engine command regardless of whether reload
-    // returned `changed` — the subprocess may have edited
-    // config.toml from the "Open config.toml" button without
-    // clicking Save, so reload-and-tell gives the most predictable
-    // refresh semantics.
-    let reload_tx = reload_tx.clone();
+    // block. On exit we run the three refresh steps documented on
+    // the function. We do all three regardless of whether the user
+    // clicked Save — the GUI also has an "Open config.toml" button
+    // and a Wordlists pane Save that writes files outside the
+    // GUI's own state, so reload-on-close gives the most
+    // predictable contract: "everything you did in the GUI applies
+    // now."
     std::thread::Builder::new()
         .name("kb-switcher-settings-waiter".into())
         .spawn(move || {
@@ -731,11 +823,44 @@ fn spawn_settings_ui(settings: Arc<SettingsStore>, reload_tx: &Sender<EngineComm
                 Ok(status) => info!(?status, "settings UI exited"),
                 Err(e) => warn!(?e, "could not wait on settings UI child"),
             }
-            match settings.reload() {
+
+            // (1) config.toml reload.
+            match deps.settings.reload() {
                 Ok(changed) => info!(changed, "config.toml reloaded after settings UI exit"),
                 Err(e) => warn!(?e, "could not reload config.toml after settings UI exit"),
             }
-            if let Err(e) = reload_tx.send(EngineCommand::SettingsReloaded) {
+
+            // (2) Global wordlist reload — same path as the tray
+            // "Reload Settings" menu entry.
+            let n = reload_user_dictionaries(&deps.dict_reload_handle);
+            info!(
+                loaded = n,
+                "wordlist dictionaries reloaded after settings UI exit"
+            );
+
+            // (3) Profile cache rebuild + watcher force-reapply.
+            // Rebuild always, even when the user has no profiles
+            // configured — cheap (empty cache) and keeps the
+            // contract uniform.
+            let snap = deps.settings.snapshot();
+            let fresh_cache = build_full_profile_cache(
+                &deps.layouts,
+                &deps.data_dir,
+                &snap.wordlists,
+                deps.user_wordlist_dir.as_deref(),
+            );
+            let n_profiles = fresh_cache.len();
+            *deps.profile_dict_cache.write() = fresh_cache;
+            deps.profile_force_reapply.store(true, Ordering::Release);
+            info!(
+                profiles = n_profiles,
+                "profile cache rebuilt; watcher will re-apply on next tick"
+            );
+
+            // (4) Tell the engine to clear its word buffer + refresh
+            // audio for the new settings snapshot. Sent last so any
+            // observer sees the rebuilds before the engine command.
+            if let Err(e) = deps.reload_tx.send(EngineCommand::SettingsReloaded) {
                 warn!(?e, "could not enqueue SettingsReloaded after UI exit");
             }
         })

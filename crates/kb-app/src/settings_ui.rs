@@ -37,8 +37,9 @@
 //! * **Wordlists** — multiline editor for the user-side wordlist
 //!   overlays in `<config-dir>/kb-switcher/wordlists/<stem>.txt`
 //!   (and `<stem>-stop.txt`). Pick a layout, pick the file kind,
-//!   edit, hit Save. Changes apply on next tray restart — the
-//!   wordlist FSTs are loaded at engine start and not hot-reloaded.
+//!   edit, hit Save. Edits apply when the window closes — the
+//!   tray's settings-waiter rebuilds the engine's dictionary set
+//!   (and the per-profile cache) before sending `SettingsReloaded`.
 //! * **General** — the boolean / numeric knobs from
 //!   `GeneralSettings` + `EngineSettings`: autostart, sound on
 //!   correction, suppress-in-identifiers, idle timeout.
@@ -654,7 +655,7 @@ impl SettingsApp {
                         self.wordlist_dirty = false;
                         self.wordlist_status = Some(SaveBanner {
                             text: format!(
-                                "Saved to {}. Restart kb-switcher to apply.",
+                                "Saved to {}. Close this window to apply.",
                                 path.display()
                             ),
                             is_error: false,
@@ -1108,10 +1109,10 @@ impl SettingsApp {
             .push(
                 Text::new(
                     "Add language-specific words to the per-layout dictionary \
-                     overlay. The engine merges these on top of the bundled \
-                     FST at startup, so 'Save' writes to disk and you'll need \
-                     to restart kb-switcher (Quit from the tray, then relaunch) \
-                     for the new words to count toward detection.",
+                     overlay. 'Save' writes to disk; closing this window then \
+                     refreshes the engine's dictionary set so new words start \
+                     counting toward detection on the next typed word — no \
+                     tray restart needed.",
                 )
                 .size(13),
             );

@@ -4,7 +4,40 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.8
+## [Unreleased] — 0.1.0-beta.9
+
+### Fixed — wordlist edits via the GUI now apply on window close
+
+Saving a word in the Wordlists pane previously took effect only
+after a tray restart, even though the pane's banner said "Saved.
+Close this window to apply". The settings-waiter (the worker that
+runs when the GUI subprocess exits) reloaded `config.toml` for
+the schema parts (`[[commands]]`, `[hotkeys]`, exceptions, profile
+defs) but left the engine's dictionary set untouched.
+
+Fix: the close handler now performs three reload steps in
+sequence:
+
+1. `config.toml` reload — picks up schema edits (existing).
+2. Global wordlist reload — re-reads
+   `<config-dir>/kb-switcher/wordlists/<stem>.txt` and atomically
+   swaps the engine's dictionary set, same primitive the tray
+   "Reload Settings" entry uses.
+3. Per-profile cache rebuild + watcher force-reapply — the
+   profile cache built at startup is replaced from disk, and a
+   new `force_reapply` flag tells the focus-watcher to re-apply
+   the currently active profile on its next ~250 ms tick. Without
+   this, a user editing a profile's wordlist while focused on a
+   matching app would have to alt-tab away and back to see the
+   change.
+
+Refactor in `crates/kb-app/src/main.rs`: `profile_dict_cache` now
+lives behind `Arc<RwLock<...>>` so the close-handler can rebuild
+it without restarting the watcher thread; `spawn_profile_watcher`
+takes the cache + force-flag and re-reads on every tick. The
+Wordlists pane banner / pane-intro text were updated from
+"Restart kb-switcher to apply" to "Close this window to apply" so
+the wording matches reality.
 
 ### Fixed — manual switch-last hotkey infinite loop
 
