@@ -217,6 +217,7 @@ enum Message {
     LanguageIgnoreToggled(LayoutId, bool),
     AutostartToggled(bool),
     SoundOnCorrectToggled(bool),
+    ShowNotificationsToggled(bool),
     SuppressInIdentifiersToggled(bool),
     IdleTimeoutDelta(i32),
 
@@ -519,6 +520,7 @@ impl SettingsApp {
             }
             Message::AutostartToggled(b) => self.settings.general.autostart = b,
             Message::SoundOnCorrectToggled(b) => self.settings.general.sound_on_correct = b,
+            Message::ShowNotificationsToggled(b) => self.settings.general.show_notifications = b,
             Message::SuppressInIdentifiersToggled(b) => {
                 self.settings.engine.suppress_in_identifiers = b
             }
@@ -1412,6 +1414,13 @@ impl SettingsApp {
             .push(
                 Checkbox::new("Play a soft chime on correction", g.sound_on_correct)
                     .on_toggle(Message::SoundOnCorrectToggled),
+            )
+            .push(
+                Checkbox::new(
+                    "Show a 2-second system notification on auto-switch",
+                    g.show_notifications,
+                )
+                .on_toggle(Message::ShowNotificationsToggled),
             )
             .push(
                 Checkbox::new(

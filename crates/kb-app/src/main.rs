@@ -492,7 +492,14 @@ fn main() -> Result<()> {
                 }
             }
             Event::UserEvent(UserEvent::Engine(ev)) => {
-                handle_engine_event(ev, &tray, &item_pause_for_loop, &mut tray_state);
+                handle_engine_event(
+                    ev,
+                    &tray,
+                    &item_pause_for_loop,
+                    &mut tray_state,
+                    &settings_for_loop,
+                    &layouts,
+                );
             }
             _ => {}
         }
@@ -1025,6 +1032,8 @@ fn handle_engine_event(
     tray: &TrayIcon,
     item_pause: &MenuItem,
     state: &mut TrayState,
+    settings: &Arc<SettingsStore>,
+    layouts: &Arc<LayoutDb>,
 ) {
     match ev {
         SwitcherEvent::Corrected {
@@ -1042,6 +1051,15 @@ fn handle_engine_event(
                 %reason,
                 "correction applied"
             );
+            // System notification — the user explicitly opted into
+            // these via `[general].show_notifications`. We never log
+            // the actual typed text in the notification body (per
+            // CLAUDE.md: never log user-typed text); the notification
+            // shows only the layout transition, which is the useful
+            // "what just happened" signal.
+            if settings.snapshot().general.show_notifications {
+                spawn_layout_change_notification(layouts, &to_layout);
+            }
         }
         SwitcherEvent::PausedChanged(paused) => {
             info!(paused, "engine paused state changed");
@@ -1057,6 +1075,48 @@ fn handle_engine_event(
             debug!(%reason, "decision: keep current");
         }
     }
+}
+
+/// Show a 2-second toast / notification that the engine just
+/// auto-switched to a new layout. Spawned on a worker thread because
+/// `notify-rust::Notification::show()` is synchronous and the time it
+/// takes varies per platform (DBus round-trip on Linux, NSUserNotification
+/// on macOS, Toast XML on Windows) — we don't want to add even a few ms
+/// to the tray's event-loop latency for a cosmetic side effect.
+///
+/// Failures are logged at warn level and swallowed: a missing notification
+/// daemon (Linux dev container, macOS sandbox quirks, Windows Focus
+/// Assist suppressing toasts) shouldn't propagate up to the tray. The
+/// auto-switch itself already happened — the notification is just the
+/// optional UX sugar layer on top.
+fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layout: &LayoutId) {
+    // Resolve the layout's display `name` if we have a mapping for it
+    // (`English (United States)` for `en-US`, etc.). Falls back to the
+    // raw BCP-47 id otherwise — never a panic, never a stale string.
+    let pretty = layouts
+        .get(to_layout)
+        .map(|m| m.name.clone())
+        .unwrap_or_else(|| to_layout.as_str().to_owned());
+
+    let to_owned = to_layout.as_str().to_owned();
+    std::thread::Builder::new()
+        .name("kb-switcher-notify".into())
+        .spawn(move || {
+            let mut n = notify_rust::Notification::new();
+            n.summary("kb-switcher")
+                .body(&format!("Switched to {pretty}"))
+                .appname(APP_NAME)
+                .timeout(notify_rust::Timeout::Milliseconds(2000));
+            // `icon` is best-effort — passing an OS-specific identifier
+            // works on Linux/Windows when a matching theme icon exists,
+            // and is silently ignored otherwise. We don't ship our own
+            // installed icon yet, so leave it out and let the platform's
+            // default app-notification glyph render.
+            if let Err(e) = n.show() {
+                warn!(?e, layout = %to_owned, "could not show layout-change notification");
+            }
+        })
+        .ok();
 }
 
 fn spawn_event_bridges(

@@ -4,7 +4,41 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.11
+## [Unreleased] — 0.1.0-beta.12
+
+### Added — system notification on auto-switch
+
+When the engine auto-corrects (changes the OS layout and re-types
+the last word) it can now show a brief system notification —
+`"kb-switcher: Switched to English (United States)"` — that auto-
+dismisses after ~2 seconds. Off by default (preserves the existing
+"quiet by default" contract); toggle on the General pane in the
+Settings window. The body text uses the layout's friendly `name`
+field (from `data/layout-mappings/<stem>.toml`) when known, and
+falls back to the raw BCP-47 id.
+
+Implementation notes:
+
+* Cross-platform via `notify-rust` — Windows 10+ Toast,
+  NSUserNotification on macOS, Desktop Notifications spec via
+  DBus on Linux. Matches platforms supported elsewhere in
+  kb-switcher.
+* Fired only on `SwitcherEvent::Corrected` — auto-switch and
+  manual switch-last hotkey both produce that event, so the
+  user sees notifications for both. NOT fired on
+  `LayoutChanged` (which also covers external layout changes
+  like Win+Space; those are already explicit user actions and
+  don't need a notification of their own).
+* Spawned on a dedicated thread so the platform's notification
+  call (DBus round-trip on Linux, Toast XML on Windows) never
+  adds latency to the tray's event loop.
+* Notification text never contains the typed word — only the
+  destination layout's name. Matches the project's hard rule
+  in `CLAUDE.md` about not logging user-typed text.
+* Failures (no notification daemon, Focus Assist suppressing
+  toasts, sandbox quirks) are logged at warn level and
+  swallowed; the auto-switch itself already happened, so the
+  notification is best-effort UX sugar on top.
 
 ### Fixed — wordlist edits no longer get silently dropped
 

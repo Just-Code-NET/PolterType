@@ -43,3 +43,8 @@ single-instance = { workspace = true }
 global-hotkey   = { workspace = true }
 opener          = { workspace = true }
 iced            = { workspace = true }
+# Tiny system notifications for "kb-switcher just auto-switched
+# your layout" — gated by `[general].show_notifications` (off by
+# default). Cross-platform: Win10+ Toast, macOS NSUserNotification,
+# Linux Desktop Notifications spec via DBus.
+notify-rust     = { workspace = true }
