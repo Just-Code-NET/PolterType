@@ -6,6 +6,39 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — 0.1.0-beta.12
 
+### Changed — unified Save / Reload in the Settings window
+
+The Wordlists pane used to ship its own Save and Reload buttons
+below the editor, separate from the footer Save and Reload that
+covered the rest of the settings. Two pairs of nearly-identical
+buttons made the UI confusing — users (reasonably) expected the
+more prominent footer Save to write everything, including the
+wordlist edit in front of them, and were surprised when it
+didn't.
+
+Both per-pane buttons are now removed. The footer pair now
+covers everything:
+
+* **Footer Save** — writes `config.toml` AND flushes any unsaved
+  wordlist content (using the same `flush_wordlist_to_disk`
+  helper as the auto-save-on-switch path).
+* **Footer Reload** — re-reads `config.toml` AND re-reads the
+  currently-displayed wordlist file from disk, discarding any
+  unsaved editor content (intentional — same semantics as the
+  old per-pane Reload).
+
+The Wordlists pane keeps its dirty indicator ("● unsaved
+changes") and per-pane status banner so the user still sees
+"auto-saved unsaved edit to ..." messages from layout / profile /
+kind switches. Just one click target for the save itself.
+
+### Changed — Settings window default size
+
+Bumped from 720×540 to 820×640 so the Commands and Wordlists
+panes render their full forms (and lists, where applicable)
+without scrolling on a stock 1080p screen. Still small enough to
+feel like a settings dialog, not a main window.
+
 ### Added — system notification on auto-switch
 
 When the engine auto-corrects (changes the OS layout and re-types

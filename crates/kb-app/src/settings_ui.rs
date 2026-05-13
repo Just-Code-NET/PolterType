@@ -37,9 +37,12 @@
 //! * **Wordlists** — multiline editor for the user-side wordlist
 //!   overlays in `<config-dir>/kb-switcher/wordlists/<stem>.txt`
 //!   (and `<stem>-stop.txt`). Pick a layout, pick the file kind,
-//!   edit, hit Save. Edits apply when the window closes — the
-//!   tray's settings-waiter rebuilds the engine's dictionary set
-//!   (and the per-profile cache) before sending `SettingsReloaded`.
+//!   edit, then either click the unified footer Save or just
+//!   close the window — both trigger a flush of any unsaved
+//!   editor content. The tray's settings-waiter rebuilds the
+//!   engine's dictionary set (and the per-profile cache) before
+//!   sending `SettingsReloaded`, so edits apply without a tray
+//!   restart.
 //! * **General** — the boolean / numeric knobs from
 //!   `GeneralSettings` + `EngineSettings`: autostart, sound on
 //!   correction, suppress-in-identifiers, idle timeout.
@@ -110,7 +113,14 @@ pub fn run() -> Result<()> {
         .theme(SettingsApp::theme)
         .subscription(SettingsApp::subscription)
         .exit_on_close_request(false)
-        .window_size((720.0, 540.0))
+        // Window size was 720x540 in beta.11 and earlier — too cramped
+        // for the Commands and Wordlists panes (Commands has a 6-row
+        // add-form plus the existing list, Wordlists has a 260px-tall
+        // editor + 3 picker rows + a path-hint line + tip). Bumped
+        // here so the default render fits without scrolling on a
+        // standard 1080p screen. Still small enough to feel like a
+        // settings dialog, not a main window.
+        .window_size((820.0, 640.0))
         .centered();
 
     let store_for_init = Arc::clone(&store);
@@ -274,11 +284,6 @@ enum Message {
     /// Editor sent us an action (insert / delete / move cursor / …).
     /// We pass it straight through to `text_editor::Content::perform`.
     WordlistEdit(text_editor::Action),
-    /// "Save" → write the editor contents to the resolved overlay file.
-    WordlistSave,
-    /// "Reload" → re-read the overlay file from disk, discarding any
-    /// in-memory edits.
-    WordlistReload,
 
     ResetDefaults,
     Save,
@@ -667,27 +672,28 @@ impl SettingsApp {
                 }
                 self.wordlist_content.perform(action);
             }
-            Message::WordlistSave => {
-                let outcome = self.flush_wordlist_to_disk();
-                self.wordlist_status = Some(banner_for_wordlist_save(outcome));
-            }
-            Message::WordlistReload => {
-                if let Some(id) = self.wordlist_layout.clone() {
-                    let text =
-                        read_overlay_file_or_empty(&self.wordlist_profile, &id, self.wordlist_kind);
-                    self.wordlist_content = text_editor::Content::with_text(&text);
-                    self.wordlist_dirty = false;
-                    self.wordlist_status = Some(SaveBanner {
-                        text: "Reloaded from disk.".into(),
-                        is_error: false,
-                    });
-                }
-            }
-
             Message::ResetDefaults => self.settings = Settings::default(),
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
                     self.settings = fresh.snapshot();
+                    // Also re-read the current wordlist file into the
+                    // editor — keeps footer Reload's contract uniform:
+                    // "reset every on-disk-backed view to what's on
+                    // disk right now". Discards unsaved editor content
+                    // by design, just like the old per-pane Reload
+                    // button did. Auto-save on layout/profile/kind
+                    // switch usually means there's nothing unsaved to
+                    // lose here anyway.
+                    if let Some(id) = self.wordlist_layout.clone() {
+                        let text = read_overlay_file_or_empty(
+                            &self.wordlist_profile,
+                            &id,
+                            self.wordlist_kind,
+                        );
+                        self.wordlist_content = text_editor::Content::with_text(&text);
+                        self.wordlist_dirty = false;
+                        self.wordlist_status = None;
+                    }
                     self.save_banner = Some(SaveBanner {
                         text: "Reloaded from disk.".into(),
                         is_error: false,
@@ -1184,10 +1190,11 @@ impl SettingsApp {
             .push(
                 Text::new(
                     "Add language-specific words to the per-layout dictionary \
-                     overlay. 'Save' writes to disk; closing this window then \
-                     refreshes the engine's dictionary set so new words start \
-                     counting toward detection on the next typed word — no \
-                     tray restart needed.",
+                     overlay. Use the Save button below to persist your edits, \
+                     or just close the window — either way, the engine's \
+                     dictionary set refreshes so new words start counting \
+                     toward detection on the next typed word, no tray \
+                     restart needed.",
                 )
                 .size(13),
             );
@@ -1317,18 +1324,18 @@ impl SettingsApp {
             None => Space::with_width(Length::Shrink).into(),
         };
 
+        // Per-pane Save / Reload buttons were removed in beta.12 —
+        // the single footer Save+Reload pair now covers everything
+        // (config.toml + the active wordlist edit) for a less
+        // ambiguous UI. Dirty marker + status banner stay so the
+        // user still sees "unsaved changes" + auto-save outcomes
+        // from layout/profile/kind switches.
         col = col.push(
             Row::new()
                 .spacing(8)
                 .push(dirty_marker)
                 .push(Space::with_width(Length::Fill))
-                .push(status)
-                .push(Button::new(Text::new("Reload").size(12)).on_press(Message::WordlistReload))
-                .push(
-                    Button::new(Text::new("Save").size(12))
-                        .on_press(Message::WordlistSave)
-                        .style(button::primary),
-                ),
+                .push(status),
         );
 
         col = col.push(Space::with_height(6)).push(
