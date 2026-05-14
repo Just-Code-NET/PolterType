@@ -234,7 +234,35 @@ fn read_wordlist(path: &Path) -> Vec<String> {
     lines
         .lines()
         .map_while(Result::ok)
-        .map(|l| l.trim().to_lowercase())
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .filter_map(|l| {
+            let trimmed = l.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            let normalized = letters_only_lower(trimmed);
+            if normalized.is_empty() {
+                None
+            } else {
+                Some(normalized)
+            }
+        })
         .collect()
+}
+
+/// Mirror of `kb_detect::letters_only_lower`. Duplicated here because
+/// build scripts can't depend on workspace crates without inflating
+/// build-time deps; the runtime dictionary lookup canonicalises typed
+/// tokens the same way, so the FST + overlay must be built against
+/// the same shape (no hyphens / apostrophes / digits — pure
+/// lowercase letters). Keep the two in sync.
+fn letters_only_lower(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if ch.is_alphabetic() {
+            for low in ch.to_lowercase() {
+                out.push(low);
+            }
+        }
+    }
+    out
 }

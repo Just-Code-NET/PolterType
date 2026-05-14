@@ -566,7 +566,7 @@ impl Detector for DictionaryDetector {
 /// mid-string and would never hit a dictionary entry. Stripping
 /// before lookup keeps the detector honest: if the *letter*
 /// substring is a real word, the verdict reflects that.
-fn letters_only_lower(s: &str) -> String {
+pub fn letters_only_lower(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         if ch.is_alphabetic() {

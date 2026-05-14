@@ -192,14 +192,28 @@ fn parse_scancode(s: &str) -> Option<u32> {
     }
 }
 
-/// Parse a one-word-per-line text file into a lowercase HashSet.
-/// Blank lines and `#` comments are skipped.
+/// Parse a one-word-per-line text file into a HashSet whose entries
+/// are normalized exactly like a typed token passes through the
+/// dictionary detector — non-letter chars stripped, lowercase.
+///
+/// Without this normalization, the on-disk format and the lookup
+/// pipeline disagreed: `kb_detect::letters_only_lower` strips
+/// hyphens / apostrophes / digits off the buffered token before
+/// hitting the overlay HashSet, so an extras line like
+/// `v-strel-zbook` (a hostname the user wants to type as English)
+/// or `ім'я` was stored verbatim and never matched the canonicalised
+/// lookup key (`vstrelzbook`, `імя`).
+///
+/// Blank lines and `#` comments are skipped. Lines that contain no
+/// alphabetic chars at all (`---`, `42`) are dropped — they'd
+/// normalize to the empty string and pollute the set.
 fn parse_wordlist(input: &str) -> HashSet<String> {
     input
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .map(str::to_lowercase)
+        .map(kb_detect::letters_only_lower)
+        .filter(|w| !w.is_empty())
         .collect()
 }
 
@@ -1173,6 +1187,44 @@ mod tests {
         assert!(
             dict.contains("екстраслово"),
             "<stem>-extras.txt entry should be in dict"
+        );
+    }
+
+    #[test]
+    fn user_overlay_normalizes_hyphens_and_apostrophes() {
+        // Regression: the wordlists tab lets users add hand-picked
+        // tokens to the per-layout dictionary, but hyphenated /
+        // apostrophe-bearing entries used to be stored verbatim while
+        // the lookup path canonicalised the typed token via
+        // `letters_only_lower`. End-result: `v-strel-zbook` in the
+        // extras file never matched the buffer `v-strel-zbook`
+        // (lookup key `vstrelzbook`) and the engine kept switching
+        // it. Lock the canonicalisation in: the entry as written and
+        // the canonical key must both resolve to a Keep.
+        let tmp = TmpDir::new("normalize-hyphen");
+        tmp.write("en_us-extras.txt", "v-strel-zbook\n");
+        tmp.write("uk_ua-extras.txt", "ім'я\n");
+
+        let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+
+        let en = db
+            .get(&LayoutId::from("en-US"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("en dict");
+        assert!(
+            en.contains("vstrelzbook"),
+            "hyphenated extras entry must be looked up by its \
+             letters-only canonical key"
+        );
+
+        let uk = db
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict");
+        assert!(
+            uk.contains("імя"),
+            "apostrophe-bearing extras entry must be looked up by \
+             its letters-only canonical key"
         );
     }
 
