@@ -142,11 +142,13 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     let txt = src_dir.join(format!("{stem}.txt"));
     let extras = src_dir.join(format!("{stem}-extras.txt"));
     let stop = src_dir.join(format!("{stem}-stop.txt"));
+    let weak = src_dir.join(format!("{stem}-weak.txt"));
 
     println!("cargo:rerun-if-changed={}", txt_gz.display());
     println!("cargo:rerun-if-changed={}", txt.display());
     println!("cargo:rerun-if-changed={}", extras.display());
     println!("cargo:rerun-if-changed={}", stop.display());
+    println!("cargo:rerun-if-changed={}", weak.display());
 
     // Bulk wordlist source ships gzipped (uk_ua alone is 84 MB raw,
     // ~10 MB gzipped). Plain `.txt` honoured as a fallback so a
@@ -224,6 +226,27 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
         }
     };
 
+    // Copy the weak-words file straight through (no extras
+    // augmentation — weak entries are about *long* Hunspell-only
+    // forms, the short regime never consults the FST). Missing
+    // source → no destination file (runtime treats as empty list).
+    let weak_dst = out_dir.join(format!("{stem}-weak.txt"));
+    let weak_count = match fs::copy(&weak, &weak_dst) {
+        Ok(_) => read_wordlist(&weak).len(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let _ = fs::remove_file(&weak_dst);
+            0
+        }
+        Err(e) => {
+            println!(
+                "cargo:warning=weak-words copy {} → {} failed: {e}",
+                weak.display(),
+                weak_dst.display()
+            );
+            0
+        }
+    };
+
     if words.is_empty() {
         println!(
             "cargo:warning=wordlist {tag}: empty FST (run `cargo xtask wordlists fetch` to populate; \
@@ -231,7 +254,7 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
         );
     } else {
         println!(
-            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words",
+            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words + {weak_count} weak entries",
             words.len()
         );
     }

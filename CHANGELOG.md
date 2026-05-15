@@ -4,7 +4,38 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.13
+## [Unreleased] — 0.1.0-beta.14
+
+### Added — "weak" dictionary list for rare-but-valid Hunspell forms
+
+Hunspell expands every Ukrainian stem into all of its grammatical
+surface forms — including ones modern speakers basically never type
+standalone, like vocative-case nouns ("туче!" — "O cloud!" from
+`туча`). When such a form happened to also be the cross-layout
+rendering of a common English word, the dict detector saw a real
+Ukrainian word in the buffer and refused to switch — leaving the
+user stuck on gibberish. The motivating case: typing `next` under
+uk-UA produced `туче`, which is technically valid → `Keep` → no
+correction.
+
+New per-layout `<stem>-weak.txt` data file marks these "valid but
+basically never the intent" entries. The `DictionaryDetector` now
+treats a current-side weak hit as a deferred signal: it walks the
+alt-layout renderings first and switches to any of them that's
+itself a strong dict hit. If no alt is in dict, the weak word still
+keeps (the weak list never blocks a switch by itself, only opens
+the door to one). Strong (non-weak) entries are unaffected — they
+continue to win outright.
+
+* New file: `data/wordlists/uk_ua-weak.txt`, seeded with `туче`.
+  Conservative on purpose — adding a common word here would
+  auto-switch users typing it intentionally.
+* Same loader contract as the existing `<stem>-stop.txt` /
+  `<stem>-extras.txt` files: bundled list at compile time, optional
+  user overlay at `<config-dir>/kb-switcher/wordlists/<stem>-weak.txt`
+  picked up by "Reload Settings" without a rebuild.
+* `DictionaryDetector::is_weak()` exposed for diagnostic UI / future
+  detectors.
 
 ### Fixed — short English acronyms typed in the wrong layout now switch
 

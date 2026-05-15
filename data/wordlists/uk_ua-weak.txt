@@ -1,0 +1,39 @@
+# "Weak" Ukrainian dictionary entries — words that are grammatically
+# valid (the Hunspell expander emits them as legal surface forms of
+# real stems) but virtually never the user's intent in modern usage:
+# archaic vocative cases, dead inflections, dialectal-only forms.
+#
+# Effect (see `kb_detect::DictionaryDetector::judge`): a current-side
+# dict hit on a word in this file does NOT short-circuit `Keep`.
+# Instead, the engine first checks every alt-layout rendering against
+# its own dictionary; if any of those is a real word, the engine
+# `Switch`es to it. If no alt-side hit exists, the weak word still
+# keeps (it IS valid — the weak list never blocks a switch by itself,
+# only opens the door to one).
+#
+# Motivating case: `туче` is the vocative of `туча` ("O cloud!"), a
+# grammatically real form Hunspell expanded out of `uk_UA.aff`. It
+# also happens to be the uk-UA rendering of the en-US scancodes for
+# `next` — a far more common typing intent than poetic apostrophe to
+# clouds. Without this file the engine sees `туче` is a valid uk-UA
+# word and refuses to switch to en-US, leaving the user stuck.
+#
+# When to add an entry here:
+#   * the word is in the bundled Hunspell-derived FST (so the dict
+#     detector sees it as a real word), AND
+#   * a power user typing in modern Ukrainian would basically never
+#     intend it standalone (vocative, archaic verb forms, dialect),
+#     AND
+#   * its cross-layout rendering happens to be a common word in
+#     another bundled language.
+#
+# Be conservative — adding a common word here would auto-switch users
+# typing it intentionally. Format: one lowercase word per line; blank
+# lines and `#` comments ignored.
+#
+# Runtime extension (no rebuild): drop matching files into
+# `<config-dir>/kb-switcher/wordlists/`:
+#   * `uk_ua-weak.txt`  → merged into THIS list at startup / reload
+# Picks up edits via the "Reload Settings" command.
+
+туче

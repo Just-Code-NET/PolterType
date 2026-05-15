@@ -357,6 +357,26 @@ pub struct LayoutDictionary {
     /// buffers causes aggressive false-positive switches on users
     /// typing legitimate short Cyrillic words.
     pub short_stop_words: HashSet<String>,
+    /// Hand-curated "weak" dictionary entries — words that are
+    /// grammatically valid (Hunspell expanded the bulk dict to
+    /// include them) but virtually never the user's intent in
+    /// modern usage: archaic vocatives, dead inflections,
+    /// dialectal-only forms. The motivating case is uk-UA `туче`
+    /// (vocative of `туча` — "O cloud!"), which shadows the en-US
+    /// rendering of `next` and used to leave the engine no signal
+    /// to switch.
+    ///
+    /// Effect on the dictionary detector: a weak current-side hit
+    /// **defers to** any alt-side dict hit. If no alt is in dict,
+    /// the weak entry still keeps (it IS valid, after all). Strong
+    /// (non-weak) entries are unaffected — they continue to win
+    /// outright.
+    ///
+    /// Weak is the per-layout asymmetric counterpart of the
+    /// existing per-layout overlay/stop lists; it never blocks a
+    /// switch by itself, only opens the door to one when a strong
+    /// alt exists.
+    pub weak: HashSet<String>,
 }
 
 impl LayoutDictionary {
@@ -364,23 +384,29 @@ impl LayoutDictionary {
         embedded: FstSet<&'static [u8]>,
         user_overlay: HashSet<String>,
         short_stop_words: HashSet<String>,
+        weak: HashSet<String>,
     ) -> Self {
         Self {
             embedded: Arc::new(embedded),
             user_overlay,
             short_stop_words,
+            weak,
         }
     }
 
     /// Convenience: empty embedded FST + given overlay + given short
-    /// stop list. Used in tests; runtime callers always have a real
-    /// embedded FST.
+    /// stop list + given weak list. Used in tests; runtime callers
+    /// always have a real embedded FST.
     ///
     /// Both `expect`s here are infallible by `fst::SetBuilder`'s
     /// contract — building an empty set never errors — but clippy
     /// can't see that, so we silence it locally.
     #[allow(clippy::expect_used)]
-    pub fn from_overlay_only(overlay: HashSet<String>, short_stop_words: HashSet<String>) -> Self {
+    pub fn from_overlay_only(
+        overlay: HashSet<String>,
+        short_stop_words: HashSet<String>,
+        weak: HashSet<String>,
+    ) -> Self {
         let empty: Vec<u8> = fst::SetBuilder::memory()
             .into_inner()
             .expect("SetBuilder::memory().into_inner() is infallible");
@@ -389,7 +415,14 @@ impl LayoutDictionary {
             embedded: Arc::new(set),
             user_overlay: overlay,
             short_stop_words,
+            weak,
         }
+    }
+
+    /// True iff `word_lowercase` is on this layout's curated weak
+    /// list. See [`LayoutDictionary::weak`] for the semantics.
+    pub fn is_weak(&self, word_lowercase: &str) -> bool {
+        self.weak.contains(word_lowercase)
     }
 
     /// Full-dict containment check (used for ≥ 3-letter tokens).
@@ -500,6 +533,17 @@ impl DictionaryDetector {
             .get(layout)
             .is_some_and(|d| d.contains_in_overlay(&lower))
     }
+
+    /// True iff `text` is on `layout`'s curated weak list — see
+    /// [`LayoutDictionary::weak`]. Used by [`Self::judge`] to defer
+    /// to a strong cross-layout dict hit when the current rendering
+    /// is technically valid but rarely the user's intent (`туче`,
+    /// archaic vocatives, dead inflections).
+    pub fn is_weak(&self, layout: &LayoutId, text: &str) -> bool {
+        let lower = text.to_lowercase();
+        let dicts = self.dicts.read();
+        dicts.get(layout).is_some_and(|d| d.is_weak(&lower))
+    }
 }
 
 impl Detector for DictionaryDetector {
@@ -586,8 +630,21 @@ impl Detector for DictionaryDetector {
             }
         }
 
-        // Phase 2 — embedded-dictionary sweep (current behaviour).
-        if lookup(ctx.current_layout, &current_text) {
+        // Phase 2 — embedded-dictionary sweep.
+        //
+        // Sub-rule for the `weak` list (only fires for ≥3-letter
+        // tokens — the short regime never consults the FST and the
+        // weak list is explicitly about Hunspell-expanded long
+        // entries): a current-side hit that's flagged weak does NOT
+        // short-circuit Keep. Instead, walk the alts first; if any
+        // alt is in dict, Switch to it. Without this, Hunspell-only
+        // forms like uk-UA `туче` (vocative of `туча`, "O cloud!")
+        // shadow the much-more-likely cross-layout intent (the
+        // en-US render is `next`) and the engine has no signal to
+        // switch on.
+        let current_in_dict = lookup(ctx.current_layout, &current_text);
+        let current_is_weak = !short && self.is_weak(ctx.current_layout, &current_text);
+        if current_in_dict && !current_is_weak {
             return Verdict::Keep {
                 reason: format!(
                     "current `{current_text}` is a {} {label} word",
@@ -597,12 +654,35 @@ impl Detector for DictionaryDetector {
         }
         for (layout, alt_text) in &alts {
             if lookup(layout, alt_text) {
+                let reason = if current_is_weak {
+                    format!(
+                        "current `{current_text}` is a weak {} {label} word; \
+                         alt `{alt_text}` is a strong {layout} hit",
+                        ctx.current_layout
+                    )
+                } else {
+                    format!("`{alt_text}` is a {layout} {label} word")
+                };
                 return Verdict::Switch(DetectionVerdict {
                     best_layout: (*layout).clone(),
                     confidence: 0.95,
-                    reason: format!("`{alt_text}` is a {layout} {label} word"),
+                    reason,
                 });
             }
+        }
+
+        // Current was a weak hit but no alt was in dict → keep
+        // (the weak word IS valid; we only override on a strong
+        // alt). Logged separately so the verdict-trail makes the
+        // weak-but-no-alt path obvious in the diagnostic logs.
+        if current_in_dict {
+            return Verdict::Keep {
+                reason: format!(
+                    "current `{current_text}` is a weak {} {label} word \
+                     (no alt-side dict hit to override it)",
+                    ctx.current_layout
+                ),
+            };
         }
 
         Verdict::NoOpinion
@@ -861,11 +941,11 @@ mod tests {
             .collect();
         m.insert(
             LayoutId::from("en-US"),
-            LayoutDictionary::from_overlay_only(en_overlay, en_stop),
+            LayoutDictionary::from_overlay_only(en_overlay, en_stop, HashSet::new()),
         );
         m.insert(
             LayoutId::from("uk-UA"),
-            LayoutDictionary::from_overlay_only(uk_overlay, uk_stop),
+            LayoutDictionary::from_overlay_only(uk_overlay, uk_stop, HashSet::new()),
         );
         DictionaryDetector::new(m)
     }
@@ -956,11 +1036,11 @@ mod tests {
             .collect();
         m.insert(
             LayoutId::from("en-US"),
-            LayoutDictionary::from_overlay_only(HashSet::new(), en_stop),
+            LayoutDictionary::from_overlay_only(HashSet::new(), en_stop, HashSet::new()),
         );
         m.insert(
             LayoutId::from("uk-UA"),
-            LayoutDictionary::from_overlay_only(HashSet::new(), uk_stop),
+            LayoutDictionary::from_overlay_only(HashSet::new(), uk_stop, HashSet::new()),
         );
         let det = DictionaryDetector::new(m);
 
@@ -968,6 +1048,77 @@ mod tests {
         let uk = LayoutId::from("uk-UA");
         let cands = vec![(en.clone(), "AI".into()), (uk.clone(), "ФШ".into())];
         assert_switches_to(&det, &ctx(&uk, &cands), &en);
+    }
+
+    /// Regression: Hunspell expanded `туча` (Ukrainian "thundercloud")
+    /// into every grammatical form, including the vocative `туче`
+    /// ("O cloud!") — virtually never typed in modern Ukrainian.
+    /// That same token is the uk-UA rendering of the en-US scancodes
+    /// for `next`, so the user typing `next` under uk-UA used to
+    /// land on `туче`, the dict detector saw a real uk word, and
+    /// Kept it. With `туче` flagged in the uk weak list (see
+    /// `data/wordlists/uk_ua-weak.txt`), the detector defers to the
+    /// strong en-US `next` hit and switches.
+    #[test]
+    fn dict_weak_current_defers_to_strong_alt() {
+        // Both `next` and `туче` live in their respective EMBEDDED
+        // FSTs (mirrors the real-world Hunspell-derived bundled
+        // dicts). `туче` is additionally on the uk weak list. The
+        // weak sub-rule lives in Phase 2 of `judge`; Phase 1
+        // (overlay-priority) must NOT fire here, so neither word is
+        // in any overlay — that's why we use the FST-baking helper
+        // rather than `from_overlay_only`.
+        let mut m = HashMap::new();
+        let uk_weak: HashSet<String> = ["туче"].iter().map(|s| (*s).to_owned()).collect();
+        m.insert(
+            LayoutId::from("en-US"),
+            dict_with_embedded(&["next"], HashSet::new()),
+        );
+        m.insert(
+            LayoutId::from("uk-UA"),
+            dict_with_embedded_and_weak(&["туче"], HashSet::new(), uk_weak),
+        );
+        let det = DictionaryDetector::new(m);
+
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "next".into()), (uk.clone(), "туче".into())];
+        assert_switches_to(&det, &ctx(&uk, &cands), &en);
+    }
+
+    /// Counter-regression: a weak current-side hit must still Keep
+    /// when no alt is in the dict — the weak list never blocks a
+    /// switch *by itself*, it only opens the door to one when a
+    /// strong cross-layout alt exists. A user actually typing `туче`
+    /// in uk-UA (the poet writing about clouds) with no en-US match
+    /// for the buffer must NOT get auto-switched to gibberish.
+    #[test]
+    fn dict_weak_current_keeps_when_no_alt_in_dict() {
+        // Same shape as the previous test but the en-US side
+        // intentionally has no FST entry that matches the alt
+        // rendering — so Phase 2 finds current is weak but no alt
+        // is in dict, and the weak-but-no-strong-alt branch must
+        // still Keep (the weak list never blocks a switch by
+        // itself).
+        let mut m = HashMap::new();
+        let uk_weak: HashSet<String> = ["туче"].iter().map(|s| (*s).to_owned()).collect();
+        m.insert(
+            LayoutId::from("en-US"),
+            dict_with_embedded(&[], HashSet::new()),
+        );
+        m.insert(
+            LayoutId::from("uk-UA"),
+            dict_with_embedded_and_weak(&["туче"], HashSet::new(), uk_weak),
+        );
+        let det = DictionaryDetector::new(m);
+
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "qzqz".into()), (uk.clone(), "туче".into())];
+        match det.judge(&ctx(&uk, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep for weak-current-no-alt, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1010,11 +1161,11 @@ mod tests {
             .collect();
         m.insert(
             LayoutId::from("en-US"),
-            LayoutDictionary::from_overlay_only(HashSet::new(), en_stop),
+            LayoutDictionary::from_overlay_only(HashSet::new(), en_stop, HashSet::new()),
         );
         m.insert(
             LayoutId::from("uk-UA"),
-            LayoutDictionary::from_overlay_only(HashSet::new(), uk_stop),
+            LayoutDictionary::from_overlay_only(HashSet::new(), uk_stop, HashSet::new()),
         );
         let det = DictionaryDetector::new(m);
 
@@ -1032,6 +1183,19 @@ mod tests {
     /// signal" from "shipped dictionary" — the whole point of the
     /// overlay-priority sweep.
     fn dict_with_embedded(embedded_words: &[&str], overlay: HashSet<String>) -> LayoutDictionary {
+        dict_with_embedded_and_weak(embedded_words, overlay, HashSet::new())
+    }
+
+    /// Variant of [`dict_with_embedded`] that also seeds the weak
+    /// list — for tests of the Phase 2 weak-defers-to-strong-alt
+    /// rule where the same word lives in both the FST (so the dict
+    /// detector sees it as a real word) and the weak list (so it
+    /// can be overridden by a cross-layout dict hit).
+    fn dict_with_embedded_and_weak(
+        embedded_words: &[&str],
+        overlay: HashSet<String>,
+        weak: HashSet<String>,
+    ) -> LayoutDictionary {
         let mut sorted: Vec<String> = embedded_words.iter().map(|s| (*s).to_owned()).collect();
         sorted.sort();
         sorted.dedup();
@@ -1041,7 +1205,7 @@ mod tests {
         }
         let bytes: Vec<u8> = builder.into_inner().expect("FST finish");
         let set = FstSet::new(bytes.leak() as &'static [u8]).expect("valid FST");
-        LayoutDictionary::new(set, overlay, HashSet::new())
+        LayoutDictionary::new(set, overlay, HashSet::new(), weak)
     }
 
     /// Regression: a user-supplied overlay entry on the *alt* layout

@@ -228,6 +228,7 @@ fn parse_wordlist(input: &str) -> HashSet<String> {
 /// | `<stem>.txt`             | `user_overlay`     | runtime additions |
 /// | `<stem>-extras.txt`      | `user_overlay`     | same; separate file for organisation |
 /// | `<stem>-stop.txt`        | `short_stop_words` | extend the ≤2-letter list |
+/// | `<stem>-weak.txt`        | `weak`             | mark Hunspell-valid-but-rare entries (e.g. archaic vocatives) so a strong cross-layout dict hit wins |
 ///
 /// Missing files are silently fine. Read errors are logged and the
 /// bundled data continues to work.
@@ -281,10 +282,17 @@ fn build_dictionary(
         user_overlay.extend(extra);
     }
 
+    // ── weak list: bundled baseline + optional user file ──
+    let mut weak = read_weak_words(data_dir, stem);
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "-weak") {
+        weak.extend(extra);
+    }
+
     Some(LayoutDictionary::new(
         bundled_fst,
         user_overlay,
         short_stop_words,
+        weak,
     ))
 }
 
@@ -302,12 +310,29 @@ fn read_stop_words(data_dir: &Path, stem: &str) -> HashSet<String> {
     }
 }
 
+/// Read `<data_dir>/wordlists/<stem>-weak.txt` if it exists. Same
+/// shape as the stop / extras readers — one canonicalised word per
+/// line, missing file is silently fine. See [`LayoutDictionary::weak`]
+/// for the semantics.
+fn read_weak_words(data_dir: &Path, stem: &str) -> HashSet<String> {
+    let path = data_dir.join("wordlists").join(format!("{stem}-weak.txt"));
+    match std::fs::read_to_string(&path) {
+        Ok(s) => parse_wordlist(&s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashSet::new(),
+        Err(e) => {
+            warn!(?path, err = %e, "could not read weak-words file");
+            HashSet::new()
+        }
+    }
+}
+
 /// User-layout dictionary builder: like [`build_dictionary`] but
 /// without a bundled FST (user layouts can't ship binary blobs). The
 /// dictionary is purely the overlay files in `overlay_dir`.
 fn build_user_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<LayoutDictionary> {
     let mut user_overlay: HashSet<String> = HashSet::new();
     let mut short_stop_words: HashSet<String> = HashSet::new();
+    let mut weak: HashSet<String> = HashSet::new();
     let mut any = false;
     if let Some(extra) = load_overlay_file(overlay_dir, stem, "") {
         user_overlay.extend(extra);
@@ -321,12 +346,17 @@ fn build_user_dictionary(stem: &str, overlay_dir: Option<&Path>) -> Option<Layou
         short_stop_words.extend(extra);
         any = true;
     }
+    if let Some(extra) = load_overlay_file(overlay_dir, stem, "-weak") {
+        weak.extend(extra);
+        any = true;
+    }
     if !any {
         return None;
     }
     Some(LayoutDictionary::from_overlay_only(
         user_overlay,
         short_stop_words,
+        weak,
     ))
 }
 
@@ -1267,6 +1297,43 @@ mod tests {
                  be in short_stop_words"
             );
         }
+    }
+
+    /// End-to-end regression for the weak-list pipeline: the
+    /// bundled uk-UA dict ships with `туче` flagged weak (vocative
+    /// of `туча`, "O cloud!"), so the dictionary detector must
+    /// switch to en-US `next` when both are dict hits.
+    #[test]
+    fn bundled_weak_list_marks_tuche() {
+        let db = LayoutDb::load_embedded();
+        let uk = db
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict");
+        // Sanity that `туче` IS in the bundled FST — the test would
+        // pass vacuously if Hunspell ever stops emitting it.
+        assert!(uk.contains("туче"), "`туче` must be in the bundled uk FST");
+        assert!(
+            uk.is_weak("туче"),
+            "`туче` must be on the bundled uk-UA weak list — \
+             see data/wordlists/uk_ua-weak.txt"
+        );
+    }
+
+    #[test]
+    fn user_weak_file_extends_weak_list() {
+        let tmp = TmpDir::new("weak");
+        tmp.write("uk_ua-weak.txt", "# user adds\nтестслабке\n");
+
+        let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+        let dict = db
+            .get(&LayoutId::from("uk-UA"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("uk dict");
+        assert!(
+            dict.is_weak("тестслабке"),
+            "user-side -weak.txt should extend the weak list"
+        );
     }
 
     #[test]
