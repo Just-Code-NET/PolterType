@@ -52,7 +52,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, BufWriter};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use flate2::read::GzDecoder;
@@ -157,6 +157,22 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     }
     let extras_words = read_wordlist(&extras);
     let extras_count = extras_words.len();
+    // Carve out the 1- and 2-letter entries from the curated extras
+    // *before* they get folded into the bulk FST. The runtime
+    // short-token lookup deliberately skips the FST (the upstream
+    // `dwyl/english-words` corpus ships noise like `ws` / `ax` /
+    // `oe` / `ai` as 2-letter "words", which would block legitimate
+    // Cyrillic switches), so a 2-letter acronym sitting only in the
+    // FST is invisible to the short regime. The acronyms in
+    // `<stem>-extras.txt` are *our* curated list — no noise — so
+    // their short subset is safe to mirror into the short-stop
+    // file. Without this, typing `AI` under uk-UA renders `ФШ` and
+    // neither detector has any signal to switch on.
+    let short_extras: Vec<String> = extras_words
+        .iter()
+        .filter(|w| w.chars().count() <= 2)
+        .cloned()
+        .collect();
     words.extend(extras_words);
     words.sort();
     words.dedup();
@@ -169,25 +185,42 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     }
     builder.finish().expect("FST finish");
 
-    // Copy the stop-words file straight through. Missing source → no
-    // destination file, which the runtime treats as "empty stop list".
+    // Compose the dist stop-words file: the source `<stem>-stop.txt`
+    // verbatim (including comments — the runtime parser ignores them)
+    // followed by the ≤2-letter extras carved out above. Writing the
+    // composite ourselves (instead of `fs::copy` + a sidecar file)
+    // keeps the runtime loader untouched: `read_stop_words` already
+    // reads `<stem>-stop.txt` and that's where the short extras now
+    // live. Missing source stop file → still emit a file containing
+    // just the short extras (or remove any stale dist copy if there
+    // are no short extras either).
     let stop_dst = out_dir.join(format!("{stem}-stop.txt"));
-    let stop_count = match fs::copy(&stop, &stop_dst) {
-        Ok(_) => read_wordlist(&stop).len(),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Make sure no stale copy from a previous build hangs
-            // around — clean state matters for `cargo clean`-less
-            // workflows where target/dist/data persists.
-            let _ = fs::remove_file(&stop_dst);
-            0
-        }
+    let source_stop_text = match fs::read_to_string(&stop) {
+        Ok(s) => Some(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => {
             println!(
-                "cargo:warning=stop-words copy {} → {} failed: {e}",
-                stop.display(),
-                stop_dst.display()
+                "cargo:warning=stop-words read {} failed: {e}",
+                stop.display()
             );
-            0
+            None
+        }
+    };
+    let stop_count = if source_stop_text.is_none() && short_extras.is_empty() {
+        // Nothing to write — clear any stale dist file from a prior
+        // build so `cargo clean`-less workflows stay consistent.
+        let _ = fs::remove_file(&stop_dst);
+        0
+    } else {
+        match write_stop_file(&stop_dst, source_stop_text.as_deref(), &short_extras, stem) {
+            Ok(n) => n,
+            Err(e) => {
+                println!(
+                    "cargo:warning=stop-words write {} failed: {e}",
+                    stop_dst.display()
+                );
+                0
+            }
         }
     };
 
@@ -202,6 +235,67 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
             words.len()
         );
     }
+}
+
+/// Write the dist `<stem>-stop.txt` from the source stop file's text
+/// (preserved verbatim — comments and ordering survive) plus an
+/// auto-generated section appending the ≤2-letter entries from
+/// `<stem>-extras.txt`. Returns the count of unique short stop-words
+/// the runtime will load.
+///
+/// Dedup happens against the words already present in `source_text`
+/// — we don't duplicate an acronym someone hand-added to the stop
+/// file even if the same token also lives in extras.
+fn write_stop_file(
+    dst: &Path,
+    source_text: Option<&str>,
+    short_extras: &[String],
+    stem: &str,
+) -> std::io::Result<usize> {
+    use std::collections::HashSet;
+
+    let mut existing: HashSet<String> = HashSet::new();
+    if let Some(text) = source_text {
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            let normalized = letters_only_lower(trimmed);
+            if !normalized.is_empty() {
+                existing.insert(normalized);
+            }
+        }
+    }
+
+    let mut to_append: Vec<&String> = short_extras
+        .iter()
+        .filter(|w| !existing.contains(w.as_str()))
+        .collect();
+    to_append.sort();
+    to_append.dedup();
+
+    let mut out = BufWriter::new(File::create(dst)?);
+    if let Some(text) = source_text {
+        out.write_all(text.as_bytes())?;
+        if !text.ends_with('\n') {
+            out.write_all(b"\n")?;
+        }
+    }
+    if !to_append.is_empty() {
+        writeln!(
+            out,
+            "\n# Auto-appended by build.rs from {stem}-extras.txt — \
+             ≤2-letter entries are mirrored here so the short-token \
+             dictionary lookup can see curated acronyms (the bulk \
+             FST is intentionally skipped at this length)."
+        )?;
+        for w in &to_append {
+            writeln!(out, "{w}")?;
+        }
+    }
+    out.flush()?;
+    Ok(existing.len() + to_append.len())
 }
 
 /// Read one wordlist file into a deduped, lowercased Vec of words.

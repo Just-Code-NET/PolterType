@@ -400,8 +400,7 @@ impl LayoutDictionary {
     /// and the stop list is the path-of-least-friction place to
     /// patch them in without regenerating the FST.
     pub fn contains(&self, word_lowercase: &str) -> bool {
-        self.user_overlay.contains(word_lowercase)
-            || self.short_stop_words.contains(word_lowercase)
+        self.contains_in_overlay(word_lowercase)
             || self.embedded.contains(word_lowercase.as_bytes())
     }
 
@@ -410,7 +409,19 @@ impl LayoutDictionary {
     /// 1- and 2-letter "words" (`ws`, `ax`, `oe`, …) that would
     /// trigger false-positive Keep verdicts on short Cyrillic input.
     pub fn contains_short(&self, word_lowercase: &str) -> bool {
-        self.short_stop_words.contains(word_lowercase) || self.user_overlay.contains(word_lowercase)
+        self.contains_in_overlay(word_lowercase)
+    }
+
+    /// Overlay-only containment — `user_overlay` + the hand-curated
+    /// `short_stop_words` list, both of which are user-influenced
+    /// signals (the user's `<stem>-extras.txt` and `<stem>-stop.txt`
+    /// files merge into them). Used by [`DictionaryDetector::judge`]
+    /// for an overlay-priority sweep so an explicit whitelist entry
+    /// like uk-UA `будь` outranks a coincidental embedded-FST hit
+    /// on its cross-layout twin (the en-US rendering of `будь` is
+    /// `,elm`, which cleans down to the real English word `elm`).
+    pub fn contains_in_overlay(&self, word_lowercase: &str) -> bool {
+        self.user_overlay.contains(word_lowercase) || self.short_stop_words.contains(word_lowercase)
     }
 }
 
@@ -477,6 +488,18 @@ impl DictionaryDetector {
         let dicts = self.dicts.read();
         dicts.get(layout).is_some_and(|d| d.contains_short(&lower))
     }
+
+    /// Overlay-only word check (any length). True iff the user added
+    /// `text` to this layout's `<stem>.txt` / `<stem>-extras.txt` /
+    /// `<stem>-stop.txt` overlay. Drives the overlay-priority sweep
+    /// in [`Self::judge`].
+    pub fn is_in_overlay(&self, layout: &LayoutId, text: &str) -> bool {
+        let lower = text.to_lowercase();
+        let dicts = self.dicts.read();
+        dicts
+            .get(layout)
+            .is_some_and(|d| d.contains_in_overlay(&lower))
+    }
 }
 
 impl Detector for DictionaryDetector {
@@ -517,6 +540,53 @@ impl Detector for DictionaryDetector {
         };
         let label = if short { "short-stop" } else { "dictionary" };
 
+        // Pre-compute alt-layout renderings once; both the
+        // overlay-priority sweep and the embedded sweep walk them.
+        // Stripping the alt rendering too handles the rare case
+        // where a scancode is "letter in current, punct in alt"
+        // (e.g. an apostrophe-position key) — without it we'd lose
+        // the dictionary hit on the pure-letter substring.
+        let alts: Vec<(&LayoutId, String)> = ctx
+            .candidates
+            .iter()
+            .filter(|(l, _)| l != ctx.current_layout)
+            .map(|(l, t)| (l, letters_only_lower(t)))
+            .filter(|(_, t)| !t.is_empty())
+            .collect();
+
+        // Phase 1 — overlay-priority sweep.
+        //
+        // A user-supplied overlay entry is an explicit signal: the
+        // user took the time to whitelist this exact token for this
+        // layout, so it should outrank a coincidental embedded match
+        // on the cross-layout twin. Without this priority, an entry
+        // like uk-UA `будь` is shadowed because its en-US rendering
+        // `,elm` cleans down to the real English word `elm` and the
+        // current-side Keep short-circuits before alts get scored.
+        //
+        // Rule: if the current layout's overlay claims the token →
+        // Keep. Else if any alt layout's overlay claims it → Switch
+        // (override the embedded lookup that would otherwise
+        // declare the current layout the winner).
+        if self.is_in_overlay(ctx.current_layout, &current_text) {
+            return Verdict::Keep {
+                reason: format!(
+                    "current `{current_text}` is a {} overlay {label} word",
+                    ctx.current_layout
+                ),
+            };
+        }
+        for (layout, alt_text) in &alts {
+            if self.is_in_overlay(layout, alt_text) {
+                return Verdict::Switch(DetectionVerdict {
+                    best_layout: (*layout).clone(),
+                    confidence: 0.95,
+                    reason: format!("`{alt_text}` is a {layout} overlay {label} word"),
+                });
+            }
+        }
+
+        // Phase 2 — embedded-dictionary sweep (current behaviour).
         if lookup(ctx.current_layout, &current_text) {
             return Verdict::Keep {
                 reason: format!(
@@ -525,24 +595,10 @@ impl Detector for DictionaryDetector {
                 ),
             };
         }
-
-        for (layout, text) in ctx.candidates {
-            if layout == ctx.current_layout {
-                continue;
-            }
-            // Strip the alt-layout rendering too: a buffer that
-            // contains a "letter in current, punct in alt" scancode
-            // (rare but possible — e.g. an apostrophe-position key
-            // where one layout has a letter and the other has `'`)
-            // would otherwise lose the dictionary hit on the
-            // pure-letter substring.
-            let alt_text = letters_only_lower(text);
-            if alt_text.is_empty() {
-                continue;
-            }
-            if lookup(layout, &alt_text) {
+        for (layout, alt_text) in &alts {
+            if lookup(layout, alt_text) {
                 return Verdict::Switch(DetectionVerdict {
-                    best_layout: layout.clone(),
+                    best_layout: (*layout).clone(),
                     confidence: 0.95,
                     reason: format!("`{alt_text}` is a {layout} {label} word"),
                 });
@@ -879,6 +935,41 @@ mod tests {
         assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
     }
 
+    /// Regression: 2-letter English acronyms (`AI`, `ML`, `UI`, …)
+    /// typed under uk-UA render as Cyrillic uppercase noise (`ФШ`,
+    /// `ЬД`, `ГШ`). The DictionaryDetector must short-Switch on
+    /// strength of the alt-side stop hit — assuming `ai` lives in
+    /// the en-US short stop list, which `build.rs` arranges by
+    /// mirroring ≤2-letter entries from `en_us-extras.txt` into
+    /// `<dist>/wordlists/en_us-stop.txt`. This test fakes that
+    /// arrangement by putting `ai` directly in the en stop list.
+    #[test]
+    fn dict_switches_short_en_acronym_from_uk_layout() {
+        let mut m = HashMap::new();
+        // `ai` lives in en-US short stop (the build.rs-mirrored
+        // shape). uk-UA stop has the usual prepositions but nothing
+        // matching `фш`.
+        let en_stop: HashSet<String> = ["a", "i", "ai"].iter().map(|s| (*s).to_owned()).collect();
+        let uk_stop: HashSet<String> = ["а", "і", "у", "ні"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        m.insert(
+            LayoutId::from("en-US"),
+            LayoutDictionary::from_overlay_only(HashSet::new(), en_stop),
+        );
+        m.insert(
+            LayoutId::from("uk-UA"),
+            LayoutDictionary::from_overlay_only(HashSet::new(), uk_stop),
+        );
+        let det = DictionaryDetector::new(m);
+
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        let cands = vec![(en.clone(), "AI".into()), (uk.clone(), "ФШ".into())];
+        assert_switches_to(&det, &ctx(&uk, &cands), &en);
+    }
+
     #[test]
     fn dict_no_opinion_when_neither_is_a_word() {
         let en = LayoutId::from("en-US");
@@ -933,6 +1024,84 @@ mod tests {
         match det.judge(&ctx(&uk, &cands)) {
             Verdict::Keep { .. } => (),
             other => panic!("expected Keep for `чую` from stop list, got {other:?}"),
+        }
+    }
+
+    /// Build a [`LayoutDictionary`] with words baked into the embedded
+    /// FST (not the overlay). Lets the test distinguish "user-supplied
+    /// signal" from "shipped dictionary" — the whole point of the
+    /// overlay-priority sweep.
+    fn dict_with_embedded(embedded_words: &[&str], overlay: HashSet<String>) -> LayoutDictionary {
+        let mut sorted: Vec<String> = embedded_words.iter().map(|s| (*s).to_owned()).collect();
+        sorted.sort();
+        sorted.dedup();
+        let mut builder = fst::SetBuilder::memory();
+        for w in &sorted {
+            builder.insert(w).expect("FST insert");
+        }
+        let bytes: Vec<u8> = builder.into_inner().expect("FST finish");
+        let set = FstSet::new(bytes.leak() as &'static [u8]).expect("valid FST");
+        LayoutDictionary::new(set, overlay, HashSet::new())
+    }
+
+    /// Regression: a user-supplied overlay entry on the *alt* layout
+    /// must override a coincidental *embedded*-FST hit on the current
+    /// layout. The motivating case: user adds `будь` to uk-UA extras,
+    /// types it while still in en-US (scancodes `,elm`), the
+    /// detector cleans the current rendering to `elm` — which happens
+    /// to be a real English word in the embedded FST — and without
+    /// overlay priority the engine declares "current is English,
+    /// Keep" and never even consults the user's whitelist.
+    #[test]
+    fn dict_overlay_alt_overrides_embedded_current() {
+        let mut m = HashMap::new();
+        // en-US: `elm` lives in the bundled FST, NOT in the user's
+        // overlay (mirrors the real-world state of the embedded
+        // English dictionary).
+        m.insert(
+            LayoutId::from("en-US"),
+            dict_with_embedded(&["elm", "hello", "world"], HashSet::new()),
+        );
+        // uk-UA: user added `будь` to their extras file → it lands
+        // in `user_overlay`. Embedded FST is empty here for clarity.
+        let uk_overlay: HashSet<String> = ["будь"].iter().map(|s| (*s).to_owned()).collect();
+        m.insert(LayoutId::from("uk-UA"), dict_with_embedded(&[], uk_overlay));
+        let det = DictionaryDetector::new(m);
+
+        let en = LayoutId::from("en-US");
+        let uk = LayoutId::from("uk-UA");
+        // Engine renders the buffer twice: current = `,elm` (cleans
+        // to `elm`), alt = `будь`.
+        let cands = vec![(en.clone(), ",elm".into()), (uk.clone(), "будь".into())];
+        assert_switches_to(&det, &ctx(&en, &cands), &uk);
+    }
+
+    /// Inverse: user adds the token to the *current* layout's overlay
+    /// (the `v-strel-zbook` case from the bug report). Strong Keep —
+    /// no Switch should fire even if the alt rendering also happens
+    /// to be a word somewhere.
+    #[test]
+    fn dict_overlay_current_keeps_over_embedded_alt() {
+        let mut m = HashMap::new();
+        let en_overlay: HashSet<String> = ["vstrelzbook"].iter().map(|s| (*s).to_owned()).collect();
+        m.insert(LayoutId::from("en-US"), dict_with_embedded(&[], en_overlay));
+        // Pretend the alt rendering coincidentally hits a UK word
+        // in the embedded FST. Current-overlay priority means we
+        // still Keep.
+        m.insert(
+            LayoutId::from("uk-UA"),
+            dict_with_embedded(&["млйшащ"], HashSet::new()),
+        );
+        let det = DictionaryDetector::new(m);
+
+        let en = LayoutId::from("en-US");
+        let cands = vec![
+            (en.clone(), "v-strel-zbook".into()),
+            (LayoutId::from("uk-UA"), "млйшащ".into()),
+        ];
+        match det.judge(&ctx(&en, &cands)) {
+            Verdict::Keep { .. } => (),
+            other => panic!("expected Keep (current overlay), got {other:?}"),
         }
     }
 

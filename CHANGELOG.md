@@ -4,7 +4,30 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.12
+## [Unreleased] — 0.1.0-beta.13
+
+### Fixed — short English acronyms typed in the wrong layout now switch
+
+Two-letter English acronyms (`AI`, `ML`, `UI`, `UX`, `DB`, `QA`, `CD`,
+`CI`, `MD`, …) typed under uk-UA used to render as Cyrillic-uppercase
+noise (`ФШ`, `ЬД`, `ГШ`, …) and stay there — neither detector had any
+signal to switch on:
+
+* `DictionaryDetector` deliberately skips the embedded FST for ≤2-letter
+  buffers (the bulk `dwyl/english-words` corpus ships short noise like
+  `ws`, `ax`, `oe` that would block legitimate Cyrillic switches), so a
+  curated 2-letter acronym sitting only in the FST was invisible.
+* `WordPlausibilityDetector` ignores buffers shorter than 3 letters by
+  design.
+
+`build.rs` now mirrors the ≤2-letter slice of `<stem>-extras.txt` into
+the dist `<stem>-stop.txt` at compile time. Extras is our own curated
+list — no noise — so its short subset is safe to trust in the short
+regime. Existing user-side `<stem>-stop.txt` overlays still merge in
+on top, and the `dwyl` short noise is unchanged (still FST-only, still
+invisible to the short-token lookup). For en-US this lights up `ai`,
+`ml`, `ui`, `ux`, `db`, `qa`, `cd`, `ci`, `md`, `fe`, `fp`, `gz`,
+`qr`, `mp`, `bz`, `xz`, `ks`, `ln`, `rc`, `ay`.
 
 ### Changed — unified Save / Reload in the Settings window
 

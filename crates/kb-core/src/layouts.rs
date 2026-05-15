@@ -1228,6 +1228,47 @@ mod tests {
         );
     }
 
+    /// Regression: 2-letter acronyms in `<stem>-extras.txt` (`ai`,
+    /// `ml`, `ui`, `ux`, `db`, …) used to land **only** in the
+    /// embedded FST, but the runtime short-token lookup deliberately
+    /// skips the FST (the bulk dict ships short-noise like `ws` /
+    /// `ax` / `oe`). Result: typing `AI` while in uk-UA produced
+    /// `ФШ` and neither detector had any signal to switch — the user
+    /// was stuck. `build.rs` now mirrors the ≤2-letter slice of
+    /// extras into the dist `<stem>-stop.txt`, so the short regime
+    /// sees them.
+    #[test]
+    fn short_extras_are_visible_to_short_token_lookup() {
+        let db = LayoutDb::load_embedded();
+        let en = db
+            .get(&LayoutId::from("en-US"))
+            .and_then(|l| l.dictionary.as_ref())
+            .expect("en dict");
+
+        // Exhaustive sample — every one of these is a 2-letter entry
+        // in `data/wordlists/en_us-extras.txt` that a developer might
+        // type as a standalone token. If the build pipeline ever
+        // regresses to leaving them FST-only, this test fails loud.
+        for word in ["ai", "ml", "ui", "ux", "db", "qa", "cd", "ci", "md"] {
+            assert!(
+                en.contains_short(word),
+                "en-US `{word}` should be visible to the short-token \
+                 lookup (mirrored from en_us-extras.txt by build.rs)"
+            );
+        }
+
+        // Sanity: the FST-only `dwyl/english-words` short noise
+        // (`ws`, `ax`, `oe`) must NOT leak in. If it does the fix
+        // overshot and would block legitimate Cyrillic switches.
+        for noise in ["ws", "ax", "oe"] {
+            assert!(
+                !en.contains_short(noise),
+                "en-US `{noise}` is bulk-dict short noise — must NOT \
+                 be in short_stop_words"
+            );
+        }
+    }
+
     #[test]
     fn user_short_stop_file_extends_stop_list() {
         let tmp = TmpDir::new("stop");
