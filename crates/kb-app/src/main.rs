@@ -1259,17 +1259,28 @@ fn spawn_layout_poller(
     std::thread::Builder::new()
         .name("kb-layout-poller".into())
         .spawn(move || {
+            debug!("layout poller thread started");
             let mut last: Option<LayoutId> = None;
             loop {
-                if let Ok(current) = switcher.current() {
-                    if last.as_ref() != Some(&current) {
-                        if out_tx
-                            .send(SwitcherEvent::LayoutChanged(current.clone()))
-                            .is_err()
-                        {
-                            break;
+                match switcher.current() {
+                    Ok(current) => {
+                        if last.as_ref() != Some(&current) {
+                            debug!(
+                                from = ?last,
+                                to = %current,
+                                "layout poller saw external switch"
+                            );
+                            if out_tx
+                                .send(SwitcherEvent::LayoutChanged(current.clone()))
+                                .is_err()
+                            {
+                                break;
+                            }
+                            last = Some(current);
                         }
-                        last = Some(current);
+                    }
+                    Err(e) => {
+                        debug!(?e, "layout poller: current() failed");
                     }
                 }
                 std::thread::sleep(Duration::from_millis(250));

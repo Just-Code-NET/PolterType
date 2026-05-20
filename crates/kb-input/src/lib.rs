@@ -84,6 +84,16 @@ pub fn create_listener() -> Result<Box<dyn InputListener>, InputError> {
 
 // ─── KeyEmitter ──────────────────────────────────────────────────────
 
+/// A scancode + shift state pair, to be replayed against whatever
+/// layout the OS is currently in. Used by the Linux corrector to
+/// avoid the Unicode-input compose dance that breaks in terminals
+/// and Wayland-native apps.
+#[derive(Debug, Clone, Copy)]
+pub struct ReplayKey {
+    pub scancode: u32,
+    pub shift: bool,
+}
+
 /// Synthesises keystrokes — used by the corrector to delete the
 /// just-typed word and re-type it after switching layouts.
 ///
@@ -96,6 +106,25 @@ pub trait KeyEmitter: Send + Sync {
     /// Emit `text` as Unicode characters. On Windows uses
     /// `KEYEVENTF_UNICODE`, which is layout-independent.
     fn send_text(&self, text: &str) -> Result<(), InputError>;
+
+    /// Replay raw scancodes against whatever layout the OS is now in.
+    ///
+    /// This is the only correction path that works reliably on
+    /// Wayland: the GTK/Qt "Ctrl+Shift+U <hex> Space" Unicode-compose
+    /// trick that `send_text` falls back to is silently swallowed (or
+    /// — worse — typed literally) by most terminals and Wayland-native
+    /// apps. Replaying the original scancodes after `switch_to(new)`
+    /// lets the compositor's xkb mapping produce the right glyphs.
+    ///
+    /// Platforms that have a real Unicode-emit API (`KEYEVENTF_UNICODE`
+    /// on Windows, `CGEventKeyboardSetUnicodeString` on macOS) override
+    /// the default to return `Unsupported` so the engine falls back to
+    /// `send_text`, which is more robust there.
+    fn send_keys(&self, _keys: &[ReplayKey]) -> Result<(), InputError> {
+        Err(InputError::Unsupported(
+            "this backend has no scancode-replay path; use send_text".into(),
+        ))
+    }
 
     fn backend_name(&self) -> &'static str;
 }

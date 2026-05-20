@@ -25,9 +25,9 @@ use std::time::Duration;
 use crossbeam_channel::Sender;
 use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, Device, EventType, InputEvent, KeyCode};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
-use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers};
+use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers, ReplayKey};
 
 // ─── Listener ────────────────────────────────────────────────────────
 
@@ -77,28 +77,88 @@ fn open_keyboard_devices() -> Vec<Device> {
     // is openable and silently skips the rest. Permission errors on
     // individual devices fall through, which is exactly what we want.
     evdev::enumerate()
-        .filter_map(|(_path, dev)| {
+        .filter_map(|(path, dev)| {
             // Heuristic: a device that advertises KEY_A is a keyboard.
             let is_keyboard = dev
                 .supported_keys()
                 .is_some_and(|k| k.contains(KeyCode::KEY_A));
-            if is_keyboard { Some(dev) } else { None }
+            let name = dev.name().unwrap_or("?").to_owned();
+            if !is_keyboard {
+                debug!(?path, name = %name, "evdev: skipped (no KEY_A)");
+                return None;
+            }
+            // `evdev::Device::fetch_events` is a blocking read by
+            // default. Our `drain_devices` loop walks every device
+            // in turn on a single thread, so the first quiet device
+            // (a HID keyboard on a mouse that nobody is typing on,
+            // a sleep button, …) would deadlock the loop forever.
+            // Flip the FD to non-blocking so `fetch_events` returns
+            // `WouldBlock` instead of waiting — the loop already
+            // handles that branch.
+            if let Err(e) = set_nonblocking(&dev) {
+                warn!(?path, name = %name, ?e, "evdev: failed to set O_NONBLOCK — dropping");
+                return None;
+            }
+            debug!(?path, name = %name, "evdev: opened keyboard");
+            Some(dev)
         })
         .collect()
+}
+
+fn set_nonblocking(dev: &Device) -> std::io::Result<()> {
+    let fd = dev.as_raw_fd();
+    // SAFETY: we hold a borrow of `dev`, so the FD is valid for the
+    // duration of these two syscalls.
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 fn drain_devices(mut devices: Vec<Device>, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
     // Naive multi-device polling — for v0.1 we just spin a small
     // loop that asks each device for events. epoll-based fan-in is a
     // v0.1.x optimisation.
+    //
+    // We track modifier state in-loop because evdev gives us raw
+    // press/release pairs and the engine downstream needs to know
+    // whether `K` was typed shifted (`Lfdfq` -> `Давай`, not `давай`).
+    // Caps Lock is handled the same way — it inverts the shift flag
+    // for the produced character.
+    let mut shift_down = false;
+    let mut ctrl_down = false;
+    let mut alt_down = false;
+    let mut super_down = false;
+    let mut caps_on = false;
     while !stop.load(Ordering::SeqCst) {
         let mut got_any = false;
         for dev in devices.iter_mut() {
             match dev.fetch_events() {
                 Ok(events) => {
                     for ev in events {
-                        if let Some(out_ev) = translate(&ev) {
+                        update_modifiers(
+                            &ev,
+                            &mut shift_down,
+                            &mut ctrl_down,
+                            &mut alt_down,
+                            &mut super_down,
+                            &mut caps_on,
+                        );
+                        let modifiers = Modifiers {
+                            shift: shift_down ^ caps_on,
+                            control: ctrl_down,
+                            alt: alt_down,
+                            meta: super_down,
+                        };
+                        if let Some(out_ev) = translate(&ev, modifiers) {
                             got_any = true;
+                            trace!(vk = out_ev.vk, dir = ?out_ev.direction, "evdev event");
                             if sink.try_send(out_ev).is_err() {
                                 debug!("evdev sink full — dropping event");
                             }
@@ -116,7 +176,55 @@ fn drain_devices(mut devices: Vec<Device>, sink: Sender<KeyEvent>, stop: Arc<Ato
     info!("evdev listener thread exiting");
 }
 
-fn translate(ev: &InputEvent) -> Option<KeyEvent> {
+fn update_modifiers(
+    ev: &InputEvent,
+    shift: &mut bool,
+    ctrl: &mut bool,
+    alt: &mut bool,
+    super_: &mut bool,
+    caps: &mut bool,
+) {
+    if ev.event_type() != EventType::KEY {
+        return;
+    }
+    let pressed = ev.value() == 1; // ignore autorepeat (2) for modifier transitions
+    let released = ev.value() == 0;
+    match KeyCode::new(ev.code()) {
+        KeyCode::KEY_LEFTSHIFT | KeyCode::KEY_RIGHTSHIFT => {
+            if pressed {
+                *shift = true;
+            } else if released {
+                *shift = false;
+            }
+        }
+        KeyCode::KEY_LEFTCTRL | KeyCode::KEY_RIGHTCTRL => {
+            if pressed {
+                *ctrl = true;
+            } else if released {
+                *ctrl = false;
+            }
+        }
+        KeyCode::KEY_LEFTALT | KeyCode::KEY_RIGHTALT => {
+            if pressed {
+                *alt = true;
+            } else if released {
+                *alt = false;
+            }
+        }
+        KeyCode::KEY_LEFTMETA | KeyCode::KEY_RIGHTMETA => {
+            if pressed {
+                *super_ = true;
+            } else if released {
+                *super_ = false;
+            }
+        }
+        // Caps Lock toggles on press, not on release.
+        KeyCode::KEY_CAPSLOCK if pressed => *caps = !*caps,
+        _ => {}
+    }
+}
+
+fn translate(ev: &InputEvent, modifiers: Modifiers) -> Option<KeyEvent> {
     if ev.event_type() != EventType::KEY {
         return None;
     }
@@ -131,11 +239,7 @@ fn translate(ev: &InputEvent) -> Option<KeyEvent> {
         vk: evdev_code,
         scancode,
         direction,
-        // evdev gives us the raw event — modifier state has to be
-        // tracked from the event stream itself. v0.1 leaves the
-        // modifiers empty and lets the engine treat command-shortcuts
-        // as "any key". v0.1.x adds proper modifier tracking.
-        modifiers: Modifiers::default(),
+        modifiers,
         injected: false,
         timestamp_ms: 0,
     })
@@ -187,11 +291,95 @@ impl KeyEmitter for UinputEmitter {
         let dev = g
             .as_mut()
             .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
+        // Same coalescing trap as `send_keys`: packing press + release
+        // into one `emit` produces a single SYN_REPORT frame, and
+        // libinput / keyd drop that as a zero-duration tap. The user
+        // visible symptom was a backspace burst silently missing a
+        // few presses, which left fragments of the previous word
+        // (or its trailing space) on screen after a correction.
+        let step = Duration::from_millis(4);
         for _ in 0..n {
-            let down = InputEvent::new(EventType::KEY.0, KeyCode::KEY_BACKSPACE.0, 1);
-            let up = InputEvent::new(EventType::KEY.0, KeyCode::KEY_BACKSPACE.0, 0);
-            dev.emit(&[down, up])
-                .map_err(|e| InputError::Os(format!("uinput emit: {e}")))?;
+            emit_one(
+                dev,
+                InputEvent::new(EventType::KEY.0, KeyCode::KEY_BACKSPACE.0, 1),
+            )?;
+            thread::sleep(step);
+            emit_one(
+                dev,
+                InputEvent::new(EventType::KEY.0, KeyCode::KEY_BACKSPACE.0, 0),
+            )?;
+            thread::sleep(step);
+        }
+        Ok(())
+    }
+
+    fn send_keys(&self, keys: &[ReplayKey]) -> Result<(), InputError> {
+        if keys.is_empty() {
+            return Ok(());
+        }
+        debug!(count = keys.len(), "uinput replay starting");
+        // `hyprctl switchxkblayout` returns instantly but the
+        // compositor still needs a moment to propagate the new xkb
+        // state to the focused client; firing scancodes too quickly
+        // makes them land under the old layout (and you see the
+        // original `lfdfq` rather than `давай`). 30 ms is far below
+        // human-noticeable but enough on this stack.
+        thread::sleep(Duration::from_millis(30));
+        self.ensure_device()?;
+        let mut g = self.device.lock();
+        let dev = g
+            .as_mut()
+            .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
+        // `WordKey::scancode` is Win SC Set-1; on Linux those coincide
+        // with evdev `KEY_*` codes for the alphanumeric / boundary rows
+        // we ever buffer (see `evdev_to_sc1`). Anything outside that
+        // band would have been filtered out by `WordBuffer::feed` long
+        // before getting here.
+        // Emit press / release as separate `dev.emit` calls. `emit`
+        // packs everything into a single frame with one trailing
+        // SYN_REPORT, which libinput treats as a "zero-duration tap"
+        // and drops — the original missing-space symptom.
+        //
+        // We also pace the stream with a small inter-event delay.
+        // Without it `keyd` (or any input remapper proxying our
+        // uinput device) sees press/release pairs land within a few
+        // microseconds of each other and silently coalesces or
+        // discards the last one in a burst — most visibly the
+        // trailing space after a corrected word. 4 ms per event is
+        // well below human-noticeable for a 5-10 keystroke replay
+        // and large enough to clear that coalescing window.
+        let step = Duration::from_millis(4);
+        // The very last key in the replay is the boundary the user
+        // typed (almost always Space). libinput / keyd appear to
+        // sometimes coalesce a short press-then-release at the tail
+        // of an event burst into nothing, which is the symptom of
+        // the "missing space between two corrected words" report.
+        // Holding the boundary key down 20 ms before release is far
+        // below human-noticeable but enough that no downstream
+        // filter treats it as a debouncer event.
+        let last_hold = Duration::from_millis(20);
+        let last_idx = keys.len() - 1;
+        for (i, rk) in keys.iter().enumerate() {
+            let kc = rk.scancode as u16;
+            debug!(scancode = rk.scancode, shift = rk.shift, "uinput key");
+            if rk.shift {
+                emit_one(
+                    dev,
+                    InputEvent::new(EventType::KEY.0, KeyCode::KEY_LEFTSHIFT.0, 1),
+                )?;
+                thread::sleep(step);
+            }
+            emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 1))?;
+            thread::sleep(if i == last_idx { last_hold } else { step });
+            emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 0))?;
+            thread::sleep(step);
+            if rk.shift {
+                emit_one(
+                    dev,
+                    InputEvent::new(EventType::KEY.0, KeyCode::KEY_LEFTSHIFT.0, 0),
+                )?;
+                thread::sleep(step);
+            }
         }
         Ok(())
     }
@@ -234,6 +422,11 @@ impl KeyEmitter for UinputEmitter {
     fn backend_name(&self) -> &'static str {
         "linux-uinput"
     }
+}
+
+fn emit_one(dev: &mut VirtualDevice, ev: InputEvent) -> Result<(), InputError> {
+    dev.emit(&[ev])
+        .map_err(|e| InputError::Os(format!("uinput emit: {e}")))
 }
 
 fn press(dev: &mut VirtualDevice, k: KeyCode) -> Result<(), InputError> {

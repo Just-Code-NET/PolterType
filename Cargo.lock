@@ -2421,6 +2421,7 @@ dependencies = [
  "crossbeam-channel",
  "evdev",
  "kb-types",
+ "libc",
  "parking_lot 0.12.5",
  "thiserror 1.0.69",
  "tracing",

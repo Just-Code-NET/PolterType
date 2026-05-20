@@ -37,3 +37,7 @@ core-graphics       = "0.24"
 # AT-SPI (atspi crate) is the no-sudo fallback and lands in Phase 6.x.
 evdev = { workspace = true }
 x11rb = { workspace = true }
+# Used only to flip O_NONBLOCK on the evdev FDs we open. `evdev` 0.13's
+# `fetch_events` is blocking by default; our single-thread fan-in
+# would otherwise deadlock on the first device that has no traffic.
+libc  = "0.2"

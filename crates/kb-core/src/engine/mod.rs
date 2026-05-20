@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, select_biased};
 use kb_detect::{Detector, Verdict, looks_like_code_token};
-use kb_input::{FocusTracker, KeyEmitter, KeyEvent};
+use kb_input::{FocusTracker, InputError, KeyEmitter, KeyEvent, ReplayKey};
 use kb_layout::{LayoutId, LayoutSwitcher};
 use kb_types::SwitchAction;
 use parking_lot::RwLock;
@@ -73,6 +73,22 @@ pub struct SwitcherEngine {
     paused: Arc<RwLock<bool>>,
     /// Buffer of the previous fully-completed word (for "switch-last").
     last_word: Arc<RwLock<Option<LastWord>>>,
+    /// Wall-clock deadline before which we ignore incoming key events.
+    ///
+    /// On Linux/Wayland the only correction path that actually works
+    /// inside terminals and Wayland-native apps is to replay the
+    /// original scancodes via uinput *after* `switch_to`. But our
+    /// uinput device is not distinguishable from a real keyboard at
+    /// the listener level — keyd (and similar input remappers) proxies
+    /// our virtual events through its own virtual keyboard, stripping
+    /// the `injected` marker entirely. Without a guard the engine
+    /// would read its own replay back, run another correction on it,
+    /// and spiral into an infinite backspace+space loop that locks
+    /// the user out of typing for seconds at a time. Suppressing
+    /// events for ~300 ms after each correction is the simplest
+    /// reliable fix that doesn't require a deeper rewrite (Wayland's
+    /// `zwp_virtual_keyboard_v1` would be the proper long-term path).
+    injection_until: Arc<RwLock<Instant>>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +124,7 @@ impl SwitcherEngine {
             out_tx,
             paused: Arc::new(RwLock::new(false)),
             last_word: Arc::new(RwLock::new(None)),
+            injection_until: Arc::new(RwLock::new(Instant::now())),
         }
     }
 
@@ -229,6 +246,13 @@ impl SwitcherEngine {
     fn handle_key(&self, ev: KeyEvent, buffer: &mut WordBuffer) {
         if ev.injected {
             // Avoid feedback: our own corrections come back through here.
+            return;
+        }
+        // Linux/Wayland: see `injection_until` field docs. Drop the
+        // buffer too — leaving stale keys from before the correction
+        // would mean the next real word starts mid-token.
+        if Instant::now() < *self.injection_until.read() {
+            buffer.clear();
             return;
         }
         if *self.paused.read() {
@@ -528,6 +552,22 @@ impl SwitcherEngine {
                 backspaces,
                 reason,
             } => {
+                // Build the replay sequence: original word scancodes
+                // + the boundary key. After the layout flips, emitting
+                // these same scancodes against the new xkb mapping
+                // produces the corrected glyphs — no Unicode-compose
+                // dance needed on Wayland.
+                let mut replay: Vec<ReplayKey> = keys
+                    .iter()
+                    .map(|k| ReplayKey {
+                        scancode: k.scancode,
+                        shift: k.shift,
+                    })
+                    .collect();
+                replay.push(ReplayKey {
+                    scancode: boundary_scancode,
+                    shift: boundary_shift,
+                });
                 self.apply_correction(
                     &current_layout,
                     &target_layout,
@@ -536,6 +576,7 @@ impl SwitcherEngine {
                     backspaces,
                     &reason,
                     snap.general.sound_on_correct,
+                    Some(&replay),
                 );
             }
         }
@@ -551,6 +592,7 @@ impl SwitcherEngine {
         backspaces: usize,
         reason: &str,
         play_sound: bool,
+        replay_keys: Option<&[ReplayKey]>,
     ) {
         debug!(%from, %to, %original, %corrected, %reason, "applying correction");
 
@@ -589,6 +631,12 @@ impl SwitcherEngine {
             _ => {} // active list contains target — proceed.
         }
 
+        // Open the injection lockout window BEFORE the first synthetic
+        // event leaves the emitter. The backspaces come back through
+        // the listener with `injected = false` on Linux (see field
+        // docs), so without this guard those alone are enough to
+        // restart the engine mid-correction.
+        *self.injection_until.write() = Instant::now() + Duration::from_millis(400);
         if let Err(e) = self.key_emitter.send_backspaces(backspaces) {
             warn!(?e, "send_backspaces failed; aborting correction");
             return;
@@ -597,10 +645,33 @@ impl SwitcherEngine {
             warn!(?e, target = %to, "layout switch failed; aborting correction");
             return;
         }
-        if let Err(e) = self.key_emitter.send_text(corrected) {
-            warn!(?e, "send_text failed; correction may be partial");
-            return;
+        // Prefer replaying the original scancodes against the freshly
+        // switched layout (the only path that works in Wayland-native
+        // / terminal apps). Backends that have a real Unicode-emit API
+        // (`KEYEVENTF_UNICODE`, `CGEventKeyboardSetUnicodeString`)
+        // return `Unsupported`; we fall back to `send_text` for them.
+        let replayed = match replay_keys {
+            Some(rk) => match self.key_emitter.send_keys(rk) {
+                Ok(()) => true,
+                Err(InputError::Unsupported(_)) => false,
+                Err(e) => {
+                    warn!(?e, "send_keys failed; correction may be partial");
+                    return;
+                }
+            },
+            None => false,
+        };
+        if !replayed {
+            if let Err(e) = self.key_emitter.send_text(corrected) {
+                warn!(?e, "send_text failed; correction may be partial");
+                return;
+            }
         }
+        // Re-arm the lockout from the post-emit moment too — keyd /
+        // similar remappers proxy our synthetic events through their
+        // own virtual keyboard with their own scheduling, so the
+        // echoes can land well after we finished emitting.
+        *self.injection_until.write() = Instant::now() + Duration::from_millis(300);
         if play_sound {
             self.audio.play(SoundEvent::Correct);
         }
@@ -717,6 +788,23 @@ impl SwitcherEngine {
         };
         let mut corrected = target_mapping.translate_buffer(&last.keys);
         corrected.push(last.boundary_char);
+        // For the manual hotkey we don't have the original boundary
+        // scancode any more (a space is the overwhelmingly common
+        // case, hard-coded here). If we ever want to support
+        // Enter/Tab boundaries on the manual path we'd need to stash
+        // them on `LastWord` too.
+        let mut replay: Vec<ReplayKey> = last
+            .keys
+            .iter()
+            .map(|k| ReplayKey {
+                scancode: k.scancode,
+                shift: k.shift,
+            })
+            .collect();
+        replay.push(ReplayKey {
+            scancode: 0x39,
+            shift: false,
+        });
         self.apply_correction(
             &last.layout,
             &target,
@@ -725,6 +813,7 @@ impl SwitcherEngine {
             last.rendered.chars().count() + 1,
             "manual switch-last hotkey",
             true,
+            Some(&replay),
         );
     }
 }
