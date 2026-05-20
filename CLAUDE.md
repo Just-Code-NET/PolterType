@@ -93,6 +93,26 @@ cargo xtask version bump         # release flow — see docs/RELEASING.md
 - Commits: imperative mood, scoped prefix when useful (`engine:`,
   `win:`, `ui:`, `ai:`).
 
+## Self-testing on Linux (kb-app)
+
+Claude is **pre-authorised** to run `kb-app` itself when diagnosing
+Linux-side issues — no extra confirmation needed. The active login
+session on this machine often isn't in the `input` group yet (group
+is added by `scripts/setup-linux.sh` but the session has to be
+re-opened to pick it up), so always wrap the launch in `sg input -c`:
+
+```bash
+sg input -c 'RUST_LOG=kb_input=debug,kb_layout=debug,kb_core=debug \
+    cargo run -p kb-app 2>&1 | tee /tmp/kb-switcher.log'
+```
+
+Run it in the background (Bash `run_in_background: true`) so the loop
+keeps running, give it ~5 seconds of real input, then kill it with
+`pkill -f 'target/.*/kb-switcher'` and read `/tmp/kb-switcher.log`.
+This authorisation covers `cargo run` / `cargo build` / `cargo test`
+for `kb-app` and the kill of the process Claude spawned itself — not
+push, force-push, branch deletion, or anything else destructive.
+
 ## Decision-making expectations
 
 - Default to **the simplest thing that solves the problem**. Premature
