@@ -8,6 +8,28 @@
 
 #![allow(dead_code)] // each backend uses a subset of these.
 
+use std::path::PathBuf;
+
+/// Pure-PATH lookup for a binary. We avoid the "run `foo --version`
+/// and check exit status" trick because not every CLI we care about
+/// has a working `--version` flag — Hyprland's `hyprctl` for example
+/// prints its usage and exits 1 when given an unrecognised flag, so
+/// the trick produces a false negative on a perfectly usable binary.
+pub fn which(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+pub fn cmd_exists(name: &str) -> bool {
+    which(name).is_some()
+}
+
 pub fn xkb_to_bcp47(code: &str) -> Option<&'static str> {
     Some(match code {
         "us" => "en-US",

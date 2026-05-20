@@ -19,28 +19,45 @@ use tracing::{debug, warn};
 
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 
-use super::shared::{bcp47_to_xkb, xkb_to_bcp47};
+use super::shared::{bcp47_to_xkb, cmd_exists, xkb_to_bcp47};
 
 pub struct KdeSwitcher {
     qdbus: &'static str,
 }
 
 pub fn try_init() -> Option<KdeSwitcher> {
+    // `XDG_CURRENT_DESKTOP=KDE` is authoritative. `KDE_FULL_SESSION`
+    // can leak into non-KDE sessions (a user on Hyprland/Sway with
+    // KDE/Plasma installed for the Qt theming stack will have it set
+    // to "true" without actually running KWin), so we don't trust it
+    // alone — it would mis-activate this backend on Hyprland where
+    // the Hyprland switcher is the one that actually works.
     let is_kde = std::env::var("XDG_CURRENT_DESKTOP")
         .map(|s| s.to_uppercase().contains("KDE"))
-        .unwrap_or(false)
-        || std::env::var("KDE_FULL_SESSION").is_ok();
+        .unwrap_or(false);
     if !is_kde {
         return None;
     }
-    if cmd_exists("qdbus6") {
-        return Some(KdeSwitcher { qdbus: "qdbus6" });
+    let candidate = if cmd_exists("qdbus6") {
+        KdeSwitcher { qdbus: "qdbus6" }
+    } else if cmd_exists("qdbus") {
+        KdeSwitcher { qdbus: "qdbus" }
+    } else {
+        warn!("XDG_CURRENT_DESKTOP=KDE but neither qdbus6 nor qdbus is in PATH");
+        return None;
+    };
+    // Probe the actual D-Bus service — if `org.kde.keyboard` isn't on
+    // the bus the daemon (`kded6`/`plasma-keyboard`) isn't running,
+    // and every subsequent call would just fail. Better to fall
+    // through to the next backend now.
+    if candidate.list_active().is_err() {
+        debug!(
+            qdbus = candidate.qdbus,
+            "KDE qdbus reachable but org.kde.keyboard not responding"
+        );
+        return None;
     }
-    if cmd_exists("qdbus") {
-        return Some(KdeSwitcher { qdbus: "qdbus" });
-    }
-    warn!("XDG_CURRENT_DESKTOP=KDE but neither qdbus6 nor qdbus is in PATH");
-    None
+    Some(candidate)
 }
 
 impl LayoutSwitcher for KdeSwitcher {
@@ -92,16 +109,6 @@ impl LayoutSwitcher for KdeSwitcher {
     fn backend_name(&self) -> &'static str {
         "linux-kde-qdbus"
     }
-}
-
-fn cmd_exists(name: &str) -> bool {
-    Command::new(name)
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 fn run(prog: &str, args: &[&str]) -> Result<String, LayoutError> {
