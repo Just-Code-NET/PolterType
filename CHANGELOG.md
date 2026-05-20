@@ -4,7 +4,50 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.14
+## [Unreleased] — 0.1.0-beta.15
+
+### Fixed — Linux/Wayland auto-switch on Hyprland + input-remapper setups
+
+The auto-switch + corrector pipeline did not actually work on a
+Wayland session running Hyprland with `keyd` (a common tiling-WM
+setup): the tray icon appeared but no layout was detected, nothing
+was corrected, and early attempts spiralled into a backspace/space
+loop that locked typing for seconds. Several distinct bugs:
+
+* **evdev listener deadlocked.** `Device::fetch_events` is blocking
+  by default; the single-thread fan-in loop stalled on the first
+  quiet device and never reached the keyboard `keyd` actually emits
+  through. The evdev FDs are now set non-blocking.
+* **Layout switch hit the wrong device.** `hyprctl switchxkblayout
+  main-keyboard` only flips one keyboard; with `keyd` the real input
+  flows through its virtual keyboard, which kept the old layout and
+  re-typed the original Latin glyphs. We now switch `all` devices.
+* **Active-layout query read the wrong device.** `current()` took the
+  first `active keymap` line (a stale power/sleep button), so the
+  engine misjudged the active layout and the tray ignored manual
+  Alt+Shift switches. It now reads the keyboard Hyprland flags
+  `main`, skipping our own uinput emitter.
+* **Corrector typed Unicode escape codes.** The Wayland emitter drove
+  the GTK `Ctrl+Shift+U <hex>` compose sequence, which most
+  terminals / Wayland-native apps render literally. The corrector now
+  replays the original scancodes after the layout flip (a new
+  `KeyEmitter::send_keys`), so the compositor's xkb mapping produces
+  the right glyphs. Windows/macOS keep their native Unicode path.
+* **Self-correction feedback loop.** Replayed events come back through
+  the listener without an `injected` marker (the remapper strips it),
+  so the engine re-corrected its own output indefinitely. A short
+  post-correction lockout window suppresses the echo.
+* **Dropped keystrokes in replays.** Packing press+release into one
+  uinput frame let libinput coalesce it into a zero-duration tap
+  (most visibly the trailing space between corrected words). Events
+  are now emitted one per frame with a small inter-event delay.
+* **Shift / Caps state was ignored.** The evdev listener left
+  modifiers empty, so corrections always came out lowercase. It now
+  tracks Shift/Ctrl/Alt/Super/CapsLock from the event stream.
+
+`scripts/setup-linux.sh` also re-triggers udev with `--action=change`
+and force-fixes `/dev/uinput` ownership so the permissions apply
+without a reboot.
 
 ### Added — "weak" dictionary list for rare-but-valid Hunspell forms
 
