@@ -124,6 +124,28 @@ fn match_chord(ev: &KeyEvent, chord: Chord, key_down: &mut bool) -> bool {
     }
 }
 
+/// How long after a paste shortcut we decline to auto-correct. Generous
+/// enough to cover a paste replayed as a keystroke burst, short enough
+/// that the next genuinely-typed word still gets corrected.
+const PASTE_GUARD: Duration = Duration::from_millis(1200);
+
+/// SC Set-1 scancode for the `V` key (matches evdev `KEY_V` on Linux).
+const SC_V: u32 = 0x2F;
+/// evdev `KEY_INSERT` — used for the Shift+Insert paste shortcut. (Insert
+/// has no plain SC-1 byte; the listener reports the raw evdev code.)
+const SC_INSERT: u32 = 110;
+
+/// True for the common clipboard-paste chords: `Ctrl+V`, `Ctrl+Shift+V`
+/// (terminals), and `Shift+Insert`. We only need the press edge.
+fn is_paste_shortcut(ev: &KeyEvent) -> bool {
+    if ev.direction != KeyDirection::Press {
+        return false;
+    }
+    let m = ev.modifiers;
+    (m.control && !m.alt && !m.meta && ev.scancode == SC_V)
+        || (m.shift && !m.control && !m.alt && !m.meta && ev.scancode == SC_INSERT)
+}
+
 pub struct SwitcherEngine {
     settings: Arc<SettingsStore>,
     layouts: Arc<LayoutDb>,
@@ -156,6 +178,21 @@ pub struct SwitcherEngine {
     /// the app enables them (Wayland) via
     /// [`EngineCommand::SetKeystreamHotkeys`].
     keystream_hotkeys: RwLock<KeystreamHotkeys>,
+    /// Wall-clock deadline before which auto-correction is suppressed
+    /// because the user just pasted (Ctrl+V / Ctrl+Shift+V / Shift+Insert).
+    ///
+    /// A clipboard paste is not "typing", so its text must never be
+    /// retyped into another layout. On most backends the pasted content
+    /// never reaches us as key events at all. But on Wayland the
+    /// compositor / input remapper (keyd & friends) can replay the
+    /// inserted text through a virtual keyboard, where it is
+    /// indistinguishable from human typing — the engine would then
+    /// "correct" a word the user never typed. We can't tell those
+    /// synthetic keystrokes apart event-by-event, so instead we mark a
+    /// short window after the paste shortcut and decline to auto-correct
+    /// anything that completes inside it. The buffer still tracks keys,
+    /// so normal correction resumes the moment the window lapses.
+    paste_guard_until: RwLock<Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -193,6 +230,7 @@ impl SwitcherEngine {
             last_word: Arc::new(RwLock::new(None)),
             injection_until: Arc::new(RwLock::new(Instant::now())),
             keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),
+            paste_guard_until: RwLock::new(Instant::now()),
         }
     }
 
@@ -365,6 +403,13 @@ impl SwitcherEngine {
         if *self.paused.read() {
             return;
         }
+        // A paste shortcut opens a window during which we won't
+        // auto-correct: the pasted text isn't something the user typed,
+        // and on Wayland it can echo back to us as synthetic keystrokes.
+        // See `paste_guard_until`.
+        if is_paste_shortcut(&ev) {
+            *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
+        }
         if ev.modifiers.is_command() {
             // Shortcuts (Ctrl+C, Cmd+V, …) — flush, don't accumulate.
             buffer.clear();
@@ -392,7 +437,14 @@ impl SwitcherEngine {
             boundary_shift,
         } = buffer.feed(ev, produced, letter_in_any_layout)
         {
-            self.decide(buffer, boundary_scancode, boundary_shift);
+            if Instant::now() < *self.paste_guard_until.read() {
+                // Word completed inside the post-paste window — almost
+                // certainly pasted text replayed as keystrokes, not
+                // typing. Drop it without correcting.
+                debug!("paste guard active — skipping correction for completed word");
+            } else {
+                self.decide(buffer, boundary_scancode, boundary_shift);
+            }
             buffer.start_new_word();
         }
     }
@@ -539,6 +591,24 @@ impl SwitcherEngine {
         // we stay quiet by default in code / URL / path contexts,
         // but if the user explicitly hits the hotkey we always do
         // the switch.
+
+        // Filter 0a: submission / navigation boundary (Enter, Tab).
+        // Re-emitting one of these as part of the correction replay
+        // executes a shell command, sends a chat message, or fires a
+        // completion — and the correction fires too late to be useful
+        // anyway (the line is already submitted). Stay out of it.
+        if is_submission_boundary(boundary_char) {
+            debug!(
+                token = %current_text,
+                "skipping auto-switch: submission boundary (Enter/Tab)"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "submission boundary after `{current_text}` — not re-emitting Enter/Tab"
+                ),
+            });
+            return;
+        }
 
         // Filter 0: structural boundary character. If the user
         // ended the word with `:` / `/` / `\` / `@` / `=` / `#` /
@@ -966,6 +1036,20 @@ fn is_structural_boundary(ch: char) -> bool {
     matches!(ch, ':' | '/' | '\\' | '@' | '=' | '#' | '&')
 }
 
+/// A boundary that *submits* or *navigates* rather than separating words
+/// mid-line: Enter/Return, Tab. Auto-correction re-emits the boundary
+/// key after the corrected word, and re-pressing one of these is
+/// destructive — in a terminal it runs a command, in a chat app it sends
+/// the message, with Tab it triggers completion / moves focus. By the
+/// time our (necessarily delayed) correction fires the line has usually
+/// already been submitted, so the replay also lands on a fresh prompt as
+/// garbage. We therefore never auto-correct on these boundaries. The
+/// manual switch-last hotkey still works — `last_word` is stashed before
+/// this filter runs.
+fn is_submission_boundary(ch: char) -> bool {
+    matches!(ch, '\n' | '\r' | '\t')
+}
+
 /// Decide whether `id` belongs in the candidate set the detectors get
 /// to score against. Three filters, AND'd together:
 ///
@@ -1050,7 +1134,7 @@ fn render_for_code_check(
 
 #[cfg(test)]
 mod boundary_tests {
-    use super::is_structural_boundary;
+    use super::{is_structural_boundary, is_submission_boundary};
 
     #[test]
     fn flags_url_path_email_chars() {
@@ -1067,6 +1151,26 @@ mod boundary_tests {
             assert!(
                 !is_structural_boundary(c),
                 "expected {c:?} natural-prose punctuation"
+            );
+        }
+    }
+
+    #[test]
+    fn submission_boundary_flags_enter_and_tab() {
+        for c in ['\n', '\r', '\t'] {
+            assert!(is_submission_boundary(c), "expected {c:?} submission");
+        }
+    }
+
+    #[test]
+    fn submission_boundary_ignores_space_and_punctuation() {
+        // Space and ordinary punctuation are safe to re-emit, so they
+        // must NOT be treated as submission boundaries (auto-correct
+        // should still fire on them).
+        for c in [' ', '.', ',', ';', '!', '?', ':', '/'] {
+            assert!(
+                !is_submission_boundary(c),
+                "expected {c:?} not a submission boundary"
             );
         }
     }
@@ -1477,5 +1581,87 @@ mod chord_tests {
             CTRL_SHIFT_SPACE,
             &mut down
         ));
+    }
+}
+
+#[cfg(test)]
+mod paste_shortcut_tests {
+    use super::{SC_INSERT, SC_V, is_paste_shortcut};
+    use kb_input::{KeyDirection, KeyEvent, Modifiers};
+
+    fn ev(scancode: u32, direction: KeyDirection, mods: Modifiers) -> KeyEvent {
+        KeyEvent {
+            vk: scancode,
+            scancode,
+            direction,
+            modifiers: mods,
+            injected: false,
+            timestamp_ms: 0,
+        }
+    }
+
+    fn ctrl() -> Modifiers {
+        Modifiers {
+            control: true,
+            ..Modifiers::NONE
+        }
+    }
+
+    #[test]
+    fn detects_ctrl_v_and_ctrl_shift_v() {
+        assert!(is_paste_shortcut(&ev(SC_V, KeyDirection::Press, ctrl())));
+        let ctrl_shift = Modifiers {
+            control: true,
+            shift: true,
+            ..Modifiers::NONE
+        };
+        assert!(is_paste_shortcut(&ev(
+            SC_V,
+            KeyDirection::Press,
+            ctrl_shift
+        )));
+    }
+
+    #[test]
+    fn detects_shift_insert() {
+        let shift = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+        assert!(is_paste_shortcut(&ev(
+            SC_INSERT,
+            KeyDirection::Press,
+            shift
+        )));
+    }
+
+    #[test]
+    fn ignores_release_edge() {
+        assert!(!is_paste_shortcut(&ev(SC_V, KeyDirection::Release, ctrl())));
+    }
+
+    #[test]
+    fn ignores_plain_v_and_other_ctrl_combos() {
+        // Plain `v` is just a letter, not a paste.
+        assert!(!is_paste_shortcut(&ev(
+            SC_V,
+            KeyDirection::Press,
+            Modifiers::NONE
+        )));
+        // Ctrl+C must not be mistaken for a paste.
+        let ctrl_c = 0x2E; // SC1 / evdev KEY_C
+        assert!(!is_paste_shortcut(&ev(ctrl_c, KeyDirection::Press, ctrl())));
+    }
+
+    #[test]
+    fn ctrl_alt_v_is_not_paste() {
+        // AltGr+V (Ctrl+Alt) is a dead-key / compose combo on some
+        // layouts, not a paste — the alt veto keeps it out.
+        let ctrl_alt = Modifiers {
+            control: true,
+            alt: true,
+            ..Modifiers::NONE
+        };
+        assert!(!is_paste_shortcut(&ev(SC_V, KeyDirection::Press, ctrl_alt)));
     }
 }

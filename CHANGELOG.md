@@ -4,7 +4,36 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.16
+## [Unreleased] — 0.1.0
+
+First stable release — drops the `-beta` pre-release suffix. No new
+features beyond the fixes below; this version marks the Linux/Wayland
+path as working well enough on the maintainer's daily-driver setup
+(Hyprland + keyd) to leave beta.
+
+### Fixed — never re-press Enter/Tab during a correction
+
+Auto-correction re-emits the boundary key after the corrected word.
+When that boundary was Enter, the correction pressed Enter a second
+time — in a terminal that ran a spurious command (e.g. typing
+`podman start --all`, hitting Enter, and having a stray `і` typed and
+executed at the next prompt); in a chat app it would send a message.
+The engine now treats Enter / Return / Tab as submission boundaries
+and never auto-corrects on them. The manual switch-last hotkey is
+unaffected.
+
+### Fixed — clipboard paste no longer gets "corrected"
+
+Pasting text with `Ctrl+V` (or `Ctrl+Shift+V` / `Shift+Insert`) could
+trigger an auto-correction of the pasted word. A paste isn't typing
+and must never be retyped into another layout, but on Wayland the
+compositor / input remapper (keyd & friends) can replay the inserted
+text through a virtual keyboard, where it is indistinguishable from
+human keystrokes. The engine now opens a short window after any paste
+shortcut during which it declines to auto-correct, so pasted content
+is left exactly as-is. The next genuinely-typed word is unaffected.
+
+## [0.1.0-beta.16] — Wayland keystream hotkeys + evdev reconnect
 
 ### Added — Wayland hotkeys handled off the key stream
 
