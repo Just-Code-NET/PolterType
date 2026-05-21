@@ -284,6 +284,16 @@ fn main() -> Result<()> {
         warn!("no input listener backend; engine will receive no events");
     }
 
+    // On the Wayland/evdev backend the OS-level `global-hotkey` grab
+    // never sees native input (it can only bind through Xwayland, which
+    // Hyprland & friends don't route real keystrokes into). The evdev
+    // listener, however, observes every key — so we detect the hotkey
+    // chords straight off that stream instead. We never run both paths
+    // for one backend, so there's no double-fire.
+    let use_keystream_hotkeys = input_listener
+        .as_ref()
+        .is_some_and(|l| l.backend_name() == "linux-wayland-evdev");
+
     // ─── Tao event loop + tray + global hotkeys ────────────────────
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
@@ -355,15 +365,49 @@ fn main() -> Result<()> {
         &settings.snapshot().hotkeys.pause_toggle,
         "Ctrl+Shift+Space",
     );
-    let hk_switch = parse_hotkey_or_default(
-        &settings.snapshot().hotkeys.manual_switch_last,
-        "Ctrl+Shift+Backspace",
-    );
-    if let Err(e) = hotkey_manager.register(hk_pause) {
-        warn!(?e, hotkey = ?hk_pause, "could not register pause hotkey");
-    }
-    if let Err(e) = hotkey_manager.register(hk_switch) {
-        warn!(?e, hotkey = ?hk_switch, "could not register switch-last hotkey");
+    // Switch-last default is backend-dependent. The cross-platform
+    // default `Ctrl+Shift+Backspace` is fine where the OS *consumes* the
+    // hotkey (Windows/X11), but on the Wayland keystream path we can
+    // only *observe* keys — the Backspace also reaches the focused app,
+    // where `Ctrl+Backspace` means "delete the previous word" and
+    // corrupts the very text we're about to correct. So when the user
+    // hasn't moved off that default, rebind to a key with no
+    // destructive in-app effect. An explicit custom binding is honoured
+    // as-is.
+    let configured_switch = settings.snapshot().hotkeys.manual_switch_last;
+    let switch_src = if use_keystream_hotkeys && configured_switch == DEFAULT_SWITCH_LAST {
+        info!(
+            rebound_to = WAYLAND_SAFE_SWITCH_LAST,
+            "Wayland: default switch-last ({DEFAULT_SWITCH_LAST}) is destructive in-app; using a safe key"
+        );
+        WAYLAND_SAFE_SWITCH_LAST
+    } else {
+        &configured_switch
+    };
+    let hk_switch = parse_hotkey_or_default(switch_src, DEFAULT_SWITCH_LAST);
+    if use_keystream_hotkeys {
+        // Wayland: feed resolved chords to the engine; it matches them
+        // off the evdev stream. Unmappable keys (no SC Set-1 equivalent
+        // in our table) are dropped with a warning rather than failing.
+        let chords = kb_core::engine::KeystreamHotkeys {
+            pause: chord_from_hotkey(&hk_pause),
+            switch_last: chord_from_hotkey(&hk_switch),
+        };
+        if chords.pause.is_none() {
+            warn!(hotkey = ?hk_pause, "pause hotkey key not mappable to a scancode; disabled");
+        }
+        if chords.switch_last.is_none() {
+            warn!(hotkey = ?hk_switch, "switch-last hotkey key not mappable to a scancode; disabled");
+        }
+        let _ = engine_cmd_tx.send(EngineCommand::SetKeystreamHotkeys(chords));
+        info!("hotkeys handled off the key stream (Wayland/evdev backend)");
+    } else {
+        if let Err(e) = hotkey_manager.register(hk_pause) {
+            warn!(?e, hotkey = ?hk_pause, "could not register pause hotkey");
+        }
+        if let Err(e) = hotkey_manager.register(hk_switch) {
+            warn!(?e, hotkey = ?hk_switch, "could not register switch-last hotkey");
+        }
     }
     let pause_hotkey_id = hk_pause.id();
     let switch_hotkey_id = hk_switch.id();
@@ -562,6 +606,15 @@ fn open_path(path: &std::path::Path, what: &str) {
 /// a warning and fall back to `default_str` so the app boots with a
 /// usable hotkey rather than nothing — matches the Settings UI's
 /// "loud-but-graceful" approach to bad config values.
+/// Cross-platform default for the manual "switch the last word" hotkey.
+const DEFAULT_SWITCH_LAST: &str = "Ctrl+Shift+Backspace";
+
+/// Wayland substitute for [`DEFAULT_SWITCH_LAST`]: a key the focused app
+/// won't act on destructively (unlike `Ctrl+Backspace`, which deletes a
+/// word). Used only when the user keeps the default on the evdev
+/// keystream backend; any explicit custom binding wins.
+const WAYLAND_SAFE_SWITCH_LAST: &str = "Ctrl+Shift+F9";
+
 fn parse_hotkey_or_default(s: &str, default_str: &str) -> HotKey {
     match s.parse::<HotKey>() {
         Ok(h) => h,
@@ -580,6 +633,85 @@ fn parse_hotkey_or_default(s: &str, default_str: &str) -> HotKey {
                 .unwrap_or_else(|_| HotKey::new(Some(HkMods::CONTROL | HkMods::SHIFT), Code::Space))
         }
     }
+}
+
+/// Resolve a parsed [`HotKey`] into an engine-side [`Chord`] for the
+/// keystream (Wayland) path. Returns `None` when the main key has no
+/// entry in our SC Set-1 table — the chord is then simply unbound on
+/// that backend (best-effort, per the Wayland support policy).
+fn chord_from_hotkey(hk: &HotKey) -> Option<kb_core::engine::Chord> {
+    Some(kb_core::engine::Chord {
+        ctrl: hk.mods.contains(HkMods::CONTROL),
+        shift: hk.mods.contains(HkMods::SHIFT),
+        alt: hk.mods.contains(HkMods::ALT),
+        meta: hk.mods.contains(HkMods::META),
+        scancode: code_to_sc1(hk.key)?,
+    })
+}
+
+/// W3C `Code` → Win SC Set-1 scancode. On Linux these coincide with the
+/// evdev key codes the listener reports (see `evdev_to_sc1`), so the
+/// same table serves matching against the live stream. Covers the keys
+/// realistically used in a hotkey; anything else returns `None`.
+fn code_to_sc1(code: Code) -> Option<u32> {
+    Some(match code {
+        Code::Escape => 0x01,
+        Code::Digit1 => 0x02,
+        Code::Digit2 => 0x03,
+        Code::Digit3 => 0x04,
+        Code::Digit4 => 0x05,
+        Code::Digit5 => 0x06,
+        Code::Digit6 => 0x07,
+        Code::Digit7 => 0x08,
+        Code::Digit8 => 0x09,
+        Code::Digit9 => 0x0A,
+        Code::Digit0 => 0x0B,
+        Code::Minus => 0x0C,
+        Code::Equal => 0x0D,
+        Code::Backspace => 0x0E,
+        Code::Tab => 0x0F,
+        Code::KeyQ => 0x10,
+        Code::KeyW => 0x11,
+        Code::KeyE => 0x12,
+        Code::KeyR => 0x13,
+        Code::KeyT => 0x14,
+        Code::KeyY => 0x15,
+        Code::KeyU => 0x16,
+        Code::KeyI => 0x17,
+        Code::KeyO => 0x18,
+        Code::KeyP => 0x19,
+        Code::Enter => 0x1C,
+        Code::KeyA => 0x1E,
+        Code::KeyS => 0x1F,
+        Code::KeyD => 0x20,
+        Code::KeyF => 0x21,
+        Code::KeyG => 0x22,
+        Code::KeyH => 0x23,
+        Code::KeyJ => 0x24,
+        Code::KeyK => 0x25,
+        Code::KeyL => 0x26,
+        Code::KeyZ => 0x2C,
+        Code::KeyX => 0x2D,
+        Code::KeyC => 0x2E,
+        Code::KeyV => 0x2F,
+        Code::KeyB => 0x30,
+        Code::KeyN => 0x31,
+        Code::KeyM => 0x32,
+        Code::Space => 0x39,
+        Code::F1 => 0x3B,
+        Code::F2 => 0x3C,
+        Code::F3 => 0x3D,
+        Code::F4 => 0x3E,
+        Code::F5 => 0x3F,
+        Code::F6 => 0x40,
+        Code::F7 => 0x41,
+        Code::F8 => 0x42,
+        Code::F9 => 0x43,
+        Code::F10 => 0x44,
+        Code::F11 => 0x57,
+        Code::F12 => 0x58,
+        _ => return None,
+    })
 }
 
 /// Build one dictionary set per configured wordlist profile, ready

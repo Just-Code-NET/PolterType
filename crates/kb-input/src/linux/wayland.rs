@@ -16,11 +16,13 @@
 
 #![allow(unused_imports, dead_code)] // Linux-only; gated by cfg in lib.rs.
 
+use std::collections::HashSet;
 use std::os::fd::AsRawFd;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::Sender;
 use evdev::uinput::VirtualDevice;
@@ -72,12 +74,29 @@ impl InputListener for EvdevListener {
     }
 }
 
-fn open_keyboard_devices() -> Vec<Device> {
+/// One opened keyboard, paired with its `/dev/input/event*` path so the
+/// rescan loop can tell which devices it has already taken.
+struct OpenDevice {
+    path: PathBuf,
+    dev: Device,
+}
+
+fn open_keyboard_devices() -> Vec<OpenDevice> {
+    open_keyboard_devices_except(&HashSet::new())
+}
+
+/// Open every keyboard `evdev` device whose path is not already in
+/// `skip`. Used both for the initial scan (empty `skip`) and for the
+/// periodic rescan that picks up hot-plugged / reconnected keyboards.
+fn open_keyboard_devices_except(skip: &HashSet<PathBuf>) -> Vec<OpenDevice> {
     // evdev 0.13's `enumerate()` is infallible — it yields whatever
     // is openable and silently skips the rest. Permission errors on
     // individual devices fall through, which is exactly what we want.
     evdev::enumerate()
         .filter_map(|(path, dev)| {
+            if skip.contains(&path) {
+                return None;
+            }
             // Heuristic: a device that advertises KEY_A is a keyboard.
             let is_keyboard = dev
                 .supported_keys()
@@ -100,7 +119,7 @@ fn open_keyboard_devices() -> Vec<Device> {
                 return None;
             }
             debug!(?path, name = %name, "evdev: opened keyboard");
-            Some(dev)
+            Some(OpenDevice { path, dev })
         })
         .collect()
 }
@@ -121,7 +140,7 @@ fn set_nonblocking(dev: &Device) -> std::io::Result<()> {
     Ok(())
 }
 
-fn drain_devices(mut devices: Vec<Device>, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
+fn drain_devices(mut devices: Vec<OpenDevice>, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
     // Naive multi-device polling — for v0.1 we just spin a small
     // loop that asks each device for events. epoll-based fan-in is a
     // v0.1.x optimisation.
@@ -136,10 +155,17 @@ fn drain_devices(mut devices: Vec<Device>, sink: Sender<KeyEvent>, stop: Arc<Ato
     let mut alt_down = false;
     let mut super_down = false;
     let mut caps_on = false;
+    // Re-enumerate `/dev/input` on this cadence to pick up keyboards that
+    // were plugged in (or a Bluetooth keyboard powered back on) after the
+    // listener started. Cheap enough at 2 s; well below the time a human
+    // takes to reconnect a device and start typing.
+    let rescan_every = Duration::from_secs(2);
+    let mut last_rescan = Instant::now();
     while !stop.load(Ordering::SeqCst) {
         let mut got_any = false;
-        for dev in devices.iter_mut() {
-            match dev.fetch_events() {
+        let mut dead = Vec::new();
+        for (idx, od) in devices.iter_mut().enumerate() {
+            match od.dev.fetch_events() {
                 Ok(events) => {
                     for ev in events {
                         update_modifiers(
@@ -166,7 +192,34 @@ fn drain_devices(mut devices: Vec<Device>, sink: Sender<KeyEvent>, stop: Arc<Ato
                     }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                // A disconnected device (Bluetooth keyboard powered off,
+                // USB unplugged) reports ENODEV on every poll. Left in
+                // the list it would re-error a few hundred times a second
+                // and flood the log forever, so drop it once and move on.
+                Err(e) if e.raw_os_error() == Some(libc::ENODEV) => {
+                    info!("evdev device disconnected — dropping it");
+                    dead.push(idx);
+                }
                 Err(e) => warn!(?e, "evdev fetch_events"),
+            }
+        }
+        // Remove dead devices high-index-first so earlier indices stay valid.
+        for idx in dead.into_iter().rev() {
+            devices.swap_remove(idx);
+        }
+        // Periodically re-enumerate so a reconnected keyboard is picked
+        // back up. We keep the thread alive even when `devices` is empty
+        // (every keyboard unplugged) so the rescan can revive it.
+        if last_rescan.elapsed() >= rescan_every {
+            last_rescan = Instant::now();
+            let open: HashSet<PathBuf> = devices.iter().map(|od| od.path.clone()).collect();
+            let fresh = open_keyboard_devices_except(&open);
+            if !fresh.is_empty() {
+                info!(
+                    count = fresh.len(),
+                    "evdev: picked up new keyboard device(s)"
+                );
+                devices.extend(fresh);
             }
         }
         if !got_any {
@@ -350,17 +403,31 @@ impl KeyEmitter for UinputEmitter {
         // and large enough to clear that coalescing window.
         let step = Duration::from_millis(4);
         // The very last key in the replay is the boundary the user
-        // typed (almost always Space). libinput / keyd appear to
-        // sometimes coalesce a short press-then-release at the tail
-        // of an event burst into nothing, which is the symptom of
-        // the "missing space between two corrected words" report.
-        // Holding the boundary key down 20 ms before release is far
-        // below human-noticeable but enough that no downstream
-        // filter treats it as a debouncer event.
+        // typed (almost always Space) — and it's the most-reported
+        // casualty of downstream coalescing. There are *two* distinct
+        // ways keyd / libinput lose it, and the boundary needs guarding
+        // against both:
+        //
+        //   1. A short press-then-release at the tail of an event burst
+        //      gets treated as a zero-duration tap and dropped. Holding
+        //      the key down before releasing defeats this.
+        //   2. The boundary's *press* lands only `step` (4 ms) after the
+        //      previous key's *release*; a remapper that coalesces
+        //      events within that window merges them, swallowing the
+        //      press and leaving a lone release that produces no
+        //      character. The visible symptom is exactly the user's
+        //      report: corrected words glue together with the space
+        //      gone. A guard gap *before* the boundary press isolates
+        //      it from the previous key so the press always survives.
+        //
+        // Both guards are well below human-noticeable for a handful of
+        // keystrokes but comfortably clear the coalescing window.
         let last_hold = Duration::from_millis(20);
+        let boundary_guard = Duration::from_millis(12);
         let last_idx = keys.len() - 1;
         for (i, rk) in keys.iter().enumerate() {
             let kc = rk.scancode as u16;
+            let is_last = i == last_idx;
             debug!(scancode = rk.scancode, shift = rk.shift, "uinput key");
             if rk.shift {
                 emit_one(
@@ -369,10 +436,16 @@ impl KeyEmitter for UinputEmitter {
                 )?;
                 thread::sleep(step);
             }
+            // Isolate the boundary press from the previous key's release.
+            if is_last {
+                thread::sleep(boundary_guard);
+            }
             emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 1))?;
-            thread::sleep(if i == last_idx { last_hold } else { step });
+            thread::sleep(if is_last { last_hold } else { step });
             emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 0))?;
-            thread::sleep(step);
+            // Give the boundary release time to settle before the burst
+            // goes quiet, so it isn't the un-flushed tail of the stream.
+            thread::sleep(if is_last { boundary_guard } else { step });
             if rk.shift {
                 emit_one(
                     dev,

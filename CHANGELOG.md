@@ -4,7 +4,38 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0-beta.15
+## [Unreleased] — 0.1.0-beta.16
+
+### Added — Wayland hotkeys handled off the key stream
+
+On the Wayland/evdev backend the OS-level `global-hotkey` grab never
+sees native input — it can only bind through Xwayland, which Hyprland
+and friends don't route real keystrokes into. So the pause and
+switch-last hotkeys silently did nothing on a pure Wayland session.
+The evdev listener already observes every key, so the engine now
+matches the hotkey chords straight off that stream instead. Detection
+is rising-edge (one fire per physical press, autorepeat ignored) and
+requires an exact modifier match, so `Ctrl+Shift+Space` never fires on
+`Ctrl+Shift+Alt+Space`. The two paths are mutually exclusive per
+backend, so there's no double-fire on Windows/X11.
+
+The default switch-last binding (`Ctrl+Shift+Backspace`) is also
+rebound to a safe key (`Ctrl+Shift+F9`) on the keystream path: there
+the Backspace also reaches the focused app, where `Ctrl+Backspace`
+means "delete the previous word" and would corrupt the very text being
+corrected. An explicit custom binding is always honoured as-is.
+
+### Fixed — evdev listener no longer floods the log when a keyboard disconnects
+
+Powering off a Bluetooth keyboard (or unplugging a USB one) left its
+evdev fd returning `ENODEV` on every poll, and the listener re-polled
+it hundreds of times a second — warning on each, flooding the log
+forever. A disconnected device is now dropped from the poll set on the
+first `ENODEV`. The listener also re-enumerates `/dev/input` every two
+seconds, so a reconnected keyboard is picked back up automatically
+instead of staying dead until the app restarts.
+
+## [0.1.0-beta.15] — Linux/Wayland auto-switch on Hyprland + keyd
 
 ### Fixed — Linux/Wayland auto-switch on Hyprland + input-remapper setups
 

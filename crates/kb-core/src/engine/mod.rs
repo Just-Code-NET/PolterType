@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, select_biased};
 use kb_detect::{Detector, Verdict, looks_like_code_token};
-use kb_input::{FocusTracker, InputError, KeyEmitter, KeyEvent, ReplayKey};
+use kb_input::{FocusTracker, InputError, KeyDirection, KeyEmitter, KeyEvent, ReplayKey};
 use kb_layout::{LayoutId, LayoutSwitcher};
 use kb_types::SwitchAction;
 use parking_lot::RwLock;
@@ -59,6 +59,69 @@ pub enum EngineCommand {
     SwitchLastForcefully,
     /// Settings changed; refresh whatever caches the engine keeps.
     SettingsReloaded,
+    /// Enable (or update) hotkey detection straight off the key stream.
+    /// Used on backends where the OS-level [`global-hotkey`] grab can't
+    /// see input — notably Wayland, where the evdev listener is the only
+    /// thing that observes `Ctrl+Shift+Space` at all. An empty value
+    /// disables keystream detection (the OS grab is doing the job).
+    SetKeystreamHotkeys(KeystreamHotkeys),
+}
+
+/// A resolved hotkey chord matched against the raw key stream.
+///
+/// `scancode` is Win SC Set-1 (the layout-independent identifier the
+/// listener already produces — see [`kb_types::KeyEvent::scancode`]).
+/// Modifier fields are matched exactly: extra held modifiers do *not*
+/// match, so `Ctrl+Shift+Space` never fires on `Ctrl+Shift+Alt+Space`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chord {
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
+    pub meta: bool,
+    pub scancode: u32,
+}
+
+/// The two engine hotkeys, resolved to key-stream chords. `None` means
+/// "not bound on this backend".
+#[derive(Debug, Clone, Copy, Default)]
+pub struct KeystreamHotkeys {
+    pub pause: Option<Chord>,
+    pub switch_last: Option<Chord>,
+}
+
+/// Per-chord rising-edge tracking. evdev reports autorepeat as repeated
+/// presses, so we latch on the first press and only re-arm on release —
+/// one fire per physical keypress, no matter how long it's held.
+#[derive(Default)]
+struct ChordState {
+    pause_key_down: bool,
+    switch_key_down: bool,
+}
+
+/// Returns `true` exactly once per physical press of `chord`'s key while
+/// the chord's modifiers are held. `key_down` carries the latch state
+/// across calls.
+fn match_chord(ev: &KeyEvent, chord: Chord, key_down: &mut bool) -> bool {
+    if ev.scancode != chord.scancode {
+        return false;
+    }
+    match ev.direction {
+        KeyDirection::Release => {
+            *key_down = false;
+            false
+        }
+        KeyDirection::Press => {
+            if *key_down {
+                return false; // autorepeat — already handled this press
+            }
+            *key_down = true;
+            ev.modifiers.control == chord.ctrl
+                && ev.modifiers.shift == chord.shift
+                && ev.modifiers.alt == chord.alt
+                && ev.modifiers.meta == chord.meta
+        }
+    }
 }
 
 pub struct SwitcherEngine {
@@ -89,6 +152,10 @@ pub struct SwitcherEngine {
     /// reliable fix that doesn't require a deeper rewrite (Wayland's
     /// `zwp_virtual_keyboard_v1` would be the proper long-term path).
     injection_until: Arc<RwLock<Instant>>,
+    /// Hotkey chords matched directly off the key stream. Empty unless
+    /// the app enables them (Wayland) via
+    /// [`EngineCommand::SetKeystreamHotkeys`].
+    keystream_hotkeys: RwLock<KeystreamHotkeys>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,6 +192,7 @@ impl SwitcherEngine {
             paused: Arc::new(RwLock::new(false)),
             last_word: Arc::new(RwLock::new(None)),
             injection_until: Arc::new(RwLock::new(Instant::now())),
+            keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),
         }
     }
 
@@ -136,6 +204,7 @@ impl SwitcherEngine {
     pub fn run(self, key_rx: Receiver<KeyEvent>, cmd_rx: Receiver<EngineCommand>) {
         let mut buffer = WordBuffer::new();
         let mut last_event_at = Instant::now();
+        let mut chord_state = ChordState::default();
         let idle_timeout = Duration::from_millis(self.settings.snapshot().engine.idle_timeout_ms);
 
         info!(
@@ -161,6 +230,7 @@ impl SwitcherEngine {
             match event {
                 Either::Cmd(cmd) => self.handle_command(cmd, &mut buffer),
                 Either::Key(ev) => {
+                    self.check_keystream_hotkeys(&ev, &mut chord_state, &mut buffer);
                     if last_event_at.elapsed() > idle_timeout {
                         debug!("idle timeout — clearing word buffer");
                         buffer.clear();
@@ -180,8 +250,45 @@ impl SwitcherEngine {
         info!("engine shutting down");
     }
 
+    /// Match the raw key event against the keystream hotkeys (Wayland
+    /// path). Mirrors what the OS `global-hotkey` grab does on other
+    /// backends, dispatching the same [`EngineCommand`]s.
+    ///
+    /// Two guards keep our own replayed corrections from re-triggering a
+    /// chord: `injected` events are ignored outright, and so is anything
+    /// inside the post-correction lockout window — during a manual
+    /// switch the user may still be holding `Ctrl+Shift` while our
+    /// uinput backspaces echo back as `Ctrl+Shift+Backspace`. Run before
+    /// the paused early-return in `handle_key` so the pause chord can
+    /// also *resume*.
+    fn check_keystream_hotkeys(
+        &self,
+        ev: &KeyEvent,
+        state: &mut ChordState,
+        buffer: &mut WordBuffer,
+    ) {
+        if ev.injected || Instant::now() < *self.injection_until.read() {
+            return;
+        }
+        let hk = *self.keystream_hotkeys.read();
+        if let Some(c) = hk.pause {
+            if match_chord(ev, c, &mut state.pause_key_down) {
+                self.handle_command(EngineCommand::TogglePause, buffer);
+            }
+        }
+        if let Some(c) = hk.switch_last {
+            if match_chord(ev, c, &mut state.switch_key_down) {
+                self.handle_command(EngineCommand::SwitchLastForcefully, buffer);
+            }
+        }
+    }
+
     fn handle_command(&self, cmd: EngineCommand, buffer: &mut WordBuffer) {
         match cmd {
+            EngineCommand::SetKeystreamHotkeys(hk) => {
+                info!(?hk, "keystream hotkeys configured");
+                *self.keystream_hotkeys.write() = hk;
+            }
             EngineCommand::TogglePause => {
                 let mut g = self.paused.write();
                 *g = !*g;
@@ -1252,5 +1359,123 @@ mod app_match_tests {
     fn ignores_unrelated_apps() {
         let list: Vec<String> = ["Code.exe"].iter().map(|s| (*s).to_owned()).collect();
         assert!(!app_is_disabled("notepad.exe", &list));
+    }
+}
+
+#[cfg(test)]
+mod chord_tests {
+    use super::{Chord, match_chord};
+    use kb_input::{KeyDirection, KeyEvent, Modifiers};
+
+    const SPACE: u32 = 0x39;
+    const CTRL_SHIFT_SPACE: Chord = Chord {
+        ctrl: true,
+        shift: true,
+        alt: false,
+        meta: false,
+        scancode: SPACE,
+    };
+
+    fn ev(scancode: u32, direction: KeyDirection, mods: Modifiers) -> KeyEvent {
+        KeyEvent {
+            vk: scancode,
+            scancode,
+            direction,
+            modifiers: mods,
+            injected: false,
+            timestamp_ms: 0,
+        }
+    }
+
+    fn ctrl_shift() -> Modifiers {
+        Modifiers {
+            control: true,
+            shift: true,
+            ..Modifiers::NONE
+        }
+    }
+
+    #[test]
+    fn fires_once_per_press_ignoring_autorepeat() {
+        let mut down = false;
+        // First press fires.
+        assert!(match_chord(
+            &ev(SPACE, KeyDirection::Press, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+        // Autorepeat (press again without release) does NOT fire.
+        assert!(!match_chord(
+            &ev(SPACE, KeyDirection::Press, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+    }
+
+    #[test]
+    fn release_rearms_for_next_press() {
+        let mut down = false;
+        assert!(match_chord(
+            &ev(SPACE, KeyDirection::Press, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+        assert!(!match_chord(
+            &ev(SPACE, KeyDirection::Release, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+        // Re-armed — a fresh press fires again.
+        assert!(match_chord(
+            &ev(SPACE, KeyDirection::Press, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+    }
+
+    #[test]
+    fn requires_exact_modifiers() {
+        let mut down = false;
+        // Extra Alt held → no match.
+        let with_alt = Modifiers {
+            control: true,
+            shift: true,
+            alt: true,
+            ..Modifiers::NONE
+        };
+        assert!(!match_chord(
+            &ev(SPACE, KeyDirection::Press, with_alt),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+        // Missing Shift → no match.
+        let mut down2 = false;
+        let ctrl_only = Modifiers {
+            control: true,
+            ..Modifiers::NONE
+        };
+        assert!(!match_chord(
+            &ev(SPACE, KeyDirection::Press, ctrl_only),
+            CTRL_SHIFT_SPACE,
+            &mut down2
+        ));
+    }
+
+    #[test]
+    fn other_keys_do_not_disturb_latch() {
+        let mut down = false;
+        // A different key's events must not flip our latch.
+        assert!(!match_chord(
+            &ev(0x1E, KeyDirection::Press, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
+        assert!(!down);
+        // The real chord still fires on its first press.
+        assert!(match_chord(
+            &ev(SPACE, KeyDirection::Press, ctrl_shift()),
+            CTRL_SHIFT_SPACE,
+            &mut down
+        ));
     }
 }
