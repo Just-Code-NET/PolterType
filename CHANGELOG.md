@@ -4,7 +4,51 @@ All notable changes to kb-switcher are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.0
+## [Unreleased] — 0.1.1
+
+Two follow-up fixes for the most common "the corrector glitched on me"
+reports against 0.1.0 — both Linux/Wayland symptoms, both pure-Rust
+core / listener changes.
+
+### Fixed — ALL-CAPS abbreviations are no longer "corrected"
+
+Typing a word entirely in uppercase (`URL`, `HTTP`, `API`, `ССЫЛКА`,
+…) by holding Shift or via Caps Lock is almost always deliberate —
+an abbreviation or a shouted word — not someone "in the wrong
+layout". The auto-switch detector would occasionally take the bait
+on these tokens (an ALL-CAPS string often happens to render as
+something letter-like in the other layout) and replace the
+abbreviation with gibberish. The engine now skips auto-switching for
+buffers where every cased letter is uppercase and there are at least
+two of them. Mixed-case (`Hello`, `iPhone`, `IPv4`) and single
+capital letters (sentence starts, `I` / `Я`) are unaffected; the
+manual switch-last hotkey (`Ctrl+Shift+Backspace`) still works on
+ALL-CAPS buffers for the rare case where the user really did want to
+flip layouts. Controlled by `[engine].suppress_for_all_caps`
+(default: on).
+
+On Linux/Wayland the listener folds Caps Lock into the effective
+shift bit, so both held-Shift and Caps-Lock-on variants are caught.
+On Windows / macOS only the held-Shift variant is caught for now —
+folding Caps Lock into the modifier on those backends is a separate
+per-OS listener change.
+
+### Fixed — corrector no longer eats the trailing space on Wayland
+
+The long-standing report "corrected words run together — the space
+gets cut" turned out to be a held-key bug, not a coalescing one. The
+boundary key (almost always Space) that triggers the correction is
+still physically held down when our uinput replay reaches it: the
+user just pressed Space, the engine reacted within ~10 ms, but human
+fingers don't release that fast. Injecting a *press* for an already-
+down key is a no-op at the compositor — global key state is already
+"down", so no character is produced. The replay now emits a release
+for the boundary scancode before its press, clearing the held state
+regardless of whether the user is still holding the key (a harmless
+no-op if they already let go). The following press is then a real
+down-edge and reliably produces the trailing space / newline.
+
+## [0.1.0] — First stable
 
 First stable release — drops the `-beta` pre-release suffix. No new
 features beyond the fixes below; this version marks the Linux/Wayland

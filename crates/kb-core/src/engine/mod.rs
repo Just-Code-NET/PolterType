@@ -630,6 +630,38 @@ impl SwitcherEngine {
             return;
         }
 
+        // Filter 0c: ALL-CAPS word (held Shift / Caps Lock through
+        // the whole token). The user typing `URL`, `HTTP`, `API`,
+        // `ССЫЛКА` is being deliberate — they're not "in the wrong
+        // layout", they're spelling out an abbreviation. Auto-
+        // switching here is the classic glitchy case: the all-caps
+        // token often happens to render as something letter-like in
+        // the other layout, the detector takes the bait, and the
+        // user watches their abbreviation get replaced with
+        // gibberish.
+        //
+        // Held-Shift catches the case on every backend. Caps Lock
+        // catches it on Linux/Wayland (the listener XORs caps into
+        // the shift bit before the engine sees the event). Windows /
+        // macOS don't yet fold Caps Lock into the modifier — a
+        // separate fix at the per-OS listener level — but the
+        // held-Shift variant covers most ALL-CAPS typing there too.
+        //
+        // The manual switch-last hotkey still works on these buffers:
+        // `last_word` was stashed above before any filter ran.
+        if snap.engine.suppress_for_all_caps && looks_like_all_caps(&current_text) {
+            debug!(
+                token = %current_text,
+                "skipping auto-switch: word is ALL CAPS (likely abbreviation)"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "`{current_text}` is ALL CAPS — likely an abbreviation, not a wrong-layout word"
+                ),
+            });
+            return;
+        }
+
         // Filter 1: focused app on the disabled list.
         if let Some(exe) = self.focus_tracker.focused_exe() {
             if app_is_disabled(&exe, &snap.exceptions.disabled_apps) {
@@ -1050,6 +1082,35 @@ fn is_submission_boundary(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\t')
 }
 
+/// True when the rendered word looks like a deliberate ALL-CAPS
+/// abbreviation: at least two cased letters and every cased letter is
+/// uppercase. Lone capital letters (`I`, `A`, `Я`) are ambiguous — they
+/// match "first letter of a sentence the user just hit Shift for" too —
+/// so we require ≥2 to fire.
+///
+/// Mixed case (`iPhone`, `IPv4`, `Hello`) returns `false`: a single
+/// lowercase letter is enough to disqualify, because real ALL-CAPS input
+/// has no lowercase by definition. Digits and apostrophes are skipped —
+/// `URL2` and `DON'T` still register as ALL CAPS.
+///
+/// Uncased characters (CJK, digits, punctuation) neither help nor hurt:
+/// they're skipped. A word that contains *only* uncased letters cannot
+/// be ALL CAPS (no upper-letter count → fails the ≥2 check), so the
+/// function returns `false` — which is the right call for languages
+/// without case distinction.
+fn looks_like_all_caps(text: &str) -> bool {
+    let mut upper_letters = 0usize;
+    for c in text.chars() {
+        if c.is_lowercase() {
+            return false;
+        }
+        if c.is_uppercase() {
+            upper_letters += 1;
+        }
+    }
+    upper_letters >= 2
+}
+
 /// Decide whether `id` belongs in the candidate set the detectors get
 /// to score against. Three filters, AND'd together:
 ///
@@ -1134,7 +1195,7 @@ fn render_for_code_check(
 
 #[cfg(test)]
 mod boundary_tests {
-    use super::{is_structural_boundary, is_submission_boundary};
+    use super::{is_structural_boundary, is_submission_boundary, looks_like_all_caps};
 
     #[test]
     fn flags_url_path_email_chars() {
@@ -1173,6 +1234,76 @@ mod boundary_tests {
                 "expected {c:?} not a submission boundary"
             );
         }
+    }
+
+    /// Real ALL-CAPS abbreviations are exactly what the filter targets:
+    /// the user held Shift / Caps Lock and typed a known acronym in
+    /// either script. Switching `URL` because it looks like a Cyrillic
+    /// noun under uk-UA is the kind of "correction" the user hated, so
+    /// the filter must fire for both Latin and Cyrillic variants.
+    #[test]
+    fn all_caps_flags_latin_and_cyrillic_abbreviations() {
+        for w in ["URL", "HTTP", "API", "OK", "IP", "ССЫЛКА", "АПІ"] {
+            assert!(looks_like_all_caps(w), "expected `{w}` to look ALL CAPS");
+        }
+    }
+
+    /// Lone uppercase letters are ambiguous — "I just hit Shift to
+    /// start a sentence" looks identical to "I'm typing the pronoun
+    /// `I`". Don't fire the suppressor on those.
+    #[test]
+    fn all_caps_ignores_single_uppercase_letter() {
+        for w in ["I", "A", "Я", "Є"] {
+            assert!(
+                !looks_like_all_caps(w),
+                "single-letter `{w}` is ambiguous — must not be flagged"
+            );
+        }
+    }
+
+    /// Any lowercase letter at all disqualifies the buffer: that's
+    /// normal prose typing where the user just hit Shift for the
+    /// initial / a proper noun, and we should let the detector run as
+    /// usual. `iPhone` / `IPv4` mix case on purpose and must fall
+    /// through too.
+    #[test]
+    fn all_caps_rejects_mixed_and_lowercase() {
+        for w in [
+            "hello",
+            "Hello",
+            "Привіт",
+            "iPhone",
+            "IPv4",
+            "PostgreSQL",
+            "ім'я",
+        ] {
+            assert!(
+                !looks_like_all_caps(w),
+                "mixed-case / lowercase `{w}` must not be flagged"
+            );
+        }
+    }
+
+    /// Digits and the in-word apostrophe live in the buffer alongside
+    /// real letters (see `is_word_char`). They're case-less, so they
+    /// shouldn't tip the verdict either way — `URL2` and `DON'T` are
+    /// still ALL CAPS; `1234` and a lone `'` are not (no upper-letter
+    /// count).
+    #[test]
+    fn all_caps_treats_digits_and_apostrophe_as_neutral() {
+        assert!(looks_like_all_caps("URL2"));
+        assert!(looks_like_all_caps("DON'T"));
+        assert!(!looks_like_all_caps("1234"));
+        assert!(!looks_like_all_caps("'"));
+    }
+
+    /// Empty input is a defensive case — the engine doesn't call us
+    /// with an empty buffer (`decide` short-circuits earlier) but the
+    /// helper should still return `false` rather than panic or claim
+    /// "yes" via vacuous truth.
+    #[test]
+    fn all_caps_rejects_empty_string() {
+        assert!(!looks_like_all_caps(""));
     }
 }
 

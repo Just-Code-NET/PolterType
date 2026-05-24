@@ -402,26 +402,6 @@ impl KeyEmitter for UinputEmitter {
         // well below human-noticeable for a 5-10 keystroke replay
         // and large enough to clear that coalescing window.
         let step = Duration::from_millis(4);
-        // The very last key in the replay is the boundary the user
-        // typed (almost always Space) — and it's the most-reported
-        // casualty of downstream coalescing. There are *two* distinct
-        // ways keyd / libinput lose it, and the boundary needs guarding
-        // against both:
-        //
-        //   1. A short press-then-release at the tail of an event burst
-        //      gets treated as a zero-duration tap and dropped. Holding
-        //      the key down before releasing defeats this.
-        //   2. The boundary's *press* lands only `step` (4 ms) after the
-        //      previous key's *release*; a remapper that coalesces
-        //      events within that window merges them, swallowing the
-        //      press and leaving a lone release that produces no
-        //      character. The visible symptom is exactly the user's
-        //      report: corrected words glue together with the space
-        //      gone. A guard gap *before* the boundary press isolates
-        //      it from the previous key so the press always survives.
-        //
-        // Both guards are well below human-noticeable for a handful of
-        // keystrokes but comfortably clear the coalescing window.
         let last_hold = Duration::from_millis(20);
         let boundary_guard = Duration::from_millis(12);
         let last_idx = keys.len() - 1;
@@ -436,15 +416,30 @@ impl KeyEmitter for UinputEmitter {
                 )?;
                 thread::sleep(step);
             }
-            // Isolate the boundary press from the previous key's release.
+            // The very last key in the replay is the boundary the user
+            // typed (almost always Space) — the key whose *press* just
+            // triggered this correction. We react on that press within
+            // ~10 ms, well before the user lifts their finger, so when
+            // we reach this point the boundary key is still PHYSICALLY
+            // HELD DOWN. Injecting a *press* for an already-down key is
+            // a no-op at the compositor (global key state is already
+            // "down"), so the boundary character never gets produced —
+            // the corrected words run together with the space eaten,
+            // exactly the long-standing "space gets cut" report.
+            //
+            // Fix: emit a release for the boundary scancode first, which
+            // clears the held state regardless of whether the user is
+            // still holding it (a harmless no-op if they already let
+            // go). The following press is then a real down edge that
+            // actually produces the character. The user's own later
+            // release lands on an already-up key and is ignored.
             if is_last {
+                emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 0))?;
                 thread::sleep(boundary_guard);
             }
             emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 1))?;
             thread::sleep(if is_last { last_hold } else { step });
             emit_one(dev, InputEvent::new(EventType::KEY.0, kc, 0))?;
-            // Give the boundary release time to settle before the burst
-            // goes quiet, so it isn't the un-flushed tail of the stream.
             thread::sleep(if is_last { boundary_guard } else { step });
             if rk.shift {
                 emit_one(

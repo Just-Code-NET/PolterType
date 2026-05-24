@@ -144,6 +144,15 @@ pub struct EngineSettings {
     /// still fix wrong-layout identifiers explicitly. Default: on.
     /// See `docs/DECISIONS.md` for the reasoning.
     pub suppress_in_identifiers: bool,
+    /// Skip auto-switching when the rendered word is ALL CAPS (held
+    /// Shift / Caps Lock throughout, ≥2 letters, every alphabetic
+    /// character uppercase). This is the textbook abbreviation case
+    /// — `URL`, `HTTP`, `API`, `ССЫЛКА` — where the user typed
+    /// deliberately and a layout flip is more disruptive than
+    /// helpful. The manual switch hotkey still works on these
+    /// buffers (`last_word` is stashed before any filter). Default:
+    /// on.
+    pub suppress_for_all_caps: bool,
 }
 
 impl Default for EngineSettings {
@@ -154,6 +163,7 @@ impl Default for EngineSettings {
             ignore_in_password_fields: true,
             idle_timeout_ms: 2000,
             suppress_in_identifiers: true,
+            suppress_for_all_caps: true,
         }
     }
 }
@@ -434,6 +444,7 @@ mod tests {
         assert_eq!(s.general.log_level, "info");
         assert!(!s.ai.enabled);
         assert!(s.engine.suppress_in_identifiers);
+        assert!(s.engine.suppress_for_all_caps);
     }
 
     /// Forward-compat regression: a config that's missing a struct
@@ -446,9 +457,10 @@ mod tests {
             "schema_version = 1\n\n[engine]\nmin_word_length = 4\nconfidence_threshold = 0.7\n";
         let s: Settings = toml::from_str(raw).expect("parse");
         assert_eq!(s.engine.min_word_length, 4);
-        // `suppress_in_identifiers` was missing from the user's file
-        // but the default kicked in.
+        // `suppress_in_identifiers` / `suppress_for_all_caps` were
+        // missing from the user's file but the defaults kicked in.
         assert!(s.engine.suppress_in_identifiers);
+        assert!(s.engine.suppress_for_all_caps);
     }
 
     /// User commands sit in their own `[[commands]]` table. A full
