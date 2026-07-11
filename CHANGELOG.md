@@ -4,7 +4,7 @@ All notable changes to Poltertype are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.2.0
+## [0.2.1] — "Settings…" survives an in-place update
 
 ### Fixed — "Settings…" did nothing after the app was updated in place
 
