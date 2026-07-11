@@ -4,11 +4,44 @@ All notable changes to Poltertype are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.1.1
+## [Unreleased] — 0.2.0
 
-Two follow-up fixes for the most common "the corrector glitched on me"
-reports against 0.1.0 — both Linux/Wayland symptoms, both pure-Rust
-core / listener changes.
+The rename lands in full — binary, crates, config directory and
+data-dir env var all become Poltertype, with an existing `kb-switcher`
+configuration adopted automatically on first launch — together with
+X11 support and a Hyprland fix for corrections that fired in one
+direction only on input-remapper setups.
+
+### Added — Linux X11 support
+
+X11 sessions are now fully supported, and unlike Wayland they need
+**no setup at all**: no `input` group, no udev rule, no `sudo`, no
+`setup-linux.sh`. Everything the app needs is available to any client
+that can open the display.
+
+* **Listener** — `XInput2` raw key events selected on the root window.
+* **Emitter** — `XTestFakeInput`, both for replaying the corrected word
+  as scancodes and (for smart-commands) for typing arbitrary Unicode by
+  temporarily binding a keysym to a spare keycode.
+* **Layout switching** — XKB group locking (`XkbLatchLockState`), for
+  bare window managers (i3, openbox, a hand-rolled `.xinitrc`) where no
+  desktop environment owns the layout. On an X11 session that *does*
+  run GNOME / KDE / IBus / Fcitx, those backends still win, so their
+  tray indicator stays in sync with the keyboard.
+
+Session detection also stopped relying on `XDG_SESSION_TYPE` alone —
+plenty of bare-WM setups never set it, which is exactly the crowd this
+backend is for. It now falls back to the display sockets, and correctly
+picks the Wayland path under XWayland, where the compositor owns input.
+
+### Fixed — a GTK-only machine no longer claims the GNOME layout backend
+
+The `org.gnome.desktop.input-sources` schema ships with GTK, so it is
+installed on many machines running no GNOME-family desktop at all.
+The probe accepted it on the strength of the schema alone, then read
+back an empty input-source list — leaving a switcher with nothing to
+switch between, and shadowing the backend that would have worked. It
+now requires the schema to list at least one input source.
 
 ### Changed — project renamed: kb-switcher → Poltertype
 
@@ -35,6 +68,34 @@ producing empty dictionaries and stale mappings in
 `target/dist/data`, which disabled layout detection entirely in dev
 builds. Both now read `CARGO_MANIFEST_DIR` from the environment at
 run time.
+
+### Fixed — Hyprland: stop trusting our own emitter for the current layout
+
+One direction of correction could silently die while the other kept
+working (typically "uk→en fires, en→uk never does"). Root cause:
+`current()` read the active keymap of the keyboard Hyprland flags
+`main:` — but Hyprland re-elects `main` when devices appear, and
+right after our uinput emitter registers, the emitter itself is
+often promoted. Its keymap only tracks our own `switchxkblayout all`
+calls, never the user's per-device Alt+Shift toggle (which lands on
+the keyd/remapper virtual keyboard the physical keystream flows
+through). After the first correction plus one manual toggle, the
+engine's idea of "current layout" was permanently wrong for one
+direction: a Ukrainian word typed under en-US mapped to "already
+valid Ukrainian" and was vetoed. The guard that was supposed to skip
+the emitter compared the raw device name (`poltertype virtual
+keyboard`) against Hyprland's dash-normalised output
+(`poltertype-virtual-keyboard`) and never matched. `current()` now
+normalises names before comparing, never considers the emitter, and
+prefers an input-remapper virtual keyboard (keyd / kanata / kmonad)
+over `main:` — when a remapper is present, its device is the one
+whose keymap reflects what the user is actually typing.
+
+## [0.1.1] — ALL-CAPS suppression + trailing-space fix on Wayland
+
+Two follow-up fixes for the most common "the corrector glitched on me"
+reports against 0.1.0 — both Linux/Wayland symptoms, both pure-Rust
+core / listener changes.
 
 ### Fixed — ALL-CAPS abbreviations are no longer "corrected"
 

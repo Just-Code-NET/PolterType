@@ -704,7 +704,11 @@ GUI`. Замість `iced`-сторінок Phase 4 робить:
       порядку), кожна реалізація — окремий бекенд за `Trait`.
 - [ ] Send-keys (виправлення слова): через `uinput` (paired з evdev)
       і `libei` (`reis`) як портал-варіант.
-- [ ] X11 fallback: XInput2 listener + XkbLockGroup switcher.
+- [x] X11 fallback: XInput2 listener + XTest emitter + XkbLockGroup
+      switcher. Потребує нуль дозволів (ні `input`-групи, ні `sudo`).
+      XKB-світчер пробується **останнім** — там, де сесією керує DE,
+      його бекенд (GNOME/KDE/IBus/Fcitx) тримає індикатор розкладки в
+      синхроні, а замикання групи під ним лишило б індикатор брехати.
 - [ ] Onboarding-банер: пояснення, чому потрібен `sudo`, посилання на
       скрипт, кнопка «Run setup».
 

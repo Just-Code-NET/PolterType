@@ -1,11 +1,11 @@
-# Poltertype
+# PolterType
 
 Cross-platform automatic keyboard layout switcher.
 Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-*Formerly known as `kb-switcher`.*
+_Formerly known as `kb-switcher`._
 
 > **Status:** v0.1.0-beta — works end-to-end on Windows; macOS and
 > Linux backends are written from API docs and validated on CI but
@@ -27,12 +27,12 @@ poltergeist that haunts your keyboard.
 
 ## Platforms
 
-| OS | Status |
-|---|---|
-| Windows 10 / 11 | working (primary target for v0.1) |
-| macOS 14+ | best-effort; needs Accessibility permission |
+| OS              | Status                                                                                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 10 / 11 | working (primary target for v0.1)                                                                                                                                             |
+| macOS 14+       | best-effort; needs Accessibility permission                                                                                                                                   |
 | Linux (Wayland) | best-effort; run `scripts/setup-linux.sh` once. Layout switching: Hyprland, KDE Plasma, GSettings (GNOME / Ubuntu Unity / Cinnamon / Budgie / Pantheon / MATE), IBus, Fcitx5. |
-| Linux (X11) | layout switching works via the same DE backends; keyboard listener / emitter stubbed (v0.1.x) |
+| Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Layout switching via the DE backends above, falling back to XKB group locking on bare WMs (i3, openbox, …). |
 
 See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
 permissions story.
@@ -43,11 +43,11 @@ Beta builds are published as GitHub Releases —
 [**Releases page**](../../releases). Each release ships three
 artifacts:
 
-| OS | File | How to install |
-|---|---|---|
-| Windows 10 / 11 | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**. |
+| OS                                | File                                          | How to install                                                                                                                                                                                                      |
+| --------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 10 / 11                   | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**.                                                                 |
 | macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant Accessibility permission. |
-| Linux (x86_64) | `poltertype-<ver>-x86_64.AppImage` | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland. |
+| Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland.                                                                                        |
 
 > Beta builds are **unsigned** — that's why Gatekeeper / SmartScreen
 > warn on first launch. Code signing comes in a later phase.
@@ -69,9 +69,9 @@ See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 Two built-in hotkeys, both rebindable on the **Hotkeys** pane of
 the Settings window:
 
-| Default | Action |
-|---|---|
-| `Ctrl+Shift+Space` | Pause / resume auto-switching. |
+| Default                | Action                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
 | `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. |
 
 ## Smart commands (text triggers)
@@ -107,20 +107,20 @@ them on the **Commands** pane in Settings.
 
 ## Dev-friendly: stays out of code
 
-If you write code, you *don't* want a layout switcher meddling with
+If you write code, you _don't_ want a layout switcher meddling with
 identifiers. Three layers protect you:
 
-* **Per-app skip list** (`[exceptions].disabled_apps` in
+- **Per-app skip list** (`[exceptions].disabled_apps` in
   `config.toml`) — covers VS Code / Cursor / JetBrains family /
   Sublime / Zed / Neovide / Windows Terminal / alacritty / kitty /
   wezterm / PowerShell / cmd by default. Edit the list to add or
   remove.
-* **Per-token identifier guard** — even outside an IDE, the engine
+- **Per-token identifier guard** — even outside an IDE, the engine
   doesn't auto-switch on tokens that look like identifiers:
   `snake_case`, `camelCase`, `letter+digit`, or anything containing
   `\\` / `;` / `` ` ``. Toggle via
   `engine.suppress_in_identifiers = false` in `config.toml`.
-* **Plausibility-keep** — if the word you typed already reads as
+- **Plausibility-keep** — if the word you typed already reads as
   plausible for the current layout (real letters, sane vowel ratio,
   no ridiculous consonant pile-ups), the engine refuses to switch
   even if the alternate scores higher. This is what keeps `kubectl`,
@@ -139,9 +139,9 @@ if you'd rather edit them by hand (the Wordlists pane writes to
 exactly these locations). The stem is the BCP-47 id with `-`
 replaced by `_` (e.g. `en-US` → `en_us.txt`):
 
-* Windows: `%APPDATA%\opensource\poltertype\config\wordlists\en_us.txt`
-* macOS: `~/Library/Application Support/dev.opensource.poltertype/wordlists/en_us.txt`
-* Linux: `~/.config/poltertype/wordlists/en_us.txt`
+- Windows: `%APPDATA%\opensource\poltertype\config\wordlists\en_us.txt`
+- macOS: `~/Library/Application Support/dev.opensource.poltertype/wordlists/en_us.txt`
+- Linux: `~/.config/poltertype/wordlists/en_us.txt`
 
 One lowercase word per line; blank lines and `#`-comments ignored.
 Adding to the bundled `data/wordlists/*.txt` files in the repo,
@@ -176,10 +176,9 @@ Two ways to configure:
    default editor — useful for things the GUI doesn't expose yet
    (creating a new wordlist profile entry, listing
    `[[commands]]` in bulk, …):
-
-   * Windows: `%APPDATA%\opensource\poltertype\config\config.toml`
-   * macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
-   * Linux: `~/.config/poltertype/config.toml`
+   - Windows: `%APPDATA%\opensource\poltertype\config\config.toml`
+   - macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
+   - Linux: `~/.config/poltertype/config.toml`
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray
 takes you there. After editing the TOML, "Reload Settings" picks

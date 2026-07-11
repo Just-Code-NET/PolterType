@@ -60,10 +60,22 @@ on KDE), `poltertype` can subscribe to keyboard events via the
 non-toolkit apps) are missed. Used as a fallback when option A is
 not available.
 
-### Option C — X11 (legacy)
+### Option C — X11
 
-On X11 sessions (`XDG_SESSION_TYPE=x11`) we use `XInput2 RawKeyPress`
-events. No special permission needed. Detected automatically.
+On X11 sessions we select `XInput2` `RawKeyPress` / `RawKeyRelease` on
+the root window, and send corrections back with `XTestFakeInput`.
+
+**No permission of any kind is required** — no `input` group, no udev
+rule, no `sudo`, no setup script. Any client that can open the display
+can select raw events, which makes X11 the one Linux session type where
+poltertype works the moment it is installed. (It is also why we don't
+grab the keyboard: a grab would make us the *only* recipient of the
+keystrokes and stop the user typing into anything else.)
+
+Detected automatically: `XDG_SESSION_TYPE=x11`, or — for the bare-WM
+setups that never set it — `DISPLAY` present with no `WAYLAND_DISPLAY`.
+Under XWayland both are set, and there the compositor owns input, so we
+correctly take the Wayland path instead.
 
 ### Sending keys (corrections) on Wayland
 
@@ -85,10 +97,20 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
 2. **KDE Plasma** (`qdbus6`/`qdbus` → `org.kde.keyboard /Layouts`).
 3. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
    covers **GNOME**, **Ubuntu Unity 7+**, **Cinnamon**, **Budgie**,
-   **Pantheon** (elementary OS), **MATE**. The probe only matches
-   when the schema is actually installed.
+   **Pantheon** (elementary OS), **MATE**. The probe requires the
+   schema to be installed *and* to list at least one input source:
+   the schema ships with GTK, so it is present on plenty of machines
+   running no GNOME-family desktop at all, where it reads back empty.
 4. **IBus** (`ibus engine`) — any DE hosting IBus.
 5. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx.
+6. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — locks the XKB
+   group, which is what the layouts in `setxkbmap -layout us,ua`
+   actually are. This is the bare-WM fallback (i3, openbox, plain
+   `.xinitrc`), where no desktop environment owns the layout. Probed
+   last on purpose: where a DE *is* present it keeps a tray indicator
+   in sync with the layout, and locking the group underneath it would
+   switch the keyboard while leaving that indicator lying. Stands down
+   entirely under XWayland, where the compositor owns layout.
 
 If none respond, the tray surfaces a *layout switching unavailable*
 banner with a link back to this document.
