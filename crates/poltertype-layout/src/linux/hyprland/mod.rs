@@ -15,8 +15,13 @@ mod consts;
 mod ipc;
 mod parse;
 mod switcher;
+mod types;
 
 pub use consts::*;
 pub use ipc::*;
 pub use parse::*;
 pub use switcher::*;
+pub(crate) use types::*;
+
+#[cfg(test)]
+mod tests;

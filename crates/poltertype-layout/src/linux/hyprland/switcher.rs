@@ -23,58 +23,26 @@ pub fn try_init() -> Option<HyprlandSwitcher> {
 
 impl LayoutSwitcher for HyprlandSwitcher {
     fn current(&self) -> Result<LayoutId, LayoutError> {
-        // Parse `hyprctl devices` block-by-block and read the keymap of
-        // the keyboard Hyprland flags `main: yes`.
-        //
-        // The previous "first active keymap line wins" approach was
-        // wrong on this class of setup: with `keyd` (or any remapper)
-        // the real keystroke stream — and the per-device
-        // `grp:*_toggle` layout switch the user triggers with
-        // Alt+Shift — lands on the remapper's *virtual* keyboard,
-        // while the physical Logitech / power-button / sleep-button
-        // devices keep their stale layout. The first device printed is
-        // usually one of those stale ones, so we'd report en-US while
-        // the user is actually typing in uk-UA. Hyprland's `main`
-        // keyboard tracks the device that input is really flowing
-        // through, which is exactly what we want.
-        //
-        // We deliberately skip our own uinput emitter device: when it
-        // exists Hyprland sometimes promotes it to `main`, but it
-        // never receives the user's Alt+Shift toggle (we drive it only
-        // via `switchxkblayout all`), so trusting it would reintroduce
-        // the desync.
+        // Parse `hyprctl devices` and ask `choose_current_keymap`
+        // which keyboard actually reflects the user's typing layout
+        // (remapper virtual keyboard > `main: yes` > first; our own
+        // emitter is never eligible). Trusting `main` alone is not
+        // enough: Hyprland re-elects `main` when devices appear, and
+        // right after our emitter registers it often *is* the
+        // emitter — whose keymap only tracks `switchxkblayout all`,
+        // never the user's per-device Alt+Shift toggle. Reading it
+        // desyncs the engine from the real keystream, which kills
+        // exactly one direction of correction (the "uk→en works but
+        // en→uk never fires" report).
         let out = request(&["devices"])?;
-        let mut cur_name: Option<String> = None;
-        let mut cur_keymap: Option<String> = None;
-        let mut fallback: Option<String> = None;
-        let mut expect_name = false;
-        for raw in out.lines() {
-            let line = raw.trim();
-            if line.starts_with("Keyboard at") {
-                cur_name = None;
-                cur_keymap = None;
-                expect_name = true;
-            } else if expect_name {
-                cur_name = Some(line.to_owned());
-                expect_name = false;
-            } else if let Some(rest) = line.strip_prefix("active keymap:") {
-                let km = rest.trim().to_owned();
-                if cur_name.as_deref() != Some(EMITTER_DEVICE_NAME) && fallback.is_none() {
-                    fallback = Some(km.clone());
-                }
-                cur_keymap = Some(km);
-            } else if line == "main: yes" && cur_name.as_deref() != Some(EMITTER_DEVICE_NAME) {
-                if let Some(km) = cur_keymap.take() {
-                    return Ok(keymap_to_layout(&km));
-                }
-            }
-        }
-        if let Some(km) = fallback {
-            return Ok(keymap_to_layout(&km));
-        }
-        Err(LayoutError::Os(
-            "could not find an 'active keymap' line in `hyprctl devices`".into(),
-        ))
+        let keyboards = parse_keyboards(&out);
+        choose_current_keymap(&keyboards)
+            .map(keymap_to_layout)
+            .ok_or_else(|| {
+                LayoutError::Os(
+                    "could not find an 'active keymap' line in `hyprctl devices`".into(),
+                )
+            })
     }
 
     fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
