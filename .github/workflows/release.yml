@@ -14,6 +14,19 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+
+# A note on caching here. These jobs run on `v*` tags, and a cache saved
+# under a tag's scope can never be restored again — the next tag is a
+# different ref, and a run may only read its own ref's caches plus the
+# default branch's. So target-dir caching in this workflow was writing
+# multi-gigabyte entries that nothing would ever hit, while counting
+# against the repo-wide 10 GB budget and evicting the CI caches that
+# every PR *does* restore from. `cache-targets: false` keeps the cheap
+# half (the registry, so we stop re-downloading crates.io) and drops the
+# expensive, useless half. A release rebuilds from source regardless —
+# `lto = "thin"` + `codegen-units = 1` recompile the world anyway.
 
 # Per-platform packaging is intentionally split across three jobs
 # instead of being squeezed into a matrix-with-`if`s — the steps are
@@ -47,6 +60,8 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Install Linux native deps
         run: |
@@ -59,7 +74,7 @@ jobs:
             file desktop-file-utils
 
       - name: Build release binary
-        run: cargo build --release --target x86_64-unknown-linux-gnu -p poltertype-app
+        run: cargo build --release --locked --target x86_64-unknown-linux-gnu -p poltertype-app
 
       - name: Render placeholder icon
         # linuxdeploy wants a square PNG ≥ 256×256. We render at the
@@ -98,11 +113,13 @@ jobs:
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Build release binaries (both arches)
         run: |
-          cargo build --release --target x86_64-apple-darwin   -p poltertype-app
-          cargo build --release --target aarch64-apple-darwin  -p poltertype-app
+          cargo build --release --locked --target x86_64-apple-darwin   -p poltertype-app
+          cargo build --release --locked --target aarch64-apple-darwin  -p poltertype-app
 
       - name: Render and convert icon
         run: |
@@ -145,6 +162,8 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-targets: false
 
       - name: Install WiX Toolset
         # windows-latest doesn't preinstall WiX, but Chocolatey is
@@ -154,7 +173,7 @@ jobs:
         shell: pwsh
 
       - name: Build release binary
-        run: cargo build --release --target x86_64-pc-windows-msvc -p poltertype-app
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc -p poltertype-app
 
       - name: Render icon and convert to .ico
         # ImageMagick is preinstalled on windows-latest. We bake all
