@@ -12,12 +12,14 @@
 mod consts;
 mod enums;
 mod files;
+mod migrate;
 mod store;
 mod types;
 
 pub(crate) use consts::*;
 pub use enums::*;
 pub(crate) use files::*;
+pub(crate) use migrate::*;
 pub use store::*;
 pub use types::*;
 

@@ -41,6 +41,15 @@ impl SettingsStore {
                 }
             },
             Err(e) if e.kind() == ErrorKind::NotFound => {
+                // No config yet — this may be an upgrade from the
+                // pre-rebrand kb-switcher install; adopt its config
+                // tree before falling back to defaults. The re-entry
+                // is bounded: migration returns `true` only when
+                // config.toml now exists, so the second call takes
+                // the `Ok` branch.
+                if migrate_legacy_config(&path) {
+                    return Self::load_or_default();
+                }
                 let s = Settings::default();
                 if let Err(e) = write_atomically(&path, &s) {
                     warn!(?path, err = %e, "could not seed config.toml on first launch");

@@ -73,7 +73,12 @@ const LAYOUTS: &[(&str, &str)] = &[
 ];
 
 fn main() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // Runtime env, NOT the `env!` macro: the macro bakes the path into
+    // the compiled build-script binary, so a moved/renamed checkout
+    // keeps reading data from the old location for as long as cargo
+    // considers the cached script fresh.
+    let manifest_dir =
+        PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"));
     // crates/poltertype-core → repo root
     let repo_root = manifest_dir
         .parent()

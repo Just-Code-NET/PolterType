@@ -3,7 +3,7 @@
 //!
 //! 1. **Hyprland** (`hyprctl switchxkblayout`) — picked when the
 //!    `HYPRLAND_INSTANCE_SIGNATURE` env var is set; the user's
-//!    Hyprland config may have `poltertype_layout = us,ua,…` and we cycle by
+//!    Hyprland config may have `kb_layout = us,ua,…` and we cycle by
 //!    index.
 //! 2. **KDE Plasma** (`qdbus6` / `qdbus` → `org.kde.keyboard`).
 //! 3. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —

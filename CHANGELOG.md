@@ -18,9 +18,23 @@ moves to the new name: the binary (`poltertype`), the crates
 bundle id (`org.poltertype.app`), the config directory
 (`~/.config/poltertype/` and OS equivalents), the data-dir override
 env var (`POLTERTYPE_DATA_DIR`, was `KB_SWITCHER_DATA_DIR`), and the
-installer/product names. There is no settings migration: an existing
-install starts fresh — copy your old `config.toml` over from the
-`kb-switcher` config directory if you want to keep your settings.
+installer/product names. On first launch the app adopts an existing
+`kb-switcher` config directory automatically: `config.toml` plus the
+wordlist / layout overlays are copied into the new location (nothing
+in the new directory is ever overwritten, and the old directory is
+left in place as a backup).
+
+### Fixed — build script baked the checkout path into itself
+
+`crates/poltertype-core/build.rs` (and `xtask`) resolved the repo
+root with the compile-time `env!("CARGO_MANIFEST_DIR")` macro, which
+freezes the absolute path of the checkout that compiled them. After
+moving or renaming the working copy, the cached build script kept
+reading wordlists and layout mappings from the old path — silently
+producing empty dictionaries and stale mappings in
+`target/dist/data`, which disabled layout detection entirely in dev
+builds. Both now read `CARGO_MANIFEST_DIR` from the environment at
+run time.
 
 ### Fixed — ALL-CAPS abbreviations are no longer "corrected"
 

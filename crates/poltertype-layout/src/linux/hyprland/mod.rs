@@ -2,7 +2,7 @@
 //!
 //! Hyprland (a tiling Wayland compositor) exposes IPC over a UNIX
 //! socket; the canonical user-facing tool is `hyprctl`. Layout config
-//! looks like `poltertype_layout = us,ua` in `hyprland.conf`; switching is by
+//! looks like `kb_layout = us,ua` in `hyprland.conf`; switching is by
 //! integer index into that list, scoped to a specific keyboard
 //! device.
 //!

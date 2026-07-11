@@ -97,3 +97,89 @@ fn default_disabled_apps_covers_common_editors() {
         );
     }
 }
+
+// ─── Legacy kb-switcher config migration ──────────────────────────
+
+struct TmpDir(std::path::PathBuf);
+
+impl TmpDir {
+    fn new(label: &str) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "poltertype-test-{label}-{}-{now}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).expect("mkdir tmp");
+        Self(path)
+    }
+
+    fn write(&self, rel: &str, body: &str) {
+        let path = self.0.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("mkdir tmp parent");
+        }
+        std::fs::write(path, body).expect("write tmp file");
+    }
+
+    fn read(&self, rel: &str) -> String {
+        std::fs::read_to_string(self.0.join(rel)).expect("read tmp file")
+    }
+}
+
+impl Drop for TmpDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn migrates_legacy_tree_on_first_launch() {
+    let legacy = TmpDir::new("legacy-src");
+    let fresh = TmpDir::new("legacy-dst");
+    legacy.write("config.toml", "schema_version = 1\n");
+    legacy.write("wordlists/uk_ua.txt", "своєслово\n");
+
+    assert!(migrate_dir(&legacy.0, &fresh.0));
+    assert_eq!(fresh.read("config.toml"), "schema_version = 1\n");
+    assert_eq!(fresh.read("wordlists/uk_ua.txt"), "своєслово\n");
+    // The legacy tree stays behind as a backup.
+    assert_eq!(legacy.read("config.toml"), "schema_version = 1\n");
+}
+
+#[test]
+fn migration_never_overwrites_existing_files() {
+    let legacy = TmpDir::new("clobber-src");
+    let fresh = TmpDir::new("clobber-dst");
+    legacy.write("config.toml", "schema_version = 1 # legacy\n");
+    fresh.write("config.toml", "schema_version = 1 # mine\n");
+
+    assert!(!migrate_dir(&legacy.0, &fresh.0));
+    assert_eq!(fresh.read("config.toml"), "schema_version = 1 # mine\n");
+}
+
+#[test]
+fn migration_skips_present_overlays_but_copies_the_rest() {
+    let legacy = TmpDir::new("partial-src");
+    let fresh = TmpDir::new("partial-dst");
+    legacy.write("config.toml", "schema_version = 1\n");
+    legacy.write("wordlists/uk_ua.txt", "старе\n");
+    fresh.write("wordlists/uk_ua.txt", "нове\n");
+
+    assert!(migrate_dir(&legacy.0, &fresh.0));
+    // Pre-existing file kept, missing one copied.
+    assert_eq!(fresh.read("wordlists/uk_ua.txt"), "нове\n");
+    assert_eq!(fresh.read("config.toml"), "schema_version = 1\n");
+}
+
+#[test]
+fn no_migration_without_legacy_config_toml() {
+    let legacy = TmpDir::new("noconf-src");
+    let fresh = TmpDir::new("noconf-dst");
+    legacy.write("wordlists/uk_ua.txt", "слово\n");
+
+    assert!(!migrate_dir(&legacy.0, &fresh.0));
+    assert!(!fresh.0.join("wordlists").exists());
+}

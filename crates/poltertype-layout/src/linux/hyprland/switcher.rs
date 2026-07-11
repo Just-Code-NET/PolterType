@@ -78,8 +78,11 @@ impl LayoutSwitcher for HyprlandSwitcher {
     }
 
     fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
-        // `hyprctl getoption input:poltertype_layout` → e.g. `string: us,ua`.
-        let out = request(&["getoption", "input:poltertype_layout"])?;
+        // `hyprctl getoption input:kb_layout` → e.g. `string: us,ua`.
+        // NB: `kb_layout` is Hyprland's own option name — it has
+        // nothing to do with the app's former "kb-switcher" branding
+        // and must never be caught by a rename sweep again.
+        let out = request(&["getoption", "input:kb_layout"])?;
         for line in out.lines() {
             let line = line.trim();
             if let Some(rest) = line.strip_prefix("str:") {
@@ -90,7 +93,7 @@ impl LayoutSwitcher for HyprlandSwitcher {
             }
         }
         Err(LayoutError::Os(
-            "could not parse `hyprctl getoption input:poltertype_layout` output".into(),
+            "could not parse `hyprctl getoption input:kb_layout` output".into(),
         ))
     }
 
