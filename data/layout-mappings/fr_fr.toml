@@ -12,7 +12,7 @@
 #   * Several accented letters reachable directly: é, è, ç, à, ù.
 #
 # Dead keys (`^`, `¨`) are surfaced as their spacing equivalents —
-# kb-switcher tracks the character produced per scancode, not the
+# poltertype tracks the character produced per scancode, not the
 # OS-level dead-key state machine.
 
 id     = "fr-FR"

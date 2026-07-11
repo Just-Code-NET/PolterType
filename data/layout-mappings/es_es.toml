@@ -4,7 +4,7 @@
 # Keyed by Win SC Set-1 scancode (hex). Same alphabet positions as
 # en-US except `ñ` lives on the `;` position (0x27) and accented
 # vowels are reached via the dead-key on 0x28 (´). Dead keys are
-# surfaced as their spacing equivalents — kb-switcher tracks the
+# surfaced as their spacing equivalents — poltertype tracks the
 # character produced per scancode, not the OS-level dead-key state.
 #
 # Number-row Shift symbols and the punctuation around `Enter` follow

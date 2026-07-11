@@ -7,7 +7,7 @@
 # the en_us-stop / uk_ua-stop pattern.
 #
 # Runtime extension (no rebuild needed): drop matching files into
-# `<config-dir>/kb-switcher/wordlists/`:
+# `<config-dir>/poltertype/wordlists/`:
 #   * `ru_ru-stop.txt`    → merged into THIS list at startup / reload
 #   * `ru_ru-extras.txt`  → merged into the user-overlay HashSet
 #   * `ru_ru.txt`         → same as -extras, just a different filename

@@ -1,11 +1,11 @@
 # Wordlist sources & licensing
 
 The dictionaries shipped in this directory power the
-`DictionaryDetector` in `kb-detect`. Each source has a different
+`DictionaryDetector` in `poltertype-detect`. Each source has a different
 license; we list them here so contributors and downstream packagers
 can audit the project's overall license posture.
 
-The kb-switcher binary is MIT-licensed — embedding these wordlists
+The Poltertype binary is MIT-licensed — embedding these wordlists
 is permissible because every source allows verbatim redistribution
 under non-restrictive terms (MIT-compatible) or under terms that
 attach only to the data, not to consuming code (MPL).
@@ -27,7 +27,7 @@ attach only to the data, not to consuming code (MPL).
   [brown-uk/dict_uk](https://github.com/brown-uk/dict_uk).
 * **License:** **MPL 1.1** (Mozilla Public License). Authors:
   Andriy Rysin et al., 2007–. The dictionary stays under MPL even
-  after embedding; consuming code (the kb-switcher engine) remains
+  after embedding; consuming code (the Poltertype engine) remains
   MIT.
 * **Processing:** stripped Hunspell affix flags (`/...`), dropped
   `+cs=...` case-sensitive metadata, lowercased, kept only entries
@@ -46,8 +46,8 @@ attach only to the data, not to consuming code (MPL).
   2026 LibreOffice's bundled Hunspell dictionaries are most often
   GPL-2-or-later or LGPL/MPL — review the per-language `README*.txt`
   next to the `.dic` for the exact terms before redistributing a
-  built kb-switcher binary outside personal use. The licence applies
-  to **the wordlist data** only; the kb-switcher engine remains MIT.
+  built Poltertype binary outside personal use. The licence applies
+  to **the wordlist data** only; the Poltertype engine remains MIT.
 * **Processing:** the same generic Hunspell pipeline as `uk_ua.txt`
   (strip affix flags, lowercase, keep letter-only stems).
 * **Size:** varies — typically 100–300k stems each, expanded to
@@ -69,7 +69,7 @@ re-process every source. The script verifies the upstream URLs return
 ## User overrides
 
 The runtime supports drop-in user wordlists at
-`<config-dir>/kb-switcher/wordlists/<layout-id>.txt`. The format is
+`<config-dir>/poltertype/wordlists/<layout-id>.txt`. The format is
 one lowercase word per line, blank lines / `#`-comments ignored.
 Entries from the user file are merged into the embedded set at
 startup — useful for adding domain-specific vocabulary (proper

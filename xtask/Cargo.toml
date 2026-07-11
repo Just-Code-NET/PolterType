@@ -23,6 +23,6 @@ png    = "0.17"
 
 # Bulk wordlist outputs are gzipped (`data/wordlists/<id>.txt.gz`)
 # because uk_ua alone hits 84 MB raw after Hunspell affix expansion.
-# Same crate (`flate2`) used at build time in `kb-core/build.rs` for
+# Same crate (`flate2`) used at build time in `poltertype-core/build.rs` for
 # decoding.
 flate2 = "1"

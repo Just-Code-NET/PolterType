@@ -13,7 +13,7 @@
 # here is honoured at full length too.
 #
 # Runtime extension (no rebuild needed): drop matching files into
-# `<config-dir>/kb-switcher/wordlists/`:
+# `<config-dir>/poltertype/wordlists/`:
 #   * `uk_ua-stop.txt`    → merged into THIS list at startup / reload
 #   * `uk_ua-extras.txt`  → merged into the user-overlay HashSet
 #   * `uk_ua.txt`         → same as -extras, just a different filename

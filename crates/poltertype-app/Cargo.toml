@@ -1,0 +1,51 @@
+[package]
+name                  = "poltertype-app"
+description           = "Poltertype: cross-platform automatic keyboard layout switcher (tray app)."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "poltertype"
+path = "src/main.rs"
+
+[features]
+default = []
+ai      = ["dep:poltertype-ai"]
+
+[dependencies]
+poltertype-types  = { workspace = true }
+poltertype-core   = { workspace = true }
+poltertype-input  = { workspace = true }
+poltertype-layout = { workspace = true }
+poltertype-detect = { workspace = true }
+
+# Both poltertype-input and poltertype-layout already depend on this; we re-pull it
+# here so Cargo's feature unification keeps everyone on the same view.
+poltertype-ai     = { workspace = true, optional = true }
+
+anyhow             = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender   = { workspace = true }
+crossbeam-channel  = { workspace = true }
+parking_lot        = { workspace = true }
+
+tao             = { workspace = true }
+tray-icon       = { workspace = true }
+single-instance = { workspace = true }
+global-hotkey   = { workspace = true }
+opener          = { workspace = true }
+iced            = { workspace = true }
+# Tiny system notifications for "Poltertype just auto-switched
+# your layout" — gated by `[general].show_notifications` (off by
+# default). Cross-platform: Win10+ Toast, macOS NSUserNotification,
+# Linux Desktop Notifications spec via DBus.
+notify-rust     = { workspace = true }

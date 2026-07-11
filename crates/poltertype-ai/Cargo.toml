@@ -1,0 +1,31 @@
+[package]
+name                  = "poltertype-ai"
+description           = "Optional AI/LLM detectors and word rewriters for poltertype."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Enabling `remote` brings in reqwest + native-tls and lets the
+# RemoteLlmDetector make real HTTP calls. Off by default; users opt
+# in via `[ai].allow_remote = true` AND a feature-enabled build.
+remote  = ["dep:reqwest"]
+
+[dependencies]
+poltertype-types  = { workspace = true }
+poltertype-detect = { workspace = true }
+serde     = { workspace = true }
+thiserror = { workspace = true }
+tracing   = { workspace = true }
+keyring   = { workspace = true }
+
+# Activated only when `--features remote` is on.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"], optional = true }

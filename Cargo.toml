@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/kb-app",
-    "crates/kb-core",
-    "crates/kb-input",
-    "crates/kb-layout",
-    "crates/kb-detect",
-    "crates/kb-ai",
-    "crates/kb-types",
+    "crates/poltertype-app",
+    "crates/poltertype-core",
+    "crates/poltertype-input",
+    "crates/poltertype-layout",
+    "crates/poltertype-detect",
+    "crates/poltertype-ai",
+    "crates/poltertype-types",
     "xtask",
 ]
 
@@ -15,9 +15,13 @@ members = [
 version       = "0.1.1"
 edition       = "2024"
 license       = "MIT"
-authors       = ["kb-switcher contributors"]
+authors       = ["Poltertype contributors"]
 rust-version  = "1.85"
-repository    = "https://github.com/Just-Code-NET/kb-switcher"
+repository    = "https://github.com/Just-Code-NET/poltertype"
+# Internal crates, distributed as the poltertype-app binary via GitHub
+# Releases — never published to crates.io. (Also what lets
+# cargo-deny accept the versionless path-only workspace deps.)
+publish       = false
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
@@ -32,12 +36,12 @@ unimplemented = "allow"
 
 [workspace.dependencies]
 # Internal crates
-kb-types  = { path = "crates/kb-types" }
-kb-input  = { path = "crates/kb-input" }
-kb-layout = { path = "crates/kb-layout" }
-kb-detect = { path = "crates/kb-detect" }
-kb-core   = { path = "crates/kb-core" }
-kb-ai     = { path = "crates/kb-ai" }
+poltertype-types  = { path = "crates/poltertype-types" }
+poltertype-input  = { path = "crates/poltertype-input" }
+poltertype-layout = { path = "crates/poltertype-layout" }
+poltertype-detect = { path = "crates/poltertype-detect" }
+poltertype-core   = { path = "crates/poltertype-core" }
+poltertype-ai     = { path = "crates/poltertype-ai" }
 
 # Logging
 tracing            = "0.1"
@@ -95,7 +99,7 @@ iced = { version = "0.13", default-features = false, features = [
 ] }
 
 # Linux: evdev / X11. (D-Bus access is via shell-out to canonical
-# CLI tools — see crates/kb-layout/src/linux/. Saves dragging
+# CLI tools — see crates/poltertype-layout/src/linux/. Saves dragging
 # zbus + an async runtime into the build.)
 evdev = "0.13"
 x11rb = "0.13"

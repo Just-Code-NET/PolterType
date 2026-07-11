@@ -1,0 +1,718 @@
+#![allow(unused_imports)]
+
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+use poltertype_detect::{LayoutDictionary, LayoutProfile, Script};
+use poltertype_types::{LayoutId, WordKey};
+
+use super::consts::*;
+use super::files::*;
+use super::helpers::*;
+use super::plugins::*;
+use super::types::*;
+use super::*;
+
+#[test]
+fn embedded_layouts_load() {
+    let db = LayoutDb::load_embedded();
+    for id in ["en-US", "uk-UA", "ru-RU", "de-DE", "es-ES", "fr-FR"] {
+        assert!(
+            db.get(&LayoutId::from(id)).is_some(),
+            "embedded layout `{id}` did not load"
+        );
+    }
+}
+
+/// The active-filter feature: only requested layouts enter memory.
+/// This is what saves RAM for users who don't have all six bundled
+/// languages installed in the OS.
+#[test]
+fn active_filter_drops_unrequested_layouts() {
+    let want = [LayoutId::from("en-US"), LayoutId::from("uk-UA")];
+    let db = LayoutDb::load(LoadOptions {
+        active_filter: Some(&want),
+        ..Default::default()
+    })
+    .expect("load with filter");
+    assert!(db.get(&LayoutId::from("en-US")).is_some());
+    assert!(db.get(&LayoutId::from("uk-UA")).is_some());
+    // The rest are bundled-but-filtered → must NOT be in the DB.
+    for skipped in ["ru-RU", "de-DE", "es-ES", "fr-FR"] {
+        assert!(
+            db.get(&LayoutId::from(skipped)).is_none(),
+            "filter must keep `{skipped}` out of memory"
+        );
+    }
+}
+
+/// `peek_layout_id` is the fast pre-parse used by the active-
+/// filter — must round-trip every shape of `id =` line we
+/// actually emit in our TOMLs (double-quoted + spaces) plus the
+/// shapes a hand-written user TOML might use (single-quoted, no
+/// space around `=`).
+#[test]
+fn peek_layout_id_recognises_every_shape() {
+    assert_eq!(
+        peek_layout_id("id = \"en-US\"\nname = \"English\""),
+        Some("en-US".into())
+    );
+    assert_eq!(peek_layout_id("id=\"uk-UA\""), Some("uk-UA".into()));
+    assert_eq!(peek_layout_id("id = 'ru-RU'"), Some("ru-RU".into()));
+    // Comments and blank lines must not derail the search.
+    assert_eq!(
+        peek_layout_id("# heading\n\nid = \"de-DE\""),
+        Some("de-DE".into())
+    );
+    assert_eq!(peek_layout_id("name = \"only\""), None);
+}
+
+#[test]
+fn letter_in_any_layout_is_shift_aware() {
+    let db = LayoutDb::load_embedded();
+    assert!(db.is_letter_in_any_layout(0x0C, false));
+    assert!(!db.is_letter_in_any_layout(0x0C, true));
+}
+
+#[test]
+fn new_languages_translate_distinctive_keys() {
+    let db = LayoutDb::load_embedded();
+    let cases = [
+        ("ru-RU", 0x10u32, false, 'й'),
+        ("ru-RU", 0x29, false, 'ё'),
+        ("de-DE", 0x15, false, 'z'),
+        ("de-DE", 0x2C, false, 'y'),
+        ("de-DE", 0x1A, false, 'ü'),
+        ("es-ES", 0x27, false, 'ñ'),
+        ("fr-FR", 0x10, false, 'a'),
+        ("fr-FR", 0x03, false, 'é'),
+    ];
+    for (id, sc, shift, expected) in cases {
+        let mapping = db.get(&LayoutId::from(id)).unwrap_or_else(|| {
+            panic!("layout `{id}` not loaded");
+        });
+        let got = mapping.translate_key(WordKey {
+            scancode: sc,
+            shift,
+            timestamp_ms: 0,
+        });
+        assert_eq!(
+            got,
+            Some(expected),
+            "layout {id} sc=0x{sc:X} shift={shift}: expected `{expected}` got {got:?}"
+        );
+    }
+}
+
+#[test]
+fn wordlists_loaded_with_layouts() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let uk = db.get(&LayoutId::from("uk-UA")).expect("uk-UA");
+    let en_dict = en.dictionary.as_ref().expect("en dictionary");
+    let uk_dict = uk.dictionary.as_ref().expect("uk dictionary");
+    for w in ["the", "hello", "a", "i", "function", "world", "code"] {
+        assert!(en_dict.contains(w), "en dict missing `{w}`");
+    }
+    for w in [
+        "що", "мені", "цим", "а", "і", "у", "о", "є", "я", "з", "в", "й",
+    ] {
+        assert!(uk_dict.contains(w), "uk dict missing `{w}`");
+    }
+    for w in ["слово", "привіт", "робити", "знати"] {
+        assert!(uk_dict.contains(w), "uk dict missing `{w}`");
+    }
+}
+
+#[test]
+fn round_trip_hello_through_uk() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let uk = db.get(&LayoutId::from("uk-UA")).expect("uk-UA");
+    let buf = vec![
+        WordKey {
+            scancode: 0x23,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x12,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x26,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x26,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x18,
+            shift: false,
+            timestamp_ms: 0,
+        },
+    ];
+    assert_eq!(en.translate_buffer(&buf), "hello");
+    assert_eq!(uk.translate_buffer(&buf), "руддщ");
+}
+
+#[test]
+fn round_trip_pryvit_through_en() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let uk = db.get(&LayoutId::from("uk-UA")).expect("uk-UA");
+    let buf = vec![
+        WordKey {
+            scancode: 0x22,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x23,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x30,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x20,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x1F,
+            shift: false,
+            timestamp_ms: 0,
+        },
+        WordKey {
+            scancode: 0x31,
+            shift: false,
+            timestamp_ms: 0,
+        },
+    ];
+    assert_eq!(uk.translate_buffer(&buf), "привіт");
+    let en_text = en.translate_buffer(&buf);
+    assert!(en_text.is_ascii());
+}
+
+#[test]
+fn shift_picks_uppercase() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let buf = vec![WordKey {
+        scancode: 0x23,
+        shift: true,
+        timestamp_ms: 0,
+    }];
+    assert_eq!(en.translate_buffer(&buf), "H");
+}
+
+// ─── User overlay loading (runtime-extensible) ───────────────────
+
+struct TmpDir(PathBuf);
+
+impl TmpDir {
+    fn new(label: &str) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "poltertype-test-{label}-{}-{now}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).expect("mkdir tmp");
+        Self(path)
+    }
+
+    fn write(&self, name: &str, body: &str) {
+        std::fs::write(self.0.join(name), body).expect("write tmp file");
+    }
+}
+
+impl Drop for TmpDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn user_overlay_picks_up_extras_file() {
+    let tmp = TmpDir::new("extras");
+    tmp.write("uk_ua.txt", "# user adds\nфайв\n");
+    tmp.write("uk_ua-extras.txt", "# more\nекстраслово\n");
+
+    let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+    let dict = db
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict");
+
+    assert!(dict.contains("файв"), "<stem>.txt entry should be in dict");
+    assert!(
+        dict.contains("екстраслово"),
+        "<stem>-extras.txt entry should be in dict"
+    );
+}
+
+#[test]
+fn user_overlay_normalizes_hyphens_and_apostrophes() {
+    // Regression: the wordlists tab lets users add hand-picked
+    // tokens to the per-layout dictionary, but hyphenated /
+    // apostrophe-bearing entries used to be stored verbatim while
+    // the lookup path canonicalised the typed token via
+    // `letters_only_lower`. End-result: `v-strel-zbook` in the
+    // extras file never matched the buffer `v-strel-zbook`
+    // (lookup key `vstrelzbook`) and the engine kept switching
+    // it. Lock the canonicalisation in: the entry as written and
+    // the canonical key must both resolve to a Keep.
+    let tmp = TmpDir::new("normalize-hyphen");
+    tmp.write("en_us-extras.txt", "v-strel-zbook\n");
+    tmp.write("uk_ua-extras.txt", "ім'я\n");
+
+    let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+
+    let en = db
+        .get(&LayoutId::from("en-US"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("en dict");
+    assert!(
+        en.contains("vstrelzbook"),
+        "hyphenated extras entry must be looked up by its \
+         letters-only canonical key"
+    );
+
+    let uk = db
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict");
+    assert!(
+        uk.contains("імя"),
+        "apostrophe-bearing extras entry must be looked up by \
+         its letters-only canonical key"
+    );
+}
+
+/// Regression: 2-letter acronyms in `<stem>-extras.txt` (`ai`,
+/// `ml`, `ui`, `ux`, `db`, …) used to land **only** in the
+/// embedded FST, but the runtime short-token lookup deliberately
+/// skips the FST (the bulk dict ships short-noise like `ws` /
+/// `ax` / `oe`). Result: typing `AI` while in uk-UA produced
+/// `ФШ` and neither detector had any signal to switch — the user
+/// was stuck. `build.rs` now mirrors the ≤2-letter slice of
+/// extras into the dist `<stem>-stop.txt`, so the short regime
+/// sees them.
+#[test]
+fn short_extras_are_visible_to_short_token_lookup() {
+    let db = LayoutDb::load_embedded();
+    let en = db
+        .get(&LayoutId::from("en-US"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("en dict");
+
+    // Exhaustive sample — every one of these is a 2-letter entry
+    // in `data/wordlists/en_us-extras.txt` that a developer might
+    // type as a standalone token. If the build pipeline ever
+    // regresses to leaving them FST-only, this test fails loud.
+    for word in ["ai", "ml", "ui", "ux", "db", "qa", "cd", "ci", "md"] {
+        assert!(
+            en.contains_short(word),
+            "en-US `{word}` should be visible to the short-token \
+             lookup (mirrored from en_us-extras.txt by build.rs)"
+        );
+    }
+
+    // Sanity: the FST-only `dwyl/english-words` short noise
+    // (`ws`, `ax`, `oe`) must NOT leak in. If it does the fix
+    // overshot and would block legitimate Cyrillic switches.
+    for noise in ["ws", "ax", "oe"] {
+        assert!(
+            !en.contains_short(noise),
+            "en-US `{noise}` is bulk-dict short noise — must NOT \
+             be in short_stop_words"
+        );
+    }
+}
+
+/// End-to-end regression for the weak-list pipeline: the
+/// bundled uk-UA dict ships with `туче` flagged weak (vocative
+/// of `туча`, "O cloud!"), so the dictionary detector must
+/// switch to en-US `next` when both are dict hits.
+#[test]
+fn bundled_weak_list_marks_tuche() {
+    let db = LayoutDb::load_embedded();
+    let uk = db
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict");
+    // Sanity that `туче` IS in the bundled FST — the test would
+    // pass vacuously if Hunspell ever stops emitting it.
+    assert!(uk.contains("туче"), "`туче` must be in the bundled uk FST");
+    assert!(
+        uk.is_weak("туче"),
+        "`туче` must be on the bundled uk-UA weak list — \
+         see data/wordlists/uk_ua-weak.txt"
+    );
+}
+
+#[test]
+fn user_weak_file_extends_weak_list() {
+    let tmp = TmpDir::new("weak");
+    tmp.write("uk_ua-weak.txt", "# user adds\nтестслабке\n");
+
+    let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+    let dict = db
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict");
+    assert!(
+        dict.is_weak("тестслабке"),
+        "user-side -weak.txt should extend the weak list"
+    );
+}
+
+#[test]
+fn user_short_stop_file_extends_stop_list() {
+    let tmp = TmpDir::new("stop");
+    tmp.write("uk_ua-stop.txt", "хм\n");
+
+    let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+    let dict = db
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict");
+
+    assert!(
+        dict.contains_short("хм"),
+        "user-side -stop.txt should extend short stop list"
+    );
+}
+
+#[test]
+fn missing_user_files_do_not_break_loading() {
+    let tmp = TmpDir::new("empty");
+    let db = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+    assert!(db.get(&LayoutId::from("en-US")).is_some());
+    assert!(db.get(&LayoutId::from("uk-UA")).is_some());
+}
+
+fn minimal_layout_toml(id: &str, name: &str, script: &str) -> String {
+    format!(
+        r#"
+id     = "{id}"
+name   = "{name}"
+script = "{script}"
+
+[keys]
+0x10 = {{ plain = "x", shift = "X" }}
+0x11 = {{ plain = "y", shift = "Y" }}
+"#,
+    )
+}
+
+#[test]
+fn user_layout_dir_adds_extra_layout() {
+    let layout_tmp = TmpDir::new("user-layouts-add");
+    std::fs::write(
+        layout_tmp.0.join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+    )
+    .expect("write user layout");
+
+    let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), None);
+    assert!(
+        db.get(&LayoutId::from("kk-KZ")).is_some(),
+        "user-side TOML at <dir>/kk_kz.toml should load as kk-KZ"
+    );
+    assert!(db.get(&LayoutId::from("en-US")).is_some());
+}
+
+#[test]
+fn user_layout_overrides_embedded_with_same_id() {
+    let layout_tmp = TmpDir::new("user-layouts-override");
+    std::fs::write(
+        layout_tmp.0.join("en_us.toml"),
+        minimal_layout_toml("en-US", "USER-OVERRIDE-EN", "Latin"),
+    )
+    .expect("write user layout");
+
+    let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), None);
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US present");
+    assert_eq!(
+        en.name, "USER-OVERRIDE-EN",
+        "user TOML should win over embedded layout"
+    );
+}
+
+#[test]
+fn malformed_user_layout_is_skipped() {
+    let layout_tmp = TmpDir::new("user-layouts-malformed");
+    std::fs::write(
+        layout_tmp.0.join("bad.toml"),
+        "this is not valid TOML at all <<<>>>",
+    )
+    .expect("write bad layout");
+
+    let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), None);
+    assert!(db.get(&LayoutId::from("en-US")).is_some());
+    assert!(db.get(&LayoutId::from("bad")).is_none());
+}
+
+#[test]
+fn user_layout_picks_up_matching_wordlist() {
+    let layout_tmp = TmpDir::new("user-layouts-dict-l");
+    let overlay_tmp = TmpDir::new("user-layouts-dict-w");
+    std::fs::write(
+        layout_tmp.0.join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+    )
+    .expect("write user layout");
+    std::fs::write(overlay_tmp.0.join("kk_kz.txt"), "тілқолданбасы\n")
+        .expect("write user wordlist");
+
+    let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), Some(&overlay_tmp.0));
+    let dict = db
+        .get(&LayoutId::from("kk-KZ"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("kk-KZ dictionary built from overlay");
+    assert!(dict.contains("тілқолданбасы"));
+}
+
+// ─── Plug-in pack loader ───────────────────────────────────────
+
+/// Minimal but real FST blob for "must compile, must read back"
+/// tests. We don't need a populated dictionary to verify the
+/// loader picks up the file — we just need the bytes to parse as
+/// a valid `FstSet`.
+fn empty_fst_bytes() -> Vec<u8> {
+    let builder = fst::SetBuilder::memory();
+    builder.into_inner().expect("empty FST builder")
+}
+
+/// Happy path: drop a complete plug-in tree under
+/// `<data_dir>/plugins/<pack>/` and verify the contained layout
+/// shows up in the loaded `LayoutDb` with its dictionary attached.
+#[test]
+fn plugin_pack_layout_loads() {
+    let data_dir = TmpDir::new("plugin-happy");
+    let pack_dir = data_dir.0.join("plugins").join("test-pack");
+    std::fs::create_dir_all(pack_dir.join("layout-mappings")).unwrap();
+    std::fs::create_dir_all(pack_dir.join("wordlists")).unwrap();
+
+    std::fs::write(
+        pack_dir.join("manifest.toml"),
+        r#"
+id = "test-pack"
+name = "Test pack"
+version = "0.0.1"
+supported_layouts = ["kk-KZ"]
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("layout-mappings").join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+    )
+    .unwrap();
+    std::fs::write(
+        pack_dir.join("wordlists").join("kk_kz.fst"),
+        empty_fst_bytes(),
+    )
+    .unwrap();
+
+    let db = LayoutDb::load(LoadOptions {
+        data_dir: Some(&data_dir.0),
+        ..Default::default()
+    })
+    .expect("load plugin pack");
+
+    let layout = db
+        .get(&LayoutId::from("kk-KZ"))
+        .expect("plug-in's kk-KZ layout should be loaded");
+    // Dictionary attached because we shipped an FST in the pack.
+    assert!(
+        layout.dictionary.is_some(),
+        "plug-in with shipped FST should have a dictionary"
+    );
+}
+
+/// A plug-in directory without a `manifest.toml` is skipped, but
+/// the rest of the load proceeds. Without this guard, a stray
+/// folder under `plugins/` (e.g. `.git/`, `__MACOSX/` from an
+/// extracted zip) could derail every other pack.
+#[test]
+fn plugin_missing_manifest_skipped_gracefully() {
+    let data_dir = TmpDir::new("plugin-no-manifest");
+    let pack_dir = data_dir.0.join("plugins").join("broken-pack");
+    std::fs::create_dir_all(pack_dir.join("layout-mappings")).unwrap();
+    // No manifest.toml. There's even a TOML in layout-mappings
+    // that *would* parse — but since the pack lacks a manifest
+    // we should refuse to load anything from it.
+    std::fs::write(
+        pack_dir.join("layout-mappings").join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+    )
+    .unwrap();
+
+    let db = LayoutDb::load(LoadOptions {
+        data_dir: Some(&data_dir.0),
+        ..Default::default()
+    })
+    .expect("load with broken pack");
+    assert!(
+        db.get(&LayoutId::from("kk-KZ")).is_none(),
+        "layout from a manifest-less pack must not be loaded"
+    );
+}
+
+/// Plug-in's TOML with an unparseable manifest is skipped. The
+/// pack is logged + ignored; other packs in the same plug-ins
+/// directory keep loading.
+#[test]
+fn plugin_invalid_manifest_skipped() {
+    let data_dir = TmpDir::new("plugin-bad-manifest");
+    let bad_pack = data_dir.0.join("plugins").join("bad-pack");
+    std::fs::create_dir_all(bad_pack.join("layout-mappings")).unwrap();
+    std::fs::write(bad_pack.join("manifest.toml"), "not = valid = toml === ").unwrap();
+    std::fs::write(
+        bad_pack.join("layout-mappings").join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+    )
+    .unwrap();
+
+    // A second pack alongside, this one well-formed — must still
+    // load to prove the bad pack didn't poison the whole load.
+    let good_pack = data_dir.0.join("plugins").join("good-pack");
+    std::fs::create_dir_all(good_pack.join("layout-mappings")).unwrap();
+    std::fs::create_dir_all(good_pack.join("wordlists")).unwrap();
+    std::fs::write(
+        good_pack.join("manifest.toml"),
+        r#"id="good-pack"
+name="Good"
+version="0.1.0""#,
+    )
+    .unwrap();
+    std::fs::write(
+        good_pack.join("layout-mappings").join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ from good pack", "Cyrillic"),
+    )
+    .unwrap();
+    std::fs::write(
+        good_pack.join("wordlists").join("kk_kz.fst"),
+        empty_fst_bytes(),
+    )
+    .unwrap();
+
+    let db = LayoutDb::load(LoadOptions {
+        data_dir: Some(&data_dir.0),
+        ..Default::default()
+    })
+    .expect("load with mixed packs");
+    let layout = db
+        .get(&LayoutId::from("kk-KZ"))
+        .expect("good pack should still load even though bad pack lives next to it");
+    assert_eq!(
+        layout.name, "Қазақ from good pack",
+        "the good pack's layout should win — not the bad pack's TOML"
+    );
+}
+
+/// User overlay TOML overrides a plug-in TOML with the same id.
+/// This is the documented precedence chain
+/// `bundled ← plug-ins ← user-overlay`. A user dropping a
+/// matching TOML under `<config-dir>/poltertype/layouts/` should
+/// always win.
+#[test]
+fn user_overlay_overrides_plugin() {
+    let data_dir = TmpDir::new("plugin-vs-user-data");
+    let user_dir = TmpDir::new("plugin-vs-user-layouts");
+
+    let pack = data_dir.0.join("plugins").join("p");
+    std::fs::create_dir_all(pack.join("layout-mappings")).unwrap();
+    std::fs::create_dir_all(pack.join("wordlists")).unwrap();
+    std::fs::write(
+        pack.join("manifest.toml"),
+        r#"id="p"
+name="Pack"
+version="0.0.1""#,
+    )
+    .unwrap();
+    std::fs::write(
+        pack.join("layout-mappings").join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "FROM-PACK", "Cyrillic"),
+    )
+    .unwrap();
+    std::fs::write(pack.join("wordlists").join("kk_kz.fst"), empty_fst_bytes()).unwrap();
+
+    // The user's own copy of `kk-KZ`.
+    std::fs::write(
+        user_dir.0.join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "FROM-USER", "Cyrillic"),
+    )
+    .unwrap();
+
+    let db = LayoutDb::load(LoadOptions {
+        data_dir: Some(&data_dir.0),
+        user_layout_dir: Some(&user_dir.0),
+        ..Default::default()
+    })
+    .expect("load with plugin + user overlap");
+    let layout = db.get(&LayoutId::from("kk-KZ")).expect("kk-KZ");
+    assert_eq!(
+        layout.name, "FROM-USER",
+        "user overlay must win over plug-in for the same id"
+    );
+}
+
+#[test]
+fn user_layout_without_wordlist_still_loads() {
+    let layout_tmp = TmpDir::new("user-layouts-nodict-l");
+    let overlay_tmp = TmpDir::new("user-layouts-nodict-w");
+    std::fs::write(
+        layout_tmp.0.join("kk_kz.toml"),
+        minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),
+    )
+    .expect("write user layout");
+
+    let db = LayoutDb::load_with_user_layouts(Some(&layout_tmp.0), Some(&overlay_tmp.0));
+    let layout = db.get(&LayoutId::from("kk-KZ")).expect("kk-KZ loaded");
+    assert!(
+        layout.dictionary.is_none(),
+        "no overlay file → no dictionary attached"
+    );
+}
+
+#[test]
+fn overlay_is_freshly_read_on_each_build() {
+    let tmp = TmpDir::new("reload");
+    let first_token = "zxqzxqfirst";
+    let second_token = "qwrqwrsecond";
+
+    tmp.write("uk_ua.txt", &format!("{first_token}\n"));
+    let first = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+    let first_dict = first
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict #1");
+    assert!(first_dict.contains(first_token));
+    assert!(!first_dict.contains(second_token));
+
+    tmp.write("uk_ua.txt", &format!("{second_token}\n"));
+    let second = LayoutDb::load_embedded_with_user_overlay(Some(&tmp.0));
+    let second_dict = second
+        .get(&LayoutId::from("uk-UA"))
+        .and_then(|l| l.dictionary.as_ref())
+        .expect("uk dict #2");
+    assert!(second_dict.contains(second_token));
+    assert!(
+        !second_dict.contains(first_token),
+        "old overlay must not leak into the fresh load"
+    );
+}

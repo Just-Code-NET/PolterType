@@ -106,9 +106,9 @@ checksum = "fc7eb209b1518d6bb87b283c20095f5228ecda460da70b44f0802523dea6da04"
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "approx"
@@ -874,9 +874,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -2342,114 +2342,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kb-ai"
-version = "0.1.1"
-dependencies = [
- "kb-detect",
- "kb-types",
- "keyring",
- "reqwest",
- "serde",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "kb-app"
-version = "0.1.1"
-dependencies = [
- "anyhow",
- "crossbeam-channel",
- "global-hotkey",
- "iced",
- "kb-ai",
- "kb-core",
- "kb-detect",
- "kb-input",
- "kb-layout",
- "kb-types",
- "notify-rust",
- "opener",
- "parking_lot 0.12.5",
- "single-instance",
- "tao",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "tray-icon",
-]
-
-[[package]]
-name = "kb-core"
-version = "0.1.1"
-dependencies = [
- "crossbeam-channel",
- "directories",
- "flate2",
- "fst",
- "kb-detect",
- "kb-input",
- "kb-layout",
- "kb-types",
- "opener",
- "parking_lot 0.12.5",
- "rodio",
- "serde",
- "thiserror 1.0.69",
- "toml",
- "tracing",
-]
-
-[[package]]
-name = "kb-detect"
-version = "0.1.1"
-dependencies = [
- "fst",
- "kb-types",
- "parking_lot 0.12.5",
- "serde",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "kb-input"
-version = "0.1.1"
-dependencies = [
- "core-foundation 0.10.1",
- "core-graphics 0.24.0",
- "crossbeam-channel",
- "evdev",
- "kb-types",
- "libc",
- "parking_lot 0.12.5",
- "thiserror 1.0.69",
- "tracing",
- "windows 0.58.0",
- "x11rb",
-]
-
-[[package]]
-name = "kb-layout"
-version = "0.1.1"
-dependencies = [
- "core-foundation 0.10.1",
- "kb-types",
- "thiserror 1.0.69",
- "tracing",
- "windows 0.58.0",
- "x11rb",
-]
-
-[[package]]
-name = "kb-types"
-version = "0.1.1"
-dependencies = [
- "serde",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "keyboard-types"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3546,6 +3438,114 @@ dependencies = [
  "pin-project-lite",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "poltertype-ai"
+version = "0.1.1"
+dependencies = [
+ "keyring",
+ "poltertype-detect",
+ "poltertype-types",
+ "reqwest",
+ "serde",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "poltertype-app"
+version = "0.1.1"
+dependencies = [
+ "anyhow",
+ "crossbeam-channel",
+ "global-hotkey",
+ "iced",
+ "notify-rust",
+ "opener",
+ "parking_lot 0.12.5",
+ "poltertype-ai",
+ "poltertype-core",
+ "poltertype-detect",
+ "poltertype-input",
+ "poltertype-layout",
+ "poltertype-types",
+ "single-instance",
+ "tao",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "tray-icon",
+]
+
+[[package]]
+name = "poltertype-core"
+version = "0.1.1"
+dependencies = [
+ "crossbeam-channel",
+ "directories",
+ "flate2",
+ "fst",
+ "opener",
+ "parking_lot 0.12.5",
+ "poltertype-detect",
+ "poltertype-input",
+ "poltertype-layout",
+ "poltertype-types",
+ "rodio",
+ "serde",
+ "thiserror 1.0.69",
+ "toml",
+ "tracing",
+]
+
+[[package]]
+name = "poltertype-detect"
+version = "0.1.1"
+dependencies = [
+ "fst",
+ "parking_lot 0.12.5",
+ "poltertype-types",
+ "serde",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "poltertype-input"
+version = "0.1.1"
+dependencies = [
+ "core-foundation 0.10.1",
+ "core-graphics 0.24.0",
+ "crossbeam-channel",
+ "evdev",
+ "libc",
+ "parking_lot 0.12.5",
+ "poltertype-types",
+ "thiserror 1.0.69",
+ "tracing",
+ "windows 0.58.0",
+ "x11rb",
+]
+
+[[package]]
+name = "poltertype-layout"
+version = "0.1.1"
+dependencies = [
+ "core-foundation 0.10.1",
+ "poltertype-types",
+ "thiserror 1.0.69",
+ "tracing",
+ "windows 0.58.0",
+ "x11rb",
+]
+
+[[package]]
+name = "poltertype-types"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

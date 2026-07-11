@@ -10,7 +10,7 @@
 # words. This list is intentionally conservative.
 #
 # Runtime extension (no rebuild needed): drop matching files into
-# `<config-dir>/kb-switcher/wordlists/`:
+# `<config-dir>/poltertype/wordlists/`:
 #   * `en_us-stop.txt`    → merged into THIS list at startup / reload
 #   * `en_us-extras.txt`  → merged into the user-overlay HashSet
 #   * `en_us.txt`         → same as -extras, just a different filename

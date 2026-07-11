@@ -6,7 +6,7 @@
 # spurious short "words" that would block real corrections.
 #
 # Runtime extension (no rebuild needed): drop matching files into
-# `<config-dir>/kb-switcher/wordlists/`:
+# `<config-dir>/poltertype/wordlists/`:
 #   * `fr_fr-stop.txt`    → merged into THIS list at startup / reload
 #   * `fr_fr-extras.txt`  → merged into the user-overlay HashSet
 #   * `fr_fr.txt`         → same as -extras, just a different filename

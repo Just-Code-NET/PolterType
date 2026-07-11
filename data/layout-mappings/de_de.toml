@@ -6,7 +6,7 @@
 # row positions. Number-row Shift symbols follow the German convention.
 #
 # Dead keys (`´` and `^` for combining diacritics) are surfaced as their
-# spacing equivalents — kb-switcher tracks the produced character per
+# spacing equivalents — poltertype tracks the produced character per
 # scancode, not the OS-level dead-key state machine.
 
 id     = "de-DE"
