@@ -1,17 +1,22 @@
-//! Settings GUI child-process management.
+//! Spawning the Settings GUI child process and refreshing the engine
+//! when it closes.
 
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
 use poltertype_core::engine::EngineCommand;
 use tracing::{info, warn};
 
+use super::enums::*;
+use super::exe::*;
+use crate::bridges::spawn_error_notification;
 use crate::detectors::*;
 use crate::types::*;
 
 /// Spawn the Settings GUI as a child process (`poltertype
 /// --settings`) and refresh the engine when the window closes.
 /// Subprocess instead of in-process for the macOS main-thread
-/// reason documented at the top of `settings_ui.rs`.
+/// reason documented at the top of `settings_ui/mod.rs`.
 ///
 /// What "refresh" means in practice — we run all three on close so
 /// every kind of edit the user could have made via the GUI takes
@@ -33,22 +38,22 @@ use crate::types::*;
 ///    profiled app would see no effect until they alt-tabbed away
 ///    and back.
 ///
-/// Best-effort: if we can't even locate our own exe (highly unusual,
-/// e.g. running from a deleted binary) we log + skip rather than
-/// taking down the tray.
+/// If we can't spawn at all we tell the user so with a notification
+/// rather than only a log line: the click produced no window, and a
+/// tray app has nowhere else to put an error.
 pub(crate) fn spawn_settings_ui(deps: SettingsCloseDeps) {
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            warn!(?e, "could not locate own exe; can't open settings UI");
-            return;
-        }
+    let Some(exe) = settings_ui_exe() else {
+        return;
     };
     info!(?exe, "launching settings UI");
     let child = match std::process::Command::new(&exe).arg("--settings").spawn() {
         Ok(c) => c,
         Err(e) => {
             warn!(?e, ?exe, "settings UI subprocess failed to start");
+            spawn_error_notification(format!(
+                "Couldn't open Settings: {e}.\nRestarting {app} should fix it.",
+                app = crate::consts::APP_NAME,
+            ));
             return;
         }
     };
@@ -111,4 +116,55 @@ pub(crate) fn spawn_settings_ui(deps: SettingsCloseDeps) {
             }
         })
         .ok();
+}
+
+/// Which binary to hand to `Command::new`, or `None` when there is
+/// nothing launchable — in which case the user has already been told.
+///
+/// The interesting case is a tray that has outlived its own binary: a
+/// dev rebuild or an in-place package upgrade unlinks the file we were
+/// started from, and from then on `current_exe()` reports
+/// `/path/poltertype (deleted)` — a path that cannot be spawned. Before
+/// this, every "Settings…" click on such a tray failed with `ENOENT`
+/// and did nothing visible, forever.
+fn settings_ui_exe() -> Option<PathBuf> {
+    let restart = format!(
+        "Restart {app} to open Settings.",
+        app = crate::consts::APP_NAME
+    );
+    match resolve_own_exe() {
+        Ok(OwnExe::Live(p)) => Some(p),
+        Ok(OwnExe::Replaced(p)) => {
+            // Launch the build that sits there now. It may be a
+            // different version than this process, which is fine for
+            // a GUI whose entire contract is "read and write
+            // config.toml" — and strictly better than the alternative
+            // of refusing to open at all.
+            warn!(
+                exe = ?p,
+                "our binary was replaced on disk since startup; \
+                 launching the build now at that path"
+            );
+            Some(p)
+        }
+        Ok(OwnExe::Gone(p)) => {
+            warn!(exe = ?p, "our binary is gone from disk; can't open settings UI");
+            spawn_error_notification(format!(
+                "Couldn't open Settings: the {app} binary is no longer on \
+                 disk — it was removed or replaced while the app was \
+                 running.\n{restart}",
+                app = crate::consts::APP_NAME,
+            ));
+            None
+        }
+        Err(e) => {
+            warn!(?e, "could not locate own exe; can't open settings UI");
+            spawn_error_notification(format!(
+                "Couldn't open Settings: {app} can't locate its own \
+                 executable ({e}).\n{restart}",
+                app = crate::consts::APP_NAME,
+            ));
+            None
+        }
+    }
 }

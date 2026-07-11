@@ -4,6 +4,28 @@ All notable changes to Poltertype are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.2.0
+
+### Fixed — "Settings…" did nothing after the app was updated in place
+
+Replacing the binary while the tray kept running — an in-place package
+upgrade, or a `cargo build` during development — made the **Settings…**
+tray entry a silent no-op, permanently, until the app was restarted.
+
+The cause is how Linux reports a running process's own path: once the
+binary behind `/proc/self/exe` is unlinked, the kernel keeps resolving
+the link but appends a literal ` (deleted)` to it, and
+`std::env::current_exe()` hands that string back verbatim. The tray
+spawns the Settings GUI as a copy of itself, so it was trying to
+execute a file called `poltertype (deleted)`, getting `ENOENT`, and
+giving up with nothing but a `warn!` line in a log the user has no
+reason to look at.
+
+The tray now recognises that path shape and launches the binary that
+actually sits there — the freshly installed one. When there is nothing
+left to launch (the app was uninstalled or the build directory wiped),
+it says so with a system notification instead of failing silently.
+
 ## [0.2.0] — Poltertype rename, Linux X11 support, Hyprland layout fix
 
 The rename lands in full — binary, crates, config directory and

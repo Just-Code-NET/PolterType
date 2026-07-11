@@ -112,6 +112,34 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
         .ok();
 }
 
+/// Tell the user that a tray action they just clicked did not happen.
+///
+/// Deliberately NOT gated by `[general].show_notifications`: that
+/// toggle governs the cosmetic "we switched your layout" chatter that
+/// fires during normal use. This one fires only when a menu click
+/// produced nothing — the user is sitting there waiting for a window
+/// that is never going to appear, and a `warn!` line in a log file
+/// they don't know about is not a user interface.
+///
+/// Same worker-thread + swallow-failures contract as
+/// [`spawn_layout_change_notification`]; a longer timeout because this
+/// text has to be read, not glanced at.
+pub(crate) fn spawn_error_notification(body: String) {
+    std::thread::Builder::new()
+        .name("poltertype-notify-error".into())
+        .spawn(move || {
+            let mut n = notify_rust::Notification::new();
+            n.summary(APP_NAME)
+                .body(&body)
+                .appname(APP_NAME)
+                .timeout(notify_rust::Timeout::Milliseconds(8000));
+            if let Err(e) = n.show() {
+                warn!(?e, %body, "could not show error notification");
+            }
+        })
+        .ok();
+}
+
 pub(crate) fn spawn_event_bridges(
     proxy: EventLoopProxy<UserEvent>,
     engine_rx: Receiver<SwitcherEvent>,
