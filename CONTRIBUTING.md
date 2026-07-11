@@ -186,8 +186,16 @@ with these conventional file names:
 | `enums.rs` | enums (and their small `impl`s) |
 | `types.rs` | plain data structs (and their small `impl`s) |
 | `<purpose>.rs` | free functions grouped by purpose (`heuristics.rs`, `helpers.rs`, `files.rs`, …) |
-| `<Type in snake_case>.rs` | a struct with substantial behaviour lives in its own file together with its `impl` (e.g. `switcher.rs`, `db.rs`) |
+| `<Type in snake_case>.rs` | a struct with substantial behaviour lives in its own file together with its `impl` (e.g. `db.rs`) |
 | `tests.rs` | **all** unit tests — never inline `#[cfg(test)] mod tests { … }` blocks in source files |
+
+When such a type file outgrows a couple of screenfuls (~400+ lines),
+promote it to its own directory module: the struct with its fields and
+constructor in one file, and the `impl` split into one block per
+concern, one file per block (fields and cross-file methods become
+`pub(super)`). Example: `crates/poltertype-core/src/engine/switcher/`
+(`engine.rs` — the struct; `run_loop.rs`, `echo.rs`, `decide.rs`,
+`correction.rs`, `commands.rs` — one concern each).
 
 Unit tests always live in a sibling `tests.rs`, declared from the
 parent as `#[cfg(test)] mod tests;`. Existing examples to copy from:
