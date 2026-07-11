@@ -1,10 +1,13 @@
 #!/bin/sh
-# kb-switcher — pre-commit hook
+# poltertype — pre-commit hook
 #
-# Refuses to record a commit if `cargo fmt` would change anything.
-# Same check CI runs (`cargo fmt --all -- --check`), so failing here
-# is equivalent to failing the GitHub workflow — better to find out
-# locally before pushing.
+# Refuses to record a commit if the linters would fail:
+#
+#   1. `cargo fmt --all -- --check`   — formatter drift
+#   2. `cargo clippy … -D warnings`   — lint violations
+#
+# Same checks CI runs, so failing here is equivalent to failing the
+# GitHub workflow — better to find out locally before pushing.
 #
 # Bypass (use sparingly, e.g. for an in-progress wip-style commit):
 #     git commit --no-verify
@@ -17,15 +20,24 @@ set -e
 # If cargo isn't on PATH the editor is probably someone working on
 # docs without a Rust toolchain. Skip silently rather than blocking.
 if ! command -v cargo >/dev/null 2>&1; then
-    echo "kb-switcher pre-commit: cargo not found, skipping rustfmt check"
+    echo "poltertype pre-commit: cargo not found, skipping lint checks"
     exit 0
 fi
 
-echo "kb-switcher pre-commit: cargo fmt --all -- --check"
+echo "poltertype pre-commit: cargo fmt --all -- --check"
 if ! cargo fmt --all -- --check; then
     echo
-    echo "kb-switcher pre-commit: rustfmt has changes to make."
+    echo "poltertype pre-commit: rustfmt has changes to make."
     echo "Run \`cargo fmt --all\` to fix, then re-stage and re-commit."
+    echo "(or \`git commit --no-verify\` if you really need to bypass)"
+    exit 1
+fi
+
+echo "poltertype pre-commit: cargo clippy --workspace --all-targets --all-features -- -D warnings"
+if ! cargo clippy --workspace --all-targets --all-features -- -D warnings; then
+    echo
+    echo "poltertype pre-commit: clippy found problems."
+    echo "Fix the warnings above, then re-stage and re-commit."
     echo "(or \`git commit --no-verify\` if you really need to bypass)"
     exit 1
 fi

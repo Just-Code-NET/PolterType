@@ -1,10 +1,10 @@
-# kb-switcher git hooks
+# Poltertype git hooks
 
 Versioned hooks that mirror the CI gates locally.
 
 | Hook | What it runs | Why |
 |---|---|---|
-| `pre-commit` | `cargo fmt --all -- --check` | Refuses commits with formatter drift — same gate CI enforces. |
+| `pre-commit` | `cargo fmt --all -- --check` + `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Refuses commits with formatter drift or lint violations — same gates CI enforces. |
 | `pre-push` | `cargo build --workspace --all-targets` | Refuses pushes if the workspace doesn't build. Catches typos before CI does. |
 
 ## Install

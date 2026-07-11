@@ -1,5 +1,5 @@
 #!/bin/sh
-# kb-switcher — pre-push hook
+# poltertype — pre-push hook
 #
 # Refuses to push if the workspace doesn't build cleanly. Catches
 # the most embarrassing class of CI failure (a missed file, a typo
@@ -7,7 +7,7 @@
 #
 # Why `cargo build --workspace --all-targets` and not `cargo check`:
 # the user explicitly asked for "build". This also exercises the
-# build scripts (kb-core's wordlist→FST compiler, etc.) which a
+# build scripts (poltertype-core's wordlist→FST compiler, etc.) which a
 # `cargo check` can skip caching weirdness around.
 #
 # Bypass (use sparingly):
@@ -19,14 +19,14 @@
 set -e
 
 if ! command -v cargo >/dev/null 2>&1; then
-    echo "kb-switcher pre-push: cargo not found, skipping build check"
+    echo "poltertype pre-push: cargo not found, skipping build check"
     exit 0
 fi
 
-echo "kb-switcher pre-push: cargo build --workspace --all-targets"
+echo "poltertype pre-push: cargo build --workspace --all-targets"
 if ! cargo build --workspace --all-targets; then
     echo
-    echo "kb-switcher pre-push: build failed."
+    echo "poltertype pre-push: build failed."
     echo "Fix the errors above, then re-push."
     echo "(or \`git push --no-verify\` if you really need to bypass)"
     exit 1
