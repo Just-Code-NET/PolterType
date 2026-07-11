@@ -19,7 +19,10 @@ Cargo.lock.bak
 .env
 .env.*
 !.env.example
-.claude/settings.local.json
+
+# --- Claude Code (local-only, never committed) ---
+.claude/
+CLAUDE.md
 
 # --- Logs / coverage ---
 *.log
