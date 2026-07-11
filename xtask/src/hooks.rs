@@ -2,9 +2,9 @@
 
 use crate::*;
 use anyhow::{Context, Result, bail};
-use std::fs::{self};
-use std::path::Path;
 use std::process::Command;
+#[cfg(unix)]
+use std::{fs, path::Path};
 
 /// Wire the versioned `.githooks/` directory into the local clone by
 /// setting `core.hooksPath`. This is the entire install — Git itself
