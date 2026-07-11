@@ -8,7 +8,7 @@
 ## Why externalised data
 
 Up to v0.1.0-alpha.0, layout TOMLs and per-language FST wordlists were
-baked into `kb-switcher.exe` via `include_str!` / `include_bytes!`.
+baked into `poltertype.exe` via `include_str!` / `include_bytes!`.
 That made the binary large (~75 MB resident FST per language × 6
 languages) and forced the engine to load every bundled language even
 when the user only had a couple installed in the OS.
@@ -45,29 +45,29 @@ deployed:
                           marketplace foundation; see "Plug-ins" below)
 ```
 
-`build.rs` in `crates/kb-core` produces this tree at every cargo
+`build.rs` in `crates/poltertype-core` produces this tree at every cargo
 build, writing to `<workspace>/target/dist/data/`. Installer scripts
 copy that tree into the install location:
 
 | Platform | exe location | data location |
 |---|---|---|
-| Windows MSI | `%LOCALAPPDATA%\kb-switcher contributors\kb-switcher\kb-switcher.exe` | `…\data\` (sibling) |
-| macOS .dmg | `kb-switcher.app/Contents/MacOS/kb-switcher` | `kb-switcher.app/Contents/Resources/data/` |
-| Linux AppImage | `<mount>/usr/bin/kb-switcher` | `<mount>/usr/share/kb-switcher/data/` |
-| dev (`cargo run`) | `target/{debug,release}/kb-switcher` | `target/dist/data/` |
+| Windows MSI | `%LOCALAPPDATA%\poltertype contributors\poltertype\poltertype.exe` | `…\data\` (sibling) |
+| macOS .dmg | `poltertype.app/Contents/MacOS/poltertype` | `poltertype.app/Contents/Resources/data/` |
+| Linux AppImage | `<mount>/usr/bin/poltertype` | `<mount>/usr/share/poltertype/data/` |
+| dev (`cargo run`) | `target/{debug,release}/poltertype` | `target/dist/data/` |
 
 ## Resolution at runtime
 
-`kb_core::data_dir::resolve()` returns the active data directory by
+`poltertype_core::data_dir::resolve()` returns the active data directory by
 trying each of the following in order, returning the first that
 exists as a directory:
 
-1. **`KB_SWITCHER_DATA_DIR` env override** — escape hatch for tests
+1. **`POLTERTYPE_DATA_DIR` env override** — escape hatch for tests
    and unusual deployments.
 2. **`<exe_dir>/data/`** — Windows MSI install layout, portable mode,
    the layout linuxdeploy produces inside an AppImage AppDir.
 3. **`<exe_dir>/../Resources/data/`** — macOS `.app` bundle layout.
-4. **`<exe_dir>/../share/kb-switcher/data/`** — alternate Linux layout
+4. **`<exe_dir>/../share/poltertype/data/`** — alternate Linux layout
    when an unprefixed binary is dropped in `/usr/bin/`.
 5. **`<workspace>/target/dist/data/`** — dev mode, deduced from the
    exe location by walking up to a parent named `target`.
@@ -78,7 +78,7 @@ log line.
 
 ## Lazy loading by OS-active filter
 
-`kb-app` resolves the data dir at startup, queries the OS for the
+`poltertype-app` resolves the data dir at startup, queries the OS for the
 list of currently active keyboard layouts via
 `LayoutSwitcher::list_active()`, and passes that list to
 `LayoutDb::load(LoadOptions { active_filter, … })`. Only layouts
@@ -88,23 +88,23 @@ disk.
 A user with `en-US / uk-UA / ru-RU` enabled in Windows will see:
 
 ```
-INFO  kb_app: OS active layouts: [LayoutId("en-US"), LayoutId("uk-UA"), LayoutId("ru-RU")]
-INFO  kb_core::layouts: skipping bundled layout — not in active OS list  layout=fr-FR
-INFO  kb_core::layouts: skipping bundled layout — not in active OS list  layout=de-DE
-INFO  kb_core::layouts: skipping bundled layout — not in active OS list  layout=es-ES
-INFO  kb_core::layouts: loaded bundled layout                            layout=en-US
-INFO  kb_core::layouts: loaded bundled layout                            layout=ru-RU
-INFO  kb_core::layouts: loaded bundled layout                            layout=uk-UA
-INFO  kb_app: layout DB ready  loaded=3
+INFO  poltertype_app: OS active layouts: [LayoutId("en-US"), LayoutId("uk-UA"), LayoutId("ru-RU")]
+INFO  poltertype_core::layouts: skipping bundled layout — not in active OS list  layout=fr-FR
+INFO  poltertype_core::layouts: skipping bundled layout — not in active OS list  layout=de-DE
+INFO  poltertype_core::layouts: skipping bundled layout — not in active OS list  layout=es-ES
+INFO  poltertype_core::layouts: loaded bundled layout                            layout=en-US
+INFO  poltertype_core::layouts: loaded bundled layout                            layout=ru-RU
+INFO  poltertype_core::layouts: loaded bundled layout                            layout=uk-UA
+INFO  poltertype_app: layout DB ready  loaded=3
 ```
 
-Adding a language in the OS requires a kb-switcher restart to pick
+Adding a language in the OS requires a Poltertype restart to pick
 it up (`list_active` is queried once at startup). This keeps the
 hot path simple and predictable; the cost is one kill-and-relaunch
 when you reorganise your input methods.
 
 If the OS query fails for any reason (`LayoutError::Unsupported` /
-`Os(...)`), kb-switcher fails open: it loads every bundled layout,
+`Os(...)`), Poltertype fails open: it loads every bundled layout,
 matching the pre-filter behaviour. The detector and the
 `apply_correction` pre-flight together still keep the engine from
 typing into an unreachable layout.
@@ -132,7 +132,7 @@ exactly the same way it treats the bundled
 need to learn a separate API, and conflict resolution (a pack
 overriding a bundled language) is the same `id` collision rule
 already in place for user-side TOMLs in
-`<config-dir>/kb-switcher/layouts/`.
+`<config-dir>/poltertype/layouts/`.
 
 The loader is **live as of 0.1.0-alpha.0**. `<data_dir>/plugins/`
 is enumerated at every `LayoutDb` load; each pack's
@@ -149,10 +149,10 @@ pack before publishing.
   surface is data-only: TOMLs and FSTs. This caps the security
   blast-radius of a malicious pack and rules out platform-portability
   headaches.
-* **Network calls.** kb-switcher's no-network rule (see CLAUDE.md)
+* **Network calls.** Poltertype's no-network rule (see CLAUDE.md)
   applies to plug-ins. A pack that wants to fetch updates does it
   through a separate user-driven download / installer step, not at
-  kb-switcher runtime.
+  Poltertype runtime.
 * **Settings injection.** Plug-ins can ship default short-stop words
   and dictionary entries; they cannot toggle global engine flags
   (autostart, hotkeys, …). The user owns those.
@@ -164,8 +164,8 @@ out to need them.
 
 ## How user overlays differ from plug-ins
 
-`<config-dir>/kb-switcher/layouts/` and
-`<config-dir>/kb-switcher/wordlists/` already let an individual user
+`<config-dir>/poltertype/layouts/` and
+`<config-dir>/poltertype/wordlists/` already let an individual user
 add layouts and dictionary entries without rebuilding the app. The
 two layers solve different problems:
 

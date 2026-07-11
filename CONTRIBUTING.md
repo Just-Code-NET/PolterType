@@ -1,4 +1,4 @@
-# Contributing to kb-switcher
+# Contributing to Poltertype
 
 Thanks for the interest! This document covers the practical bits;
 the architecture lives in [docs/PLAN.md](docs/PLAN.md) and
@@ -8,16 +8,16 @@ the architecture lives in [docs/PLAN.md](docs/PLAN.md) and
 
 ```bash
 # Default build (no AI subsystem)
-cargo build -p kb-app
+cargo build -p poltertype-app
 
 # Run
-cargo run -p kb-app
+cargo run -p poltertype-app
 
 # With the AI subsystem (LocalOnnxDetector + RemoteLlmDetector wiring)
-cargo build -p kb-app --features ai
+cargo build -p poltertype-app --features ai
 
 # With AI + actual remote HTTP capability
-cargo build -p kb-app --features ai,kb-ai/remote
+cargo build -p poltertype-app --features ai,poltertype-ai/remote
 
 # Lints (CI runs the same)
 cargo fmt --all -- --check
@@ -52,7 +52,7 @@ Wires the versioned hooks under [`.githooks/`](.githooks/):
 
 | Hook | Runs | Why |
 |---|---|---|
-| `pre-commit` | `cargo fmt --all -- --check` | No commits with formatter drift. |
+| `pre-commit` | `cargo fmt --all -- --check` + `cargo clippy --workspace --all-targets --all-features -- -D warnings` | No commits with formatter drift or lint violations. |
 | `pre-push` | `cargo build --workspace --all-targets` | No pushes that don't compile. |
 
 Bypass a single run with `git commit --no-verify` / `git push
@@ -92,7 +92,7 @@ rationale.
 ### macOS
 
 System Settings → Privacy & Security → Accessibility → enable
-`kb-switcher` (or your `cargo run` debug binary). The app will fail
+`poltertype` (or your `cargo run` debug binary). The app will fail
 to install its CGEventTap until that's granted.
 
 ### Windows
@@ -104,13 +104,13 @@ binary; signed releases come in v0.2.
 
 ```
 crates/
-  kb-app/      binary  — tray + event loop + plumbing + Settings UI
-  kb-core/    library — engine, settings, layouts, data_dir, audio
-  kb-input/   library — InputListener / KeyEmitter trait + per-OS
-  kb-layout/  library — LayoutSwitcher trait + per-OS
-  kb-detect/  library — Detector / WordRewriter traits + built-ins
-  kb-ai/      library — optional AI plug-ins (feature `ai`)
-  kb-types/   library — shared types (LayoutId, KeyEvent, …)
+  poltertype-app/      binary  — tray + event loop + plumbing + Settings UI
+  poltertype-core/    library — engine, settings, layouts, data_dir, audio
+  poltertype-input/   library — InputListener / KeyEmitter trait + per-OS
+  poltertype-layout/  library — LayoutSwitcher trait + per-OS
+  poltertype-detect/  library — Detector / WordRewriter traits + built-ins
+  poltertype-ai/      library — optional AI plug-ins (feature `ai`)
+  poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
 data/                source-of-truth, committed; consumed by build.rs
   layout-mappings/   declarative scancode→char tables (TOML)
   wordlists/         <stem>.txt.gz / -extras.txt / -stop.txt
@@ -122,16 +122,16 @@ installers/          per-platform packaging — see "Releasing" below
   windows/build-msi.ps1     wraps candle.exe + light.exe
   macos/Info.plist.in       template for the .app bundle
   macos/build-dmg.sh        universal-binary .app + .dmg via lipo + hdiutil
-  linux/kb-switcher.desktop the AppImage's .desktop entry
+  linux/poltertype.desktop the AppImage's .desktop entry
   linux/build-appimage.sh   wraps linuxdeploy + appimage plugin
 scripts/
   setup-linux.sh — one-time evdev permission grant
 ```
 
-`crates/kb-core/build.rs` reads from `data/` and writes prepared
+`crates/poltertype-core/build.rs` reads from `data/` and writes prepared
 assets (FSTs + copied TOMLs + copied stop-word txts) to
 `<workspace>/target/dist/data/` on every cargo build. The runtime
-finds that tree via `kb_core::data_dir::resolve()`. Installer
+finds that tree via `poltertype_core::data_dir::resolve()`. Installer
 scripts copy `target/dist/data/` into the install location. See
 [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md) for the full picture.
 
@@ -142,7 +142,7 @@ knobs (active languages, autostart, sound, idle timeout, folder
 shortcuts). Power users still hit **"Edit config.toml…"** for the
 full schema (hotkey rebinding, exception-app list, AI subsystem).
 
-The Settings GUI is the same `kb-switcher` binary launched with
+The Settings GUI is the same `poltertype` binary launched with
 `--settings`; it runs as a child process so the tray's main-thread
 event loop doesn't have to share NSApplication on macOS. When the
 window closes the tray reloads settings automatically.
@@ -152,14 +152,14 @@ window closes the tray reloads settings automatically.
 1. Drop a TOML into `data/layout-mappings/` named after the BCP-47
    tag (`de_de.toml`, `kk_cyrl_kz.toml`, …). Use one of the existing
    files as a template.
-2. Add the same stem to `LAYOUTS` in `crates/kb-core/build.rs` (so
+2. Add the same stem to `LAYOUTS` in `crates/poltertype-core/build.rs` (so
    build.rs copies it) AND to `BUNDLED_LAYOUT_STEMS` in
-   `crates/kb-core/src/layouts.rs` (so the runtime considers it).
+   `crates/poltertype-core/src/layouts/consts.rs` (so the runtime considers it).
 3. Send a PR. No further Rust changes are required for the engine
    to start considering the new layout — the file is the contract.
 
 If your language has unusual vowels not covered by
-`derive_vowels()` in `crates/kb-core/src/layouts.rs`, extend that
+`derive_vowels()` in `crates/poltertype-core/src/layouts/helpers.rs`, extend that
 function with a special case.
 
 ## Style & guarantees (hard rules)
@@ -170,8 +170,29 @@ function with a special case.
   RAM-only and short-lived.
 * The OS hook callback never blocks — events go straight onto a
   `crossbeam-channel`; the engine processes them on a worker thread.
-* Platform code lives behind `cfg`-gated modules in `kb-input` and
-  `kb-layout`. No `#[cfg(target_os = "…")]` outside those crates.
+* Platform code lives behind `cfg`-gated modules in `poltertype-input` and
+  `poltertype-layout`. No `#[cfg(target_os = "…")]` outside those crates.
+
+## File organization (one kind of thing per file)
+
+Don't mix tests, data types, and free functions in one file. When a
+module grows past a single concern, split it into a directory module
+with these conventional file names:
+
+| File | Contents |
+|---|---|
+| `mod.rs` / `lib.rs` | module docs, `mod` declarations, `pub use` re-exports — wiring only |
+| `consts.rs` | constants |
+| `enums.rs` | enums (and their small `impl`s) |
+| `types.rs` | plain data structs (and their small `impl`s) |
+| `<purpose>.rs` | free functions grouped by purpose (`heuristics.rs`, `helpers.rs`, `files.rs`, …) |
+| `<Type in snake_case>.rs` | a struct with substantial behaviour lives in its own file together with its `impl` (e.g. `switcher.rs`, `db.rs`) |
+| `tests.rs` | **all** unit tests — never inline `#[cfg(test)] mod tests { … }` blocks in source files |
+
+Unit tests always live in a sibling `tests.rs`, declared from the
+parent as `#[cfg(test)] mod tests;`. Existing examples to copy from:
+`crates/poltertype-core/src/engine/`, `crates/poltertype-core/src/layouts/`,
+`crates/poltertype-detect/src/`, `crates/poltertype-app/src/settings_ui/`.
 
 ## Commits
 
@@ -196,21 +217,21 @@ DMG layout without round-tripping through GitHub Actions:
 
 ```bash
 # Linux
-cargo build --release --target x86_64-unknown-linux-gnu -p kb-app
+cargo build --release --target x86_64-unknown-linux-gnu -p poltertype-app
 cargo xtask assets icon-png target/dist/icon-256.png --size 256
 VERSION=local ICON_PNG=target/dist/icon-256.png \
     bash installers/linux/build-appimage.sh
 
 # macOS (run on a Mac)
-cargo build --release --target x86_64-apple-darwin   -p kb-app
-cargo build --release --target aarch64-apple-darwin  -p kb-app
+cargo build --release --target x86_64-apple-darwin   -p poltertype-app
+cargo build --release --target aarch64-apple-darwin  -p poltertype-app
 VERSION=local \
-    BIN_X86_64=target/x86_64-apple-darwin/release/kb-switcher \
-    BIN_ARM64=target/aarch64-apple-darwin/release/kb-switcher \
+    BIN_X86_64=target/x86_64-apple-darwin/release/poltertype \
+    BIN_ARM64=target/aarch64-apple-darwin/release/poltertype \
     bash installers/macos/build-dmg.sh
 
 # Windows
-cargo build --release --target x86_64-pc-windows-msvc -p kb-app
+cargo build --release --target x86_64-pc-windows-msvc -p poltertype-app
 choco install wixtoolset --no-progress -y   # one-time
 $env:VERSION = 'local'
 pwsh installers/windows/build-msi.ps1
@@ -232,8 +253,8 @@ just need the command sequence.
 
 GitHub Issues — please attach:
 
-* `kb-switcher --version`
+* `poltertype --version`
 * OS / DE / session type
 * If the engine's behaviour is surprising, the relevant lines from
-  `<config-dir>/kb-switcher/logs/` (the tray's "Open Logs" entry
+  `<config-dir>/poltertype/logs/` (the tray's "Open Logs" entry
   takes you there).

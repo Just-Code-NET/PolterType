@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to kb-switcher are recorded here. The format is
+All notable changes to Poltertype are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
@@ -9,6 +9,18 @@ and the project follows [Semantic Versioning](https://semver.org/).
 Two follow-up fixes for the most common "the corrector glitched on me"
 reports against 0.1.0 — both Linux/Wayland symptoms, both pure-Rust
 core / listener changes.
+
+### Changed — project renamed: kb-switcher → Poltertype
+
+The working title `kb-switcher` is retired. Everything brand-visible
+moves to the new name: the binary (`poltertype`), the crates
+(`poltertype-*`), the app id (`dev.opensource.poltertype`), the macOS
+bundle id (`org.poltertype.app`), the config directory
+(`~/.config/poltertype/` and OS equivalents), the data-dir override
+env var (`POLTERTYPE_DATA_DIR`, was `KB_SWITCHER_DATA_DIR`), and the
+installer/product names. There is no settings migration: an existing
+install starts fresh — copy your old `config.toml` over from the
+`kb-switcher` config directory if you want to keep your settings.
 
 ### Fixed — ALL-CAPS abbreviations are no longer "corrected"
 
@@ -179,7 +191,7 @@ continue to win outright.
   auto-switch users typing it intentionally.
 * Same loader contract as the existing `<stem>-stop.txt` /
   `<stem>-extras.txt` files: bundled list at compile time, optional
-  user overlay at `<config-dir>/kb-switcher/wordlists/<stem>-weak.txt`
+  user overlay at `<config-dir>/poltertype/wordlists/<stem>-weak.txt`
   picked up by "Reload Settings" without a rebuild.
 * `DictionaryDetector::is_weak()` exposed for diagnostic UI / future
   detectors.
@@ -244,7 +256,7 @@ feel like a settings dialog, not a main window.
 
 When the engine auto-corrects (changes the OS layout and re-types
 the last word) it can now show a brief system notification —
-`"kb-switcher: Switched to English (United States)"` — that auto-
+`"poltertype: Switched to English (United States)"` — that auto-
 dismisses after ~2 seconds. Off by default (preserves the existing
 "quiet by default" contract); toggle on the General pane in the
 Settings window. The body text uses the layout's friendly `name`
@@ -256,7 +268,7 @@ Implementation notes:
 * Cross-platform via `notify-rust` — Windows 10+ Toast,
   NSUserNotification on macOS, Desktop Notifications spec via
   DBus on Linux. Matches platforms supported elsewhere in
-  kb-switcher.
+  Poltertype.
 * Fired only on `SwitcherEvent::Corrected` — auto-switch and
   manual switch-last hotkey both produce that event, so the
   user sees notifications for both. NOT fired on
@@ -323,7 +335,7 @@ sequence:
 
 1. `config.toml` reload — picks up schema edits (existing).
 2. Global wordlist reload — re-reads
-   `<config-dir>/kb-switcher/wordlists/<stem>.txt` and atomically
+   `<config-dir>/poltertype/wordlists/<stem>.txt` and atomically
    swaps the engine's dictionary set, same primitive the tray
    "Reload Settings" entry uses.
 3. Per-profile cache rebuild + watcher force-reapply — the
@@ -334,12 +346,12 @@ sequence:
    matching app would have to alt-tab away and back to see the
    change.
 
-Refactor in `crates/kb-app/src/main.rs`: `profile_dict_cache` now
+Refactor in `crates/poltertype-app/src/main.rs`: `profile_dict_cache` now
 lives behind `Arc<RwLock<...>>` so the close-handler can rebuild
 it without restarting the watcher thread; `spawn_profile_watcher`
 takes the cache + force-flag and re-reads on every tick. The
 Wordlists pane banner / pane-intro text were updated from
-"Restart kb-switcher to apply" to "Close this window to apply" so
+"Restart Poltertype to apply" to "Close this window to apply" so
 the wording matches reality.
 
 ### Fixed — manual switch-last hotkey infinite loop
@@ -393,7 +405,7 @@ action  = { type = "switch_layout", layout = "en-US" }
 [[commands]]
 id      = ";cfg"
 trigger = ";cfg"
-action  = { type = "open_path", path = "%LOCALAPPDATA%/kb-switcher/config.toml" }
+action  = { type = "open_path", path = "%LOCALAPPDATA%/poltertype/config.toml" }
 ```
 
 Three v1 actions:
@@ -453,7 +465,7 @@ apps   = ["WINWORD.EXE", "obsidian.exe"]
 ```
 
 Each profile points at its own subdirectory under
-`<config-dir>/kb-switcher/wordlists/profiles/<id>/<stem>.txt` (and
+`<config-dir>/poltertype/wordlists/profiles/<id>/<stem>.txt` (and
 `<stem>-stop.txt`). A new background watcher polls
 `FocusTracker::focused_exe()` every ~250 ms and atomically swaps
 the active dictionary set when the focused app changes — using
@@ -511,8 +523,8 @@ The initial scaffolding lands across Phases 0–8 documented in
 
 ### Added
 
-* Cargo workspace with seven crates: `kb-app`, `kb-core`,
-  `kb-input`, `kb-layout`, `kb-detect`, `kb-ai`, `kb-types`.
+* Cargo workspace with seven crates: `poltertype-app`, `poltertype-core`,
+  `poltertype-input`, `poltertype-layout`, `poltertype-detect`, `poltertype-ai`, `poltertype-types`.
 * Pure-Rust runtime: `tao` event loop + `tray-icon` + `global-hotkey`
   + `single-instance`. No WebView, no Node.
 * SwitcherEngine: scancode-buffer → per-layout render → detector
@@ -530,7 +542,7 @@ The initial scaffolding lands across Phases 0–8 documented in
   Open Logs Folder / Reload Settings / Pause / About / Quit.
 * Global hotkeys: `Ctrl+Shift+Space` (pause), `Ctrl+Shift+Backspace`
   (force-switch the last word).
-* AI subsystem scaffold (`kb-ai`, gated by `feature = "ai"`):
+* AI subsystem scaffold (`poltertype-ai`, gated by `feature = "ai"`):
   `Detector` + `WordRewriter` plug-in shape, key storage via
   `keyring`, declarative `[[ai.detectors]]` config schema. Concrete
   ONNX/LLM implementations are stubs in v0.1; v0.1.x fills them in.
@@ -580,7 +592,7 @@ with no per-word allocation; the on-disk size grows roughly
 linearly with the form count.
 
 User overlay: drop additional words into
-`<config-dir>/kb-switcher/wordlists/<id>.txt` to extend any
+`<config-dir>/poltertype/wordlists/<id>.txt` to extend any
 dictionary with project-specific vocabulary at startup.
 
 Refresh upstream: `cargo xtask wordlists fetch` re-downloads `.dic`
@@ -614,7 +626,7 @@ them to a draft GitHub Release:
 * **Windows** — per-user `.msi` via WiX Toolset 3 (no admin needed,
   no UAC prompt). Start menu shortcut, clean uninstall.
 * **macOS** — universal-binary `.dmg` (Intel + Apple Silicon merged
-  with `lipo`) containing a tray-only `kb-switcher.app` (`LSUIElement`
+  with `lipo`) containing a tray-only `poltertype.app` (`LSUIElement`
   set; no Dock icon).
 * **Linux** — `.AppImage` (x86_64) built with `linuxdeploy`. Single
   file, no system install.
@@ -629,17 +641,17 @@ see [CONTRIBUTING.md §Releasing](CONTRIBUTING.md#releasing).
 ### Externalised data + lazy load by OS-active
 
 Layout TOMLs and FST wordlists no longer ride inside the binary.
-`crates/kb-core/build.rs` writes them to `target/dist/data/`; each
+`crates/poltertype-core/build.rs` writes them to `target/dist/data/`; each
 installer copies that tree into the runtime's expected location:
 
 | Platform | Data lives at |
 |---|---|
 | Windows MSI | `<exe_dir>\data\` |
-| macOS .dmg | `kb-switcher.app/Contents/Resources/data/` |
-| Linux AppImage | `<mount>/usr/share/kb-switcher/data/` |
+| macOS .dmg | `poltertype.app/Contents/Resources/data/` |
+| Linux AppImage | `<mount>/usr/share/poltertype/data/` |
 | dev (`cargo run`) | `target/dist/data/` |
 
-`kb_core::data_dir::resolve()` finds the live tree at startup. The
+`poltertype_core::data_dir::resolve()` finds the live tree at startup. The
 app then queries `LayoutSwitcher::list_active()` and loads only the
 layouts the OS actually has — a user with `en-US / uk-UA / ru-RU`
 saves the FST RAM for the three other bundled languages they'd
@@ -669,10 +681,10 @@ the lightweight `tiny-skia` renderer). Six panes:
   presses are filtered, single-letter combos refused, `Esc`
   cancels. Round-trip through `global-hotkey::HotKey::from_str`
   is unit-tested so the GUI can never produce a combo the next
-  tray launch silently drops. `crates/kb-app` now reads bindings
+  tray launch silently drops. `crates/poltertype-app` now reads bindings
   from `[hotkeys]` in settings (used to be hardcoded).
 * **Wordlists** — multiline editor over the per-layout user-overlay
-  files in `<config-dir>/kb-switcher/wordlists/<stem>.txt` (Extras)
+  files in `<config-dir>/poltertype/wordlists/<stem>.txt` (Extras)
   and `<stem>-stop.txt` (Stop list). Pick a layout button, pick a
   kind, edit, hit Save — the file is written with a trailing
   newline (matches the bundled convention) and the resolved path
@@ -691,7 +703,7 @@ the lightweight `tiny-skia` renderer). Six panes:
   from disk" escape hatches.
 
 Implementation note: the GUI runs as a child process
-(`kb-switcher --settings`) so the tray's `tao::EventLoop` and
+(`poltertype --settings`) so the tray's `tao::EventLoop` and
 iced's `winit` event loop don't fight over the macOS main thread.
 
 ### Plug-in loader v1
@@ -725,5 +737,5 @@ missing-manifest / invalid-manifest / user-override.
   separate phase. The loader is ready; the network + UI plumbing
   has its own security review queued.
 
-[Unreleased]: https://github.com/Just-Code-NET/kb-switcher/compare/v0.1.0-beta.6...HEAD
-[0.1.0-alpha.0 → 0.1.0-beta.6]: https://github.com/Just-Code-NET/kb-switcher/releases
+[Unreleased]: https://github.com/Just-Code-NET/poltertype/compare/v0.1.0-beta.6...HEAD
+[0.1.0-alpha.0 → 0.1.0-beta.6]: https://github.com/Just-Code-NET/poltertype/releases

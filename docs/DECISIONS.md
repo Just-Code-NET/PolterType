@@ -1,7 +1,7 @@
 # Decision log
 
 Short-form record of non-obvious technical choices made while
-implementing kb-switcher. Each entry: **what** was decided, **why**,
+implementing Poltertype. Each entry: **what** was decided, **why**,
 and any **alternatives** considered.
 
 ---
@@ -23,7 +23,7 @@ The engine indexes layout-mapping tables by *scancode*, not by
 
 For v0.1 the EN/UK mapping TOMLs live in `data/layout-mappings/` and
 are baked into the binary at compile time. Runtime overrides from
-`$XDG_CONFIG_HOME/kb-switcher/layout-mappings/` are a Phase 8+ task.
+`$XDG_CONFIG_HOME/poltertype/layout-mappings/` are a Phase 8+ task.
 
 Reason: avoids a "where's my data dir?" failure mode on first launch
 and keeps the binary self-contained for distribution.
@@ -72,7 +72,7 @@ Cost: one extra Win32 call per keystroke (`GetForegroundWindow` →
 Worth it for correctness.
 
 Regression locked in by `classifies_by_produced_char_not_scancode`
-in `kb-core::engine::buffer::tests`.
+in `poltertype-core::engine::buffer::tests`.
 
 ## 2026-05-02 — Plausibility-keep + runtime-reloadable user overlay
 
@@ -106,7 +106,7 @@ still switch correctly because gibberish scores well below 0.7.
 The original "Reload Settings" only re-read `config.toml`. The
 embedded dictionaries (FST + short-stop) are baked at compile time
 and can't be reloaded — but the user-overlay files at
-`<config-dir>/kb-switcher/wordlists/<stem>.txt` SHOULD be reloadable
+`<config-dir>/poltertype/wordlists/<stem>.txt` SHOULD be reloadable
 so users can add tech vocab without restarting.
 
 Implementation: `DictionaryDetector` now holds its dicts behind
@@ -132,7 +132,7 @@ common case but missed long-tail vocabulary. Switched to:
 Storage: not `HashSet<String>` (too much heap overhead at this
 scale). [BurntSushi `fst` crate](https://docs.rs/fst) compresses the
 sorted, deduped wordlist into an immutable byte-buffer set. At
-build time `kb-core/build.rs` reads `data/wordlists/<id>.txt` and
+build time `poltertype-core/build.rs` reads `data/wordlists/<id>.txt` and
 emits `<OUT_DIR>/<stem>.fst`. At runtime we `include_bytes!` the
 blob and wrap in `fst::Set::new(&'static [u8])` — O(len) lookup,
 no per-word allocation, lives in `.rodata`.
@@ -142,7 +142,7 @@ Concrete cost: release binary 5 → 6.85 MB (+1.85 MB for both FSTs);
 ~5 bytes per word storage cost — FST is the right tool.
 
 User overlay path: drop a one-word-per-line text file at
-`<config-dir>/kb-switcher/wordlists/<stem>.txt` to extend a
+`<config-dir>/poltertype/wordlists/<stem>.txt` to extend a
 dictionary with project-specific vocabulary (proper nouns, slang,
 domain terms). The overlay is loaded at startup and merged on top
 of the embedded FST.
@@ -201,11 +201,11 @@ opt-out-able via `config.toml`:
 * **Per-app**: `[exceptions].disabled_apps` ships with a sensible
   default list — VS Code / Cursor, every JetBrains IDE, Sublime, Zed,
   Neovide, Windows Terminal, alacritty / kitty / wezterm,
-  PowerShell / cmd, etc. The focus tracker (`kb-input::focus`) reads
+  PowerShell / cmd, etc. The focus tracker (`poltertype-input::focus`) reads
   the foreground process executable and the engine matches case-
   insensitively. Match → skip auto-decision.
 * **Per-token**: even outside the IDE list, the engine checks
-  `looks_like_code_token(buffer)` from `kb-detect`. If the just-
+  `looks_like_code_token(buffer)` from `poltertype-detect`. If the just-
   finished token contains an underscore, has a mid-token capital
   (camelCase / PascalCase), mixes letters and digits, or carries
   code punctuation (`\\`, `;`, `` ` ``) — skip. This catches
@@ -358,7 +358,7 @@ in another encoding is a single match arm.
 Storage on disk: bulk wordlists ship as `data/wordlists/<id>.txt.gz`
 rather than raw `.txt`. Raw, the six languages total ~165 MB
 (uk_ua alone is 84 MB after expansion); gzipped they're ~24 MB.
-Both `kb-core/build.rs` (`flate2::read::GzDecoder`) and the xtask
+Both `poltertype-core/build.rs` (`flate2::read::GzDecoder`) and the xtask
 generator (`flate2::write::GzEncoder`) handle the format
 transparently, and the build script falls back to a plain `.txt`
 of the same stem if the `.gz` is absent — useful when a contributor
@@ -375,7 +375,7 @@ honest when *some other* legitimate word also misses the dict;
 the structural fix (C) is what removes the gap class altogether
 for ~95 % of inflected verb forms going forward.
 
-Regression test lives at `kb_detect::tests::plausibility_keeps_short_vcv_cyrillic_word`
+Regression test lives at `poltertype_detect::tests::plausibility_keeps_short_vcv_cyrillic_word`
 and replays the exact 6-layout candidate set the engine produces.
 The expander itself has eight unit tests under
 `xtask::hunspell::tests` covering the SFX / PFX / class / negclass
@@ -388,7 +388,7 @@ shapes.
 Two structural problems with the v0.1 baked-in data approach:
 
 1. **Wasteful RAM** — `include_bytes!` baked all six bundled FSTs
-   into `kb-switcher.exe`. A user with `en-US / uk-UA / ru-RU`
+   into `poltertype.exe`. A user with `en-US / uk-UA / ru-RU`
    active in Windows still paid for the fr-FR / de-DE / es-ES FSTs
    sitting resident.
 2. **The `http ` bug.** `LayoutDb` exposed every bundled layout to
@@ -401,16 +401,16 @@ Two structural problems with the v0.1 baked-in data approach:
 
 ### What changed
 
-* **`crates/kb-core/build.rs`** writes layout TOMLs, FSTs, and
+* **`crates/poltertype-core/build.rs`** writes layout TOMLs, FSTs, and
   stop-word lists to `<workspace>/target/dist/data/` instead of
   embedding them. The workspace target dir is deduced from
   `OUT_DIR` (walks up to a `target` ancestor), which keeps
   `CARGO_TARGET_DIR` overrides working.
-* **`crates/kb-core/src/data_dir.rs`** — new module that resolves
-  the data directory at runtime. Order: `KB_SWITCHER_DATA_DIR` env
+* **`crates/poltertype-core/src/data_dir.rs`** — new module that resolves
+  the data directory at runtime. Order: `POLTERTYPE_DATA_DIR` env
   → `<exe_dir>/data` (Windows MSI, AppImage AppDir) →
   `<exe_dir>/../Resources/data` (macOS .app) →
-  `<exe_dir>/../share/kb-switcher/data` (FHS Linux) →
+  `<exe_dir>/../share/poltertype/data` (FHS Linux) →
   `<workspace>/target/dist/data` (dev fallback). Unit-tested
   against synthesised exe paths so the per-platform shape is
   pinned.
@@ -419,10 +419,10 @@ Two structural problems with the v0.1 baked-in data approach:
   TOMLs whose `id` isn't in it. Pre-parsing the `id` line via the
   small `peek_layout_id` helper means we don't even read the FST
   for filtered-out languages.
-* **`crates/kb-app`** queries `LayoutSwitcher::list_active()` at
+* **`crates/poltertype-app`** queries `LayoutSwitcher::list_active()` at
   startup (right after building the switcher, before loading
   layouts) and feeds the result into `LoadOptions::active_filter`.
-  Adding a language in the OS now needs a kb-switcher restart,
+  Adding a language in the OS now needs a Poltertype restart,
   which is a documented trade — the alternative is OS-event
   plumbing on three platforms for a one-line restart cost.
 
@@ -457,7 +457,7 @@ Added an iced 0.13–based Settings window (`tiny-skia` renderer to
 keep build time and binary size tame). Exposed via:
 
 * Tray menu **"Settings…"** entry — spawns
-  `kb-switcher --settings` as a child process. The subprocess form
+  `poltertype --settings` as a child process. The subprocess form
   side-steps the macOS main-thread fight between `tray-icon` and
   `iced/winit`: each gets its own process and its own NSApplication.
   When the child exits, the tray sends `EngineCommand::SettingsReloaded`
@@ -505,7 +505,7 @@ visit this pane.
 
 ### 2. Hotkey rebinding — capture mode + persisted bindings
 
-`crates/kb-app/src/main.rs` now reads `[hotkeys]` from settings
+`crates/poltertype-app/src/main.rs` now reads `[hotkeys]` from settings
 (previously hardcoded `Ctrl+Shift+Space` / `Ctrl+Shift+Backspace`).
 Parser is `global-hotkey`'s native `FromStr`, which accepts the same
 `Ctrl+Shift+Space` shape we already document. Bad strings fall back
@@ -568,9 +568,9 @@ the existing loader's "data only" assumptions stay sound.
 ### 5. Wordlists pane
 
 A sixth pane in the Settings window for editing the per-layout
-user-overlay text files in `<config-dir>/kb-switcher/wordlists/`.
+user-overlay text files in `<config-dir>/poltertype/wordlists/`.
 Two files per layout, mirroring the loader contract documented in
-`crates/kb-core/src/layouts.rs::build_dictionary`:
+`crates/poltertype-core/src/layouts/files.rs::build_dictionary`:
 
 * `<stem>.txt` — Extras: full-form words merged into the layout's
   `user_overlay` set.
@@ -601,7 +601,7 @@ would mean rebuilding every dictionary on the fly while the engine
 might be in the middle of a detector pass — extra synchronisation
 for a feature users hit rarely (you tweak your wordlist a couple
 times a week, max). The pane shows "Saved to ... Restart
-kb-switcher to apply" so the constraint is visible.
+Poltertype to apply" so the constraint is visible.
 
 **Buffer normalisation**
 
@@ -638,7 +638,7 @@ TextExpander style) for three reasons:
 * **Visibility.** A hotkey is invisible state ("did I just press
   Ctrl+Alt+S? what did it do?"). A text trigger is right there in
   your buffer — you see what you typed.
-* **Architecture fit.** kb-switcher already runs a word-boundary
+* **Architecture fit.** Poltertype already runs a word-boundary
   pipeline for layout corrections. Text triggers slot in BEFORE
   the corrector's filters — same `WordBuffer::feed` boundary
   detection, same `KeyEmitter` for backspace + replay. Zero new
@@ -747,3 +747,69 @@ UI on top is straightforward.
 * **Smart command actions** — `run_shell`, multi-token triggers,
   and case-insensitive / case-preserving expansion are deliberately
   out of v1. Each unlocks a different security or UX surface.
+
+## 2026-07-11 — Correction pipeline v2: absorb → delete → replay, echo match-and-consume
+
+Field reports on v0.1.1: (a) "після автоперемикання лишається перший
+символ старого слова", (b) "видаляю пару символів, дописую — коректор
+переводить пів слова". Root causes and the redesign that fixes them:
+
+**What was wrong.**
+
+* The engine suppressed *everything* for 300-400 ms after a correction
+  (blanket lockout) and cleared the word buffer on every event inside
+  the window. A fast typist's first keystrokes of the next word landed
+  inside that window: on screen but not in the buffer → the next
+  correction under-counted its backspaces → the word head stayed behind.
+* Keystrokes racing the emission physically interleave with our
+  backspace burst at the compositor: each raced key soaks up one
+  backspace meant for the word — same visible symptom.
+* The buffer had no model of editing across a word boundary: Backspace
+  over the space re-entered the previous word on screen, while the
+  buffer tracked a brand-new empty word → tail-only corrections.
+* `hyprctl` was spawned as a subprocess per keystroke (layout lookup)
+  and 4-5× per correction, stretching the race window to 100 ms+.
+
+**What was decided.**
+
+* **Echo handling** — the emitter records every event it puts on the
+  wire (`KeyEmitter::take_emitted`); the engine match-and-consumes
+  those echoes off the key stream (ordered queue, lookahead 1 for
+  remapper-coalesced events, ~800 ms expiry). Real keystrokes are
+  processed normally no matter how soon after a correction. The
+  blanket lockout is gone.
+* **Absorb-before-delete** — a correction first watches the key stream
+  until it has been quiet for ~90 ms (3 × 30 ms probes, 600 ms cap).
+  Keys typed meanwhile are absorbed into the plan: deleted together
+  with the word, re-typed after the boundary in order, and seeded into
+  the buffer as the next word. A boundary stops absorption and is
+  re-processed through the normal pipeline afterwards, so the next
+  word gets its own decision. Enter/Tab or anything murky (Backspace,
+  nav, click, shortcut) aborts the correction before any keystroke is
+  emitted.
+* **Switch first, delete second** — flipping the layout doesn't touch
+  text, so a failed switch now aborts with the word intact (previously
+  backspaces had already destroyed it), and its propagation overlaps
+  the backspace burst.
+* **Word-boundary re-open + poisoning** (`WordBuffer`) — the completed
+  word and its run of boundary keys stay stashed; backspacing across
+  the boundary re-opens the word (scancodes are layout-independent, so
+  this survives our own replays). When the buffer *knows* it lost
+  track (BS into unseen text, caret moved mid-word via nav keys or
+  mouse click, idle gap mid-word, shortcut mid-word), it taints the
+  in-progress word; a tainted completion is never auto-corrected and
+  drops the manual-switch stash. Mouse clicks are observed by opening
+  BTN_LEFT-capable evdev devices and reporting a pseudo-scancode.
+* **Hyprland over IPC socket** — `.socket.sock` request/reply with
+  `hyprctl` subprocess as fallback, plus a TTL cache (200 ms current /
+  2 s list) in front of every Linux backend. Cuts the per-keystroke
+  cost from a process spawn to a mutex read and the pre-correction
+  latency from ~100 ms to ~2 ms.
+
+**Alternatives considered.**
+
+* `EVIOCGRAB` during corrections (deterministic, no interleaving) —
+  rejected: keyd already holds the grab on this class of setup, and
+  grabbing keyd's virtual device would swallow our own replay.
+* Wayland `zwp_virtual_keyboard_v1` — still the proper long-term path
+  for injection; orthogonal to buffer/absorb logic, tracked separately.

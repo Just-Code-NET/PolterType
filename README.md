@@ -1,8 +1,11 @@
-# kb-switcher
+# Poltertype
 
 Cross-platform automatic keyboard layout switcher.
 Lives in the system tray. Detects when you start typing in the wrong
-layout, switches it, and fixes the last word.
+layout, switches it, and retypes the last word — like a friendly
+poltergeist that haunts your keyboard.
+
+*Formerly known as `kb-switcher`.*
 
 > **Status:** v0.1.0-beta — works end-to-end on Windows; macOS and
 > Linux backends are written from API docs and validated on CI but
@@ -42,9 +45,9 @@ artifacts:
 
 | OS | File | How to install |
 |---|---|---|
-| Windows 10 / 11 | `kb-switcher-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**. |
-| macOS 11+ (Intel + Apple Silicon) | `kb-switcher-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `kb-switcher.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/kb-switcher.app`). Then grant Accessibility permission. |
-| Linux (x86_64) | `kb-switcher-<ver>-x86_64.AppImage` | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland. |
+| Windows 10 / 11 | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**. |
+| macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant Accessibility permission. |
+| Linux (x86_64) | `poltertype-<ver>-x86_64.AppImage` | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland. |
 
 > Beta builds are **unsigned** — that's why Gatekeeper / SmartScreen
 > warn on first launch. Code signing comes in a later phase.
@@ -92,7 +95,7 @@ action  = { type = "switch_layout", layout = "en-US" }
 [[commands]]
 id      = "open-config"
 trigger = ";cfg"
-action  = { type = "open_path", path = "C:/Users/me/AppData/Roaming/kb-switcher/config.toml" }
+action  = { type = "open_path", path = "C:/Users/me/AppData/Roaming/poltertype/config.toml" }
 apps    = ["Code.exe"]
 ```
 
@@ -131,14 +134,14 @@ terms, slang, brand names), the easiest path is the **Wordlists**
 pane in the Settings window — pick a layout, type words one per
 line, hit Save.
 
-The same files live under `<config-dir>/kb-switcher/wordlists/`
+The same files live under `<config-dir>/poltertype/wordlists/`
 if you'd rather edit them by hand (the Wordlists pane writes to
 exactly these locations). The stem is the BCP-47 id with `-`
 replaced by `_` (e.g. `en-US` → `en_us.txt`):
 
-* Windows: `%APPDATA%\opensource\kb-switcher\config\wordlists\en_us.txt`
-* macOS: `~/Library/Application Support/dev.opensource.kb-switcher/wordlists/en_us.txt`
-* Linux: `~/.config/kb-switcher/wordlists/en_us.txt`
+* Windows: `%APPDATA%\opensource\poltertype\config\wordlists\en_us.txt`
+* macOS: `~/Library/Application Support/dev.opensource.poltertype/wordlists/en_us.txt`
+* Linux: `~/.config/poltertype/wordlists/en_us.txt`
 
 One lowercase word per line; blank lines and `#`-comments ignored.
 Adding to the bundled `data/wordlists/*.txt` files in the repo,
@@ -148,7 +151,7 @@ into the FST at compile time).
 **Per-app profiles** — if `kubectl` should count as a real word
 inside VS Code but not in chat, declare a `[[wordlists.profiles]]`
 entry in `config.toml` and drop the per-profile overlays under
-`<config-dir>/kb-switcher/wordlists/profiles/<id>/<stem>.txt`.
+`<config-dir>/poltertype/wordlists/profiles/<id>/<stem>.txt`.
 The engine swaps the active overlay set when the focused app
 changes. See [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md) for the
 full schema.
@@ -174,9 +177,9 @@ Two ways to configure:
    (creating a new wordlist profile entry, listing
    `[[commands]]` in bulk, …):
 
-   * Windows: `%APPDATA%\opensource\kb-switcher\config\config.toml`
-   * macOS: `~/Library/Application Support/dev.opensource.kb-switcher/config.toml`
-   * Linux: `~/.config/kb-switcher/config.toml`
+   * Windows: `%APPDATA%\opensource\poltertype\config\config.toml`
+   * macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
+   * Linux: `~/.config/poltertype/config.toml`
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray
 takes you there. After editing the TOML, "Reload Settings" picks
@@ -185,7 +188,7 @@ exceptions, hotkey bindings) without a restart. Wordlist /
 profile changes still need a tray restart — they're built into
 the engine's dictionary set at start.
 
-The GUI runs as a child process (`kb-switcher --settings`) so
+The GUI runs as a child process (`poltertype --settings`) so
 the tray's `tao::EventLoop` and iced's `winit` event loop don't
 fight over the macOS main thread. Crashes in the UI never bring
 down the engine; see [DECISIONS.md](docs/DECISIONS.md) for the
@@ -195,13 +198,13 @@ full rationale.
 
 ```bash
 # Default
-cargo run -p kb-app
+cargo run -p poltertype-app
 
 # Release
-cargo build --release -p kb-app
+cargo build --release -p poltertype-app
 
 # With the AI subsystem (architecture only in v0.1)
-cargo build --release -p kb-app --features ai
+cargo build --release -p poltertype-app --features ai
 ```
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the per-OS native dep

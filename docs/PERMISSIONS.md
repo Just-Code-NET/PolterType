@@ -1,6 +1,6 @@
 # Permissions per OS
 
-`kb-switcher` is a tray-only background app that needs to **observe**
+`poltertype` is a tray-only background app that needs to **observe**
 keystrokes and (eventually) **send** synthetic ones to correct words.
 Different OSes guard those capabilities differently.
 
@@ -18,7 +18,7 @@ that's expected — release artifacts will be signed in a later phase.
 The app needs **Accessibility** permission, granted once per machine:
 
 > System Settings → Privacy & Security → Accessibility → enable
-> *kb-switcher*.
+> *Poltertype*.
 
 Why: `CGEventTapCreate(kCGSessionEventTap, …)` (used to listen) and
 `CGEventPost` (used to send corrections) both require this. The first
@@ -45,7 +45,7 @@ Read raw events from `/dev/input/event*`. Permissions:
 
 ```bash
 sudo usermod -aG input "$USER"
-sudo tee /etc/udev/rules.d/99-kb-switcher.rules <<'EOF'
+sudo tee /etc/udev/rules.d/99-poltertype.rules <<'EOF'
 KERNEL=="event*", SUBSYSTEM=="input", GROUP="input", MODE="0640"
 EOF
 sudo udevadm control --reload-rules && sudo udevadm trigger
@@ -55,7 +55,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ### Option B — AT-SPI (no `sudo` required, less reliable)
 
 If the user's accessibility bus is enabled (default on GNOME, opt-in
-on KDE), `kb-switcher` can subscribe to keyboard events via the
+on KDE), `poltertype` can subscribe to keyboard events via the
 `atspi` crate. Latency is higher and some inputs (especially in
 non-toolkit apps) are missed. Used as a fallback when option A is
 not available.

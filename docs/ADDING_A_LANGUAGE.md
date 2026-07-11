@@ -1,14 +1,14 @@
-# Adding a language to kb-switcher
+# Adding a language to Poltertype
 
-`kb-switcher` is data-driven: each supported keyboard layout is one
+`poltertype` is data-driven: each supported keyboard layout is one
 TOML file, and each language's dictionary is a plain wordlist. There
 are two paths to add a language, depending on whether you want the
 addition baked into the binary or loaded at runtime from your config
 directory.
 
 > **TL;DR** — for a one-off custom layout on your own machine, drop
-> a `*.toml` into `<config-dir>/kb-switcher/layouts/` and a matching
-> wordlist into `<config-dir>/kb-switcher/wordlists/`. To upstream
+> a `*.toml` into `<config-dir>/poltertype/layouts/` and a matching
+> wordlist into `<config-dir>/poltertype/wordlists/`. To upstream
 > a language, edit the bundled files and submit a PR.
 
 ---
@@ -20,7 +20,7 @@ A layout TOML answers one question per row:
 character does the OS produce?"*
 
 The file lives at `data/layout-mappings/<stem>.toml` (bundled) or
-`<config-dir>/kb-switcher/layouts/<stem>.toml` (user). The schema
+`<config-dir>/poltertype/layouts/<stem>.toml` (user). The schema
 is identical.
 
 ### Schema
@@ -49,14 +49,14 @@ that doesn't use it is fine.
 
 ### Dead keys
 
-kb-switcher tracks *the character produced per keystroke*, not the
+Poltertype tracks *the character produced per keystroke*, not the
 OS-level dead-key state machine. Surface the spacing equivalent
 (`´`, `^`, `¨`) — that matches what shows up in a mid-correction
 buffer the rare time the user actually presses a dead key alone.
 
 ### Test it
 
-Add a TOML, restart kb-switcher, and watch the log:
+Add a TOML, restart Poltertype, and watch the log:
 
 ```
 loaded user layout layout=pl-PL keys=46 dict=false stem=pl_pl
@@ -69,13 +69,13 @@ appear, look for a parse error in the log.
 
 ## 2. Wordlists (so the dictionary detector recognises the language)
 
-Without a wordlist, kb-switcher falls back to the plausibility
+Without a wordlist, Poltertype falls back to the plausibility
 detector — which is decent for distinctive scripts (Cyrillic vs
 Latin) but unreliable inside a single script (German vs English).
 A real wordlist makes detection trustworthy.
 
 Three filenames per layout, all under either `data/wordlists/`
-(bundled) or `<config-dir>/kb-switcher/wordlists/` (user):
+(bundled) or `<config-dir>/poltertype/wordlists/` (user):
 
 | File | Goes into | Used for |
 |---|---|---|
@@ -114,7 +114,7 @@ config directory:
    * `<stem>-extras.txt` — your tech-vocab extras (optional)
    * `<stem>-stop.txt` — short stop words (always commit, even if
      near-empty — `include_str!` requires the file to exist)
-3. Add the stem to `crates/kb-core/build.rs::LAYOUTS`:
+3. Add the stem to `crates/poltertype-core/build.rs::LAYOUTS`:
 
    ```rust
    const LAYOUTS: &[(&str, &str)] = &[
@@ -125,7 +125,7 @@ config directory:
    ```
 
 4. Add the matching triple to
-   `crates/kb-core/src/layouts.rs::embedded_layouts()`:
+   `crates/poltertype-core/src/layouts/db.rs::embedded_layouts()`:
 
    ```rust
    (
@@ -153,12 +153,12 @@ If you want to add a language without touching the source tree
 mapping for your odd keyboard):
 
 1. Open the tray menu → **Open User Layouts Folder…** to ensure
-   `<config-dir>/kb-switcher/layouts/` exists.
+   `<config-dir>/poltertype/layouts/` exists.
 2. Drop `<stem>.toml` in there (schema as above).
 3. Open the tray menu → **Open User Wordlists Folder…** for
-   `<config-dir>/kb-switcher/wordlists/`.
+   `<config-dir>/poltertype/wordlists/`.
 4. Drop the wordlists there.
-5. Restart kb-switcher (the engine snapshots the layout database at
+5. Restart Poltertype (the engine snapshots the layout database at
    start; new layouts need a fresh boot to populate the scancode-
    translation tables). Adding *words* to an already-loaded language
    only needs **Reload Settings** from the tray menu.

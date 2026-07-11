@@ -5,7 +5,7 @@
 > implementations are stubs that compile but don't actually call out
 > to anything yet. v0.1.x will fill them in.
 
-`kb-switcher` ships an opt-in AI/LLM subsystem that lets users:
+`poltertype` ships an opt-in AI/LLM subsystem that lets users:
 
 * extend the layout-detection pipeline with smarter classifiers
   (local ONNX models, remote LLMs);
@@ -19,9 +19,9 @@ Everything below is **off by default**.
 
 There are three independent gates between you and a network call:
 
-1. **Cargo feature `ai`** in `kb-app`. Off by default; enabling adds
-   the `kb-ai` crate to the build.
-2. **Cargo feature `remote`** in `kb-ai`. Off by default; enabling
+1. **Cargo feature `ai`** in `poltertype-app`. Off by default; enabling adds
+   the `poltertype-ai` crate to the build.
+2. **Cargo feature `remote`** in `poltertype-ai`. Off by default; enabling
    adds `reqwest` + TLS so the `RemoteLlmDetector` can make HTTP
    calls. (Local detectors don't need this.)
 3. **`[ai].allow_remote = true`** in `config.toml`. Off by default
@@ -34,7 +34,7 @@ see exactly how often the engine reaches out.
 
 ## Architecture
 
-The `Detector` trait already lives in `kb-detect` (used by the
+The `Detector` trait already lives in `poltertype-detect` (used by the
 built-in `WordPlausibilityDetector`). Both shims for AI plugins live
 there too:
 
@@ -50,13 +50,13 @@ pub trait WordRewriter: Send + Sync {
 }
 ```
 
-Concrete v0.1 implementations live in `kb-ai`:
+Concrete v0.1 implementations live in `poltertype-ai`:
 
 | Type | Crate path | Status |
 |---|---|---|
-| `LocalOnnxDetector` | `kb-ai::local` | stub (returns no verdict) |
-| `RemoteLlmDetector` | `kb-ai::remote` | stub (no real HTTP yet) |
-| `SmartCapitalize` rewriter | `kb-ai::rewriters` | working demo |
+| `LocalOnnxDetector` | `poltertype-ai::local` | stub (returns no verdict) |
+| `RemoteLlmDetector` | `poltertype-ai::remote` | stub (no real HTTP yet) |
+| `SmartCapitalize` rewriter | `poltertype-ai::rewriters` | working demo |
 
 ## Configuration (config.toml)
 
@@ -89,7 +89,7 @@ require_confirmation = false
 
 ## API keys
 
-Keys are looked up via `keyring::Entry::new("kb-switcher", <entry>)`,
+Keys are looked up via `keyring::Entry::new("poltertype", <entry>)`,
 which uses:
 
 * Windows Credential Manager
@@ -100,9 +100,9 @@ Storing a key (one-time, from your shell):
 
 ```bash
 # macOS / Linux
-secret-tool store --label "kb-switcher Anthropic" \
-    service kb-switcher account anthropic
-# Windows: cmdkey /add:kb-switcher /user:anthropic /pass:<paste-key>
+secret-tool store --label "poltertype Anthropic" \
+    service poltertype account anthropic
+# Windows: cmdkey /add:poltertype /user:anthropic /pass:<paste-key>
 ```
 
 `api_key_ref = "keyring:anthropic"` then resolves to the stored
@@ -111,7 +111,7 @@ secret at request time.
 ## Why is the architecture in v0.1 if the implementations are stubs?
 
 Because the *shape* of the plug-in API is the load-bearing decision.
-Once `kb-app` is wired to iterate `[[ai.detectors]]`, swap in real
+Once `poltertype-app` is wired to iterate `[[ai.detectors]]`, swap in real
 implementations is a matter of dropping in a new struct that
 implements `Detector`. v0.1.x will iterate without breaking
 configuration files written for v0.1.

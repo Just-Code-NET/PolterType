@@ -39,7 +39,7 @@ the version bump + changelog entry — nothing else.
 
 ## 2. Pick the next version
 
-kb-switcher follows [SemVer](https://semver.org/) but is still
+Poltertype follows [SemVer](https://semver.org/) but is still
 in `0.1.0-*` pre-release land. The shape of the next version
 depends on what's queued:
 
@@ -204,7 +204,7 @@ grep '^## \[' CHANGELOG.md | head -1
 
 If any of those three disagree, the release will look
 inconsistent (e.g. CI installer named `v0.1.0-beta.6` but
-`kb-switcher --version` reports `0.1.0-beta.5` because Cargo.toml
+`poltertype --version` reports `0.1.0-beta.5` because Cargo.toml
 wasn't bumped). Fix before committing.
 
 ## 5. Commit + tag + push (~1 min)
@@ -277,7 +277,7 @@ the GitHub release body to add the missing notes inline.
 
 **Cargo.toml version mismatches the tag.** If the tag is
 `v0.1.0-beta.6` but `Cargo.toml` says `0.1.0-beta.5`, the
-Windows MSI's `kb-switcher --version` will print the wrong
+Windows MSI's `poltertype --version` will print the wrong
 number. The installer's filename is correct (it comes from the
 tag), but the binary is lying. Fix: revert the broken release
 (delete the tag, delete the draft), bump Cargo.toml correctly,
@@ -326,5 +326,5 @@ gh run watch
 ```
 
 [release-yml]: ../.github/workflows/release.yml
-[releases]: https://github.com/Just-Code-NET/kb-switcher/releases
+[releases]: https://github.com/Just-Code-NET/poltertype/releases
 [keep-a-changelog]: https://keepachangelog.com/en/1.1.0/

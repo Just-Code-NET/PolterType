@@ -1,4 +1,4 @@
-# kb-switcher — План проєкту
+# Poltertype — План проєкту
 
 > Жива дорожня карта. Оновлюється під час реалізації.
 > Дата створення: 2026-05-02.
@@ -12,7 +12,7 @@
 | 2026-05-02 | Початкова версія: Tauri 2 + Svelte 5. | Швидкий старт, готовий tray/autostart. |
 | 2026-05-02 | **Перехід: pure Rust, без WebView. UI — `iced` + `tray-icon`.** | Користувач хоче «низькорівневіше і легше». Менший бінар, нема HTML-стека, цілісніша Rust-кодова база. |
 | 2026-05-02 | **Закласти AI-pipeline як окрему підсистему.** | Користувач планує кастомні трюки з ML/LLM моделями. |
-| 2026-05-02 | Bundle ID: `dev.opensource.kb-switcher`. | Зафіксовано користувачем. |
+| 2026-05-02 | Bundle ID: `dev.opensource.poltertype`. | Зафіксовано користувачем. |
 | 2026-05-02 | UI MVP: EN + UK. Архітектура — багатомовна, зокрема й «екзотичні». | Зафіксовано користувачем. |
 | 2026-05-02 | Звуки: placeholder CC0 → пізніше власні. Інтерфейс «звукових тем» — заздалегідь гнучкий. | Зафіксовано користувачем. |
 | 2026-05-02 | Default log level: `info`. | Зафіксовано користувачем. |
@@ -24,7 +24,7 @@
 
 ## 1. Бачення продукту
 
-**kb-switcher** — крос-платформений (Windows / macOS / Linux) фоновий
+**Poltertype** — крос-платформений (Windows / macOS / Linux) фоновий
 застосунок, який автоматично перемикає розкладку клавіатури, коли
 користувач почав вводити слово «не тією» розкладкою, і за можливості
 виправляє вже введене слово (опційно зі звуковим підтвердженням).
@@ -273,15 +273,15 @@ Pipeline-policy (приклад):
   (а не Rust-кодом), щоб додавання нової мови = додавання файлу.
 - Детектори пишуться language-agnostic; знання про мови — у даних.
 - Користувач у налаштуваннях бачить дві колонки: «доступні в системі»
-  і «активні для kb-switcher».
+  і «активні для Poltertype».
 
 ### 3.5 Зберігання налаштувань
 
 `TOML` через `serde` (читабельне користувачем). Шлях:
 
-- Win: `%APPDATA%\kb-switcher\config.toml`
-- macOS: `~/Library/Application Support/kb-switcher/config.toml`
-- Linux: `$XDG_CONFIG_HOME/kb-switcher/config.toml`
+- Win: `%APPDATA%\poltertype\config.toml`
+- macOS: `~/Library/Application Support/poltertype/config.toml`
+- Linux: `$XDG_CONFIG_HOME/poltertype/config.toml`
 
 Структура (приклад):
 
@@ -466,7 +466,7 @@ require_confirmation = true
 ## 4. Структура репозиторію
 
 ```
-kb-switcher/
+poltertype/
 ├── .claude/
 │   ├── settings.json
 │   └── README.md
@@ -484,21 +484,21 @@ kb-switcher/
 │   ├── ADDING_A_LANGUAGE.md
 │   └── CONTRIBUTING.md
 ├── crates/
-│   ├── kb-app/                  # бінар (main, tray, window, IPC)
+│   ├── poltertype-app/                  # бінар (main, tray, window, IPC)
 │   │   ├── Cargo.toml
 │   │   └── src/{main.rs, tray.rs, ui/, ipc.rs}
-│   ├── kb-core/                 # SwitcherEngine, налаштування, event-loop
+│   ├── poltertype-core/                 # SwitcherEngine, налаштування, event-loop
 │   │   ├── Cargo.toml
 │   │   └── src/{engine/, settings/, focus.rs, audio.rs, autostart.rs}
-│   ├── kb-input/                # InputListener trait + per-OS
+│   ├── poltertype-input/                # InputListener trait + per-OS
 │   │   └── src/{lib.rs, windows.rs, macos.rs, linux.rs}
-│   ├── kb-layout/               # LayoutSwitcher trait + per-OS
+│   ├── poltertype-layout/               # LayoutSwitcher trait + per-OS
 │   │   └── src/{lib.rs, windows.rs, macos.rs, linux.rs, mappings/}
-│   ├── kb-detect/               # Detector pipeline (heuristic/dict/...)
+│   ├── poltertype-detect/               # Detector pipeline (heuristic/dict/...)
 │   │   └── src/{lib.rs, heuristic.rs, dictionary.rs, context.rs}
-│   ├── kb-ai/                   # ОПЦІЙНО (feature `ai`)
+│   ├── poltertype-ai/                   # ОПЦІЙНО (feature `ai`)
 │   │   └── src/{lib.rs, local_onnx.rs, remote_llm.rs, rewriters/}
-│   └── kb-types/                # спільні типи (LayoutId, KeyEvent, ...)
+│   └── poltertype-types/                # спільні типи (LayoutId, KeyEvent, ...)
 ├── assets/
 │   ├── icons/
 │   ├── tray/                    # шаблони для генерованих іконок
@@ -533,10 +533,10 @@ kb-switcher/
 
 Workspace з декількох крейтів дає:
 
-- Чисту ізоляцію OS-коду під `#[cfg(...)]` лише в `kb-input` /
-  `kb-layout`.
+- Чисту ізоляцію OS-коду під `#[cfg(...)]` лише в `poltertype-input` /
+  `poltertype-layout`.
 - AI-крейт за `feature = "ai"` — за замовчуванням не компілюється.
-- Можливість винести `kb-detect` як окрему бібліотеку, якщо знадобиться
+- Можливість винести `poltertype-detect` як окрему бібліотеку, якщо знадобиться
   стороннє використання.
 
 ---
@@ -548,7 +548,7 @@ Workspace з декількох крейтів дає:
 Завжди в контексті:
 
 - Архітектурні правила (де живе платформенний код, як додавати нову мову).
-- Команди розробки (`cargo run -p kb-app`, `cargo test --workspace`,
+- Команди розробки (`cargo run -p poltertype-app`, `cargo test --workspace`,
   `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
   `cargo fmt --all`).
 - Стиль коду (rustfmt, clippy strict).
@@ -593,9 +593,9 @@ Workspace з декількох крейтів дає:
 Рівні:
 
 1. **Unit (Rust):**
-   - `kb-detect::heuristic` — таблиці тестових слів і очікуваних
+   - `poltertype-detect::heuristic` — таблиці тестових слів і очікуваних
      рішень.
-   - `kb-layout::mappings` — повна симетрія мап (EN→UK→EN = identity).
+   - `poltertype-layout::mappings` — повна симетрія мап (EN→UK→EN = identity).
 2. **Integration:**
    - Інжектуємо синтетичні `KeyEvent` у `SwitcherEngine`, перевіряємо
      рішення без OS-хуків.
@@ -621,7 +621,7 @@ Workspace з декількох крейтів дає:
 | Антивірус/SmartScreen на Windows. | Користувач не запустить білд без підпису. | Перший реліз — попередження в README. |
 | Програми, які самі ловлять глобальні хуки (ігри). | Конфлікт. | Per-app disable-list. |
 | Перформанс на старих машинах. | Заїкання вводу. | Hook-callback тільки enqueue; обробка — окремий потік. |
-| AI-залежності (ONNX runtime) роздувають бінар. | Великі MB. | `feature = "ai"`; AI-збірка — окремий артефакт `kb-switcher-ai`. |
+| AI-залежності (ONNX runtime) роздувають бінар. | Великі MB. | `feature = "ai"`; AI-збірка — окремий артефакт `poltertype-ai`. |
 | Remote LLM API: latency 200–800 мс. | Не вкладається в інлайн-корекцію. | Викликати тільки в "background-rewrite" режимі (післяфактум) із підтвердженням. |
 | Headless Linux audio. | Падіння при старті. | `rodio` ліниво ініціалізується, fallback no-op. |
 
@@ -630,7 +630,7 @@ Workspace з декількох крейтів дає:
 ## 9. Зафіксовані рішення (попередньо «відкриті питання»)
 
 1. **UI-фреймворк:** `iced` (pure Rust). Fallback — `egui`.
-2. **Bundle ID:** `dev.opensource.kb-switcher`.
+2. **Bundle ID:** `dev.opensource.poltertype`.
 3. **Мови UI v0.1:** EN + UK; архітектура — багатомовна (i18n через
    `fluent-rs` або `rust-i18n`, файли `.ftl` у `assets/i18n/`).
 4. **Звуки v0.1:** CC0 placeholder; формат тем — папки.
@@ -651,7 +651,7 @@ Workspace з декількох крейтів дає:
 ### Фаза 1 — Bootstrap Rust-каркасу
 
 - [ ] Cargo workspace з 7 крейтами (порожні `lib.rs`).
-- [ ] `kb-app`: `tao` event loop + `tray-icon` (Settings/Quit меню,
+- [ ] `poltertype-app`: `tao` event loop + `tray-icon` (Settings/Quit меню,
       генерована placeholder-іконка). `iced` вікно — у Phase 4.
 - [ ] `single-instance`, `tracing` ініціалізація.
 - [ ] CI: `cargo fmt/clippy/check` на трьох ОС.
@@ -659,16 +659,16 @@ Workspace з декількох крейтів дає:
 
 ### Фаза 2 — Платформенні адаптери (skeleton)
 
-- [ ] `kb-input`: trait + Windows-реалізація LL hook (лише log).
-- [ ] `kb-layout`: trait + Windows-реалізація.
+- [ ] `poltertype-input`: trait + Windows-реалізація LL hook (лише log).
+- [ ] `poltertype-layout`: trait + Windows-реалізація.
 - [ ] Stub'и для macOS / Linux (компілюються, повертають `Unsupported`).
 - [ ] `docs/PERMISSIONS.md` із описом для macOS/Linux.
 
 ### Фаза 3 — SwitcherEngine MVP
 
-- [ ] `kb-types`: спільні типи (LayoutId, KeyEvent, ...).
-- [ ] `kb-detect`: `HeuristicDetector` + `DictionaryDetector` (lingua).
-- [ ] `kb-core`: WordBuffer, DecisionPolicy, Corrector, AudioPlayer.
+- [ ] `poltertype-types`: спільні типи (LayoutId, KeyEvent, ...).
+- [ ] `poltertype-detect`: `HeuristicDetector` + `DictionaryDetector` (lingua).
+- [ ] `poltertype-core`: WordBuffer, DecisionPolicy, Corrector, AudioPlayer.
 - [ ] EN↔UK мапа в `data/layout-mappings/`.
 - [ ] Pause/Undo хоткей.
 - [ ] Налаштування: збереження/завантаження `config.toml`.
@@ -710,7 +710,7 @@ GUI`. Замість `iced`-сторінок Phase 4 робить:
 
 ### Фаза 7 — AI каркас (опційно)
 
-- [ ] `kb-ai` крейт за `feature = "ai"`.
+- [ ] `poltertype-ai` крейт за `feature = "ai"`.
 - [ ] `Detector` + `WordRewriter` traits інтегровано в pipeline.
 - [ ] Один еталонний `LocalOnnxDetector` із `lid.176`.
 - [ ] Один еталонний `RemoteLlmDetector` (Anthropic API) з
