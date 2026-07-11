@@ -4,7 +4,7 @@ All notable changes to Poltertype are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.2.0
+## [0.2.0] — Poltertype rename, Linux X11 support, Hyprland layout fix
 
 The rename lands in full — binary, crates, config directory and
 data-dir env var all become Poltertype, with an existing `kb-switcher`
