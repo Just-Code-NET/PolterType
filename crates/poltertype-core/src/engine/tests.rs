@@ -221,7 +221,7 @@ mod engine_integration_tests {
                 Arc::<MockSwitcher>::clone(&switcher) as Arc<dyn poltertype_layout::LayoutSwitcher>,
                 Arc::<MockEmitter>::clone(&emitter) as Arc<dyn KeyEmitter>,
                 Arc::new(NoopFocusTracker),
-                Arc::new(crate::audio::AudioPlayer::new()),
+                Arc::new(crate::audio::AudioPlayer::for_tests()),
                 out_tx,
             );
             let engine_thread = std::thread::spawn(move || engine.run(key_rx, cmd_rx));

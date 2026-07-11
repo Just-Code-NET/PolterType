@@ -19,6 +19,21 @@ impl AudioPlayer {
         Self { cmd_tx: tx }
     }
 
+    /// Player for engine tests: no worker thread, no output stream —
+    /// every command is dropped on the floor. Engine tests exercise
+    /// corrections, corrections play a sound, and a real worker opens
+    /// the default device; on the Windows CI runner that faulted inside
+    /// WASAPI (`STATUS_ACCESS_VIOLATION`) and took the whole test
+    /// binary with it. Nothing asserts on sound, so there is nothing to
+    /// lose by staying silent.
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Self {
+        // Receiver dropped immediately: every `send` below fails, and
+        // every call site already ignores the result.
+        let (cmd_tx, _rx) = unbounded::<AudioCmd>();
+        Self { cmd_tx }
+    }
+
     pub fn refresh_from(&self, settings: &SettingsStore) {
         let snap = settings.snapshot();
         let dir = SettingsStore::project_dirs()
