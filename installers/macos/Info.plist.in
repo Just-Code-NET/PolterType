@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-    Info.plist template for the kb-switcher macOS .app bundle.
+    Info.plist template for the Poltertype macOS .app bundle.
 
     `__VERSION__` is substituted by `installers/macos/build-dmg.sh`.
     Everything else stays static across releases.
 
     Notable choices:
 
-    * LSUIElement = true        kb-switcher is a tray-only app: no
+    * LSUIElement = true        Poltertype is a tray-only app: no
                                 Dock icon, no main menu — same idea
                                 as Magnet, Rectangle, Bartender.
     * LSMinimumSystemVersion    11.0 = Big Sur, the oldest version
@@ -27,17 +27,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>kb-switcher</string>
+    <string>Poltertype</string>
     <key>CFBundleExecutable</key>
-    <string>kb-switcher</string>
+    <string>poltertype</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>org.kbswitcher.app</string>
+    <string>org.poltertype.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>kb-switcher</string>
+    <string>Poltertype</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -51,11 +51,11 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSAccessibilityUsageDescription</key>
-    <string>kb-switcher needs Accessibility access to detect keystrokes and switch the keyboard layout when you start typing in the wrong language.</string>
+    <string>Poltertype needs Accessibility access to detect keystrokes and switch the keyboard layout when you start typing in the wrong language.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSHumanReadableCopyright</key>
-    <string>kb-switcher contributors. MIT License.</string>
+    <string>Poltertype contributors. MIT License.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

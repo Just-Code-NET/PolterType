@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Build a kb-switcher AppImage (x86_64).
+# Build a Poltertype AppImage (x86_64).
 #
 # Inputs (env vars):
 #   VERSION    — release version (any leading "v" is stripped).
-#   BIN_PATH   — path to the already-built kb-switcher binary
-#                (default: target/x86_64-unknown-linux-gnu/release/kb-switcher).
+#   BIN_PATH   — path to the already-built poltertype binary
+#                (default: target/x86_64-unknown-linux-gnu/release/poltertype).
 #   DATA_DIR   — path to the prepared `data/` tree from
-#                `crates/kb-core/build.rs` (default: target/dist/data).
+#                `crates/poltertype-core/build.rs` (default: target/dist/data).
 #   ICON_PNG   — path to a square PNG icon ≥ 256×256
 #                (recommended: target/dist/icon-1024.png, generated
 #                by `cargo xtask assets icon-png`). Required —
@@ -19,14 +19,14 @@
 #
 #   AppDir/
 #     usr/
-#       bin/kb-switcher
+#       bin/poltertype
 #       share/
-#         applications/kb-switcher.desktop
-#         icons/hicolor/256x256/apps/kb-switcher.png
-#         kb-switcher/data/                ← layout mappings + FSTs
+#         applications/poltertype.desktop
+#         icons/hicolor/256x256/apps/poltertype.png
+#         poltertype/data/                ← layout mappings + FSTs
 #
-# The runtime resolver in `kb_core::data_dir` finds the data via
-# `<exe_dir>/../share/kb-switcher/data` — that's the FHS-shaped
+# The runtime resolver in `poltertype_core::data_dir` finds the data via
+# `<exe_dir>/../share/poltertype/data` — that's the FHS-shaped
 # location, the third lookup rule.
 #
 # Tooling: linuxdeploy + linuxdeploy-plugin-appimage. Both are single
@@ -37,21 +37,21 @@ set -euo pipefail
 
 VERSION="${VERSION:-0.0.0}"
 VERSION="${VERSION#v}"
-BIN_PATH="${BIN_PATH:-target/x86_64-unknown-linux-gnu/release/kb-switcher}"
+BIN_PATH="${BIN_PATH:-target/x86_64-unknown-linux-gnu/release/poltertype}"
 DATA_DIR="${DATA_DIR:-target/dist/data}"
 ICON_PNG="${ICON_PNG:?ICON_PNG is required (PNG ≥ 256×256)}"
 OUT_DIR="${OUT_DIR:-target/dist}"
-APP_NAME="kb-switcher"
+APP_NAME="poltertype"
 ARCH="x86_64"
 
 if [[ ! -x "${BIN_PATH}" ]]; then
     echo "Binary not found / not executable: ${BIN_PATH}" >&2
-    echo "Build with: cargo build --release --target ${ARCH}-unknown-linux-gnu -p kb-app" >&2
+    echo "Build with: cargo build --release --target ${ARCH}-unknown-linux-gnu -p poltertype-app" >&2
     exit 1
 fi
 if [[ ! -f "${DATA_DIR}/wordlists/en_us.fst" ]]; then
     echo "Data tree not found at '${DATA_DIR}' (no wordlists/en_us.fst)." >&2
-    echo "Build kb-core first: cargo build --release -p kb-app" >&2
+    echo "Build poltertype-core first: cargo build --release -p poltertype-app" >&2
     exit 1
 fi
 if [[ ! -f "${ICON_PNG}" ]]; then
@@ -112,11 +112,11 @@ cp "${DESKTOP_SRC}" "${APPDIR}/usr/share/applications/${APP_NAME}.desktop"
 cp "${ICON_PNG}" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
 
 # Bundled data tree (layout mappings + FST wordlists). Goes under
-# `usr/share/kb-switcher/data/` so the runtime resolver finds it via
-# `<exe_dir>/../share/kb-switcher/data` (rule #3). Note we copy the
+# `usr/share/poltertype/data/` so the runtime resolver finds it via
+# `<exe_dir>/../share/poltertype/data` (rule #3). Note we copy the
 # directory's *contents*, not the directory itself, so the resulting
-# path is `…/share/kb-switcher/data/wordlists/en_us.fst` and not
-# `…/share/kb-switcher/data/data/wordlists/en_us.fst`.
+# path is `…/share/poltertype/data/wordlists/en_us.fst` and not
+# `…/share/poltertype/data/data/wordlists/en_us.fst`.
 mkdir -p "${APPDIR}/usr/share/${APP_NAME}/data"
 cp -R "${DATA_DIR}/." "${APPDIR}/usr/share/${APP_NAME}/data/"
 

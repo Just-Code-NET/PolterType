@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Grant kb-switcher access to /dev/input/event* and /dev/uinput on
+# Grant poltertype access to /dev/input/event* and /dev/uinput on
 # Linux/Wayland.
 #
 # Wayland intentionally provides no global keyboard-snooping protocol,
@@ -18,7 +18,7 @@
 set -euo pipefail
 
 USER_NAME="${SUDO_USER:-$USER}"
-RULE_PATH="/etc/udev/rules.d/99-kb-switcher.rules"
+RULE_PATH="/etc/udev/rules.d/99-poltertype.rules"
 MODULES_LOAD_PATH="/etc/modules-load.d/uinput.conf"
 
 ASSUME_YES=0
@@ -29,18 +29,18 @@ for arg in "$@"; do
             sed -n '1,18p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
-        *) echo "kb-switcher: unknown argument: $arg" >&2; exit 2 ;;
+        *) echo "poltertype: unknown argument: $arg" >&2; exit 2 ;;
     esac
 done
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "kb-switcher: setup-linux.sh is for Linux only." >&2
+    echo "poltertype: setup-linux.sh is for Linux only." >&2
     exit 1
 fi
 
 cat <<EOF
 
-kb-switcher Linux setup
+poltertype Linux setup
 =======================
 
 This script will:
@@ -76,8 +76,8 @@ fi
 # 2. Make sure uinput is available at boot.
 echo "Writing modules-load.d entry to ${MODULES_LOAD_PATH}…"
 sudo tee "$MODULES_LOAD_PATH" >/dev/null <<'MOD'
-# Installed by kb-switcher: scripts/setup-linux.sh
-# Loads the uinput kernel module on boot so kb-switcher can synthesise
+# Installed by poltertype: scripts/setup-linux.sh
+# Loads the uinput kernel module on boot so poltertype can synthesise
 # keystrokes via /dev/uinput on Wayland sessions.
 uinput
 MOD
@@ -90,7 +90,7 @@ fi
 # 3. Install udev rule.
 echo "Writing udev rule to ${RULE_PATH}…"
 sudo tee "$RULE_PATH" >/dev/null <<'RULE'
-# Installed by kb-switcher: scripts/setup-linux.sh
+# Installed by poltertype: scripts/setup-linux.sh
 # Grants the `input` group:
 #   - read access to keyboard event devices
 #   - read+write access to /dev/uinput (so the corrector can backspace
@@ -126,5 +126,5 @@ Done. To pick up the new group membership, either:
   • log out and back in, OR
   • run: newgrp input
 
-Then start kb-switcher.
+Then start poltertype.
 EOF

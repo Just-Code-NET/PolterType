@@ -59,7 +59,7 @@ jobs:
             file desktop-file-utils
 
       - name: Build release binary
-        run: cargo build --release --target x86_64-unknown-linux-gnu -p kb-app
+        run: cargo build --release --target x86_64-unknown-linux-gnu -p poltertype-app
 
       - name: Render placeholder icon
         # linuxdeploy wants a square PNG ≥ 256×256. We render at the
@@ -75,7 +75,7 @@ jobs:
       - name: Build AppImage
         env:
           VERSION: ${{ github.ref_name }}
-          BIN_PATH: target/x86_64-unknown-linux-gnu/release/kb-switcher
+          BIN_PATH: target/x86_64-unknown-linux-gnu/release/poltertype
           ICON_PNG: target/dist/icon-256.png
           OUT_DIR: target/dist
         run: bash installers/linux/build-appimage.sh
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: appimage-x86_64
-          path: target/dist/kb-switcher-*-x86_64.AppImage
+          path: target/dist/poltertype-*-x86_64.AppImage
           if-no-files-found: error
 
   # ─── macOS: universal DMG ────────────────────────────────────────────
@@ -101,8 +101,8 @@ jobs:
 
       - name: Build release binaries (both arches)
         run: |
-          cargo build --release --target x86_64-apple-darwin   -p kb-app
-          cargo build --release --target aarch64-apple-darwin  -p kb-app
+          cargo build --release --target x86_64-apple-darwin   -p poltertype-app
+          cargo build --release --target aarch64-apple-darwin  -p poltertype-app
 
       - name: Render and convert icon
         run: |
@@ -123,8 +123,8 @@ jobs:
       - name: Build DMG
         env:
           VERSION: ${{ github.ref_name }}
-          BIN_X86_64: target/x86_64-apple-darwin/release/kb-switcher
-          BIN_ARM64: target/aarch64-apple-darwin/release/kb-switcher
+          BIN_X86_64: target/x86_64-apple-darwin/release/poltertype
+          BIN_ARM64: target/aarch64-apple-darwin/release/poltertype
           ICON_ICNS: target/dist/AppIcon.icns
           OUT_DIR: target/dist
         run: bash installers/macos/build-dmg.sh
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dmg-universal
-          path: target/dist/kb-switcher-*-universal-apple-darwin.dmg
+          path: target/dist/poltertype-*-universal-apple-darwin.dmg
           if-no-files-found: error
 
   # ─── Windows: MSI (x86_64) ───────────────────────────────────────────
@@ -154,7 +154,7 @@ jobs:
         shell: pwsh
 
       - name: Build release binary
-        run: cargo build --release --target x86_64-pc-windows-msvc -p kb-app
+        run: cargo build --release --target x86_64-pc-windows-msvc -p poltertype-app
 
       - name: Render icon and convert to .ico
         # ImageMagick is preinstalled on windows-latest. We bake all
@@ -172,7 +172,7 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ github.ref_name }}
-          BIN_PATH: target/x86_64-pc-windows-msvc/release/kb-switcher.exe
+          BIN_PATH: target/x86_64-pc-windows-msvc/release/poltertype.exe
           ICON_PATH: target/dist/AppIcon.ico
           OUT_DIR: target/dist
         run: |
@@ -185,7 +185,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: msi-x86_64
-          path: target/dist/kb-switcher-*-x86_64-pc-windows-msvc.msi
+          path: target/dist/poltertype-*-x86_64-pc-windows-msvc.msi
           if-no-files-found: error
 
   # ─── Publish: only when triggered by a tag ───────────────────────────
@@ -211,9 +211,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/kb-switcher-*-x86_64.AppImage
-            dist/kb-switcher-*-universal-apple-darwin.dmg
-            dist/kb-switcher-*-x86_64-pc-windows-msvc.msi
+            dist/poltertype-*-x86_64.AppImage
+            dist/poltertype-*-universal-apple-darwin.dmg
+            dist/poltertype-*-x86_64-pc-windows-msvc.msi
           draft: true
           fail_on_unmatched_files: true
           generate_release_notes: true
@@ -222,7 +222,7 @@ jobs:
           # workarounds here are the difference between "it works" and
           # "Gatekeeper said no, I gave up".
           body: |
-            ## kb-switcher ${{ github.ref_name }}
+            ## Poltertype ${{ github.ref_name }}
 
             **Beta build — unsigned binaries.** The MSI / DMG / AppImage
             below are produced by CI on `${{ github.sha }}`.
@@ -233,11 +233,11 @@ jobs:
               install, no admin rights needed. SmartScreen may say
               "Windows protected your PC"; click **More info** →
               **Run anyway**.
-            * **macOS** — download the `.dmg`, drag `kb-switcher.app` into
-              `/Applications`. First launch shows "kb-switcher cannot be
+            * **macOS** — download the `.dmg`, drag `poltertype.app` into
+              `/Applications`. First launch shows "Poltertype cannot be
               opened because the developer cannot be verified" — right-
               click the app and pick **Open**, or run
-              `xattr -dr com.apple.quarantine /Applications/kb-switcher.app`
+              `xattr -dr com.apple.quarantine /Applications/poltertype.app`
               once. Then grant Accessibility permission in System
               Settings.
             * **Linux** — download the `.AppImage`, `chmod +x` it, run.

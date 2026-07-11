@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a universal-binary kb-switcher.app and wrap it in a .dmg.
+# Build a universal-binary poltertype.app and wrap it in a .dmg.
 #
 # Inputs (env vars):
 #   VERSION        — release version (any leading "v" is stripped).
@@ -7,31 +7,31 @@
 #   BIN_ARM64      — path to the aarch64-apple-darwin release binary.
 #                    Required: lipo refuses to merge a single arch.
 #   DATA_DIR       — path to the prepared `data/` tree from
-#                    `crates/kb-core/build.rs` (default: target/dist/data).
+#                    `crates/poltertype-core/build.rs` (default: target/dist/data).
 #   ICON_ICNS      — optional .icns; copied into Contents/Resources.
 #   OUT_DIR        — output directory (default: target/dist).
 #
 # The resulting layout:
 #
 #   <OUT_DIR>/
-#     kb-switcher-<VERSION>-universal-apple-darwin.dmg
-#       └── kb-switcher.app/
+#     poltertype-<VERSION>-universal-apple-darwin.dmg
+#       └── poltertype.app/
 #           └── Contents/
 #               ├── Info.plist
-#               ├── MacOS/kb-switcher       (universal: x86_64 + arm64)
+#               ├── MacOS/poltertype       (universal: x86_64 + arm64)
 #               └── Resources/
 #                   ├── AppIcon.icns
 #                   └── data/               (layout-mappings + wordlists)
 #
 # `Resources/data/` is the macOS-bundle slot the runtime resolver in
-# `kb_core::data_dir` checks for first on darwin. The exe lives in
+# `poltertype_core::data_dir` checks for first on darwin. The exe lives in
 # `Contents/MacOS/`, so `<exe_dir>/../Resources/data` lands here.
 #
 # The DMG is *unsigned and unnotarised* — fine for closed beta, not
-# for the App Store. macOS Gatekeeper will say "kb-switcher cannot be
+# for the App Store. macOS Gatekeeper will say "Poltertype cannot be
 # opened because the developer cannot be verified" on first launch;
 # the documented workaround is in CONTRIBUTING.md / the release notes
-# (right-click → Open, or `xattr -dr com.apple.quarantine /Applications/kb-switcher.app`).
+# (right-click → Open, or `xattr -dr com.apple.quarantine /Applications/poltertype.app`).
 
 set -euo pipefail
 
@@ -43,19 +43,19 @@ DATA_DIR="${DATA_DIR:-target/dist/data}"
 ICON_ICNS="${ICON_ICNS:-}"
 OUT_DIR="${OUT_DIR:-target/dist}"
 
-# Sanity: the data tree is built by `cargo build` (kb-core's build.rs).
+# Sanity: the data tree is built by `cargo build` (poltertype-core's build.rs).
 # CI runs the cargo step right before this script, so absent data
 # almost always means "this script was run from a clean tree without
 # building first" — which we want to surface loudly.
 if [[ ! -f "${DATA_DIR}/wordlists/en_us.fst" ]]; then
     echo "Data tree not found at '${DATA_DIR}' (no wordlists/en_us.fst)." >&2
-    echo "Build kb-core first: cargo build --release -p kb-app" >&2
+    echo "Build poltertype-core first: cargo build --release -p poltertype-app" >&2
     exit 1
 fi
 
-APP_NAME="kb-switcher"
+APP_NAME="poltertype"
 APP_DIR_NAME="${APP_NAME}.app"
-STAGING="$(mktemp -d -t kb-switcher-dmg-XXXXXX)"
+STAGING="$(mktemp -d -t poltertype-dmg-XXXXXX)"
 APP_DIR="${STAGING}/${APP_DIR_NAME}"
 
 trap 'rm -rf "${STAGING}"' EXIT

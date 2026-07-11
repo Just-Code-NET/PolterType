@@ -5,10 +5,10 @@
 #                      (any leading "v" and pre-release suffix are stripped
 #                      before being passed to WiX, which only accepts
 #                      M.m.b[.r] numeric versions).
-#   $env:BIN_PATH    — path to the already-built kb-switcher.exe
+#   $env:BIN_PATH    — path to the already-built poltertype.exe
 #   $env:DATA_DIR    — path to the prepared data tree (FSTs + TOMLs);
 #                      defaults to `target/dist/data`, which is where
-#                      `kb-core/build.rs` writes them.
+#                      `poltertype-core/build.rs` writes them.
 #   $env:OUT_DIR     — directory for the .msi (created if missing)
 #   $env:ICON_PATH   — optional .ico for Add/Remove Programs entry
 #
@@ -48,21 +48,21 @@ if ($msiVersion -notmatch '^\d+\.\d+(\.\d+(\.\d+)?)?$') {
 }
 
 $binPath = if ($env:BIN_PATH) { $env:BIN_PATH } `
-           else { 'target\x86_64-pc-windows-msvc\release\kb-switcher.exe' }
+           else { 'target\x86_64-pc-windows-msvc\release\poltertype.exe' }
 if (-not (Test-Path $binPath)) {
-    throw "Binary not found at '$binPath'. Build with `cargo build --release --target x86_64-pc-windows-msvc -p kb-app` first."
+    throw "Binary not found at '$binPath'. Build with `cargo build --release --target x86_64-pc-windows-msvc -p poltertype-app` first."
 }
 $binAbs = (Resolve-Path $binPath).Path
 
-# `target/dist/data/` is populated by `crates/kb-core/build.rs` on
-# every cargo build of kb-core (kb-app pulls it in transitively).
+# `target/dist/data/` is populated by `crates/poltertype-core/build.rs` on
+# every cargo build of poltertype-core (poltertype-app pulls it in transitively).
 # CI runs the cargo build right before this script, so the directory
 # is guaranteed-fresh by the time we get here. If someone runs
 # build-msi.ps1 standalone without a recent build, the explicit
 # Test-Path below makes the failure mode obvious.
 $dataDir = if ($env:DATA_DIR) { $env:DATA_DIR } else { 'target\dist\data' }
 if (-not (Test-Path (Join-Path $dataDir 'wordlists\en_us.fst'))) {
-    throw "Data tree not found at '$dataDir' (no en_us.fst). Build kb-core first: `cargo build --release -p kb-app`."
+    throw "Data tree not found at '$dataDir' (no en_us.fst). Build poltertype-core first: `cargo build --release -p poltertype-app`."
 }
 $dataDirAbs = (Resolve-Path $dataDir).Path
 
@@ -83,7 +83,7 @@ if ($env:ICON_PATH -and (Test-Path $env:ICON_PATH)) {
 # ─── build ────────────────────────────────────────────────────────────
 $wix = Get-WixBinDir
 $wxsPath = (Resolve-Path 'installers\wix\main.wxs').Path
-$tagged = "kb-switcher-$rawVersion-x86_64-pc-windows-msvc"
+$tagged = "poltertype-$rawVersion-x86_64-pc-windows-msvc"
 $wixobj = Join-Path $outDirAbs "$tagged.wixobj"
 $msi    = Join-Path $outDirAbs "$tagged.msi"
 

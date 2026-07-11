@@ -1,15 +1,15 @@
 [Desktop Entry]
 Type=Application
-Name=kb-switcher
+Name=Poltertype
 GenericName=Keyboard Layout Switcher
 Comment=Auto-detect and fix wrong-keyboard-layout typing
-Exec=kb-switcher
-Icon=kb-switcher
+Exec=poltertype
+Icon=poltertype
 Terminal=false
 Categories=Utility;System;
 Keywords=keyboard;layout;language;input;
 StartupNotify=false
-# kb-switcher is a tray-only daemon: no main window, no menu bar
+# Poltertype is a tray-only daemon: no main window, no menu bar
 # entry needed past the .desktop file the AppImage installs for
 # autostart compatibility with KDE/GNOME's session managers.
 NoDisplay=false
