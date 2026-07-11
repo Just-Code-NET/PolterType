@@ -23,14 +23,18 @@ pub fn try_init() -> Option<GnomeSwitcher> {
     // Reject if the schema is not installed (most KDE / minimal-DE
     // systems). `gsettings get` exits non-zero if the schema or key
     // is missing.
-    let ok = Command::new("gsettings")
-        .args(["get", SCHEMA, "sources"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
+    //
+    // Reading the value rather than just checking the exit status is
+    // deliberate: the schema ships with GTK and is therefore installed
+    // on plenty of machines that run no GNOME-family desktop at all —
+    // a bare i3 or openbox session with one GTK app pulled in. There
+    // `sources` reads back as an empty list, and claiming the session
+    // on that basis would hand every switch to a backend with nothing
+    // to switch *between*, shadowing the X11/XKB backend that would
+    // have worked. An empty list means GNOME is not managing input
+    // sources here; fall through.
+    let sources = read_sources().unwrap_or_default();
+    if sources.is_empty() {
         return None;
     }
     Some(GnomeSwitcher)
