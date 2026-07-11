@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a Poltertype AppImage (x86_64).
+# Build a PolterType AppImage (x86_64).
 #
 # Inputs (env vars):
 #   VERSION    — release version (any leading "v" is stripped).

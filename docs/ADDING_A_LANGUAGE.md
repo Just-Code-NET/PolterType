@@ -1,4 +1,4 @@
-# Adding a language to Poltertype
+# Adding a language to PolterType
 
 `poltertype` is data-driven: each supported keyboard layout is one
 TOML file, and each language's dictionary is a plain wordlist. Neither
@@ -50,14 +50,14 @@ that doesn't use it is fine.
 
 ### Dead keys
 
-Poltertype tracks *the character produced per keystroke*, not the
+PolterType tracks *the character produced per keystroke*, not the
 OS-level dead-key state machine. Surface the spacing equivalent
 (`´`, `^`, `¨`) — that matches what shows up in a mid-correction
 buffer the rare time the user actually presses a dead key alone.
 
 ### Test it
 
-Add a TOML, restart Poltertype, and watch the log:
+Add a TOML, restart PolterType, and watch the log:
 
 ```
 loaded user layout layout=pl-PL keys=46 dict=false stem=pl_pl
@@ -70,7 +70,7 @@ appear, look for a parse error in the log.
 
 ## 2. Wordlists (so the dictionary detector recognises the language)
 
-Without a wordlist, Poltertype falls back to the plausibility
+Without a wordlist, PolterType falls back to the plausibility
 detector — which is decent for distinctive scripts (Cyrillic vs
 Latin) but unreliable inside a single script (German vs English).
 A real wordlist makes detection trustworthy.
@@ -167,7 +167,7 @@ mapping for your odd keyboard):
 3. Open the tray menu → **Open User Wordlists Folder…** for
    `<config-dir>/poltertype/wordlists/`.
 4. Drop the wordlists there.
-5. Restart Poltertype (the engine snapshots the layout database at
+5. Restart PolterType (the engine snapshots the layout database at
    start; new layouts need a fresh boot to populate the scancode-
    translation tables). Adding *words* to an already-loaded language
    only needs **Reload Settings** from the tray menu.

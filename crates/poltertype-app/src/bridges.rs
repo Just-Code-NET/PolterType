@@ -96,7 +96,7 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
         .name("poltertype-notify".into())
         .spawn(move || {
             let mut n = notify_rust::Notification::new();
-            n.summary("Poltertype")
+            n.summary("PolterType")
                 .body(&format!("Switched to {pretty}"))
                 .appname(APP_NAME)
                 .timeout(notify_rust::Timeout::Milliseconds(2000));

@@ -28,7 +28,7 @@
 # `Contents/MacOS/`, so `<exe_dir>/../Resources/data` lands here.
 #
 # The DMG is *unsigned and unnotarised* — fine for closed beta, not
-# for the App Store. macOS Gatekeeper will say "Poltertype cannot be
+# for the App Store. macOS Gatekeeper will say "PolterType cannot be
 # opened because the developer cannot be verified" on first launch;
 # the documented workaround is in CONTRIBUTING.md / the release notes
 # (right-click → Open, or `xattr -dr com.apple.quarantine /Applications/poltertype.app`).

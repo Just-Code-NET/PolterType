@@ -2,7 +2,7 @@
 
 pub(crate) const APP_ID: &str = "dev.opensource.poltertype";
 
-pub(crate) const APP_NAME: &str = "Poltertype";
+pub(crate) const APP_NAME: &str = "PolterType";
 
 /// Parse a hotkey string from `[hotkeys]` (e.g. `"Ctrl+Shift+Space"`)
 /// using `global-hotkey`'s native `FromStr`. On parse failure we log
@@ -21,7 +21,7 @@ pub(crate) const WAYLAND_SAFE_SWITCH_LAST: &str = "Ctrl+Shift+F9";
 /// One-time README seeded into the user layouts folder. Mirrors the
 /// wordlists README's plain-text, no-markdown style.
 pub(crate) const USER_LAYOUTS_README: &str = "\
-Poltertype — user layouts
+PolterType — user layouts
 =========================
 
 Drop layout-mapping TOML files here to add support for keyboards /
@@ -48,7 +48,7 @@ TOML schema (same as the bundled `data/layout-mappings/*.toml`):
     #   matter for word-boundary detection.
 
 The bundled `en_us.toml` and `uk_ua.toml` files are excellent
-copy-paste starting points — see the poltertype source repo,
+copy-paste starting points — see the PolterType source repo,
 `data/layout-mappings/`.
 
 Picking up dictionary support:
@@ -75,8 +75,8 @@ Override the bundled mapping:
 /// pane. Matches the file conventions documented in
 /// `poltertype_core::layouts::build_dictionary`.
 pub(crate) const USER_WORDLISTS_README: &str = "\
-poltertype — user wordlists
-=============================
+PolterType — user wordlists
+===========================
 
 Drop text files here to extend the built-in dictionaries without
 rebuilding the app. Changes are picked up on the next \"Reload

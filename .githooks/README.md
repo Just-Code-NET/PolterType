@@ -1,4 +1,4 @@
-# Poltertype git hooks
+# PolterType git hooks
 
 Versioned hooks that mirror the CI gates locally.
 

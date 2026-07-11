@@ -99,13 +99,13 @@ INFO  poltertype_core::layouts: loaded bundled layout                           
 INFO  poltertype_app: layout DB ready  loaded=3
 ```
 
-Adding a language in the OS requires a Poltertype restart to pick
+Adding a language in the OS requires a PolterType restart to pick
 it up (`list_active` is queried once at startup). This keeps the
 hot path simple and predictable; the cost is one kill-and-relaunch
 when you reorganise your input methods.
 
 If the OS query fails for any reason (`LayoutError::Unsupported` /
-`Os(...)`), Poltertype fails open: it loads every bundled layout,
+`Os(...)`), PolterType fails open: it loads every bundled layout,
 matching the pre-filter behaviour. The detector and the
 `apply_correction` pre-flight together still keep the engine from
 typing into an unreachable layout.
@@ -151,10 +151,10 @@ pack before publishing.
   surface is data-only: TOMLs and FSTs. This caps the security
   blast-radius of a malicious pack and rules out platform-portability
   headaches.
-* **Network calls.** Poltertype's no-network rule (see CLAUDE.md)
+* **Network calls.** PolterType's no-network rule (see CLAUDE.md)
   applies to plug-ins. A pack that wants to fetch updates does it
   through a separate user-driven download / installer step, not at
-  Poltertype runtime.
+  PolterType runtime.
 * **Settings injection.** Plug-ins can ship default short-stop words
   and dictionary entries; they cannot toggle global engine flags
   (autostart, hotkeys, …). The user owns those.

@@ -1,8 +1,28 @@
 # Changelog
 
-All notable changes to Poltertype are recorded here. The format is
+All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
+
+## [0.2.2] — the name is spelled "PolterType" everywhere it is shown
+
+### Changed — the displayed product name is now "PolterType"
+
+Everywhere the app wrote its own name for a human to read, it used the
+spelling `Poltertype`. The brand is **PolterType**. The settings window
+title, the tray tooltip, the system notifications, the About entry in
+the tray menu, `--version` and `--help`, the README files seeded into
+the user's layouts and wordlists folders, and the installer metadata —
+the Linux `.desktop` entry, the macOS bundle name, and the Windows
+product name shown in Add/Remove Programs — all agree on it now.
+
+This is a display-only change: nothing moves on disk and no setting is
+lost. The app id stays `dev.opensource.poltertype` and the config and
+data directories stay `poltertype`, because those are identifiers, not
+the brand. The Windows installer's product folder and registry key are
+derived from the product name and so change case with it, which is
+harmless — both the filesystem and the registry are case-insensitive
+there, and the upgrade is keyed on the MSI upgrade code regardless.
 
 ## [0.2.1] — "Settings…" survives an in-place update
 
@@ -26,10 +46,10 @@ actually sits there — the freshly installed one. When there is nothing
 left to launch (the app was uninstalled or the build directory wiped),
 it says so with a system notification instead of failing silently.
 
-## [0.2.0] — Poltertype rename, Linux X11 support, Hyprland layout fix
+## [0.2.0] — PolterType rename, Linux X11 support, Hyprland layout fix
 
 The rename lands in full — binary, crates, config directory and
-data-dir env var all become Poltertype, with an existing `kb-switcher`
+data-dir env var all become PolterType, with an existing `kb-switcher`
 configuration adopted automatically on first launch — together with
 X11 support and a Hyprland fix for corrections that fired in one
 direction only on input-remapper setups.
@@ -65,7 +85,7 @@ back an empty input-source list — leaving a switcher with nothing to
 switch between, and shadowing the backend that would have worked. It
 now requires the schema to list at least one input source.
 
-### Changed — project renamed: kb-switcher → Poltertype
+### Changed — project renamed: kb-switcher → PolterType
 
 The working title `kb-switcher` is retired. Everything brand-visible
 moves to the new name: the binary (`poltertype`), the crates
@@ -365,7 +385,7 @@ Implementation notes:
 * Cross-platform via `notify-rust` — Windows 10+ Toast,
   NSUserNotification on macOS, Desktop Notifications spec via
   DBus on Linux. Matches platforms supported elsewhere in
-  Poltertype.
+  PolterType.
 * Fired only on `SwitcherEvent::Corrected` — auto-switch and
   manual switch-last hotkey both produce that event, so the
   user sees notifications for both. NOT fired on
@@ -448,7 +468,7 @@ lives behind `Arc<RwLock<...>>` so the close-handler can rebuild
 it without restarting the watcher thread; `spawn_profile_watcher`
 takes the cache + force-flag and re-reads on every tick. The
 Wordlists pane banner / pane-intro text were updated from
-"Restart Poltertype to apply" to "Close this window to apply" so
+"Restart PolterType to apply" to "Close this window to apply" so
 the wording matches reality.
 
 ### Fixed — manual switch-last hotkey infinite loop
@@ -834,7 +854,9 @@ missing-manifest / invalid-manifest / user-override.
   separate phase. The loader is ready; the network + UI plumbing
   has its own security review queued.
 
-[Unreleased]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.0-beta.16...v0.1.0

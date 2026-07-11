@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Poltertype
+Name=PolterType
 GenericName=Keyboard Layout Switcher
 Comment=Auto-detect and fix wrong-keyboard-layout typing
 Exec=poltertype
@@ -9,7 +9,7 @@ Terminal=false
 Categories=Utility;System;
 Keywords=keyboard;layout;language;input;
 StartupNotify=false
-# Poltertype is a tray-only daemon: no main window, no menu bar
+# PolterType is a tray-only daemon: no main window, no menu bar
 # entry needed past the .desktop file the AppImage installs for
 # autostart compatibility with KDE/GNOME's session managers.
 NoDisplay=false

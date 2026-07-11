@@ -39,7 +39,7 @@ the version bump + changelog entry — nothing else.
 
 ## 2. Pick the next version
 
-Poltertype follows [SemVer](https://semver.org/). The pre-release
+PolterType follows [SemVer](https://semver.org/). The pre-release
 phase is over — `v0.1.0` was the first stable tag and the current
 line is `0.x` stable. The shape of the next version depends on
 what's queued:

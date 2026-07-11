@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="windows-1252"?>
 <!--
-    WiX Toolset 3.x source for the Poltertype MSI.
+    WiX Toolset 3.x source for the PolterType MSI.
 
     Built directly with `candle.exe` + `light.exe` (no cargo-wix
     wrapper) so that all parameter-substitution is explicit:
@@ -54,8 +54,8 @@
     in as `$(var.DataDir)` so the File `Source=` references are
     runner-portable.
 -->
-<?define ProductName = "Poltertype" ?>
-<?define Manufacturer = "Poltertype contributors" ?>
+<?define ProductName = "PolterType" ?>
+<?define Manufacturer = "PolterType contributors" ?>
 <?define UpgradeCode = "4F8B6C00-5D1E-4A3F-9B2C-1D0E2F3A4B50" ?>
 <?define InstallRegKey = "Software\$(var.Manufacturer)\$(var.ProductName)" ?>
 
@@ -93,7 +93,7 @@
                  SummaryCodepage="1252" />
 
         <!--
-            perUser scope: Poltertype is a tray app the user launches
+            perUser scope: PolterType is a tray app the user launches
             themselves — no service, no scheduled task — so installing
             into the per-machine Program Files would gain nothing and
             cost a UAC prompt on every install. perUser keeps the

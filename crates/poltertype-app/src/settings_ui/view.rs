@@ -537,7 +537,7 @@ impl SettingsApp {
             .push(Text::new("Exceptions").size(24))
             .push(
                 Text::new(
-                    "Poltertype skips auto-correction when the foreground app's \
+                    "PolterType skips auto-correction when the foreground app's \
                      executable basename is in this list. Manual switch (the \
                      hotkey on the Hotkeys pane) bypasses the list — devs can \
                      still fix wrong-layout identifiers explicitly inside an IDE.",
@@ -735,7 +735,7 @@ pub fn nav_panel(active: Pane) -> Element<'static, Message> {
         Column::new()
             .padding(Padding::new(16.0))
             .spacing(6)
-            .push(Text::new("Poltertype").size(18))
+            .push(Text::new("PolterType").size(18))
             .push(Space::with_height(12))
             .push(mk("Languages", Pane::Languages))
             .push(mk("Hotkeys", Pane::Hotkeys))

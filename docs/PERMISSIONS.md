@@ -18,7 +18,7 @@ that's expected — release artifacts will be signed in a later phase.
 The app needs **Accessibility** permission, granted once per machine:
 
 > System Settings → Privacy & Security → Accessibility → enable
-> *Poltertype*.
+> *PolterType*.
 
 Why: `CGEventTapCreate(kCGSessionEventTap, …)` (used to listen) and
 `CGEventPost` (used to send corrections) both require this.

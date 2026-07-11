@@ -241,7 +241,7 @@ jobs:
           # workarounds here are the difference between "it works" and
           # "Gatekeeper said no, I gave up".
           body: |
-            ## Poltertype ${{ github.ref_name }}
+            ## PolterType ${{ github.ref_name }}
 
             **Beta build — unsigned binaries.** The MSI / DMG / AppImage
             below are produced by CI on `${{ github.sha }}`.
@@ -253,7 +253,7 @@ jobs:
               "Windows protected your PC"; click **More info** →
               **Run anyway**.
             * **macOS** — download the `.dmg`, drag `poltertype.app` into
-              `/Applications`. First launch shows "Poltertype cannot be
+              `/Applications`. First launch shows "PolterType cannot be
               opened because the developer cannot be verified" — right-
               click the app and pick **Open**, or run
               `xattr -dr com.apple.quarantine /Applications/poltertype.app`

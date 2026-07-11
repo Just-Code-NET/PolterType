@@ -1,4 +1,4 @@
-# Contributing to Poltertype
+# Contributing to PolterType
 
 Thanks for the interest! This document covers the practical bits;
 the architecture lives in [docs/PLAN.md](docs/PLAN.md) and

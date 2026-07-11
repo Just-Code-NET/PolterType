@@ -1,6 +1,6 @@
 [package]
 name                  = "poltertype-app"
-description           = "Poltertype: cross-platform automatic keyboard layout switcher (tray app)."
+description           = "PolterType: cross-platform automatic keyboard layout switcher (tray app)."
 version.workspace     = true
 edition.workspace     = true
 license.workspace     = true
@@ -44,7 +44,7 @@ single-instance = { workspace = true }
 global-hotkey   = { workspace = true }
 opener          = { workspace = true }
 iced            = { workspace = true }
-# Tiny system notifications for "Poltertype just auto-switched
+# Tiny system notifications for "PolterType just auto-switched
 # your layout" — gated by `[general].show_notifications` (off by
 # default). Cross-platform: Win10+ Toast, macOS NSUserNotification,
 # Linux Desktop Notifications spec via DBus.

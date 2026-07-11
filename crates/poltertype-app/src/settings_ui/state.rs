@@ -134,7 +134,7 @@ impl SettingsApp {
     }
 
     pub(super) fn title(&self) -> String {
-        format!("Poltertype · Settings ({})", self.config_path.display())
+        format!("PolterType · Settings ({})", self.config_path.display())
     }
 
     pub(super) fn theme(&self) -> Theme {

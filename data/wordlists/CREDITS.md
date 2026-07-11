@@ -5,7 +5,7 @@ The dictionaries shipped in this directory power the
 license; we list them here so contributors and downstream packagers
 can audit the project's overall license posture.
 
-The Poltertype binary is MIT-licensed — embedding these wordlists
+The PolterType binary is MIT-licensed — embedding these wordlists
 is permissible because every source allows verbatim redistribution
 under non-restrictive terms (MIT-compatible) or under terms that
 attach only to the data, not to consuming code (MPL).
@@ -27,7 +27,7 @@ attach only to the data, not to consuming code (MPL).
   [brown-uk/dict_uk](https://github.com/brown-uk/dict_uk).
 * **License:** **MPL 1.1** (Mozilla Public License). Authors:
   Andriy Rysin et al., 2007–. The dictionary stays under MPL even
-  after embedding; consuming code (the Poltertype engine) remains
+  after embedding; consuming code (the PolterType engine) remains
   MIT.
 * **Processing:** stripped Hunspell affix flags (`/...`), dropped
   `+cs=...` case-sensitive metadata, lowercased, kept only entries
@@ -46,8 +46,8 @@ attach only to the data, not to consuming code (MPL).
   2026 LibreOffice's bundled Hunspell dictionaries are most often
   GPL-2-or-later or LGPL/MPL — review the per-language `README*.txt`
   next to the `.dic` for the exact terms before redistributing a
-  built Poltertype binary outside personal use. The licence applies
-  to **the wordlist data** only; the Poltertype engine remains MIT.
+  built PolterType binary outside personal use. The licence applies
+  to **the wordlist data** only; the PolterType engine remains MIT.
 * **Processing:** the same generic Hunspell pipeline as `uk_ua.txt`
   (strip affix flags, lowercase, keep letter-only stems).
 * **Size:** varies — typically 100–300k stems each, expanded to

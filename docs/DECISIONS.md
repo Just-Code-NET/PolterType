@@ -1,7 +1,7 @@
 # Decision log
 
 Short-form record of non-obvious technical choices made while
-implementing Poltertype. Each entry: **what** was decided, **why**,
+implementing PolterType. Each entry: **what** was decided, **why**,
 and any **alternatives** considered.
 
 ---
@@ -447,7 +447,7 @@ Two structural problems with the v0.1 baked-in data approach:
 * **`crates/poltertype-app`** queries `LayoutSwitcher::list_active()` at
   startup (right after building the switcher, before loading
   layouts) and feeds the result into `LoadOptions::active_filter`.
-  Adding a language in the OS now needs a Poltertype restart,
+  Adding a language in the OS now needs a PolterType restart,
   which is a documented trade — the alternative is OS-event
   plumbing on three platforms for a one-line restart cost.
 
@@ -632,7 +632,7 @@ would mean rebuilding every dictionary on the fly while the engine
 might be in the middle of a detector pass — extra synchronisation
 for a feature users hit rarely (you tweak your wordlist a couple
 times a week, max). The pane shows "Saved to ... Restart
-Poltertype to apply" so the constraint is visible.
+PolterType to apply" so the constraint is visible.
 
 > **SUPERSEDED** (0.1.0-beta.10). Wordlist edits now apply when the
 > Settings window closes — a three-step reload rebuilds the config,
@@ -675,7 +675,7 @@ TextExpander style) for three reasons:
 * **Visibility.** A hotkey is invisible state ("did I just press
   Ctrl+Alt+S? what did it do?"). A text trigger is right there in
   your buffer — you see what you typed.
-* **Architecture fit.** Poltertype already runs a word-boundary
+* **Architecture fit.** PolterType already runs a word-boundary
   pipeline for layout corrections. Text triggers slot in BEFORE
   the corrector's filters — same `WordBuffer::feed` boundary
   detection, same `KeyEmitter` for backspace + replay. Zero new
