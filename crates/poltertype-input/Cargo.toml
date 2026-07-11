@@ -37,7 +37,10 @@ core-graphics       = "0.24"
 # Wayland-first: evdev requires the user to be in the `input` group.
 # AT-SPI (atspi crate) is the no-sudo fallback and lands in Phase 6.x.
 evdev = { workspace = true }
-x11rb = { workspace = true }
+# `xinput` = XInput2 raw key events (the X11 listener); `xtest` =
+# XTestFakeInput (the X11 emitter). Both are opt-in features in x11rb —
+# the default build ships no protocol extensions at all.
+x11rb = { workspace = true, features = ["xinput", "xtest"] }
 # Used only to flip O_NONBLOCK on the evdev FDs we open. `evdev` 0.13's
 # `fetch_events` is blocking by default; our single-thread fan-in
 # would otherwise deadlock on the first device that has no traffic.

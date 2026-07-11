@@ -13,13 +13,23 @@
 //!    sessions fall through.
 //! 4. **IBus** (`ibus engine`) — any DE that hosts IBus.
 //! 5. **Fcitx5** (`fcitx5-remote`) — any DE that hosts Fcitx.
+//! 6. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — the bare-WM
+//!    fallback (i3, openbox, plain `.xinitrc`), where no desktop
+//!    environment owns the layout and the X server itself holds it.
+//!    Last on purpose: where a DE *is* present it keeps a tray
+//!    indicator in sync with the layout, and locking the XKB group
+//!    underneath it would switch the keyboard while leaving that
+//!    indicator lying.
 //!
 //! Each backend's `try_init()` does a cheap reachability probe (env
 //! var, schema check, or daemon ping). The first that initialises
-//! wins. All backends interact with their daemon via the canonical
+//! wins. The DE backends interact with their daemon via the canonical
 //! CLI tool shipped with that ecosystem — that's more robust against
 //! D-Bus interface drift between distro / DE versions than raw D-Bus
 //! calls (and lets us skip the zbus + async-runtime dep entirely).
+//! X11 is the exception: it speaks the protocol directly, because
+//! there is no daemon to ask and `setxkbmap` cannot switch a group —
+//! it can only re-install the whole layout list.
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
@@ -64,9 +74,13 @@ pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
     }
     tried.push("fcitx");
 
+    if let Some(s) = x11::try_init() {
+        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
+    }
+    tried.push("x11");
+
     Err(LayoutError::Unsupported(format!(
-        "no Linux layout-switching backend available; probed: {tried:?}. \
-         X11 XkbLockGroup fallback lands in v0.1.x"
+        "no Linux layout-switching backend available; probed: {tried:?}"
     )))
 }
 
