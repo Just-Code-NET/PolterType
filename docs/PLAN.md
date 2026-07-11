@@ -1,7 +1,24 @@
 # Poltertype — План проєкту
 
 > Жива дорожня карта. Оновлюється під час реалізації.
-> Дата створення: 2026-05-02.
+> Дата створення: 2026-05-02. Актуалізовано: 2026-07-11 (v0.2.0).
+
+> **Як читати цей документ.** Це **план**, а не опис реалізації. Там,
+> де код розійшовся з задумом, істина — код, а не цей файл. Найсвіжіші
+> зведення:
+>
+> * **Що вже вийшло** — `CHANGELOG.md` (0.1.0 «First stable», 0.1.1,
+>   0.2.0) і §10 нижче, де відмічено кожен пункт.
+> * **Чому саме так** — `DECISIONS.md`; кілька рішень нижче вже
+>   переглянуті (найпомітніше — «повноцінний GUI відкладено», хоч він
+>   вийшов ще у 0.1.0-beta).
+> * **Чого немає, попри те що описано нижче** — `../CLAUDE.md`,
+>   розділ «Known gaps»: AI-підсистема не під'єднана до движка,
+>   `FocusTracker` реалізований лише на Windows, AT-SPI / `libei` /
+>   онбординг-вікна / tray-банерів не існує.
+>
+> Секції 2–4 подекуди описують початковий задум (залежності, яких так
+> і не взяли; меню трея, яке склалося інакше). Звіряйтесь із кодом.
 
 ---
 
@@ -19,6 +36,12 @@
 | 2026-05-02 | Реліз-канал v0.1: лише GitHub Releases. | Зафіксовано користувачем. |
 | 2026-05-02 | **Wayland — у v0.1, як основний Linux-таргет.** X11 — fallback. | Сучасні дистрибутиви (GNOME/KDE) типово на Wayland; користувач хоче сфокусуватися на ньому. |
 | 2026-05-02 | Phase 1 не вмикає `iced` вікно, лише tray + event loop. iced — у Phase 4. | Менше ризиків у каркасі; iced не потрібен, поки нема що показувати. |
+| 2026-05-07 | **Перегляд:** повноцінне `iced`-вікно виходить уже в 0.1, а не «Phase 8 / v0.2». Сім панелей, окремий процес `--settings`. | Поведінка event-loop'ів прояснилася раніше, ніж очікували; окремий процес знімає конфлікт з main-thread на macOS. |
+| 2026-05-07 | **Перегляд:** дані (розкладки, словники) винесені з бінаря у `<data_dir>/`, замість `include_str!`/`include_bytes!`. | Ліниве завантаження за активними розкладками; можливість user-оверлеїв і плагін-паків без перезбірки. |
+| 2026-05-21 | **v0.1.0 — вихід із бети** («First stable»). | Wayland-шлях (Hyprland + keyd) стабільно працює на щоденній машині мейнтейнера. |
+| 2026-07-11 | **Перегляд: X11 — не «fallback», а повноцінний шлях.** Єдиний тип Linux-сесії, що працює **без жодних дозволів** (ні `input`-групи, ні `sudo`, ні `setup-linux.sh`). | XInput2 + XTest доступні будь-якому клієнту, що відкрив дисплей. Іронічно — найнижчий поріг входу з усього Linux. |
+| 2026-07-11 | **Перейменування `kb-switcher` → Poltertype** — бінар, крейти, app id, конфіг-каталог, env-var. Старий конфіг переймається автоматично при першому запуску. | Робоча назва вичерпала себе; міграція, щоб не втратити налаштування наявних користувачів. |
+| 2026-07-11 | **Correction pipeline v2**: спершу перемкнути розкладку, потім видаляти (а не навпаки). | Детально в `DECISIONS.md` (запис від 2026-07-11): усуває гонку з echo від власного емітера. |
 
 ---
 
@@ -243,15 +266,21 @@ pub trait Detector: Send + Sync {
 }
 ```
 
-Реалізації, які закладаємо:
+Реалізації:
 
-| Detector | Призначення | Доступний |
+> ⚠️ Сигнатура трейта вище — з початкового задуму. **У коді вона
+> інша:** `fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict`, де
+> `Verdict` тризначний (`NoOpinion` / `Keep { reason }` / `Switch`).
+> Саме `Keep` дозволяє словнику сказати «це справжнє слово, не
+> чіпайте» — головний запобіжник від хибних спрацювань.
+
+| Detector | Призначення | Стан |
 |---|---|---|
-| `HeuristicDetector` | швидкі правила: «у буфері немає літер цільової розкладки», апостроф/символ-маркери. | v0.1 |
-| `DictionaryDetector` | n-gram + словник через `lingua-rs` або власні таблиці частотності. | v0.1 |
-| `ContextDetector` | враховує попередні N слів (марковська модель). | v0.2 |
-| `LocalMlDetector` | ONNX/Candle-модель (наприклад, fastText-style або TinyBERT). Працює офлайн. | v0.3 (опційно) |
-| `RemoteLlmDetector` | API до OpenAI/Anthropic/локального Ollama. Лише за explicit-opt-in. | v0.3+ (плагін) |
+| `WordPlausibilityDetector` (планувався як `HeuristicDetector`) | швидкі правила: чи виглядає слово правдоподібним для поточної розкладки (літери, частка голосних, нагромадження приголосних). | ✅ у 0.1 |
+| `DictionaryDetector` | FST-словник по Hunspell-розгорнутих списках. `lingua-rs` і n-grams **не використали** — від них відмовились на користь FST. | ✅ у 0.1 |
+| `ContextDetector` | враховує попередні N слів (марковська модель). | ❌ немає (планувався на v0.2 — не зроблений) |
+| `LocalOnnxDetector` | ONNX-модель, офлайн. | 🚧 стаб у `poltertype-ai`, до движка не під'єднаний |
+| `RemoteLlmDetector` | API до OpenAI/Anthropic/локального Ollama. Лише за explicit-opt-in. | 🚧 стаб; мережевих викликів не робить жодна збірка |
 
 Pipeline-policy (приклад):
 
@@ -332,23 +361,31 @@ API-ключі **не зберігаються** в `config.toml` — лише �
 згенерованого PNG/ICO (за бажання — нативна композиція через
 `tiny-skia`).
 
-Меню:
+Меню — **як склалося у коді** (початковий ескіз із submenu швидкого
+перемикання та лічильником «Today: N corrections» реалізований **не
+був**):
 
-- ✅ Active language: EN (US) ▸  *(submenu — швидке перемикання)*
-- ⏸ Pause auto-switch
 - ⚙ Settings…
-- 📊 Today: 14 corrections
-- 🪵 Open log
+- 📝 Edit config.toml…
+- 🪵 Open Logs Folder…
+- 📖 Open User Wordlists Folder…
+- ⌨ Open User Layouts Folder…
+- 🔄 Reload Settings
+- ⏸ Pause auto-switch
+- ℹ About …
 - ❌ Quit
 
 ### 3.7 Звуки (звукові теми)
 
-- Звуки лежать у папках-темах: `<config>/sound-themes/<theme>/{correct,
-  pause,switch,error}.ogg`. Bundled тема — `default/`.
-- `AudioPlayer` шукає файл по логічному імені; якщо нема — silent (не
-  падає).
-- Гнучкість: користувач може створити свою тему, скопіювавши папку.
-- v0.1 — placeholder CC0; пізніше — власні.
+- **Типово звуки синтезуються** — `AudioPlayer` генерує тон на льоту
+  (різна висота на подію). Так бінар лишається малим і немає
+  per-platform клопоту з декодерами. Каталогу `assets/` у репозиторії
+  **немає**, bundled-теми `default/` теж.
+- Користувацька тема: `<config-dir>/sound-themes/<theme>/<event>.ogg`.
+  Події — `correct`, `pause`, `resume` (не `{correct,pause,switch,
+  error}`, як планувалося).
+- Якщо файлу теми нема — тихо відкочуємось на синтезований тон, не
+  падаємо.
 
 ### 3.8 AI / ML підсистема (опційно вмикана)
 
@@ -435,12 +472,20 @@ require_confirmation = true
 
 #### D. Гарантії приватності
 
+> Станом на v0.2.0 гарантія сильніша за задуману: **мережевого коду
+> просто немає**. Підсистема до движка не під'єднана, тож усе нижче —
+> вимоги до майбутньої реалізації, а не опис поточної поведінки.
+> Індикатора в tray-tooltip і лічильника викликів **не існує** —
+> tooltip показує лише назву, розкладку і «(paused)».
+
 - AI вимкнений за замовчуванням.
 - Окремий toggle `allow_remote` — навіть якщо `enabled=true`, мережа
-  заблокована, поки користувач явно не увімкне.
-- На кожен remote-виклик у tray-tooltip є індикатор «AI:on/off,
-  remote: yes/no» і лічильник «N AI calls today».
-- API-ключі — через `keyring`, ніколи в plain-text.
+  має лишатись заблокованою, поки користувач явно не увімкне.
+  (Сьогодні прапорець парситься, але його не читає жоден код.)
+- На кожен remote-виклик у tray-tooltip має бути індикатор «AI:on/off,
+  remote: yes/no» і лічильник «N AI calls today» — **не реалізовано**.
+- API-ключі — через `keyring`, ніколи в plain-text. (Хелпер написаний;
+  викликати його поки нема кому.)
 - Cache LLM-відповідей за hash(input) — щоб не слати однакові
   слова повторно.
 
@@ -451,9 +496,18 @@ require_confirmation = true
 
 ### 3.9 FocusTracker (контекст застосунку)
 
-- Win: `WinEventHookEx EVENT_SYSTEM_FOREGROUND`.
-- macOS: `NSWorkspace.didActivateApplicationNotification`.
-- Linux X11: `_NET_ACTIVE_WINDOW` property change.
+- Win: `WinEventHookEx EVENT_SYSTEM_FOREGROUND` — **✅ реалізовано**.
+- macOS: `NSWorkspace.didActivateApplicationNotification` — **❌ ні**.
+- Linux X11: `_NET_ACTIVE_WINDOW` property change — **❌ ні**.
+
+> **Це найтихіша діра в продукті.** `create_focus_tracker()` повертає
+> `NoopFocusTracker` на всьому, що не Windows, а його `focused_exe()`
+> завжди віддає `None`. Отже все, що зав'язане на активний застосунок,
+> на macOS і Linux **мовчки не працює**: `[exceptions].disabled_apps`,
+> per-app профілі словників, та `apps = [...]` у smart-командах.
+> Помилки не буде — просто нічого не станеться. Не обіцяйте цих
+> можливостей для не-Windows (зокрема на лендінгу), поки трекери не
+> з'являться.
 
 Дає `AppId { exe_name, window_title }` для:
 
@@ -465,71 +519,57 @@ require_confirmation = true
 
 ## 4. Структура репозиторію
 
+Фактична структура на v0.2.0 (початковий ескіз розходився з нею в
+кількох місцях: `assets/` і кореневого `tests/` не існує, модулі
+розбиті по каталогах «одна сутність — один файл», а `CONTRIBUTING.md`
+лежить у корені, не в `docs/`):
+
 ```
-poltertype/
-├── .claude/
-│   ├── settings.json
-│   └── README.md
-├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml
-│   │   └── release.yml
-│   ├── ISSUE_TEMPLATE/
-│   └── PULL_REQUEST_TEMPLATE.md
+poltertype/                      # (конфіг Claude — не тут, а в корені
+│                                #  воркспейсу: ../.claude/)
+├── .cargo/config.toml           # аліас `cargo xtask`
+├── .github/workflows/{ci.yml,release.yml}
+├── .githooks/                   # pre-commit / pre-push (ставляться xtask'ом)
 ├── docs/
 │   ├── PLAN.md                  # цей файл
-│   ├── ARCHITECTURE.md          # глибше про модулі
-│   ├── PERMISSIONS.md           # macOS Accessibility, Linux input group
-│   ├── AI.md                    # як підключити модель/API
+│   ├── DECISIONS.md             # журнал архітектурних рішень
+│   ├── DATA_LAYOUT.md           # дерево даних на диску + плагіни
+│   ├── PERMISSIONS.md           # macOS Accessibility, Linux evdev/X11
+│   ├── AI.md                    # стан і задум AI-підсистеми
 │   ├── ADDING_A_LANGUAGE.md
-│   └── CONTRIBUTING.md
+│   └── RELEASING.md
 ├── crates/
-│   ├── poltertype-app/                  # бінар (main, tray, window, IPC)
-│   │   ├── Cargo.toml
-│   │   └── src/{main.rs, tray.rs, ui/, ipc.rs}
-│   ├── poltertype-core/                 # SwitcherEngine, налаштування, event-loop
-│   │   ├── Cargo.toml
-│   │   └── src/{engine/, settings/, focus.rs, audio.rs, autostart.rs}
-│   ├── poltertype-input/                # InputListener trait + per-OS
-│   │   └── src/{lib.rs, windows.rs, macos.rs, linux.rs}
-│   ├── poltertype-layout/               # LayoutSwitcher trait + per-OS
-│   │   └── src/{lib.rs, windows.rs, macos.rs, linux.rs, mappings/}
-│   ├── poltertype-detect/               # Detector pipeline (heuristic/dict/...)
-│   │   └── src/{lib.rs, heuristic.rs, dictionary.rs, context.rs}
-│   ├── poltertype-ai/                   # ОПЦІЙНО (feature `ai`)
-│   │   └── src/{lib.rs, local_onnx.rs, remote_llm.rs, rewriters/}
-│   └── poltertype-types/                # спільні типи (LayoutId, KeyEvent, ...)
-├── assets/
-│   ├── icons/
-│   ├── tray/                    # шаблони для генерованих іконок
-│   └── sound-themes/
-│       └── default/
-│           ├── correct.ogg
-│           ├── pause.ogg
-│           └── switch.ogg
-├── data/
-│   └── layout-mappings/         # TOML-файли накладок
-│       ├── en_us.toml
-│       ├── uk_ua.toml
-│       └── ...
-├── tests/                       # інтеграційні тести (без OS-хуків)
-│   ├── engine_decision.rs
-│   └── layout_mapping.rs
-├── xtask/                       # допоміжні скрипти збірки
-│   └── src/main.rs
+│   ├── poltertype-app/          # бінар: tray, Settings-UI (окремий процес)
+│   │   └── src/{main.rs, tray.rs, detectors.rs, settings_ui/, settings_proc.rs, icon_render/}
+│   ├── poltertype-core/         # engine, settings, layouts, commands, audio
+│   │   └── src/{engine/, settings/, layouts/, commands/, wordlist_profiles/, audio/, data_dir/}
+│   │       └── build.rs         # готує target/dist/data з data/
+│   ├── poltertype-input/        # InputListener + KeyEmitter + FocusTracker
+│   │   └── src/{windows/, macos/, linux/{wayland,x11}/, focus/}
+│   ├── poltertype-layout/       # LayoutSwitcher + per-OS бекенди
+│   │   └── src/{windows/, macos/, linux/{hyprland,kde,gsettings,ibus,fcitx,x11}/}
+│   ├── poltertype-detect/       # Detector pipeline
+│   │   └── src/{traits.rs, plausibility.rs, dictionary.rs, enums.rs}
+│   ├── poltertype-ai/           # ОПЦІЙНО (feature `ai`); стаби, не під'єднано
+│   │   └── src/{local.rs, remote/, rewriters.rs, keys.rs}
+│   └── poltertype-types/        # спільні типи (LayoutId, KeyEvent, ...)
+├── data/                        # джерело правди, консумиться build.rs
+│   ├── layout-mappings/         # TOML-накладки (en_us.toml, uk_ua.toml, ...)
+│   └── wordlists/               # <stem>.txt.gz + -extras/-stop/-weak
+├── installers/{wix,windows,macos,linux}/
+├── scripts/setup-linux.sh
+├── xtask/                       # wordlists fetch, hooks install, icon, version
 ├── Cargo.toml                   # workspace
-├── Cargo.lock
-├── rust-toolchain.toml          # фіксуємо stable + components
-├── deny.toml                    # cargo-deny: license/duplicate checks
-├── rustfmt.toml
-├── clippy.toml
-├── .editorconfig
-├── .gitignore
-├── .gitattributes
+├── CHANGELOG.md
+├── CONTRIBUTING.md
 ├── CLAUDE.md
 ├── LICENSE                      # MIT
 └── README.md
 ```
+
+Інтеграційних тестів у кореневому `tests/` немає — юніт-тести лежать
+у сусідніх `tests.rs` всередині кожного модуля (див. CONTRIBUTING.md,
+розділ про організацію файлів).
 
 Workspace з декількох крейтів дає:
 
@@ -641,110 +681,154 @@ Workspace з декількох крейтів дає:
 
 ## 10. Дорожня карта
 
-### Фаза 0 — Каркас (зараз, без коду логіки)
+> **Статус на v0.2.0.** Фази 0–8 у своїй основній частині
+> завершені й вийшли в релізах 0.1.0 → 0.2.0; нижче відмічено, що
+> саме лишилося відкритим. Пункти, які **не** зроблені, свідомо
+> лишені як `[ ]` — це і є актуальний список робіт. Формулювання
+> самих пунктів подекуди відстало від коду (напр. `HeuristicDetector`
+> у Фазі 3 насправді зветься `WordPlausibilityDetector`); тут
+> виправлено.
+
+### Фаза 0 — Каркас ✅
 
 - [x] Створити проєкт, `git init`.
 - [x] PLAN.md, README, LICENSE (MIT), .gitignore, .gitattributes,
       .editorconfig, CLAUDE.md, `.claude/`.
-- [ ] (опційно зараз) ADR-шаблон, CONTRIBUTING.md.
+- [x] CONTRIBUTING.md (у корені репозиторію, не в `docs/`).
 
-### Фаза 1 — Bootstrap Rust-каркасу
+### Фаза 1 — Bootstrap Rust-каркасу ✅
 
-- [ ] Cargo workspace з 7 крейтами (порожні `lib.rs`).
-- [ ] `poltertype-app`: `tao` event loop + `tray-icon` (Settings/Quit меню,
-      генерована placeholder-іконка). `iced` вікно — у Phase 4.
-- [ ] `single-instance`, `tracing` ініціалізація.
-- [ ] CI: `cargo fmt/clippy/check` на трьох ОС.
-- [ ] `cargo-deny` базова конфігурація.
+- [x] Cargo workspace з 7 крейтами.
+- [x] `poltertype-app`: `tao` event loop + `tray-icon`, генерована
+      placeholder-іконка.
+- [x] `single-instance`, `tracing` ініціалізація.
+- [x] CI: `cargo fmt/clippy/check` на трьох ОС.
+- [x] `cargo-deny` базова конфігурація.
 
-### Фаза 2 — Платформенні адаптери (skeleton)
+### Фаза 2 — Платформенні адаптери ✅
 
-- [ ] `poltertype-input`: trait + Windows-реалізація LL hook (лише log).
-- [ ] `poltertype-layout`: trait + Windows-реалізація.
-- [ ] Stub'и для macOS / Linux (компілюються, повертають `Unsupported`).
-- [ ] `docs/PERMISSIONS.md` із описом для macOS/Linux.
+- [x] `poltertype-input`: trait + Windows LL hook.
+- [x] `poltertype-layout`: trait + Windows-реалізація.
+- [x] macOS / Linux більше **не** stub'и — див. Фази 5 і 6.
+- [x] `docs/PERMISSIONS.md`.
 
-### Фаза 3 — SwitcherEngine MVP
+### Фаза 3 — SwitcherEngine MVP ✅
 
-- [ ] `poltertype-types`: спільні типи (LayoutId, KeyEvent, ...).
-- [ ] `poltertype-detect`: `HeuristicDetector` + `DictionaryDetector` (lingua).
-- [ ] `poltertype-core`: WordBuffer, DecisionPolicy, Corrector, AudioPlayer.
-- [ ] EN↔UK мапа в `data/layout-mappings/`.
-- [ ] Pause/Undo хоткей.
-- [ ] Налаштування: збереження/завантаження `config.toml`.
+- [x] `poltertype-types`: спільні типи (LayoutId, KeyEvent, ...).
+- [x] `poltertype-detect`: `WordPlausibilityDetector` +
+      `DictionaryDetector`. Словник — FST по Hunspell-розгорнутих
+      списках (не `lingua`, від якої відмовились).
+- [x] `poltertype-core`: WordBuffer, DecisionPolicy, Corrector,
+      AudioPlayer.
+- [x] EN↔UK мапа в `data/layout-mappings/` (сьогодні бандлиться
+      шість: EN·UK·RU·DE·ES·FR).
+- [x] Pause / switch-last хоткеї.
+- [x] Налаштування: збереження/завантаження `config.toml`.
 
-### Фаза 4 — Settings UX (без повноцінного GUI у v0.1)
+### Фаза 4 — Settings UX ✅
 
-Див. `docs/DECISIONS.md` запис `2026-05-02 — Phase 4: deferred full
-GUI`. Замість `iced`-сторінок Phase 4 робить:
+Початковий план (див. `docs/DECISIONS.md`, запис
+`2026-05-02 — Phase 4: deferred full GUI`) відкладав повноцінне
+вікно. **Це рішення згодом переглянули**: `iced`-GUI вийшов ще у
+0.1.0-beta, і сьогодні має сім панелей (Languages, Hotkeys, Commands,
+Wordlists, General, Exceptions, About). Запускається як окремий
+процес `poltertype --settings`.
 
-- [ ] Tray menu: "Open Settings" → відкриває `config.toml` в
-      редакторі за замовчуванням (cross-platform `opener`).
-- [ ] Tray menu: "Open Logs" → відкриває папку з логами.
-- [ ] Tray menu: "Reload Settings" → перечитує config + повідомляє
-      engine.
-- [ ] File-backed logs через `tracing-appender` (daily rotation).
-- [ ] Engine: фільтрація candidate layouts за `[languages].active` /
-      `[languages].ignored`.
-- [ ] Повноцінний GUI (`iced` чи `egui`) — Phase 8 / v0.2, коли
-      зрозуміла поведінка event-loop'ів на macOS і Linux.
+- [x] Tray menu: "Edit config.toml…" через `opener`.
+- [x] Tray menu: "Open Logs Folder…".
+- [x] Tray menu: "Reload Settings".
+- [x] File-backed logs через `tracing-appender`.
+- [x] Engine: фільтрація candidate layouts за `[languages]`.
+- [x] Повноцінний GUI (`iced`) — вийшов раніше, ніж планувалось.
 
-### Фаза 5 — macOS повністю
+### Фаза 5 — macOS
 
-- [ ] `CGEventTap` + Accessibility onboarding.
-- [ ] `TISSelectInputSource`.
-- [ ] `NSWorkspace` focus tracking.
+- [x] `CGEventTap` (listener) — написано за документацією Apple,
+      перевірено лише на CI.
+- [x] `TISSelectInputSource` (перемикання розкладки).
+- [ ] **Accessibility onboarding** — вікна першого запуску немає.
+- [ ] **`NSWorkspace` focus tracking** — не реалізовано, тож
+      `FocusTracker` на macOS це no-op (див. Фазу 6 і §3.9).
+- [ ] **Runtime-перевірка на живому залізі.** Найбільша відкрита
+      позиція по macOS: жоден із бекендів не проганявся на реальній
+      машині.
 
-### Фаза 6 — Linux (Wayland-first)
+### Фаза 6 — Linux
 
-- [ ] **Wayland evdev listener** через `evdev` crate; `setup-linux.sh`
-      для додавання користувача в групу `input` + udev-правило.
-- [ ] Wayland AT-SPI fallback listener через `atspi`.
-- [ ] Layout-switcher через D-Bus (GNOME → KDE → IBus → Fcitx у такому
-      порядку), кожна реалізація — окремий бекенд за `Trait`.
-- [ ] Send-keys (виправлення слова): через `uinput` (paired з evdev)
-      і `libei` (`reis`) як портал-варіант.
-- [x] X11 fallback: XInput2 listener + XTest emitter + XkbLockGroup
-      switcher. Потребує нуль дозволів (ні `input`-групи, ні `sudo`).
-      XKB-світчер пробується **останнім** — там, де сесією керує DE,
-      його бекенд (GNOME/KDE/IBus/Fcitx) тримає індикатор розкладки в
-      синхроні, а замикання групи під ним лишило б індикатор брехати.
-- [ ] Onboarding-банер: пояснення, чому потрібен `sudo`, посилання на
-      скрипт, кнопка «Run setup».
+- [x] **Wayland evdev listener** через `evdev`; `setup-linux.sh`
+      додає в групу `input` + udev-правила (`/dev/input/event*` та
+      `/dev/uinput`).
+- [x] Layout-switcher: Hyprland → KDE → GSettings (GNOME-родина) →
+      IBus → Fcitx5 → X11 XKB, кожен окремим бекендом за `Trait`.
+- [x] Send-keys через `uinput` (у парі з evdev).
+- [x] X11: XInput2 listener + XTest emitter + XKB-світчер
+      (`XkbLatchLockState`). Потребує нуль дозволів (ні
+      `input`-групи, ні `sudo`). XKB-світчер пробується **останнім**
+      — там, де сесією керує DE, його бекенд тримає індикатор
+      розкладки в синхроні, а замикання групи під ним лишило б
+      індикатор брехати.
+- [ ] **Wayland AT-SPI fallback listener** через `atspi` — не
+      реалізовано (залежності немає в дереві).
+- [ ] **`libei` (`reis`) як портал-варіант send-keys** — не
+      реалізовано; `uinput` наразі єдиний шлях.
+- [ ] **Onboarding-банер** із кнопкою «Run setup» — не реалізовано.
+- [ ] **`FocusTracker` для Linux** (`_NET_ACTIVE_WINDOW` / Wayland) —
+      не реалізовано, див. §3.9.
 
-### Фаза 7 — AI каркас (опційно)
+### Фаза 7 — AI каркас
 
-- [ ] `poltertype-ai` крейт за `feature = "ai"`.
-- [ ] `Detector` + `WordRewriter` traits інтегровано в pipeline.
-- [ ] Один еталонний `LocalOnnxDetector` із `lid.176`.
-- [ ] Один еталонний `RemoteLlmDetector` (Anthropic API) з
-      `keyring`-сховищем ключа та UI-онбордингом.
-- [ ] `docs/AI.md`.
+Каркас є, **але до движка не під'єднаний** — жоден рядок
+`poltertype-app` / `poltertype-core` не імпортує `poltertype-ai`.
+Детальніше в `docs/AI.md`.
 
-### Фаза 8 — Polish, beta-реліз 0.1
+- [x] `poltertype-ai` крейт за `feature = "ai"` (вимкнений типово).
+- [x] `Detector` + `WordRewriter` traits оголошені в
+      `poltertype-detect`.
+- [x] `docs/AI.md`.
+- [ ] **Traits інтегровано в pipeline** — ні. Список детекторів
+      захардкоджений у `poltertype-app::main`; схеми
+      `[[ai.detectors]]` в налаштуваннях не існує, ключі
+      `[ai].enabled` / `allow_remote` не читає жоден код.
+- [ ] Еталонний `LocalOnnxDetector` із `lid.176` — стаб.
+- [ ] Еталонний `RemoteLlmDetector` (Anthropic API) — стаб; мережевих
+      викликів не робить жодна збірка.
 
-- [ ] Іконки, переклад UI, скріншоти в README.
-- [ ] GitHub Action — артефакти на тег.
-- [ ] Reddit/HN ann (опційно).
+### Фаза 8 — Polish, реліз ✅ (частково)
+
+- [x] Іконки (рендеряться з `xtask assets icon-png`).
+- [x] GitHub Action — артефакти на тег (`release.yml`).
+- [x] **Інсталятори**: MSI (WiX), universal DMG, AppImage. Вийшли
+      разом з 0.1 — раніше, ніж планувала Фаза 9.
+- [ ] Переклад UI (i18n) — інтерфейс лише англійський.
+- [ ] Скріншоти в README.
 
 ### Фаза 9 (пізніше)
 
-- Інсталятори, підпис, magazines (winget, brew, AUR).
-- Маркетплейс плагінів (WASM).
+- **Підпис** інсталяторів (Apple Developer ID, Windows EV/OV) —
+  сьогодні всі артефакти **непідписані**.
+- Магазини: winget, brew, AUR, Microsoft Store.
+- Маркетплейс плагінів: лоадер живий (data-only паки), відкритий
+  лишається UX встановлення / оновлення / підпису пака. WASM-плагіни
+  — окремо.
 
 ---
 
 ## 11. Метрики готовності v0.1 (definition-of-done)
 
-- Працює на Windows 11 повний цикл: «`руддщ` → `hello`, звук».
-- Працює на macOS 14+ (Intel+ARM): теж.
-- Працює на Wayland Ubuntu 24.04 / Fedora 40 (GNOME або KDE) повний
-  цикл після `setup-linux.sh`. X11 — як fallback працює без скрипта.
-- Tray показує мову, меню працює.
-- UI вікно: General + Languages + Hotkeys + Exceptions сторінки
-  робочі, налаштування зберігаються.
-- AI підсистема **присутня в коді** як вимкнений `feature = "ai"`,
-  з прикладом конфігу і документацією, навіть якщо не оснащена
-  готовою моделлю.
-- README має інструкцію збірки і скріншоти.
-- CI зелений на трьох ОС.
+> **v0.1.0 вийшов** (реліз «First stable», див. CHANGELOG). Нижче —
+> що з цього списку справдилось, а що ні.
+
+- [x] Windows: повний цикл «`руддщ` → `hello`, звук».
+- [x] Linux: повний цикл на Wayland (Hyprland + keyd — щоденна
+      машина мейнтейнера) після `setup-linux.sh`; на X11 — **без
+      жодного скрипта** (це вже не «fallback», а повноцінний шлях).
+- [ ] macOS (Intel+ARM): збирається і проходить CI, але на живому
+      залізі цикл ніхто не проганяв. Єдиний непідтверджений пункт.
+- [x] Tray показує мову, меню працює.
+- [x] UI вікно: сім панелей (більше, ніж планувалось), налаштування
+      зберігаються.
+- [x] AI підсистема присутня в коді як вимкнений `feature = "ai"` з
+      документацією — але, всупереч початковому формулюванню, вона
+      **не під'єднана до pipeline** (див. Фазу 7).
+- [ ] Скріншоти в README — немає (інструкція збірки є).
+- [x] CI зелений на трьох ОС.

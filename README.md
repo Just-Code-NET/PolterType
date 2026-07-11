@@ -5,13 +5,12 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-_Formerly known as `kb-switcher`._
-
-> **Status:** v0.1.0-beta — works end-to-end on Windows; macOS and
-> Linux backends are written from API docs and validated on CI but
-> haven't yet been runtime-tuned by hardware-equipped contributors.
-> See [docs/PLAN.md](docs/PLAN.md) for the full plan and
-> [CHANGELOG.md](CHANGELOG.md) for what's in.
+> **Status:** v0.2.0 — out of beta since v0.1.0. Works end-to-end on
+> Windows and on Linux (both Wayland and X11). The macOS backend is
+> written from Apple's API docs and validated on CI, but hasn't yet
+> been runtime-tuned by a hardware-equipped contributor. Installers
+> are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
+> full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
 
 ## Goals
 
@@ -29,9 +28,9 @@ _Formerly known as `kb-switcher`._
 
 | OS              | Status                                                                                                                                                                        |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows 10 / 11 | working (primary target for v0.1)                                                                                                                                             |
-| macOS 14+       | best-effort; needs Accessibility permission                                                                                                                                   |
-| Linux (Wayland) | best-effort; run `scripts/setup-linux.sh` once. Layout switching: Hyprland, KDE Plasma, GSettings (GNOME / Ubuntu Unity / Cinnamon / Budgie / Pantheon / MATE), IBus, Fcitx5. |
+| Windows 10 / 11 | working                                                                                                                                                                       |
+| macOS 11+       | best-effort — written from Apple's docs, CI-validated, not yet runtime-tuned on hardware; needs Accessibility permission                                                      |
+| Linux (Wayland) | working; run `scripts/setup-linux.sh` once (evdev + uinput access). Layout switching: Hyprland, KDE Plasma, GSettings (GNOME / Ubuntu Unity / Cinnamon / Budgie / Pantheon / MATE), IBus, Fcitx5. |
 | Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Layout switching via the DE backends above, falling back to XKB group locking on bare WMs (i3, openbox, …). |
 
 See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
@@ -39,7 +38,7 @@ permissions story.
 
 ## Install
 
-Beta builds are published as GitHub Releases —
+Builds are published as GitHub Releases —
 [**Releases page**](../../releases). Each release ships three
 artifacts:
 
@@ -49,8 +48,9 @@ artifacts:
 | macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant Accessibility permission. |
 | Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland.                                                                                        |
 
-> Beta builds are **unsigned** — that's why Gatekeeper / SmartScreen
-> warn on first launch. Code signing comes in a later phase.
+> Installers are still **unsigned** — that's why Gatekeeper /
+> SmartScreen warn on first launch. Code signing comes in a later
+> phase.
 
 Building from source is documented in
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -60,7 +60,9 @@ Building from source is documented in
 - Pure Rust — no WebView, no Node.
 - `tao` event loop + `tray-icon` + `global-hotkey` + `single-instance`.
 - Optional AI subsystem (`feature = "ai"`) — local ONNX or remote LLM
-  detectors / word rewriters; off by default.
+  detectors / word rewriters. Off by default, and **not wired to the
+  engine yet**: the crate ships stubs, so no build makes network calls
+  regardless of the flags. See [docs/AI.md](docs/AI.md).
 
 See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 
@@ -114,7 +116,7 @@ identifiers. Three layers protect you:
   `config.toml`) — covers VS Code / Cursor / JetBrains family /
   Sublime / Zed / Neovide / Windows Terminal / alacritty / kitty /
   wezterm / PowerShell / cmd by default. Edit the list to add or
-  remove.
+  remove. **Windows only for now** — see the caveat below.
 - **Per-token identifier guard** — even outside an IDE, the engine
   doesn't auto-switch on tokens that look like identifiers:
   `snake_case`, `camelCase`, `letter+digit`, or anything containing
@@ -126,6 +128,14 @@ identifiers. Three layers protect you:
   even if the alternate scores higher. This is what keeps `kubectl`,
   `terraform`, `nginx`, surnames, and other "real but uncommon"
   vocabulary from getting auto-corrected to Cyrillic noise.
+
+> **Anything that keys off the focused app is Windows-only today.**
+> Reading which application has focus is implemented for Windows; on
+> macOS and Linux the focus tracker is a no-op. So the per-app skip
+> list above, the per-app wordlist profiles below, and the `apps =
+> [...]` scoping on smart commands all silently do nothing outside
+> Windows. The identifier guard and plausibility-keep are pure
+> engine logic and work everywhere.
 
 ### Adding your own vocabulary
 
@@ -202,7 +212,9 @@ cargo run -p poltertype-app
 # Release
 cargo build --release -p poltertype-app
 
-# With the AI subsystem (architecture only in v0.1)
+# With the AI subsystem compiled in. Note it is not wired to the
+# engine yet — the crate ships stubs and no build makes network
+# calls. See docs/AI.md.
 cargo build --release -p poltertype-app --features ai
 ```
 

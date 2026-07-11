@@ -85,9 +85,10 @@ sudo dnf install \
     gtk3-devel libayatana-appindicator-gtk3-devel alsa-lib-devel
 ```
 
-Then `scripts/setup-linux.sh` once to grant `/dev/input/event*`
-access — see [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the
-rationale.
+On **Wayland**, run `scripts/setup-linux.sh` once to grant
+`/dev/input/event*` + `/dev/uinput` access. On **X11** you need
+nothing at all — no `input` group, no udev rule, no `sudo`. See
+[docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the rationale.
 
 ### macOS
 
@@ -98,7 +99,8 @@ to install its CGEventTap until that's granted.
 ### Windows
 
 Just `cargo run`. SmartScreen may complain about the unsigned
-binary; signed releases come in v0.2.
+binary — releases are still unsigned; code signing is tracked for a
+later phase.
 
 ## Project layout
 
@@ -137,10 +139,11 @@ scripts copy `target/dist/data/` into the install location. See
 
 ## Settings UI
 
-Tray menu **"Settings…"** opens an iced-based GUI for the common
-knobs (active languages, autostart, sound, idle timeout, folder
-shortcuts). Power users still hit **"Edit config.toml…"** for the
-full schema (hotkey rebinding, exception-app list, AI subsystem).
+Tray menu **"Settings…"** opens an iced-based GUI with seven panes:
+**Languages**, **Hotkeys**, **Commands**, **Wordlists**, **General**,
+**Exceptions**, **About**. Power users still hit **"Edit
+config.toml…"** for what the GUI doesn't expose (creating a wordlist
+profile, bulk-editing `[[commands]]`, the `[ai]` switches).
 
 The Settings GUI is the same `poltertype` binary launched with
 `--settings`; it runs as a child process so the tray's main-thread
@@ -245,9 +248,9 @@ $env:VERSION = 'local'
 pwsh installers/windows/build-msi.ps1
 ```
 
-Beta builds are **unsigned** — we don't yet have an Apple Developer
+Installers are **unsigned** — we don't yet have an Apple Developer
 ID or a Windows EV/OV cert. The release notes call out the
-Gatekeeper / SmartScreen workarounds so testers know what to click.
+Gatekeeper / SmartScreen workarounds so users know what to click.
 
 To cut a release: see [docs/RELEASING.md](docs/RELEASING.md) for
 the full step-by-step checklist (pre-flight, version bump,

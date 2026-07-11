@@ -812,5 +812,8 @@ missing-manifest / invalid-manifest / user-override.
   separate phase. The loader is ready; the network + UI plumbing
   has its own security review queued.
 
-[Unreleased]: https://github.com/Just-Code-NET/poltertype/compare/v0.1.0-beta.6...HEAD
-[0.1.0-alpha.0 → 0.1.0-beta.6]: https://github.com/Just-Code-NET/poltertype/releases
+[Unreleased]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.0-beta.16...v0.1.0
+[0.1.0-alpha.0 → 0.1.0-beta.6]: https://github.com/Just-Code-NET/PolterType/releases

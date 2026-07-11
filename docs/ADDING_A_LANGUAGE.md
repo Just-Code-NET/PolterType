@@ -1,10 +1,11 @@
 # Adding a language to Poltertype
 
 `poltertype` is data-driven: each supported keyboard layout is one
-TOML file, and each language's dictionary is a plain wordlist. There
-are two paths to add a language, depending on whether you want the
-addition baked into the binary or loaded at runtime from your config
-directory.
+TOML file, and each language's dictionary is a plain wordlist. Neither
+is compiled into the binary — both are read from disk at run time.
+There are two paths to add a language: **bundled** (committed to
+`data/`, shipped with the app, needs a PR and a rebuild) or **user**
+(dropped into your config directory, no rebuild).
 
 > **TL;DR** — for a one-off custom layout on your own machine, drop
 > a `*.toml` into `<config-dir>/poltertype/layouts/` and a matching
@@ -74,14 +75,15 @@ detector — which is decent for distinctive scripts (Cyrillic vs
 Latin) but unreliable inside a single script (German vs English).
 A real wordlist makes detection trustworthy.
 
-Three filenames per layout, all under either `data/wordlists/`
+Four filenames per layout, all under either `data/wordlists/`
 (bundled) or `<config-dir>/poltertype/wordlists/` (user):
 
 | File | Goes into | Used for |
 |---|---|---|
-| `<stem>.txt` | `user_overlay` (full-length lookup) | The main dictionary. One lowercase word per line. |
+| `<stem>.txt` | `user_overlay` (full-length lookup) | The main dictionary. One lowercase word per line. Bundled languages commit this **gzipped**, as `<stem>.txt.gz`. |
 | `<stem>-extras.txt` | same as above | Optional second file for organisation (tech vocab, surnames, …). Merged with `<stem>.txt`. |
-| `<stem>-stop.txt` | `short_stop_words` (≤2-letter lookup) | Hand-curated 1- and 2-letter words. **Required** for the bundled path (`include_str!`'d at compile time); optional for user-side. |
+| `<stem>-stop.txt` | `short_stop_words` (≤2-letter lookup) | Hand-curated 1- and 2-letter words. Optional — an absent file yields an empty set, which is graceful at runtime. |
+| `<stem>-weak.txt` | `weak` | Marks entries that are technically valid but rare (archaic forms, obscure inflections), so that a *strong* dictionary hit in the other layout wins over a weak hit in this one. Optional. |
 
 ### Format
 
@@ -110,11 +112,14 @@ config directory:
 
 1. Drop the layout TOML into `data/layout-mappings/<stem>.toml`.
 2. Drop the wordlists into `data/wordlists/`:
-   * `<stem>.txt` — large dictionary
+   * `<stem>.txt.gz` — the large dictionary, gzipped (a plain
+     `<stem>.txt` is also accepted, but every bundled language ships
+     `.gz` — the uncompressed files are big)
    * `<stem>-extras.txt` — your tech-vocab extras (optional)
-   * `<stem>-stop.txt` — short stop words (always commit, even if
-     near-empty — `include_str!` requires the file to exist)
-3. Add the stem to `crates/poltertype-core/build.rs::LAYOUTS`:
+   * `<stem>-stop.txt` — short stop words (optional)
+   * `<stem>-weak.txt` — valid-but-rare entries (optional)
+3. Add the stem to `crates/poltertype-core/build.rs::LAYOUTS`, which
+   is what copies the data into the dist tree:
 
    ```rust
    const LAYOUTS: &[(&str, &str)] = &[
@@ -124,16 +129,18 @@ config directory:
    ];
    ```
 
-4. Add the matching triple to
-   `crates/poltertype-core/src/layouts/db.rs::embedded_layouts()`:
+4. Add the same stem to
+   `crates/poltertype-core/src/layouts/consts.rs::BUNDLED_LAYOUT_STEMS`,
+   which is the list the runtime actually scans for:
 
    ```rust
-   (
-       "pl_pl.toml",
-       include_str!("../../../data/layout-mappings/pl_pl.toml"),
-       "pl_pl",
-   ),
+   pub const BUNDLED_LAYOUT_STEMS: &[&str] =
+       &["en_us", "uk_ua", "ru_ru", "de_de", "es_es", "fr_fr", "pl_pl"];
    ```
+
+   Nothing is baked into the binary — the TOML is read from
+   `<data_dir>/layout-mappings/` at run time. The stem is all the
+   runtime needs.
 
 5. Optional but recommended: extend `derive_vowels` with the
    language's vowel set (especially if it uses accented vowels —
@@ -141,8 +148,10 @@ config directory:
    vowels score as consonants).
 6. `cargo build` and `cargo test --workspace`.
 
-The build script crashes loudly if (3) and (4) drift apart, so
-you'll catch a half-finished wiring on the first build.
+Keep (3) and (4) in lock-step. If they drift, the runtime logs a
+"missing TOML" warning at startup for the stem it can't find — noisy
+rather than silent, but it is not a build failure, so read the first
+few log lines after wiring a new language.
 
 ---
 

@@ -1,8 +1,8 @@
 # Permissions per OS
 
 `poltertype` is a tray-only background app that needs to **observe**
-keystrokes and (eventually) **send** synthetic ones to correct words.
-Different OSes guard those capabilities differently.
+keystrokes and **send** synthetic ones to correct words. Different
+OSes guard those capabilities differently.
 
 ## Windows
 
@@ -21,10 +21,13 @@ The app needs **Accessibility** permission, granted once per machine:
 > *Poltertype*.
 
 Why: `CGEventTapCreate(kCGSessionEventTap, …)` (used to listen) and
-`CGEventPost` (used to send corrections) both require this. The first
-launch shows an onboarding window with a GIF that walks the user
-through the toggle. The app exits cleanly if permission is denied
-and surfaces the situation in the tray menu.
+`CGEventPost` (used to send corrections) both require this.
+
+> **Planned, not built:** a first-launch onboarding window walking the
+> user through the toggle, and a tray entry surfacing "permission
+> denied". Today the user has to know to grant Accessibility on their
+> own. The macOS backend as a whole is CI-validated but has not been
+> runtime-tuned on hardware.
 
 ## Linux
 
@@ -40,8 +43,9 @@ Read raw events from `/dev/input/event*`. Permissions:
 * a udev rule must grant the group read access to keyboard event
   devices.
 
-`scripts/setup-linux.sh` (ships in Phase 6) does both with a single
-`sudo` prompt. Equivalent manual commands:
+`scripts/setup-linux.sh` does both with a single `sudo` prompt (it
+also grants `/dev/uinput`, needed to send the correction back).
+Equivalent manual commands:
 
 ```bash
 sudo usermod -aG input "$USER"
@@ -52,13 +56,15 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 # log out and back in, or run `newgrp input`
 ```
 
-### Option B — AT-SPI (no `sudo` required, less reliable)
+### Option B — AT-SPI (planned, not implemented)
 
-If the user's accessibility bus is enabled (default on GNOME, opt-in
-on KDE), `poltertype` can subscribe to keyboard events via the
-`atspi` crate. Latency is higher and some inputs (especially in
-non-toolkit apps) are missed. Used as a fallback when option A is
-not available.
+**This does not exist yet.** There is no `atspi` dependency and no
+AT-SPI listener in `poltertype-input`; on Wayland, option A is
+currently the only path. The idea: if the user's accessibility bus is
+enabled (default on GNOME, opt-in on KDE), subscribe to keyboard
+events via the `atspi` crate — no `sudo`, but higher latency, and some
+inputs (especially in non-toolkit apps) are missed. It would serve as
+a fallback when option A is not available.
 
 ### Option C — X11
 
@@ -79,12 +85,13 @@ correctly take the Wayland path instead.
 
 ### Sending keys (corrections) on Wayland
 
-Two paths, picked at runtime:
-
-* `uinput` via the same evdev device permissions (preferred when
-  option A is in use).
+* `uinput`, via the same device permissions `setup-linux.sh` grants.
+  **This is the only implemented path** — which is why the setup
+  script covers `/dev/uinput` as well as `/dev/input/event*`.
 * `libei` through the `org.freedesktop.portal.RemoteDesktop` /
-  `InputCapture` portal — works on KDE Plasma 6.0+ and GNOME 46+.
+  `InputCapture` portal (KDE Plasma 6.0+, GNOME 46+) is the planned
+  no-`sudo` alternative. **Not implemented** — there is no portal code
+  in the tree today.
 
 ### Switching layout
 
@@ -112,5 +119,6 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
    switch the keyboard while leaving that indicator lying. Stands down
    entirely under XWayland, where the compositor owns layout.
 
-If none respond, the tray surfaces a *layout switching unavailable*
-banner with a link back to this document.
+If none respond, layout switching is unavailable and the failure is
+logged. (A tray banner pointing back at this document is planned but
+not implemented — today the only signal is the log.)

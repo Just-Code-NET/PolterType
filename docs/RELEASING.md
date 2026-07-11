@@ -39,25 +39,26 @@ the version bump + changelog entry — nothing else.
 
 ## 2. Pick the next version
 
-Poltertype follows [SemVer](https://semver.org/) but is still
-in `0.1.0-*` pre-release land. The shape of the next version
-depends on what's queued:
+Poltertype follows [SemVer](https://semver.org/). The pre-release
+phase is over — `v0.1.0` was the first stable tag and the current
+line is `0.x` stable. The shape of the next version depends on
+what's queued:
 
 | What's in `[Unreleased]` since the last tag | Next tag |
 |---|---|
-| Bug fixes only | `v0.1.0-alpha.<N+1>` or `v0.1.0-beta.<N+1>` |
-| User-facing additions (still pre-1.0) | bump the same `alpha` / `beta` counter |
-| Stabilisation milestone | `v0.1.0-rc.1` (release candidate) |
-| First stable | `v0.1.0` (drop the suffix) |
+| Bug fixes only | patch — `v0.2.1` |
+| User-facing additions, backwards-compatible | minor — `v0.3.0` |
+| Breaking change to config schema / data layout | minor while pre-1.0 — `v0.3.0`, and say so loudly in the changelog |
+| API/behaviour considered settled | `v1.0.0` (a deliberate call, not a mechanical bump) |
 
 Check what tag was last shipped:
 
 ```bash
-git tag -l 'v0.1.0*' --sort=-v:refname | head -5
+git tag --sort=-v:refname | head -5
 ```
 
-The next tag should be the highest one + 1. If you see
-`v0.1.0-beta.5` as the latest, the next is `v0.1.0-beta.6`.
+The next tag is derived from that one. If you see `v0.2.0` as the
+latest and you're shipping fixes, the next is `v0.2.1`.
 
 > **Don't reuse a tag.** If you accidentally release the wrong
 > code under a tag, cut a NEW patch version rather than retagging.
@@ -72,13 +73,14 @@ three lock-step files (`Cargo.toml`, `CHANGELOG.md`, `Cargo.lock`)
 in one go:
 
 ```bash
-# Auto-bump: pre-release counter (0.1.0-beta.5 → 0.1.0-beta.6),
-# or patch if no pre-release (1.2.3 → 1.2.4).
+# Auto-bump: patch when there's no pre-release suffix, which is the
+# normal case now (0.2.0 → 0.2.1). On a pre-release it would bump the
+# trailing counter instead (0.1.0-beta.5 → 0.1.0-beta.6).
 cargo xtask version bump
 
-# Or set an exact version — used for the rare "promote alpha to
-# beta", "drop pre-release", or major/minor jumps.
-cargo xtask version set 0.1.0-rc.1
+# Or set an exact version — needed for every minor/major jump, since
+# `bump` only ever moves the patch digit.
+cargo xtask version set 0.3.0
 
 # Preview without writing files (works on either subcommand):
 cargo xtask version bump --dry-run
@@ -112,28 +114,26 @@ You then either fix the file shape or edit by hand using the
 
 The `bump` subcommand applies one rule:
 
+* **No pre-release** (the current situation) → increment patch.
+  `0.2.0` becomes `0.2.1`.
 * **Pre-release present** (`-alpha.N`, `-beta.N`, `-rc.N`, …) →
   increment the trailing counter. `0.1.0-beta.5` becomes
-  `0.1.0-beta.6`. This is what 95% of releases need.
-* **No pre-release** (e.g. a `1.2.3` stable build) → increment
-  patch. `1.2.3` becomes `1.2.4`.
+  `0.1.0-beta.6`.
 
-Lifecycle transitions (alpha→beta→rc, drop pre-release, minor /
-major bumps) are not auto-detectable from the current version
-alone — use `set` for those. Examples:
+Anything else — a minor or major bump, or going back into a
+pre-release — is not auto-detectable from the current version alone,
+so use `set`. Since `bump` only moves the patch digit, **every
+feature release needs `set`**:
 
 ```bash
-# Promote alpha to beta.
-cargo xtask version set 0.1.0-beta.0
+# Feature release.
+cargo xtask version set 0.3.0
 
-# Cut a release candidate.
-cargo xtask version set 0.1.0-rc.1
+# Cut a release candidate ahead of a big one.
+cargo xtask version set 0.3.0-rc.1
 
-# First stable release.
-cargo xtask version set 0.1.0
-
-# First minor bump after stable.
-cargo xtask version set 0.2.0
+# Call it done.
+cargo xtask version set 1.0.0
 ```
 
 ### Make sure CHANGELOG actually has the entry
@@ -148,7 +148,7 @@ Before the bump command, your CHANGELOG should look like:
 ```markdown
 # Changelog
 
-## [Unreleased] — 0.1.0-beta.5    ← old version
+## [Unreleased] — 0.2.0    ← old version
 
 ### Smart commands — text-trigger expansions
 …detailed notes about what changed since the last release…
@@ -173,14 +173,14 @@ If the xtask refuses or you want to do it by hand:
 * `Cargo.toml` line ~15:
   ```toml
   [workspace.package]
-  version       = "0.1.0-beta.6"   # ← bump this
+  version       = "0.2.1"   # ← bump this
   ```
   Every workspace crate reads `version.workspace = true`, so this
   single edit propagates to all 7 crates.
 
 * `CHANGELOG.md` heading at the top:
   ```markdown
-  ## [Unreleased] — 0.1.0-beta.6
+  ## [Unreleased] — 0.2.1
   ```
 
 * `Cargo.lock` — never edit by hand; just run
@@ -193,7 +193,7 @@ Three quick checks before you commit:
 ```bash
 # All workspace crates show the new version (should print 7
 # lines, all matching).
-grep -E '^name = "kb-' Cargo.lock -A 1 | grep '^version'
+grep -E '^name = "poltertype' Cargo.lock -A 1 | grep '^version'
 
 # Cargo.toml says the new version.
 grep '^version' Cargo.toml
@@ -203,8 +203,8 @@ grep '^## \[' CHANGELOG.md | head -1
 ```
 
 If any of those three disagree, the release will look
-inconsistent (e.g. CI installer named `v0.1.0-beta.6` but
-`poltertype --version` reports `0.1.0-beta.5` because Cargo.toml
+inconsistent (e.g. CI installer named `v0.2.1` but
+`poltertype --version` reports `0.2.0` because Cargo.toml
 wasn't bumped). Fix before committing.
 
 ## 5. Commit + tag + push (~1 min)
@@ -215,8 +215,8 @@ something, do it as a separate commit FIRST and then bump.
 
 ```bash
 git add Cargo.toml Cargo.lock CHANGELOG.md
-git commit -m "release: v0.1.0-beta.6"
-git tag v0.1.0-beta.6
+git commit -m "release: v0.2.1"
+git tag v0.2.1
 git push origin main --tags
 ```
 
@@ -258,10 +258,10 @@ re-run on commits, only on tag pushes. To re-trigger, delete the
 tag locally and remotely, then re-tag and re-push:
 
 ```bash
-git tag -d v0.1.0-beta.6
-git push origin :refs/tags/v0.1.0-beta.6
-git tag v0.1.0-beta.6
-git push origin v0.1.0-beta.6
+git tag -d v0.2.1
+git push origin :refs/tags/v0.2.1
+git tag v0.2.1
+git push origin v0.2.1
 ```
 
 This is the one place we re-tag — it's safe before publish
@@ -272,11 +272,11 @@ because the draft hasn't been seen by users yet.
 **Forgot to bump CHANGELOG.** Add a follow-up commit with the
 changelog entry, push it, but DON'T re-tag — the next release
 will pick it up and the missing-from-this-tag entry will
-surface in retrospect ("oh that was beta.6"). Optionally edit
+surface in retrospect ("oh, that landed in 0.2.1"). Optionally edit
 the GitHub release body to add the missing notes inline.
 
 **Cargo.toml version mismatches the tag.** If the tag is
-`v0.1.0-beta.6` but `Cargo.toml` says `0.1.0-beta.5`, the
+`v0.2.1` but `Cargo.toml` says `0.2.0`, the
 Windows MSI's `poltertype --version` will print the wrong
 number. The installer's filename is correct (it comes from the
 tag), but the binary is lying. Fix: revert the broken release
@@ -289,9 +289,9 @@ edit the tag in place. Either:
 * If the draft hasn't been published yet: delete the tag + draft,
   fix the bug in a normal commit, re-tag with the SAME version
   (it never went out, so reuse is fine).
-* If the draft IS published: cut `v0.1.0-beta.<N+1>` instead.
-  Anyone who downloaded `<N>` already has it — moving them to
-  `<N+1>` is the only way to ship a fix without leaving stale
+* If the draft IS published: cut the next patch (`v0.2.2`) instead.
+  Anyone who downloaded the broken one already has it — moving them
+  forward is the only way to ship a fix without leaving stale
   binaries in the wild.
 
 **You typed the wrong version.** Same as above: if not

@@ -23,13 +23,15 @@ pub trait Detector: Send + Sync {
 }
 
 /// A word rewriter operates *after* layout detection: it looks at the
-/// final text and may suggest a different one. Used for the
+/// final text and may suggest a different one. Intended for the
 /// "smart-capitalize", "expand-acronym", "slang-to-formal" kind of
-/// power-user tricks the AI subsystem (see `poltertype-ai`) enables.
+/// power-user tricks the AI subsystem (see `poltertype-ai`) is meant
+/// to enable.
 ///
-/// Rewriters are off by default; the engine respects the
-/// `[ai].rewriters_enabled` flag and the per-rewriter
-/// `require_confirmation` toggle.
+/// **Not yet consumed by the engine**: there is no rewriter stage in
+/// `poltertype-core`, so nothing calls this trait today. The gating
+/// design (a settings flag plus the per-rewriter
+/// `require_confirmation` toggle) is described in `docs/AI.md`.
 pub trait WordRewriter: Send + Sync {
     fn name(&self) -> &'static str;
     fn rewrite(&self, req: &RewriteRequest<'_>) -> RewriteVerdict;

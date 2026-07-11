@@ -39,10 +39,11 @@ deployed:
   wordlists/              bundled dictionaries
     en_us.fst             FST built by build.rs from <stem>.txt.gz
     en_us-stop.txt        curated 1- / 2-letter stop words
+    uk_ua-weak.txt        valid-but-rare entries, demoted in scoring
     ...
-  plugins/                reserved for future language packs
-                          (not enumerated yet — kept here for the
-                          marketplace foundation; see "Plug-ins" below)
+  plugins/                data-only language packs; the loader is live
+                          (see "Plug-ins" below). Installing them is
+                          still manual — the marketplace UX is future.
 ```
 
 `build.rs` in `crates/poltertype-core` produces this tree at every cargo
@@ -109,11 +110,12 @@ matching the pre-filter behaviour. The detector and the
 `apply_correction` pre-flight together still keep the engine from
 typing into an unreachable layout.
 
-## Plug-ins (future)
+## Plug-ins (loader live; marketplace future)
 
-The `plugins/` directory under `<data_dir>/` is reserved for the
-upcoming language-pack marketplace. The contract a third-party pack
-will have to satisfy:
+The `plugins/` directory under `<data_dir>/` holds data-only language
+packs. **The loader is live** — what's still missing is the
+install/update UX, not the mechanism. The contract a third-party pack
+has to satisfy:
 
 ```
 <data_dir>/plugins/<pack-id>/
@@ -126,7 +128,7 @@ will have to satisfy:
   README.md                 optional human-readable description
 ```
 
-The loader will treat `plugins/<pack-id>/{layout-mappings,wordlists}`
+The loader treats `plugins/<pack-id>/{layout-mappings,wordlists}`
 exactly the same way it treats the bundled
 `<data_dir>/{layout-mappings,wordlists}` — so plug-in authors don't
 need to learn a separate API, and conflict resolution (a pack
@@ -174,6 +176,12 @@ two layers solve different problems:
 | Bundled `<data_dir>/` | install dir (read-only after install) | every user of this install | shipped with the app |
 | Plug-in pack `<data_dir>/plugins/<id>/` | install dir | every user of this install | per-pack manifest |
 | User overlay `<config-dir>/…` | per-user profile | one user | not versioned (live edit) |
+| Per-app overlay `<config-dir>/poltertype/wordlists/profiles/<id>/<stem>.txt` | per-user profile | one user, one set of apps | not versioned (live edit) |
+
+The per-app overlays are declared as `[[wordlists.profiles]]` entries
+in `config.toml`; the engine swaps the active overlay set when the
+focused app changes. **Caveat:** focus tracking is implemented on
+Windows only, so on macOS and Linux the profile set never switches.
 
 Order of precedence at load time (last writer wins on `id` collision):
 

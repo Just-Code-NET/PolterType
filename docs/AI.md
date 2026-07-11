@@ -1,11 +1,16 @@
 # AI subsystem
 
-> **Status:** v0.1 ships the *architecture* — traits, plug-in
-> machinery, configuration schema, key storage. Concrete model
-> implementations are stubs that compile but don't actually call out
-> to anything yet. v0.1.x will fill them in.
+> **Status (v0.2.0): designed, not wired.** The extension traits are
+> real and the built-in detectors use them. The `poltertype-ai` crate
+> exists, compiles, and holds *stubs* — and the binary does not
+> construct or call any of them. **No shipped build makes a network
+> call, with or without the feature flags.**
+>
+> This document describes the intended design and marks, in each
+> section, what is actually implemented today. Nothing below is a
+> promise about current behaviour unless it says "implemented".
 
-`poltertype` ships an opt-in AI/LLM subsystem that lets users:
+The plan is an opt-in AI/LLM subsystem that would let users:
 
 * extend the layout-detection pipeline with smarter classifiers
   (local ONNX models, remote LLMs);
@@ -13,35 +18,69 @@
   smart-capitalize, expand-acronym, slang→formal — without rebuilding
   the whole engine.
 
-Everything below is **off by default**.
+Everything here is **off by default**, and today it is inert.
+
+## What exists today
+
+| Piece | Where | State |
+|---|---|---|
+| `Detector` / `WordRewriter` traits | `poltertype-detect::traits` | **implemented**, and `Detector` is what the built-in detectors run on |
+| `DictionaryDetector`, `WordPlausibilityDetector` | `poltertype-detect` | **implemented** — these are the *only* detectors the engine runs |
+| `LocalOnnxDetector` | `poltertype-ai::local` | **stub** — logs a warning, returns `NoOpinion`. No ONNX runtime is even a dependency. |
+| `RemoteLlmDetector` | `poltertype-ai::remote` | **stub** — with `remote` on it builds an HTTP client and never uses it. Returns `NoOpinion`. |
+| `SmartCapitalize` rewriter | `poltertype-ai::rewriters` | **implemented, unreachable** — real logic over a hardcoded 7-word list; nothing calls it. Not AI-backed. |
+| `resolve_api_key()` | `poltertype-ai::keys` | **implemented, no callers** |
+| `[ai] enabled` / `allow_remote` | `poltertype-core::settings` | **parsed, inert** — both default `false` and no runtime code reads them |
+
+The gap that matters: **`poltertype-ai` is never imported by
+`poltertype-app` or `poltertype-core`.** It appears in
+`poltertype-app/Cargo.toml` as an optional dependency and nowhere
+else. The engine's detector list is constructed by hand in
+`poltertype-app::main`. Until that list is built from configuration,
+none of the above can run, however the flags are set.
+
+There is no rewriter stage in the engine at all — `WordRewriter` is a
+trait with no consumer.
 
 ## Privacy posture
 
-There are three independent gates between you and a network call:
+**Today: there is no network capability in any build.** `reqwest` is
+an optional dependency of `poltertype-ai` alone, and the one type that
+holds a client never issues a request. That is a stronger guarantee
+than the design below, and it is the one that currently holds.
 
-1. **Cargo feature `ai`** in `poltertype-app`. Off by default; enabling adds
-   the `poltertype-ai` crate to the build.
-2. **Cargo feature `remote`** in `poltertype-ai`. Off by default; enabling
-   adds `reqwest` + TLS so the `RemoteLlmDetector` can make HTTP
-   calls. (Local detectors don't need this.)
-3. **`[ai].allow_remote = true`** in `config.toml`. Off by default
-   even in fully-built binaries; flips at runtime. Useful if you want
-   to keep the binary capable but the network usage gated.
+The design keeps three independent gates between a user and a network
+call. Gates 1 and 2 are real (they are Cargo features); gate 3 is
+parsed but not yet enforced anywhere, because there is nothing to
+enforce it against:
 
-The tray tooltip surfaces the runtime state: `AI: on, remote: yes`,
-`AI: on, remote: no`, etc., plus a per-day call counter so you can
-see exactly how often the engine reaches out.
+1. **Cargo feature `ai`** in `poltertype-app`. Off by default; enabling
+   adds the `poltertype-ai` crate to the build. (Note it does *not*
+   forward the crate's own `remote` feature — see below.)
+2. **Cargo feature `remote`** in `poltertype-ai`. Off by default;
+   enabling adds `reqwest` + `rustls` so a `RemoteLlmDetector` *could*
+   make HTTP calls. Local detectors don't need it. Enabling it from an
+   app build takes `--features ai,poltertype-ai/remote`.
+3. **`[ai].allow_remote = true`** in `config.toml`. Off by default.
+   Intended to gate network use at runtime in a binary that is
+   otherwise capable. **Not yet read by any code path.**
+
+When the subsystem is wired, the tray tooltip should surface the
+runtime state (whether AI is on, whether remote is permitted, and how
+often the engine has reached out). It does not do so today — the
+tooltip renders only the app name, the active layout, and a paused
+marker.
 
 ## Architecture
 
-The `Detector` trait already lives in `poltertype-detect` (used by the
-built-in `WordPlausibilityDetector`). Both shims for AI plugins live
-there too:
+The `Detector` trait lives in `poltertype-detect` and is the real
+extension point — the built-in detectors implement it, and an AI
+detector would be one more implementation:
 
 ```rust
 pub trait Detector: Send + Sync {
     fn name(&self) -> &'static str;
-    fn detect(&self, ctx: &DetectionContext<'_>) -> Option<DetectionVerdict>;
+    fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict;
 }
 
 pub trait WordRewriter: Send + Sync {
@@ -50,18 +89,33 @@ pub trait WordRewriter: Send + Sync {
 }
 ```
 
-Concrete v0.1 implementations live in `poltertype-ai`:
+`Verdict` is three-way, which is the load-bearing detail:
 
-| Type | Crate path | Status |
-|---|---|---|
-| `LocalOnnxDetector` | `poltertype-ai::local` | stub (returns no verdict) |
-| `RemoteLlmDetector` | `poltertype-ai::remote` | stub (no real HTTP yet) |
-| `SmartCapitalize` rewriter | `poltertype-ai::rewriters` | working demo |
+```rust
+pub enum Verdict {
+    NoOpinion,                  // defer to the next detector
+    Keep { reason: String },    // veto a switch outright
+    Switch(DetectionVerdict),   // request a layout change
+}
+```
 
-## Configuration (config.toml)
+The engine runs detectors in priority order and stops at the first
+non-`NoOpinion`. `Keep` is what lets the dictionary say "this is a
+real word, don't ask anyone else" — the main defence against false
+positives.
 
-Detectors and rewriters are described declaratively in the user's
-`config.toml`. `[ai]` itself only carries the master switches:
+## Planned configuration (not implemented)
+
+The intended shape is declarative: detectors and rewriters described
+in the user's `config.toml`, with `[ai]` carrying only the master
+switches.
+
+> **None of the `[[ai.detectors]]` / `[[ai.rewriters]]` schema below
+> exists yet.** The settings struct today is exactly
+> `AiSettings { enabled, allow_remote }`. Because settings parse with
+> `#[serde(default)]` and no `deny_unknown_fields`, blocks like these
+> are *silently ignored* rather than rejected — do not write them into
+> a config expecting an effect.
 
 ```toml
 [ai]
@@ -87,10 +141,15 @@ id   = "default"
 require_confirmation = false
 ```
 
+Wiring this up means: a settings schema for the two arrays, a factory
+mapping each `type` string to a struct, and a detector list in
+`poltertype-app::main` built from configuration instead of by hand.
+
 ## API keys
 
-Keys are looked up via `keyring::Entry::new("poltertype", <entry>)`,
-which uses:
+The lookup helper is implemented (it has no callers yet, because
+nothing makes a request). Keys resolve via
+`keyring::Entry::new("poltertype", <entry>)`, which uses:
 
 * Windows Credential Manager
 * macOS Keychain
@@ -105,13 +164,19 @@ secret-tool store --label "poltertype Anthropic" \
 # Windows: cmdkey /add:poltertype /user:anthropic /pass:<paste-key>
 ```
 
-`api_key_ref = "keyring:anthropic"` then resolves to the stored
-secret at request time.
+`api_key_ref = "keyring:anthropic"` is then meant to resolve to the
+stored secret at request time. Keys never live in `config.toml`.
 
-## Why is the architecture in v0.1 if the implementations are stubs?
+## Why the traits landed before the implementations
 
-Because the *shape* of the plug-in API is the load-bearing decision.
-Once `poltertype-app` is wired to iterate `[[ai.detectors]]`, swap in real
-implementations is a matter of dropping in a new struct that
-implements `Detector`. v0.1.x will iterate without breaking
-configuration files written for v0.1.
+Because the *shape* of the plug-in API is the load-bearing decision,
+and it is settled: a detector is anything that turns a
+`DetectionContext` into a three-way `Verdict`, and the engine already
+runs a priority-ordered list of them. Swapping in a real
+implementation is a matter of dropping in a struct that implements
+`Detector` — no engine surgery.
+
+What is *not* settled, and is what the remaining work consists of, is
+the wiring: config schema, a factory, and the runtime enforcement of
+`allow_remote`. Until that exists, treat this document as a design
+note rather than a feature description.

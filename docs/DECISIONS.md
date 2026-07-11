@@ -21,6 +21,12 @@ The engine indexes layout-mapping tables by *scancode*, not by
 
 ## 2026-05-02 — Layout mappings embedded via `include_str!`
 
+> **SUPERSEDED** by the 2026-05-07 externalisation entry below.
+> Nothing is baked into the binary any more: mappings and wordlists
+> are read from `<data_dir>/` at run time, and user overrides live in
+> `<config-dir>/poltertype/layouts/` (note: `layouts/`, not
+> `layout-mappings/`). They shipped in v0.1, not "Phase 8+".
+
 For v0.1 the EN/UK mapping TOMLs live in `data/layout-mappings/` and
 are baked into the binary at compile time. Runtime overrides from
 `$XDG_CONFIG_HOME/poltertype/layout-mappings/` are a Phase 8+ task.
@@ -141,6 +147,13 @@ Concrete cost: release binary 5 → 6.85 MB (+1.85 MB for both FSTs);
 ~3 MB additional resident memory at runtime. 700k+ words for
 ~5 bytes per word storage cost — FST is the right tool.
 
+> **PARTLY SUPERSEDED** by the 2026-05-07 externalisation entry.
+> The FST choice stands; the plumbing around it changed. Today
+> `build.rs` reads `data/wordlists/<stem>.txt.gz` and writes the FST
+> into `<workspace>/target/dist/data/wordlists/`, and the runtime
+> reads it from disk — there is no `include_bytes!` and nothing in
+> `.rodata`, so the binary-size figures above no longer apply.
+
 User overlay path: drop a one-word-per-line text file at
 `<config-dir>/poltertype/wordlists/<stem>.txt` to extend a
 dictionary with project-specific vocabulary (proper nouns, slang,
@@ -172,6 +185,12 @@ the detector loads them per `LayoutId` from the layout-mapping TOMLs.
 Real n-gram / dictionary / ML detectors land in Phase 7 (the AI
 subsystem). Until then we lean on the manual hotkey
 `Ctrl+Shift+Backspace` ("fix this word") as the always-works fallback.
+
+> **PARTLY SUPERSEDED.** The `DictionaryDetector` did not wait for
+> Phase 7 — it shipped in v0.1 as an FST over Hunspell-expanded
+> wordlists, and it is now the highest-priority detector. Only the ML
+> ones are still outstanding (and the AI crate remains unwired — see
+> `AI.md`). No n-gram model was ever built; `lingua-rs` was dropped.
 
 ## 2026-05-02 — Settings format: TOML
 
@@ -253,6 +272,12 @@ So Phase 4 ships:
 Full visual settings UI (iced or egui) is deferred to Phase 8 / v0.2,
 when we already know how macOS / Linux event loops behave from
 Phases 5 / 6.
+
+> **SUPERSEDED** — see the later 2026-05-07 entry on the settings
+> window. The iced GUI shipped during 0.1.0-beta, well ahead of this
+> plan, and now has seven panes. It runs as a `--settings` child
+> process, which is what defused the macOS main-thread concern that
+> motivated the deferral.
 
 
 ## 2026-05-07 — Hunspell stems gap + plateau widening (multi-layout regression)
@@ -480,6 +505,12 @@ need richer UI and live config diffing. Power users still edit the
 TOML via the **"Edit config.toml…"** tray entry (which the GUI
 "Open config.toml" button also exposes).
 
+> **SUPERSEDED** (by a later entry the same day, and by the code).
+> The window did not stop at three panes: **Hotkeys** and
+> **Exceptions** both became panes of their own, joined later by
+> **Commands** and **Wordlists** — seven in total. Don't read the
+> three-pane scope above as current.
+
 ## 2026-05-07 (later) — Settings UI completion + plug-in loader v1
 
 Three follow-ups landed in the same day as the externalisation:
@@ -602,6 +633,12 @@ might be in the middle of a detector pass — extra synchronisation
 for a feature users hit rarely (you tweak your wordlist a couple
 times a week, max). The pane shows "Saved to ... Restart
 Poltertype to apply" so the constraint is visible.
+
+> **SUPERSEDED** (0.1.0-beta.10). Wordlist edits now apply when the
+> Settings window closes — a three-step reload rebuilds the config,
+> the global wordlists and the per-profile cache. The pane text was
+> changed to "Close this window to apply"; a full tray restart is no
+> longer required.
 
 **Buffer normalisation**
 
