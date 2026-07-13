@@ -1,0 +1,31 @@
+name: Site
+
+# The landing page (poltertype.com, separate repo) resolves the latest
+# app version at build time from this repo's releases. Rebuild it the
+# moment a release goes public, so the site never lags behind.
+#
+# `published` and not a `v*` tag push: release.yml creates the release
+# as a *draft*, and `releases/latest` only picks it up once someone
+# publishes it — that's the moment the site can actually see the new
+# version.
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  rebuild-site:
+    name: Rebuild poltertype.com
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger the Vercel deploy hook
+        env:
+          DEPLOY_HOOK: ${{ secrets.VERCEL_SITE_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "::warning::VERCEL_SITE_DEPLOY_HOOK secret is not set — skipping the site rebuild."
+            exit 0
+          fi
+          curl -fsS -X POST "$DEPLOY_HOOK" -o /dev/null
+          echo "Site rebuild triggered."
