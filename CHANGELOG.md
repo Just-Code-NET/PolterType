@@ -4,6 +4,32 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.3.0
+
+### Changed — the Settings window wears the brand now
+
+The Settings window used to render in iced's stock theme — grey,
+unbranded, and unrelated to how the product presents itself anywhere
+else. It now shares a visual language with poltertype.com: the same
+design tokens (brand indigo, ink/muted text, "ecto" green for
+success, "garble" pink for danger), the GhostMark keycap-ghost logo
+in the sidebar (drawn as vectors — no image assets, no SVG renderer
+dependency), pane content grouped into hairline cards, and hotkeys
+rendered as physical keycap chips, the same way the site draws
+hotkey chords.
+
+Both light and dark variants ship. The default follows the OS
+setting; a new **Appearance** picker on the General pane pins it to
+Light or Dark explicitly, persisted as `[general].ui_theme` in
+`config.toml` (`"system"` / `"light"` / `"dark"`; unknown values
+fall back to `"system"`).
+
+Smaller UX fixes in the same pass: the About links (site, repo,
+issue tracker) are real buttons that open the browser instead of
+non-clickable text, the About pane shows the resolved config path,
+and per-pane status banners use the shared success/danger colours
+instead of hardcoded RGB values.
+
 ## [0.3.0] — per-app features land on Linux, and the tray admits hook failures
 
 ### Added — focus tracking on Linux (Hyprland + X11)

@@ -211,6 +211,10 @@ impl SettingsApp {
                 }
                 self.wordlist_content.perform(action);
             }
+            Message::ThemeChoiceChanged(choice) => {
+                self.settings.general.ui_theme = choice.config_value().to_owned();
+            }
+
             Message::ResetDefaults => self.settings = Settings::default(),
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
@@ -301,6 +305,10 @@ impl SettingsApp {
                     let _ = std::fs::create_dir_all(&dir);
                     let _ = opener::open(&dir);
                 }
+            }
+            Message::OpenUrl(url) => {
+                // `opener` routes http(s) URLs to the default browser.
+                let _ = opener::open(url);
             }
 
             Message::WindowCloseRequested(id) => {

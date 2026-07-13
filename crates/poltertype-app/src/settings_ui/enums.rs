@@ -90,6 +90,50 @@ pub enum HotkeyKind {
     SwitchLast,
 }
 
+/// The window's colour-theme preference, persisted as
+/// `[general].ui_theme` in `config.toml`. `System` follows the OS
+/// light/dark setting (detected once at window start).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeChoice {
+    System,
+    Light,
+    Dark,
+}
+
+impl ThemeChoice {
+    /// Display order of the segmented picker on the General pane.
+    pub(super) const ALL: [ThemeChoice; 3] =
+        [ThemeChoice::System, ThemeChoice::Light, ThemeChoice::Dark];
+
+    /// Parse the `config.toml` value. Unknown strings fall back to
+    /// `System` — same forgiving posture the rest of the settings
+    /// schema takes towards hand-edited configs.
+    pub(super) fn from_config(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "light" => ThemeChoice::Light,
+            "dark" => ThemeChoice::Dark,
+            _ => ThemeChoice::System,
+        }
+    }
+
+    /// The canonical `config.toml` spelling.
+    pub(super) fn config_value(self) -> &'static str {
+        match self {
+            ThemeChoice::System => "system",
+            ThemeChoice::Light => "light",
+            ThemeChoice::Dark => "dark",
+        }
+    }
+
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            ThemeChoice::System => "System",
+            ThemeChoice::Light => "Light",
+            ThemeChoice::Dark => "Dark",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Message {
     SelectPane(Pane),
@@ -155,6 +199,10 @@ pub enum Message {
     /// We pass it straight through to `text_editor::Content::perform`.
     WordlistEdit(text_editor::Action),
 
+    /// Segmented theme picker on the General pane. Applies to the
+    /// window immediately; persisted via the normal footer Save.
+    ThemeChoiceChanged(ThemeChoice),
+
     ResetDefaults,
     Save,
     /// Reverts the staged edits back to the on-disk values.
@@ -163,6 +211,8 @@ pub enum Message {
     OpenLogsDir,
     OpenWordlistsDir,
     OpenLayoutsDir,
+    /// Open `url` in the default browser — the About pane's links.
+    OpenUrl(&'static str),
 
     /// User clicked the window close button (or otherwise asked
     /// the OS to close the window). We intercept this to auto-save

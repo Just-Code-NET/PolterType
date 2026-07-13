@@ -7,6 +7,7 @@ use poltertype_layout::LayoutId;
 use super::enums::*;
 use super::helpers::*;
 use super::state::*;
+use super::theme;
 use super::*;
 
 /// The capture pipeline must produce strings that `global-hotkey`'s
@@ -209,6 +210,52 @@ fn save_overlay_appends_trailing_newline() {
     assert_eq!(normalise("foo\n"), "foo\n");
     assert_eq!(normalise(""), "\n");
     assert_eq!(normalise("foo\nbar"), "foo\nbar\n");
+}
+
+/// `ui_theme` round-trips through the UI enum: every canonical
+/// config spelling parses back to itself, and anything else —
+/// typos, legacy values, hand-edited garbage — falls back to
+/// `System` instead of erroring. A wrong fallback here would make
+/// the window ignore the user's saved preference silently.
+#[test]
+fn theme_choice_round_trips_and_tolerates_garbage() {
+    for choice in ThemeChoice::ALL {
+        assert_eq!(
+            ThemeChoice::from_config(choice.config_value()),
+            choice,
+            "canonical spelling `{}` must parse back to itself",
+            choice.config_value()
+        );
+    }
+    // Case / whitespace tolerance for hand-edited configs.
+    assert_eq!(ThemeChoice::from_config(" Dark "), ThemeChoice::Dark);
+    assert_eq!(ThemeChoice::from_config("LIGHT"), ThemeChoice::Light);
+    // Unknown values fall back to System.
+    for garbage in ["", "auto", "darkish", "0"] {
+        assert_eq!(ThemeChoice::from_config(garbage), ThemeChoice::System);
+    }
+}
+
+/// The branded themes must classify as light / dark respectively —
+/// `Theme::custom` derives `is_dark` from the background luminance,
+/// and `brand_palette` keys the full token set off that flag. If a
+/// future background tweak flipped the classification, every widget
+/// would silently pick tokens from the wrong palette.
+#[test]
+fn branded_themes_classify_and_map_to_their_palettes() {
+    let light = theme::light();
+    let dark = theme::dark();
+    assert!(
+        !light.extended_palette().is_dark,
+        "light theme classified dark"
+    );
+    assert!(
+        dark.extended_palette().is_dark,
+        "dark theme classified light"
+    );
+    // And the reverse mapping picks the matching brand palette.
+    assert_eq!(theme::brand_palette(&light).ink, light.palette().text);
+    assert_eq!(theme::brand_palette(&dark).ink, dark.palette().text);
 }
 
 /// Lone modifier presses must not be accepted as a hotkey on

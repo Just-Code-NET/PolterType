@@ -69,6 +69,11 @@ pub struct GeneralSettings {
     pub sound_on_correct: bool,
     pub show_notifications: bool,
     pub ui_language: String,
+    /// Colour theme of the Settings window: `"system"` (follow the
+    /// OS light/dark preference), `"light"`, or `"dark"`. Unknown
+    /// values fall back to `"system"` at read time — same forgiving
+    /// posture as `ui_language`.
+    pub ui_theme: String,
     pub log_level: String,
 }
 
@@ -79,6 +84,7 @@ impl Default for GeneralSettings {
             sound_on_correct: true,
             show_notifications: false,
             ui_language: "system".into(),
+            ui_theme: "system".into(),
             log_level: "info".into(),
         }
     }

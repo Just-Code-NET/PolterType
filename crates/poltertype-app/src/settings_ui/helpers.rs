@@ -199,7 +199,9 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
             let suffix = if text.chars().count() > 40 { "…" } else { "" };
             format!("type `{preview}{suffix}`")
         }
-        CommandAction::SwitchLayout { layout } => format!("→ {layout}"),
+        // ASCII arrow: the default UI font may lack U+2192 (renders
+        // as tofu on a clean Linux install).
+        CommandAction::SwitchLayout { layout } => format!("-> {layout}"),
         CommandAction::OpenPath { path } => format!("open `{path}`"),
     };
     let apps_blurb = if cmd.apps.is_empty() {

@@ -332,6 +332,7 @@ autostart = true
 sound_on_correct = true
 show_notifications = false
 ui_language = "system"     # or "en", "uk"
+ui_theme = "system"        # Settings window theme: "system", "light", "dark"
 log_level = "info"
 
 [languages]

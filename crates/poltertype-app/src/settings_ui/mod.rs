@@ -45,16 +45,29 @@
 //!   restart.
 //! * **General** — the boolean / numeric knobs from
 //!   `GeneralSettings` + `EngineSettings`: autostart, sound on
-//!   correction, suppress-in-identifiers, idle timeout.
+//!   correction, suppress-in-identifiers, idle timeout — plus the
+//!   window's colour theme (`[general].ui_theme`: system / light /
+//!   dark, applied instantly, persisted on Save).
 //! * **Exceptions** — the per-app skip list (`disabled_apps`). One
 //!   row per entry with a delete button; an "Add" row at the bottom
 //!   for new entries.
-//! * **About** — version + repo links. The bottom row also exposes
-//!   a "Reset to defaults" button as a power-user escape hatch.
+//! * **About** — version + links to poltertype.com / the repo / the
+//!   issue tracker (opened in the browser). The bottom row also
+//!   exposes a "Reset to defaults" button as a power-user escape
+//!   hatch.
+//!
+//! ## Branding
+//!
+//! The window carries the product's visual identity — see [`theme`]
+//! for the palettes (ported from the landing page's design tokens)
+//! and the GhostMark logo. Light and dark variants both exist; the
+//! default follows the OS.
 
+mod consts;
 mod enums;
 mod helpers;
 mod state;
+mod theme;
 mod update;
 mod view;
 
@@ -116,12 +129,13 @@ pub fn run() -> Result<()> {
         .exit_on_close_request(false)
         // Window size was 720x540 in beta.11 and earlier — too cramped
         // for the Commands and Wordlists panes (Commands has a 6-row
-        // add-form plus the existing list, Wordlists has a 260px-tall
+        // add-form plus the existing list, Wordlists has a 240px-tall
         // editor + 3 picker rows + a path-hint line + tip). Bumped
-        // here so the default render fits without scrolling on a
-        // standard 1080p screen. Still small enough to feel like a
-        // settings dialog, not a main window.
-        .window_size((820.0, 640.0))
+        // to 820x640 so the default render fit without scrolling on a
+        // standard 1080p screen, then to 860x680 when the branded
+        // restyle wrapped pane content in padded cards. Still small
+        // enough to feel like a settings dialog, not a main window.
+        .window_size((860.0, 680.0))
         .centered();
 
     let store_for_init = Arc::clone(&store);

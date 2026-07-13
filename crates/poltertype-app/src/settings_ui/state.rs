@@ -11,6 +11,7 @@ use poltertype_layout::LayoutId;
 
 use super::enums::*;
 use super::helpers::*;
+use super::theme;
 
 pub struct SettingsApp {
     pub(super) settings: Settings,
@@ -18,6 +19,12 @@ pub struct SettingsApp {
     pub(super) config_path: PathBuf,
     pub(super) store: Arc<SettingsStore>,
     pub(super) pane: Pane,
+    /// OS dark-mode preference, sampled once at window start (the
+    /// `auto-detect-theme` feature makes `Theme::default()` consult
+    /// the OS). Used when `[general].ui_theme = "system"`. Not
+    /// re-sampled live — the window is short-lived, and re-detecting
+    /// per frame would hit D-Bus / the registry on every render.
+    pub(super) system_prefers_dark: bool,
     /// Set when [`Message::Save`] writes successfully — surfaced as a
     /// transient banner in the footer so the user gets feedback the
     /// click did something.
@@ -115,6 +122,7 @@ impl SettingsApp {
             config_path,
             store,
             pane: Pane::Languages,
+            system_prefers_dark: matches!(Theme::default(), Theme::Dark),
             save_banner: None,
             capturing: None,
             exception_draft: String::new(),
@@ -137,10 +145,30 @@ impl SettingsApp {
         format!("PolterType · Settings ({})", self.config_path.display())
     }
 
+    /// The user's theme preference, parsed fresh from the staged
+    /// settings so the segmented picker on the General pane applies
+    /// instantly (before any Save).
+    pub(super) fn theme_choice(&self) -> ThemeChoice {
+        ThemeChoice::from_config(&self.settings.general.ui_theme)
+    }
+
     pub(super) fn theme(&self) -> Theme {
-        // Auto-detect light / dark — feels native on every platform
-        // without needing a separate UI toggle.
-        Theme::default()
+        // Branded light / dark themes built from the same design
+        // tokens as poltertype.com; `System` follows the OS
+        // preference sampled at window start.
+        let dark = match self.theme_choice() {
+            ThemeChoice::Light => false,
+            ThemeChoice::Dark => true,
+            ThemeChoice::System => self.system_prefers_dark,
+        };
+        if dark { theme::dark() } else { theme::light() }
+    }
+
+    /// Brand tokens for the active theme — view code colours text
+    /// (`.color(app.brand().muted)`) without threading `&Theme`
+    /// through every helper.
+    pub(super) fn brand(&self) -> &'static theme::BrandPalette {
+        theme::brand_palette(&self.theme())
     }
 
     /// Active subscription. Always listens for window-close requests
