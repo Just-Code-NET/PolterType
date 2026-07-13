@@ -67,6 +67,7 @@ mod consts;
 mod enums;
 mod helpers;
 mod state;
+mod system_theme;
 mod theme;
 mod update;
 mod view;

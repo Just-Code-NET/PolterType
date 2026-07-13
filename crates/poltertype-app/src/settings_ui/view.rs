@@ -9,7 +9,7 @@
 
 use iced::widget::{
     Button, Canvas, Checkbox, Column, Container, Row, Scrollable, Space, Text, TextInput,
-    horizontal_rule, text_editor, vertical_rule,
+    container, horizontal_rule, text_editor, vertical_rule,
 };
 use iced::{Alignment, Element, Font, Length, Padding};
 
@@ -44,7 +44,7 @@ impl SettingsApp {
             )
             .push(self.view_footer());
 
-        Row::new()
+        let main = Row::new()
             .push(self.nav_panel())
             .push(vertical_rule(1).style(theme::hairline))
             .push(
@@ -52,6 +52,20 @@ impl SettingsApp {
                     .width(Length::Fill)
                     .height(Length::Fill),
             )
+            .height(Length::Fill);
+
+        // Root backdrop quad. The colour is the theme's window
+        // background nudged by an invisible per-rebuild epsilon —
+        // NOT cosmetic, it defeats buggy partial presents in iced
+        // 0.13's tiny-skia compositor. See
+        // [`SettingsApp::backdrop_color`].
+        let backdrop = self.backdrop_color();
+        Container::new(main)
+            .style(move |_| container::Style {
+                background: Some(iced::Background::Color(backdrop)),
+                ..container::Style::default()
+            })
+            .width(Length::Fill)
             .height(Length::Fill)
             .into()
     }

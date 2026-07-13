@@ -7,6 +7,7 @@ use poltertype_layout::LayoutId;
 use super::enums::*;
 use super::helpers::*;
 use super::state::*;
+use super::system_theme;
 use super::theme;
 use super::*;
 
@@ -234,6 +235,30 @@ fn theme_choice_round_trips_and_tolerates_garbage() {
     for garbage in ["", "auto", "darkish", "0"] {
         assert_eq!(ThemeChoice::from_config(garbage), ThemeChoice::System);
     }
+}
+
+/// The portal / gsettings probe parsers must map the documented
+/// color-scheme values and treat everything else — "no preference",
+/// truncated output, errors echoed to stdout — as "no answer", so
+/// the caller falls through to the next signal instead of forcing
+/// light. This is the guts of the system-dark-mode fix: iced's own
+/// dark-light 1.x probe fails on the portal reply and reports light
+/// on Hyprland-class desktops.
+#[test]
+fn system_theme_parsers_map_portal_and_gsettings_values() {
+    use super::system_theme::{parse_color_scheme, parse_portal_reply};
+
+    // busctl renders `Read`'s variant reply as `v v u <n>`.
+    assert_eq!(parse_portal_reply("v v u 1"), Some(true));
+    assert_eq!(parse_portal_reply("v v u 2"), Some(false));
+    assert_eq!(parse_portal_reply("v v u 0"), None, "no preference");
+    assert_eq!(parse_portal_reply(""), None);
+    assert_eq!(parse_portal_reply("Call failed"), None);
+
+    assert_eq!(parse_color_scheme("'prefer-dark'\n"), Some(true));
+    assert_eq!(parse_color_scheme("'prefer-light'\n"), Some(false));
+    assert_eq!(parse_color_scheme("'default'\n"), None, "no preference");
+    assert_eq!(parse_color_scheme(""), None);
 }
 
 /// The branded themes must classify as light / dark respectively —

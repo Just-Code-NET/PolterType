@@ -30,6 +30,17 @@ non-clickable text, the About pane shows the resolved config path,
 and per-pane status banners use the shared success/danger colours
 instead of hardcoded RGB values.
 
+Two things had to be fixed for the above to hold up. Following the
+OS appearance now works beyond GNOME/KDE: the detection iced ships
+mis-parses the XDG desktop portal's reply and falls back to "light"
+on Hyprland-class desktops, so the window now asks the portal (and
+the GNOME gsettings key) itself. And switching themes at runtime
+exposed rendering bugs in iced 0.13's CPU compositor — the window
+blinked between the new palette and a stale old-theme frame while
+the mouse moved — which the window now sidesteps by forcing a full
+repaint on every UI change (imperceptible; it only redraws on input
+events anyway).
+
 ## [0.3.0] — per-app features land on Linux, and the tray admits hook failures
 
 ### Added — focus tracking on Linux (Hyprland + X11)

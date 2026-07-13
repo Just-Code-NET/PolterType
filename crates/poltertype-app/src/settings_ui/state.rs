@@ -19,12 +19,18 @@ pub struct SettingsApp {
     pub(super) config_path: PathBuf,
     pub(super) store: Arc<SettingsStore>,
     pub(super) pane: Pane,
-    /// OS dark-mode preference, sampled once at window start (the
-    /// `auto-detect-theme` feature makes `Theme::default()` consult
-    /// the OS). Used when `[general].ui_theme = "system"`. Not
-    /// re-sampled live — the window is short-lived, and re-detecting
-    /// per frame would hit D-Bus / the registry on every render.
+    /// OS dark-mode preference, sampled once at window start via
+    /// [`super::system_theme::system_prefers_dark`] (iced's own
+    /// auto-detection misses the XDG portal — see that module). Used
+    /// when `[general].ui_theme = "system"`. Not re-sampled live —
+    /// the window is short-lived, and re-detecting per frame would
+    /// spawn probe processes on every render.
     pub(super) system_prefers_dark: bool,
+    /// Call counter consulted by `view` to nudge the root backdrop
+    /// colour by an invisible epsilon on every rebuild — see the
+    /// backdrop comment in `view` for why. `Cell` because `view`
+    /// only gets `&self`.
+    pub(super) bg_jitter: std::cell::Cell<u32>,
     /// Set when [`Message::Save`] writes successfully — surfaced as a
     /// transient banner in the footer so the user gets feedback the
     /// click did something.
@@ -122,7 +128,8 @@ impl SettingsApp {
             config_path,
             store,
             pane: Pane::Languages,
-            system_prefers_dark: matches!(Theme::default(), Theme::Dark),
+            system_prefers_dark: super::system_theme::system_prefers_dark(),
+            bg_jitter: std::cell::Cell::new(0),
             save_banner: None,
             capturing: None,
             exception_draft: String::new(),
@@ -169,6 +176,38 @@ impl SettingsApp {
     /// through every helper.
     pub(super) fn brand(&self) -> &'static theme::BrandPalette {
         theme::brand_palette(&self.theme())
+    }
+
+    /// The root backdrop colour for this view rebuild: the theme's
+    /// window background with its blue channel nudged by an epsilon
+    /// that changes on every call.
+    ///
+    /// The nudge is a deliberate workaround for iced 0.13's tiny-skia
+    /// compositor. Its partial-present path mis-tracks which swapchain
+    /// buffer holds which frame, so small damage regions get painted
+    /// onto stale buffers — after a palette change the window blinks
+    /// between the new theme and an old-theme frame, and hover
+    /// repaints can freeze outright. A full-window quad whose colour
+    /// never repeats makes the layer diff mark the whole window
+    /// damaged on every UI change, so every present redraws the full
+    /// frame and stale buffers can't survive.
+    ///
+    /// The epsilon cycles through 251 steps of at most 1/1024 — far
+    /// below 8-bit output precision, so the rendered pixels are
+    /// identical frame to frame. A prime cycle length keeps
+    /// consecutive rebuilds distinct regardless of how many times the
+    /// runtime samples the view. The window repaints only on input
+    /// events, so the extra fill is negligible. Remove when the
+    /// workspace moves to iced 0.14.
+    pub(super) fn backdrop_color(&self) -> iced::Color {
+        let bg = self.brand().bg;
+        let n = self.bg_jitter.get().wrapping_add(1);
+        self.bg_jitter.set(n);
+        let jitter = (n % 251) as f32 / (251.0 * 1024.0);
+        iced::Color {
+            b: (bg.b + jitter).min(1.0),
+            ..bg
+        }
     }
 
     /// Active subscription. Always listens for window-close requests

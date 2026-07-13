@@ -5,11 +5,19 @@
 //! poltertype.com show the same face. Vector, so it stays crisp at
 //! any scale / DPI without pulling an SVG renderer into the binary.
 
+use iced::advanced::graphics::geometry::Renderer as GeometryRenderer;
+use iced::advanced::graphics::geometry::frame::Backend as _;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{self, Frame, Geometry, LineCap, Path, Stroke};
-use iced::{Point, Rectangle, Renderer, Size, Theme};
+use iced::widget::canvas::{self, Geometry, LineCap, Path, Stroke};
+use iced::{Point, Rectangle, Renderer, Size, Theme, Vector};
 
 use super::consts::{MARK_FACE, MARK_GHOST, MARK_KEYCAP_FACE, MARK_KEYCAP_TOP};
+
+/// The renderer's concrete geometry frame (tiny-skia's). Named through
+/// the associated type so no direct `iced_tiny_skia` dependency is
+/// needed; if the renderer ever changes (e.g. the `wgpu` feature gets
+/// enabled), this stops compiling loudly instead of mis-rendering.
+type RawFrame = <Renderer as GeometryRenderer>::Frame;
 
 /// Canvas program painting the mark into its bounds. Use as
 /// `Canvas::new(GhostMark).width(n).height(n)` — the drawing scales
@@ -22,27 +30,33 @@ impl<Message> canvas::Program<Message> for GhostMark {
     fn draw(
         &self,
         _state: &Self::State,
-        renderer: &Renderer,
+        _renderer: &Renderer,
         _theme: &Theme,
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<Geometry> {
-        // An INFINITE frame size instead of the idiomatic
-        // `bounds.size()` works around an iced 0.13 tiny-skia bug:
-        // the compositor treats this frame's clip rectangle — which
-        // the frame stores in canvas-LOCAL coordinates, i.e.
-        // `(0, 0, w, h)` — as a window-GLOBAL mask region. Any canvas
-        // sitting away from the window's top-left corner gets its
-        // curves masked out (whether a given fill survives depends on
-        // exact-f32 bounds equality, which is why the keycap
-        // rectangles rendered while the ghost vanished). An infinite
-        // clip degenerates the mask to the enclosing layer's own clip
-        // (`Item::Live` uses `Rectangle::INFINITE` the same way), so
-        // scissoring stays correct — we only lose clipping to the
-        // canvas box itself, which this drawing never exceeds.
+        // NOT the idiomatic `Frame::new(renderer, bounds.size())` —
+        // that stores the frame's clip rectangle in canvas-LOCAL
+        // coordinates (`0, 0, w, h`), and iced 0.13's tiny-skia
+        // compositor applies that rectangle as a window-GLOBAL mask
+        // region. Any canvas away from the window's top-left corner
+        // gets its fills masked out (whether one survives depends on
+        // exact-f32 bounds equality — the keycap rectangles rendered
+        // while the ghost vanished). An infinite clip was tried first
+        // and fixes the masking, but infinite rectangles then poison
+        // the damage tracker: after a full-palette change the window
+        // stops compositing repaints and blinks between stale buffers.
+        //
+        // Instead, build the renderer's raw frame with the clip set to
+        // the widget's real (window-global) bounds, then cancel the
+        // translation the frame bakes into its transform — the canvas
+        // widget already positions the geometry group at
+        // `bounds.position()`, so the paths themselves must stay
+        // local. Mask lands on the widget, damage stays finite.
         // Upstream reworked the pipeline in iced 0.14; drop this when
         // the workspace moves.
-        let mut frame = Frame::new(renderer, Size::INFINITY);
+        let mut frame = RawFrame::with_clip(bounds);
+        frame.translate(Vector::new(-bounds.x, -bounds.y));
         // Author coordinates below are the SVG's 64×64 viewBox.
         frame.scale(bounds.width.min(bounds.height) / 64.0);
 
