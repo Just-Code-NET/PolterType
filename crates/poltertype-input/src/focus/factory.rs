@@ -11,7 +11,11 @@ pub fn create_focus_tracker() -> Arc<dyn FocusTracker> {
     {
         Arc::new(windows_impl::WindowsFocusTracker)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        linux_impl::create_linux_focus_tracker()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         Arc::new(NoopFocusTracker)
     }

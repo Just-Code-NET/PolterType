@@ -15,6 +15,9 @@
 #[cfg(windows)]
 mod windows_impl;
 
+#[cfg(target_os = "linux")]
+mod linux_impl;
+
 mod factory;
 mod noop;
 mod traits;
