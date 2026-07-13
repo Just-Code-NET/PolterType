@@ -3852,7 +3852,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-ai"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "keyring",
  "poltertype-detect",
@@ -3865,7 +3865,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-app"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -3891,7 +3891,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "crossbeam-channel",
  "directories",
@@ -3912,7 +3912,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-detect"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "fst",
  "parking_lot 0.12.5",
@@ -3924,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-input"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
@@ -3941,7 +3941,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-layout"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "core-foundation 0.10.1",
  "poltertype-types",
@@ -3953,7 +3953,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-types"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
@@ -3961,7 +3961,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-update"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "directories",
  "semver",
