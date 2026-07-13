@@ -4,7 +4,7 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.3.0
+## [0.3.1] — the Settings window wears the brand, in light and dark
 
 ### Changed — the Settings window wears the brand now
 
@@ -913,7 +913,8 @@ missing-manifest / invalid-manifest / user-override.
   separate phase. The loader is ready; the network + UI plumbing
   has its own security review queued.
 
-[Unreleased]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.2...HEAD
+[0.3.1]: https://github.com/Just-Code-NET/PolterType/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Just-Code-NET/PolterType/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Just-Code-NET/PolterType/compare/v0.1.1...v0.2.0
