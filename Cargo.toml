@@ -6,6 +6,7 @@ members = [
     "crates/poltertype-input",
     "crates/poltertype-layout",
     "crates/poltertype-detect",
+    "crates/poltertype-update",
     "crates/poltertype-ai",
     "crates/poltertype-types",
     "xtask",
@@ -41,6 +42,7 @@ poltertype-input  = { path = "crates/poltertype-input" }
 poltertype-layout = { path = "crates/poltertype-layout" }
 poltertype-detect = { path = "crates/poltertype-detect" }
 poltertype-core   = { path = "crates/poltertype-core" }
+poltertype-update = { path = "crates/poltertype-update" }
 poltertype-ai     = { path = "crates/poltertype-ai" }
 
 # Logging
@@ -86,6 +88,16 @@ fst = "0.4"
 
 # Cross-platform "open this file in the user's default app".
 opener = "0.7"
+
+# Auto-update (poltertype-update only). `ureq` is blocking and
+# rustls-backed — no async runtime, no OpenSSL, and it is already the
+# HTTP client xtask uses to fetch wordlists, so the dependency tree
+# (and its licence set in deny.toml) is vetted. `sha2` verifies the
+# downloaded artifact against the checksum in the release manifest;
+# `semver` decides "is the published version actually newer than us".
+ureq   = { version = "2", features = ["tls", "json"] }
+sha2   = "0.10"
+semver = "1"
 
 # GUI for the Settings window. `tiny-skia` is iced's pure-CPU
 # renderer (no wgpu / GPU stack) — keeps the binary small and the

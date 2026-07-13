@@ -643,7 +643,20 @@ Always in context:
 
 ## 6. Security & privacy
 
-- No network by default. AI is disabled; remote AI requires two
+- **One network call exists, and it is the updater.** `poltertype-update`
+  fetches a release manifest from GitHub, downloads the installer for
+  this platform, and verifies its SHA-256. It sends no body, no query
+  string and no identifier — GitHub sees an IP and a User-Agent, the
+  same as any HTTP server would. It is **not** telemetry and is not a
+  place to add any. `[updates].enabled = false` switches it off
+  entirely. The trust boundary is the GitHub account that publishes
+  releases; a detached signature over the manifest
+  (`Manifest.signature`) is the reserved fix and is not implemented
+  yet. See `docs/DECISIONS.md`, 2026-07-13.
+- **An update is never installed while the app runs.** We hold a global
+  keyboard hook; the swap happens on Quit or on an explicit "Restart to
+  update".
+- Beyond the updater: no network. AI is disabled; remote AI requires two
   toggles (`enabled` + `allow_remote`).
 - We do not store text. Only a short-lived word buffer in RAM, cleared
   after a decision/timeout.
@@ -730,7 +743,7 @@ Levels:
 
 ### Phase 1 — Rust skeleton bootstrap ✅
 
-- [x] Cargo workspace with 7 crates.
+- [x] Cargo workspace with 8 crates (`poltertype-update` joined in 0.4.0).
 - [x] `poltertype-app`: `tao` event loop + `tray-icon`, a generated
       placeholder icon.
 - [x] `single-instance`, `tracing` initialization.
@@ -847,10 +860,19 @@ single line of `poltertype-app` / `poltertype-core` imports
 - [x] Screenshots in the README — landed 2026-07-13
       (`docs/screenshots/settings-window.png`).
 
+- [x] **Auto-update** from GitHub Releases — background check,
+      checksum-verified download, install on restart
+      (`poltertype-update`). Landed 2026-07-13.
+
 ### Phase 9 (later)
 
 - **Signing** the installers (Apple Developer ID, Windows EV/OV) —
-  today all artifacts ship **unsigned**.
+  today all artifacts ship **unsigned**. This is also what would let
+  the macOS updater stop stripping `com.apple.quarantine`.
+- **Signing the update manifest** (ed25519 / minisign, key held off
+  GitHub). Until then the updater trusts whoever can publish a
+  release — see `docs/DECISIONS.md`, 2026-07-13. The
+  `Manifest.signature` field already exists and parses.
 - Stores: winget, brew, AUR, Microsoft Store.
 - Plugin marketplace: the loader is live (data-only packs); what
   remains open is the pack install / update / signing UX. WASM

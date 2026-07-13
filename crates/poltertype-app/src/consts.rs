@@ -25,6 +25,12 @@ pub(crate) const WAYLAND_SAFE_SWITCH_LAST: &str = "Ctrl+Shift+F9";
 pub(crate) const SETUP_GUIDE_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";
 
+/// Where to send a user whose install can't update itself in place (a
+/// distro package, a dev build, a bare binary) — or whose installer
+/// failed. The fallback is always "here is the download page", never a
+/// dead end.
+pub(crate) const RELEASES_URL: &str = "https://github.com/Just-Code-NET/PolterType/releases/latest";
+
 /// One-time README seeded into the user layouts folder. Mirrors the
 /// wordlists README's plain-text, no-markdown style.
 pub(crate) const USER_LAYOUTS_README: &str = "\

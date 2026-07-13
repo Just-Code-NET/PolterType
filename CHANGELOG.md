@@ -4,6 +4,70 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.3.1
+
+### Added — PolterType keeps itself up to date
+
+Until now, updating meant noticing that a release had happened and
+re-running an installer by hand. Since the installers are unsigned and
+there is no store to push through, that meant most people simply stayed
+on whichever build they first installed — including for security fixes.
+
+PolterType now updates itself. Once a day it fetches a small manifest
+from GitHub Releases, and when a newer version is out it downloads the
+installer for your platform in the background and verifies its SHA-256
+against the manifest. Then it stops and waits.
+
+**Nothing is ever installed while you're typing.** The app holds a
+global keyboard hook; swapping its binary mid-sentence is the one thing
+it must not do. The staged update installs when you quit the app, or
+when you click the new **⟳ Restart to update — v0.4.0** entry in the
+tray menu. A notification tells you once when a version is ready; the
+same tray entry doubles as a manual **Check for updates…** when nothing
+is staged.
+
+All three platforms self-update: the MSI is reinstalled per-user (no
+UAC), the AppImage is swapped in place, and the macOS `.app` bundle is
+replaced from the DMG. An install that *isn't* ours — a distro package,
+a `cargo build` binary — is never overwritten; you get a notification
+pointing at the Releases page instead.
+
+### Changed — the app now makes exactly one network call
+
+This is a real change to what PolterType is, so it is stated plainly
+rather than buried: previous versions never opened a socket, and this
+one does.
+
+The update check is a plain `GET` of a static JSON file on `github.com`.
+There is no request body, no query string, no account and no identifier.
+GitHub learns what any web server learns — your IP, and a User-Agent
+naming the version you're running. Nothing about you, your layouts, your
+configuration or a single character you type is transmitted, ever. This
+is not telemetry, and PolterType still has none of any kind.
+
+If you want a build that never touches the network at all, that is one
+checkbox — **General → Updates** in the Settings window, or:
+
+```toml
+[updates]
+enabled              = false
+check_interval_hours = 24      # clamped to a 1-hour floor
+```
+
+Existing `config.toml` files don't need editing: the section defaults in.
+
+### Known limits, stated up front
+
+- **The download is verified, not signed.** The SHA-256 comes from the
+  same release as the installer, so it catches a corrupted download or a
+  tampered CDN — but not a compromised GitHub account. Signing the
+  manifest with a key held off GitHub is the real fix and is planned;
+  the manifest already carries a reserved `signature` field.
+- **The macOS updater has not been run on a Mac.** macOS is a CI-only
+  target for this project. The `.app`-swap path follows Apple's docs and
+  the Windows and Linux paths are exercised, but treat macOS
+  self-updating as unproven for now.
+
 ## [0.3.1] — the Settings window wears the brand, in light and dark
 
 ### Changed — the Settings window wears the brand now

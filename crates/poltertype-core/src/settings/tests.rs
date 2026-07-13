@@ -34,6 +34,48 @@ fn old_config_missing_new_field_still_parses() {
     assert!(s.engine.suppress_for_all_caps);
 }
 
+/// Every user upgrading from 0.3.x has a `config.toml` with no
+/// `[updates]` section at all. It has to keep working, and it has to
+/// land on "updates on" — a silent fallback to *off* would mean the
+/// exact population that most needs the updater (people already running
+/// an old build) never gets it.
+#[test]
+fn a_config_predating_the_updater_defaults_to_updates_on() {
+    let raw = "schema_version = 1\n\n[general]\nautostart = true\n";
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert!(s.updates.enabled);
+    assert_eq!(s.updates.check_interval_hours, 24);
+}
+
+#[test]
+fn updates_can_be_turned_off_from_the_config_file() {
+    let raw = "schema_version = 1\n\n[updates]\nenabled = false\n";
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert!(!s.updates.enabled);
+}
+
+/// A hand-edited `0` — a typo, or someone reasoning that zero means
+/// "never" — must not turn every installed copy of the app into a tight
+/// request loop against GitHub.
+#[test]
+fn a_zero_check_interval_is_clamped_not_obeyed() {
+    let raw = "schema_version = 1\n\n[updates]\ncheck_interval_hours = 0\n";
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert_eq!(
+        s.updates.interval(),
+        std::time::Duration::from_secs(MIN_UPDATE_INTERVAL_HOURS * 3600)
+    );
+}
+
+#[test]
+fn a_sane_check_interval_is_honoured() {
+    let s = UpdateSettings {
+        enabled: true,
+        check_interval_hours: 12,
+    };
+    assert_eq!(s.interval(), std::time::Duration::from_secs(12 * 3600));
+}
+
 /// User commands sit in their own `[[commands]]` table. A full
 /// config block including one must round-trip through the live
 /// `Settings` struct — the regression we care about is that

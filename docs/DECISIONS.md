@@ -912,3 +912,124 @@ The original sketch wanted a "Run setup" button that executes
 spawning a `sudo`/`pkexec` prompt, which is exactly the scary pattern
 the docs warn against — a guide the user reads and runs themselves is
 more honest. Revisit if onboarding drop-off proves real.
+
+---
+
+## 2026-07-13 — Auto-update from GitHub Releases
+
+**The app now makes a network call.** That sentence is the whole
+weight of this decision, so it goes first. Until now `poltertype`'s
+default build never opened a socket, and both `CLAUDE.md` and the
+landing page said so in as many words. It now polls GitHub for new
+releases, downloads them, and installs them on restart. The rest of
+this entry is the reasoning and the boundaries.
+
+### Why do it at all
+
+The installers ship **unsigned** (Apple Developer ID and a Windows
+OV/EV cert are Phase 9). An unsigned app with no update channel is
+not the conservative choice — it is the worst of both worlds: users
+sit on old builds forever, and the only way we can reach them with a
+security fix is a blog post they will not read. "No auto-update" is
+only the safer option for a project that never needs to ship a fix.
+
+### What is actually sent
+
+Nothing. A `GET` of a static JSON asset on `github.com`, with no
+query string, no body, no cookie, no identifier. GitHub learns what
+any HTTP server learns — the connecting IP, and a User-Agent naming
+the running version. That is the irreducible cost of asking "is there
+a newer version", and it is why the whole subsystem is one switch:
+`[updates].enabled = false` and the app never opens a socket again.
+It is not telemetry, it must never grow into telemetry, and the
+Settings pane prints the exact URL so the claim can be checked rather
+than believed.
+
+### On by default
+
+Yes — and the landing page's "no network calls" copy changes to match,
+because the alternative is a promise the binary does not keep. An
+opt-in updater buried in a settings pane is one nobody finds, which
+means it protects nobody, which means we would have paid the honesty
+cost and bought nothing.
+
+### Trust model, and its limit
+
+HTTPS plus a per-artifact SHA-256 from the release manifest. The
+download is streamed through the hasher and only renamed into its
+final path once the digest matches; a mismatch deletes the bytes and
+aborts. There is a test that a mismatched payload leaves *nothing* on
+disk, because the failure we cannot afford is a bad artifact reaching
+`msiexec`.
+
+Be precise about what that buys: the checksum comes from the *same
+release* as the artifact, so it defeats a corrupted transfer and a
+tampered asset CDN, but **not** a compromised GitHub account. Whoever
+can publish a release can publish a matching checksum. The defence
+against that is a detached signature over the manifest, made with a
+key that does not live on GitHub — `Manifest.signature` is reserved
+for exactly that (ed25519, minisign-style), and the field parses today
+so it can be filled in later as a value change rather than a schema
+break. Until then the honest statement is: *we trust GitHub as much as
+we trust the account that publishes the releases.*
+
+Considered and deferred: signing now. It was the recommendation; the
+maintainer chose checksums for this phase to avoid a key-management
+burden (a lost private key means users are stranded with no update
+path, permanently). The field is there when we want it.
+
+### Never install under the user's hands
+
+The one hard rule. This app owns a global keyboard hook — replacing
+its binary mid-sentence would drop keystrokes at best. So the
+background worker only ever *stages*: it downloads, verifies, writes
+`pending.json`, and stops. The install happens at a moment the user
+chose, and only then:
+
+* they click **Quit** — the hook is already down, so we install and
+  don't relaunch (they asked for the app to go away);
+* they click **⟳ Restart to update** in the tray — install, relaunch.
+
+That is the Chrome/VS Code model, and it is why the tray entry says
+"Restart to update" rather than "Update now".
+
+### Why a script on disk, spawned detached
+
+None of the three platforms can replace a running binary: an MSI
+cannot overwrite a locked `.exe`, an AppImage cannot be `mv`-ed over
+its own live FUSE mount, a `.app` cannot be `ditto`-ed over itself. So
+every backend writes a small script into the staging directory, spawns
+it **detached** (own process group on Unix, `DETACHED_PROCESS` on
+Windows), and the script's first act is to poll until our PID is gone.
+The app then exits normally and the installer runs in the gap.
+
+Paths go into a script *file* rather than onto a command line because
+the paths involved are home directories — spaces, apostrophes,
+non-ASCII — and nested shell quoting is where that turns into a bug.
+One layer of quoting instead of three, and a user can read afterwards
+exactly what was run on their machine.
+
+Failed installs are counted in `pending.json` *before* the attempt,
+not after: an installer that hard-kills us would never reach an
+after-the-fact increment, and the broken artifact would be retried on
+every quit forever. Three strikes and the staged update is deleted.
+
+### Platform code in a third crate
+
+`CLAUDE.md` said platform code lives in `poltertype-input` and
+`poltertype-layout` and nowhere else. Installing an update is
+irreducibly per-OS, so the rule now names three crates:
+`poltertype-update` is the third. The intent of the rule — platform
+`#[cfg]` confined to dedicated platform crates, never sprinkled through
+the engine — is unchanged.
+
+### macOS is written, not verified
+
+The `.app`-swap backend follows Apple's documentation and has never
+been run on Apple hardware — macOS is a CI-only target for this project.
+It also strips `com.apple.quarantine` from the installed bundle, which
+is precisely the flag Gatekeeper sets on a download. That is defensible
+only because the app is unsigned and the release notes already tell
+first-time users to strip it by hand; the moment we ship notarised
+builds, that line comes out. Treat the macOS path as unproven until
+someone runs it on a Mac.

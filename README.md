@@ -61,6 +61,38 @@ artifacts:
 Building from source is documented in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+### Staying up to date
+
+You only have to do the above once. From then on PolterType keeps
+itself current: it checks GitHub for new releases once a day,
+downloads the installer for your platform in the background, verifies
+its SHA-256 against the release manifest, and then **waits**. Nothing
+is installed while you are typing — the swap happens when you quit the
+app, or when you click **⟳ Restart to update** in the tray menu.
+
+This is the only network connection PolterType makes. It is a plain
+`GET` of a small JSON file: no account, no identifier, nothing about
+you or what you type. Turn it off with a checkbox on the Settings
+window's **General** pane, or in `config.toml`:
+
+```toml
+[updates]
+enabled              = false   # never check, never download
+check_interval_hours = 24
+```
+
+Two caveats worth stating plainly:
+
+- **The download is checksum-verified, not signed.** The checksum
+  comes from the same GitHub release as the installer, so it catches a
+  corrupted download or a tampered CDN — but not a compromised GitHub
+  account. Signing the manifest is planned (see
+  [docs/DECISIONS.md](docs/DECISIONS.md)).
+- **Only our own installers self-update.** If you installed from a
+  distro package, or you're running a `cargo build` binary, PolterType
+  won't overwrite it — those files aren't ours. You'll get a
+  notification pointing at the Releases page instead.
+
 ## Stack
 
 - Pure Rust — no WebView, no Node.

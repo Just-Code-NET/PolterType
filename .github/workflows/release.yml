@@ -226,6 +226,67 @@ jobs:
       - name: List artifacts
         run: ls -la dist/
 
+      # ─── Update manifest ─────────────────────────────────────────
+      # `latest.json` is what the in-app updater polls. It is written
+      # here, from the artifacts we are *about* to publish, because
+      # that is the only place where the checksums and the download
+      # URLs are both known and guaranteed to agree: the URLs are
+      # deterministic from the tag and the file name, and the hashes
+      # come from the exact bytes being uploaded in the next step.
+      #
+      # The updater fetches this through GitHub's
+      # `releases/latest/download/` redirector, which resolves only to
+      # published, non-prerelease releases. Since we create the release
+      # as a *draft*, nothing here reaches a single user until a human
+      # presses Publish — the draft gate is the release process, not an
+      # afterthought.
+      #
+      # Keep the shape in step with `poltertype-update`'s `Manifest`
+      # struct and its `platform_key()`: the three keys below are
+      # exactly what that function can produce.
+      - name: Write latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+
+          # Fail loudly on a missing artifact rather than shipping a
+          # manifest with a hole in it: a platform silently absent from
+          # `artifacts` means every user on that OS quietly stops
+          # getting updates, which is the kind of bug that is only
+          # noticed months later.
+          entry() {
+            local key="$1" pattern="$2"
+            local path
+            path="$(ls dist/${pattern} 2>/dev/null | head -n1)"
+            if [[ -z "${path}" ]]; then
+              echo "::error::no artifact matched '${pattern}' — refusing to write a partial manifest" >&2
+              exit 1
+            fi
+            local name sha size
+            name="$(basename "${path}")"
+            sha="$(sha256sum "${path}" | cut -d' ' -f1)"
+            size="$(stat -c%s "${path}")"
+            jq -n --arg k "$key" --arg u "${BASE}/${name}" --arg s "$sha" --argjson z "$size" \
+              '{($k): {url: $u, sha256: $s, size: $z}}'
+          }
+
+          {
+            entry "linux-x86_64"   "poltertype-*-x86_64.AppImage"
+            entry "macos-universal" "poltertype-*-universal-apple-darwin.dmg"
+            entry "windows-x86_64" "poltertype-*-x86_64-pc-windows-msvc.msi"
+          } | jq -s \
+                --argjson schema 1 \
+                --arg version "${VERSION}" \
+                --arg notes "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" \
+                'add | {schema: $schema, version: $version, notes_url: $notes, artifacts: .}' \
+              > dist/latest.json
+
+          echo "── dist/latest.json ──"
+          cat dist/latest.json
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -233,6 +294,7 @@ jobs:
             dist/poltertype-*-x86_64.AppImage
             dist/poltertype-*-universal-apple-darwin.dmg
             dist/poltertype-*-x86_64-pc-windows-msvc.msi
+            dist/latest.json
           draft: true
           fail_on_unmatched_files: true
           generate_release_notes: true

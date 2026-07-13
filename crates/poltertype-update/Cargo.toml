@@ -1,0 +1,24 @@
+[package]
+name                   = "poltertype-update"
+description            = "PolterType: background update check, verified download, and per-OS install."
+version.workspace      = true
+edition.workspace      = true
+license.workspace      = true
+authors.workspace      = true
+rust-version.workspace = true
+repository.workspace   = true
+publish.workspace      = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde       = { workspace = true }
+serde_json  = { workspace = true }
+thiserror   = { workspace = true }
+tracing     = { workspace = true }
+directories = { workspace = true }
+
+ureq   = { workspace = true }
+sha2   = { workspace = true }
+semver = { workspace = true }

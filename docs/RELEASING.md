@@ -176,7 +176,7 @@ If the xtask refuses or you want to do it by hand:
   version       = "0.2.1"   # ← bump this
   ```
   Every workspace crate reads `version.workspace = true`, so this
-  single edit propagates to all 7 crates.
+  single edit propagates to all 8 crates.
 
 * `CHANGELOG.md` heading at the top:
   ```markdown
@@ -191,7 +191,7 @@ If the xtask refuses or you want to do it by hand:
 Three quick checks before you commit:
 
 ```bash
-# All workspace crates show the new version (should print 7
+# All workspace crates show the new version (should print 8
 # lines, all matching).
 grep -E '^name = "poltertype' Cargo.lock -A 1 | grep '^version'
 
@@ -238,9 +238,16 @@ The workflow:
 1. Builds three installers in parallel — Windows `.msi` (WiX
    3.x), macOS universal `.dmg` (Intel + Apple Silicon merged
    with `lipo`), Linux `.AppImage` (x86_64, `linuxdeploy`).
-2. Creates a **draft** release on GitHub with the three
-   installers attached and SHA-256 checksums in the body.
-3. Stops there — you publish the release manually after sanity-
+2. Writes `latest.json` — the manifest the **in-app updater**
+   polls (version, release-notes URL, and a URL + SHA-256 + size
+   per platform). Generated from the exact artefacts being
+   uploaded, so the checksums cannot drift out of step with the
+   files. A missing artefact fails the job rather than shipping a
+   manifest with a hole in it.
+3. Creates a **draft** release on GitHub with the three
+   installers plus `latest.json` attached, and SHA-256 checksums
+   in the body.
+4. Stops there — you publish the release manually after sanity-
    checking the artefacts.
 
 When the run completes:
@@ -249,6 +256,24 @@ When the run completes:
 * Edit the body if you want to add release notes (the auto-
   generated body is just the checksums).
 * Hit **Publish release**.
+
+> **Publishing is what ships the update to every existing user.**
+> This is new as of 0.4.0 and worth internalising: the updater
+> fetches `latest.json` through GitHub's
+> `releases/latest/download/` redirector, which resolves only to
+> **published, non-prerelease** releases. So a draft is invisible
+> to users — but the moment you hit Publish, every installed copy
+> of PolterType will (within its check interval, 24 h by default)
+> download this build and install it on the user's next restart.
+>
+> Two practical consequences:
+>
+> * **Sanity-check the artefacts *before* publishing, not after.**
+>   Un-publishing does not un-install.
+> * **Mark a release as a pre-release if it isn't for everyone.**
+>   GitHub's `latest` redirector skips pre-releases, so an rc can
+>   be published for testers without pushing it at the whole user
+>   base.
 
 If a job fails: the workflow file is at
 [`.github/workflows/release.yml`][release-yml]. Most failures

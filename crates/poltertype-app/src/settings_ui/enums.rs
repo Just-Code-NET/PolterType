@@ -144,6 +144,11 @@ pub enum Message {
     ShowNotificationsToggled(bool),
     SuppressInIdentifiersToggled(bool),
     IdleTimeoutDelta(i32),
+    /// `[updates].enabled` — the master switch on the only network
+    /// access the app performs.
+    AutoUpdateToggled(bool),
+    /// `[updates].check_interval_hours`, stepped by the ± buttons.
+    UpdateIntervalDelta(i64),
 
     // ── Hotkeys pane ───────────────────────────────────────────────
     /// Enter capture mode for `kind` (button click → "Press a

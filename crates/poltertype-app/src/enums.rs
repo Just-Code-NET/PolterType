@@ -1,6 +1,7 @@
 //! Event-loop message enums.
 
 use poltertype_core::engine::SwitcherEvent;
+use poltertype_update::PendingUpdate;
 use tray_icon::menu::MenuId;
 
 #[derive(Debug, Clone)]
@@ -8,4 +9,25 @@ pub(crate) enum UserEvent {
     Menu(MenuId),
     Hotkey(u32),
     Engine(SwitcherEvent),
+    Update(UpdateOutcome),
+}
+
+/// What the background update worker found. Reported to the event loop
+/// so that the tray — which owns the menu — decides what to show; the
+/// worker itself never touches UI.
+#[derive(Debug, Clone)]
+pub(crate) enum UpdateOutcome {
+    /// A newer release was downloaded and its checksum verified. It is
+    /// staged and will install on the next restart. `Box`ed because the
+    /// other variants are a word or two, and without it this one would
+    /// set the size of every event the loop copies around.
+    Staged(Box<PendingUpdate>),
+    UpToDate,
+    /// The check didn't complete — no network, a proxy, GitHub having a
+    /// bad day. The reason is logged by the worker and deliberately not
+    /// carried here: nothing in the tray reacts to *why* a check failed,
+    /// and a routine "you're on a train" is not something to surface.
+    Failed,
+    /// Updates were switched off, and a staged artifact was discarded.
+    Cleared,
 }

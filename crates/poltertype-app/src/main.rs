@@ -26,6 +26,7 @@ mod hotkeys;
 mod settings_proc;
 mod tray;
 mod types;
+mod updater;
 mod user_dirs;
 
 use crate::bridges::*;
@@ -36,6 +37,7 @@ use crate::hotkeys::*;
 use crate::settings_proc::*;
 use crate::tray::*;
 use crate::types::*;
+use crate::updater::*;
 use crate::user_dirs::*;
 
 use std::path::PathBuf;
@@ -338,6 +340,28 @@ fn main() -> Result<()> {
     let item_layouts = MenuItem::new("Open User Layouts Folder…", true, None);
     let item_reload = MenuItem::new("Reload Settings", true, None);
     let item_pause = MenuItem::new("Pause auto-switch", true, None);
+
+    // Updates. A single dual-purpose entry: while nothing is staged it
+    // reads "Check for updates…" and forces a check; once the worker has
+    // downloaded and verified a release it becomes "⟳ Restart to update
+    // — v0.4.0" and installing is one click. Present only when
+    // `[updates].enabled` — a user who turned updates off should not
+    // have to keep looking at the machinery they switched off.
+    //
+    // A staged update may already exist at this point: the user could
+    // have downloaded it in a previous session and then closed the app
+    // without quitting through the menu (logout, reboot, `pkill`).
+    // `pending_for_this_build` is what recovers it — and what throws it
+    // away if it turns out to be the update this very process *is*.
+    let updates_enabled = settings.snapshot().updates.enabled;
+    let mut update_pending = if updates_enabled {
+        pending_for_this_build()
+    } else {
+        None
+    };
+    let item_update =
+        updates_enabled.then(|| MenuItem::new(menu_label(update_pending.as_ref()), true, None));
+
     let item_about = MenuItem::new(
         format!("About {APP_NAME} v{}", env!("CARGO_PKG_VERSION")),
         false,
@@ -354,11 +378,17 @@ fn main() -> Result<()> {
         &PredefinedMenuItem::separator(),
         &item_pause,
         &PredefinedMenuItem::separator(),
-        &item_about,
-        &item_quit,
     ])
     .context("populate tray menu")?;
+    if let Some(item) = item_update.as_ref() {
+        menu.append_items(&[item, &PredefinedMenuItem::separator()])
+            .context("populate tray update entry")?;
+    }
+    menu.append_items(&[&item_about, &item_quit])
+        .context("populate tray menu tail")?;
+
     let setup_id = item_setup.as_ref().map(|i| i.id().clone());
+    let update_id = item_update.as_ref().map(|i| i.id().clone());
     let settings_ui_id = item_settings_ui.id().clone();
     let settings_file_id = item_settings_file.id().clone();
     let logs_id = item_logs.id().clone();
@@ -470,6 +500,22 @@ fn main() -> Result<()> {
 
     spawn_event_bridges(event_loop.create_proxy(), engine_event_rx.clone())?;
 
+    // Background updates. The worker owns every network call this app
+    // makes; the event loop only ever sees the result. `check_now_tx`
+    // is how the tray's "Check for updates…" click cuts the worker's
+    // sleep short — bounded at 1 because a user clicking twice wants one
+    // check, not a queue of them.
+    let (check_now_tx, check_now_rx) = bounded::<()>(1);
+    if updates_enabled {
+        spawn_update_worker(
+            event_loop.create_proxy(),
+            Arc::clone(&settings),
+            check_now_rx,
+        )?;
+    } else {
+        info!("automatic updates are disabled in config.toml; no update checks will be made");
+    }
+
     // Layout poller: the engine emits LayoutChanged for switches it
     // performs itself, but we miss user-driven manual switches (Win+
     // Space / Alt+Shift / language bar / ibus / kde-keyboard). Polling
@@ -514,7 +560,40 @@ fn main() -> Result<()> {
                     if let Some(mut listener) = input_listener.take() {
                         listener.stop();
                     }
+                    // Quit is the moment we have been waiting for: the
+                    // user is done typing, the hook is down, and nothing
+                    // we replace can be in use. This is what "installs
+                    // on restart" actually means — the install happens
+                    // now, and the version they launch next is the new
+                    // one. No relaunch: they asked for the app to go
+                    // away, and an updater that reopens it would be
+                    // overriding a direct instruction.
+                    if let Some(pending) = update_pending.as_ref() {
+                        apply_now(pending, false);
+                    }
                     *control_flow = ControlFlow::Exit;
+                } else if Some(&id) == update_id.as_ref() {
+                    match update_pending.as_ref() {
+                        // Staged and verified — install it and come back.
+                        Some(pending) => {
+                            info!(version = %pending.version, "Restart to update clicked");
+                            if let Some(mut listener) = input_listener.take() {
+                                listener.stop();
+                            }
+                            apply_now(pending, true);
+                            *control_flow = ControlFlow::Exit;
+                        }
+                        // Nothing staged — the user is asking "well, is
+                        // there one?". Wake the worker; it reports back
+                        // through UserEvent::Update like any other check.
+                        None => {
+                            info!("manual update check");
+                            // `try_send` on a bounded(1): if a check is
+                            // already queued, a second click is a no-op
+                            // rather than a second round-trip.
+                            let _ = check_now_tx.try_send(());
+                        }
+                    }
                 } else if id == settings_ui_id {
                     spawn_settings_ui(SettingsCloseDeps {
                         settings: Arc::clone(&settings_for_loop),
@@ -604,6 +683,35 @@ fn main() -> Result<()> {
                     &settings_for_loop,
                     &layouts,
                 );
+            }
+            Event::UserEvent(UserEvent::Update(outcome)) => {
+                match outcome {
+                    UpdateOutcome::Staged(pending) => {
+                        // Announce it once, on the transition. The worker
+                        // only stages a given version once, so a user
+                        // sitting on 0.4.0 for a week is told about it on
+                        // the day it lands and never nagged again.
+                        let already_known = update_pending
+                            .as_ref()
+                            .is_some_and(|p| p.version == pending.version);
+                        update_pending = Some(*pending);
+                        if !already_known {
+                            if let Some(p) = update_pending.as_ref() {
+                                spawn_update_notification(&p.version);
+                            }
+                        }
+                    }
+                    UpdateOutcome::UpToDate | UpdateOutcome::Cleared => update_pending = None,
+                    // Already logged by the worker. The tray entry stays
+                    // as it was: a failed check is not news, and a user
+                    // who has an update staged shouldn't lose the button
+                    // to install it just because the *next* check
+                    // couldn't reach GitHub.
+                    UpdateOutcome::Failed => {}
+                }
+                if let Some(item) = item_update.as_ref() {
+                    refresh_menu_item(item, update_pending.as_ref());
+                }
             }
             _ => {}
         }

@@ -7,6 +7,7 @@ use crate::commands::UserCommand;
 use crate::wordlist_profiles::WordlistSettings;
 use poltertype_types::LayoutId;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
@@ -36,6 +37,10 @@ pub struct Settings {
     pub wordlists: WordlistSettings,
     #[serde(default)]
     pub sounds: SoundSettings,
+    /// Background update checks against GitHub Releases. The **only**
+    /// network access a default build performs — see [`UpdateSettings`].
+    #[serde(default)]
+    pub updates: UpdateSettings,
     /// Reserved for the AI subsystem (Phase 7). Disabled by default.
     #[serde(default)]
     pub ai: AiSettings,
@@ -53,6 +58,7 @@ impl Default for Settings {
             commands: Vec::new(),
             wordlists: WordlistSettings::default(),
             sounds: SoundSettings::default(),
+            updates: UpdateSettings::default(),
             ai: AiSettings::default(),
         }
     }
@@ -287,6 +293,66 @@ impl Default for SoundSettings {
             theme: "default".into(),
             volume: 0.6,
         }
+    }
+}
+
+/// Automatic updates from GitHub Releases.
+///
+/// This is the one place a default PolterType build talks to the
+/// network, and it is worth being precise about what that means. With
+/// `enabled = true` the app periodically fetches a small JSON manifest
+/// from `github.com`, and when it names a newer version, downloads that
+/// release's installer for this platform and verifies its checksum. The
+/// download is staged, never installed under the user's hands — it is
+/// applied when they quit or explicitly ask for a restart.
+///
+/// GitHub therefore sees what any HTTP server sees: the connecting IP
+/// and a User-Agent naming the running version. Nothing about the user,
+/// their typing, their layouts or their configuration is transmitted —
+/// there is no request body and no query string. This is not telemetry
+/// and it does not become telemetry.
+///
+/// `enabled = false` switches all of it off, permanently and with no
+/// residual "just one check on startup". A user who wants a build that
+/// never opens a socket sets this and has one.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct UpdateSettings {
+    /// Check for, download and stage new releases in the background.
+    ///
+    /// On by default. The alternative — an opt-in nobody finds — leaves
+    /// users on old builds of an *unsigned* app that they would then
+    /// have to update by hand, and that is the worse security posture,
+    /// not the better one.
+    pub enabled: bool,
+    /// Hours between checks. Clamped to a sane floor at read time
+    /// (see [`UpdateSettings::interval`]) so a hand-edited `0` cannot
+    /// turn the updater into a request loop against GitHub.
+    pub check_interval_hours: u64,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            check_interval_hours: 24,
+        }
+    }
+}
+
+/// Never check more often than this, whatever `config.toml` says.
+pub const MIN_UPDATE_INTERVAL_HOURS: u64 = 1;
+
+impl UpdateSettings {
+    /// The check interval, with the hand-edit floor applied.
+    ///
+    /// A release ships roughly monthly; the difference between checking
+    /// hourly and daily is nil for the user and free for us to refuse.
+    /// The floor exists so that a `check_interval_hours = 0` — a typo, or
+    /// a user reasoning that zero means "off" — can't hammer GitHub in a
+    /// tight loop from every installed copy of the app.
+    pub fn interval(&self) -> Duration {
+        Duration::from_secs(self.check_interval_hours.max(MIN_UPDATE_INTERVAL_HOURS) * 60 * 60)
     }
 }
 

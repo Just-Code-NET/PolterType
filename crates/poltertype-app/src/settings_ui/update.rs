@@ -2,7 +2,7 @@
 
 use iced::Task;
 use iced::widget::text_editor;
-use poltertype_core::settings::{Settings, SettingsStore};
+use poltertype_core::settings::{MIN_UPDATE_INTERVAL_HOURS, Settings, SettingsStore};
 use tracing::{info, warn};
 
 use super::enums::*;
@@ -72,6 +72,18 @@ impl SettingsApp {
                 let cur = i32::try_from(self.settings.engine.idle_timeout_ms).unwrap_or(2000);
                 let next = (cur + delta).clamp(250, 60_000);
                 self.settings.engine.idle_timeout_ms = u64::try_from(next).unwrap_or(2000);
+            }
+            Message::AutoUpdateToggled(b) => self.settings.updates.enabled = b,
+            Message::UpdateIntervalDelta(delta) => {
+                // Floor is the same `MIN_UPDATE_INTERVAL_HOURS` the
+                // engine clamps to at read time — the UI must not be
+                // able to express a value the app would silently ignore.
+                // Ceiling is a week: beyond that "automatic updates" is
+                // a checkbox that lies.
+                let cur = i64::try_from(self.settings.updates.check_interval_hours).unwrap_or(24);
+                let floor = i64::try_from(MIN_UPDATE_INTERVAL_HOURS).unwrap_or(1);
+                let next = (cur + delta).clamp(floor, 24 * 7);
+                self.settings.updates.check_interval_hours = u64::try_from(next).unwrap_or(24);
             }
 
             // ── Hotkeys ──────────────────────────────────────────
