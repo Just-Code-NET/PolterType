@@ -146,9 +146,19 @@ impl SettingsApp {
         let allow_list = &self.settings.languages.active;
         let implicit_all = allow_list.is_empty();
 
-        let subtitle = if implicit_all {
-            "All OS-active layouts are currently considered. \
-             Untick a box to restrict PolterType to a subset."
+        // Lead with WHERE the list comes from — first-run users read
+        // "en-US / uk-UA" as a product default and go looking for an
+        // "add language" button that (deliberately) doesn't exist:
+        // PolterType follows the OS keyboard configuration instead of
+        // keeping a second list to drift out of sync.
+        let subtitle = "This list mirrors the keyboard layouts enabled in your \
+             operating system. To add or remove a language, change your \
+             system's keyboard settings, then reopen this window."
+            .to_owned();
+
+        let status = if implicit_all {
+            "All of them are currently considered. Untick 'Active' to \
+             restrict PolterType to a subset."
                 .to_owned()
         } else {
             format!(
@@ -161,7 +171,8 @@ impl SettingsApp {
 
         let mut col = Column::new()
             .spacing(14)
-            .push(pane_header(b, "Languages", subtitle));
+            .push(pane_header(b, "Languages", subtitle))
+            .push(Text::new(status).size(12).color(b.muted));
 
         if self.os_layouts.is_empty() {
             col = col.push(card(
