@@ -64,7 +64,7 @@ impl SettingsApp {
             col = col.push(
                 Text::new(
                     "All OS-active layouts are currently considered. \
-                     Untick a box to restrict poltertype to a subset.",
+                     Untick a box to restrict PolterType to a subset.",
                 )
                 .size(13),
             );
