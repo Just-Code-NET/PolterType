@@ -4,6 +4,39 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — focus tracking on Linux (Hyprland + X11)
+
+Per-app features stop being Windows-only. The focus tracker — the
+component that answers "which app is the user typing into?" — now has
+two Linux backends: Hyprland (over the compositor's IPC socket, the
+same transport the layout switcher uses) and X11 (EWMH
+`_NET_ACTIVE_WINDOW`). Both report the focused process's executable
+basename, exactly like the Windows tracker, so `[exceptions].disabled_apps`,
+per-app wordlist profiles, and `apps = [...]` scoping on smart
+commands now work on those setups with the same config values you'd
+write on Windows (minus the `.exe`). GNOME and KDE on Wayland still
+have no active-window query — the tracker stays a no-op there.
+
+### Added — the tray now tells you when keyboard hooks are unavailable
+
+Previously, when the keyboard listener failed to start — most commonly
+a Wayland session without `input`-group access — the tray came up
+looking perfectly healthy while the app silently did nothing. Now the
+failure is surfaced three ways: a "⚠ Keyboard hooks unavailable —
+Setup Guide…" entry at the top of the tray menu (opens the permissions
+guide in your browser), a warning suffix on the tray tooltip, and a
+one-time system notification at startup explaining what happened and
+where the fix is.
+
+### Added — a settings-window screenshot in the README
+
+### Fixed — one more "Poltertype" → "PolterType" in the settings window
+
+The Languages panel's helper text was still spelling the product name
+in lowercase.
+
 ## [0.2.2] — the name is spelled "PolterType" everywhere it is shown
 
 ### Changed — the displayed product name is now "PolterType"

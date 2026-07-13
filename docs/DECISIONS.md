@@ -850,3 +850,65 @@ Field reports on v0.1.1: (a) "після автоперемикання лиша
   grabbing keyd's virtual device would swallow our own replay.
 * Wayland `zwp_virtual_keyboard_v1` — still the proper long-term path
   for injection; orthogonal to buffer/absorb logic, tracked separately.
+
+## 2026-07-13 — Linux focus tracking + the tray finally admits hook failures
+
+Two of Phase 6's leftovers closed together, because they share a theme:
+things the app silently didn't do on Linux.
+
+**Focus tracking (was: the "quietest hole in the product", PLAN §3.9).**
+`create_focus_tracker()` returned `NoopFocusTracker` everywhere except
+Windows, so `[exceptions].disabled_apps`, per-app wordlist profiles and
+`apps = [...]` scoping on smart commands silently did nothing on Linux.
+Decisions made:
+
+* **Two backends, probed in order: Hyprland IPC, then X11 EWMH.**
+  Hyprland answers `activewindow` over the same UNIX socket the layout
+  switcher already uses (`hyprctl` subprocess as fallback); X11 reads
+  `_NET_ACTIVE_WINDOW` on the root, then `_NET_WM_PID` on that window.
+  Both are polled synchronously — mirroring the Windows tracker's
+  model, where the *callers* provide the cadence — no event thread.
+* **The reported identity is the executable basename via
+  `/proc/<pid>/exe`**, falling back to `/proc/<pid>/comm`, then the
+  window class. That makes the answer the exact analogue of the
+  Windows tracker (`QueryFullProcessImageNameW` basename), so
+  `disabled_apps` entries behave the same across OSes: `"code"`,
+  `"alacritty"` — case-insensitive.
+* **A 150 ms TTL cache wraps whichever backend wins.** Unlike the
+  Win32 query, our backends are real I/O (socket / X round-trip), and
+  `focused_exe()` sits on the engine's word-boundary path plus the
+  250 ms profile watcher. One real query per 150 ms window is
+  invisible to humans and makes the polling free.
+* **XWayland's X server is deliberately NOT used as a fallback on
+  non-Hyprland Wayland.** It only sees XWayland windows, so its
+  `_NET_ACTIVE_WINDOW` goes stale the moment focus moves to a native
+  Wayland window — a wrong answer is worse than `None`. GNOME/KDE on
+  Wayland keep the noop tracker until per-DE backends (KWin script /
+  GNOME extension) exist.
+* The IPC socket helpers are a ~40-line copy of
+  `poltertype-layout/src/linux/hyprland/ipc.rs` — those are
+  `pub(crate)` there, and a shared crate for this much code isn't
+  worth the dependency edge yet. Noted in both files.
+
+**Startup-failure surfacing (was: `warn!` into a log file).** When the
+input listener failed to start — Wayland without `input`-group access
+being the common case — the tray came up looking perfectly healthy and
+the app just did nothing. The listener has returned a descriptive
+`InputError` since day one *specifically* so the tray could show an
+onboarding banner; the plumbing was the missing half. Now a failure:
+
+* prepends a "⚠ Keyboard hooks unavailable — Setup Guide…" tray menu
+  entry that opens `docs/PERMISSIONS.md` on GitHub (pinned to `main`,
+  so the guide tracks the latest setup script, not the failed binary);
+* appends "⚠ no keyboard access, see Setup Guide" to the tooltip
+  (part of `TrayState`, so it survives every tray refresh);
+* fires one startup notification through the error-notification path,
+  which is deliberately NOT gated by `[general].show_notifications` —
+  that toggle governs cosmetic switch chatter, and "the app you just
+  launched cannot do its job" is not cosmetic.
+
+The original sketch wanted a "Run setup" button that executes
+`setup-linux.sh` directly. Rejected for now: that means the tray
+spawning a `sudo`/`pkexec` prompt, which is exactly the scary pattern
+the docs warn against — a guide the user reads and runs themselves is
+more honest. Revisit if onboarding drop-off proves real.

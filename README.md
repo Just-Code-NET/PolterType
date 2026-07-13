@@ -5,12 +5,18 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-> **Status:** v0.2.0 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.3.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11). The macOS backend is
 > written from Apple's API docs and validated on CI, but hasn't yet
 > been runtime-tuned by a hardware-equipped contributor. Installers
 > are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
 > full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
+
+![PolterType settings window — Languages panel](docs/screenshots/settings-window.png)
+
+*The settings window (`poltertype --settings`). Day to day the app is
+just a tray icon; you open this window only to tweak languages,
+hotkeys, smart commands, wordlists, and per-app exceptions.*
 
 ## Goals
 
