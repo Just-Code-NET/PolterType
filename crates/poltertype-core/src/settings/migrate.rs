@@ -1,4 +1,7 @@
-//! One-shot adoption of the legacy `kb-switcher` config directory.
+//! Migrations that run against an existing user config: adoption of
+//! the legacy `kb-switcher` config directory, and retiring the
+//! default app skip-list that v0.4.1 and earlier wrote into every
+//! `config.toml`.
 //!
 //! The 0.1.x releases shipped under the old name and kept user data
 //! in the ProjectDirs tree for `dev.opensource.kb-switcher`
@@ -9,6 +12,8 @@
 //! location yet — we copy the legacy tree across. The legacy
 //! directory itself is left untouched as a backup.
 
+use super::consts::LEGACY_DEFAULT_DISABLED_APPS;
+use super::types::Settings;
 use directories::ProjectDirs;
 use std::fs;
 use std::path::Path;
@@ -76,4 +81,49 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
         }
     }
     Ok(copied)
+}
+
+/// Clear `[exceptions].disabled_apps` when it is still, verbatim, the
+/// list PolterType used to ship as a default. Returns `true` when the
+/// settings were changed and the caller should persist them.
+///
+/// Why an existing config needs touching at all: the old default was
+/// not a suggestion the user could ignore — it was *written into their
+/// file* on first launch, all 69 entries of it. Shipping an empty
+/// default in the binary therefore fixes nothing for anyone who
+/// already ran an older build; their `config.toml` still spells out
+/// the list, and PolterType would go on being mute in their editor
+/// forever. The fix has to reach into the file.
+///
+/// Why only on an exact match: a skip-list somebody curated is a
+/// deliberate statement about where they don't want us typing, and
+/// clobbering it would be a far worse bug than the one we're fixing.
+/// Set equality (order- and duplicate-insensitive — TOML round-trips
+/// don't promise order) against the frozen historical list is the
+/// narrowest test that catches every untouched config and no touched
+/// one. Remove a single entry by hand and we leave you alone.
+///
+/// Idempotent by construction: once cleared, the list is empty and can
+/// never match a 69-element set again, so there is no migration flag to
+/// keep and no schema bump to coordinate.
+pub(crate) fn retire_default_skip_list(settings: &mut Settings) -> bool {
+    let current: std::collections::BTreeSet<&str> = settings
+        .exceptions
+        .disabled_apps
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let shipped: std::collections::BTreeSet<&str> =
+        LEGACY_DEFAULT_DISABLED_APPS.iter().copied().collect();
+    if current != shipped {
+        return false;
+    }
+    settings.exceptions.disabled_apps.clear();
+    info!(
+        retired = LEGACY_DEFAULT_DISABLED_APPS.len(),
+        "cleared the default app skip-list from config.toml — PolterType shipped it as a \
+         default, it silently disabled auto-switching in every editor and terminal, and it \
+         is empty by default as of v0.4.2; add entries back if you want them"
+    );
+    true
 }

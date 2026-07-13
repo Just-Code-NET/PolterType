@@ -148,18 +148,13 @@ them on the **Commands** pane in Settings.
 ## Dev-friendly: stays out of code
 
 If you write code, you _don't_ want a layout switcher meddling with
-identifiers. Three layers protect you:
+identifiers. Two guards protect you, and they are pure engine logic —
+they work in every app, on every OS:
 
-- **Per-app skip list** (`[exceptions].disabled_apps` in
-  `config.toml`) — covers VS Code / Cursor / JetBrains family /
-  Sublime / Zed / Neovide / Windows Terminal / alacritty / kitty /
-  wezterm / PowerShell / cmd by default. Edit the list to add or
-  remove. **Windows only for now** — see the caveat below.
-- **Per-token identifier guard** — even outside an IDE, the engine
-  doesn't auto-switch on tokens that look like identifiers:
-  `snake_case`, `camelCase`, `letter+digit`, or anything containing
-  `\\` / `;` / `` ` ``. Toggle via
-  `engine.suppress_in_identifiers = false` in `config.toml`.
+- **Per-token identifier guard** — the engine doesn't auto-switch on
+  tokens that look like identifiers: `snake_case`, `camelCase`,
+  `letter+digit`, or anything containing `\\` / `;` / `` ` ``. Toggle
+  via `engine.suppress_in_identifiers = false` in `config.toml`.
 - **Plausibility-keep** — if the word you typed already reads as
   plausible for the current layout (real letters, sane vowel ratio,
   no ridiculous consonant pile-ups), the engine refuses to switch
@@ -167,13 +162,24 @@ identifiers. Three layers protect you:
   `terraform`, `nginx`, surnames, and other "real but uncommon"
   vocabulary from getting auto-corrected to Cyrillic noise.
 
-> **Anything that keys off the focused app is Windows-only today.**
-> Reading which application has focus is implemented for Windows; on
-> macOS and Linux the focus tracker is a no-op. So the per-app skip
-> list above, the per-app wordlist profiles below, and the `apps =
-> [...]` scoping on smart commands all silently do nothing outside
-> Windows. The identifier guard and plausibility-keep are pure
-> engine logic and work everywhere.
+If that isn't enough for a particular app, silence it there
+explicitly:
+
+- **Per-app skip list** — `[exceptions].disabled_apps` in
+  `config.toml`, matched case-insensitively against the focused
+  process's executable basename (`Code.exe`, `code`, `kitty`, …).
+  **Empty by default**: PolterType corrects everywhere until you tell
+  it not to. We used to ship a long list of editors and terminals
+  here, and the result was an app that appeared dead in exactly the
+  windows developers type in. Add the entries you want, or manage
+  them on the **Exceptions** pane in Settings.
+
+> **The skip list needs a focus tracker, and one doesn't exist
+> everywhere.** Reading which application has focus is implemented on
+> Windows, Hyprland and X11. On macOS and on non-Hyprland Wayland
+> (GNOME/KDE) the tracker is a no-op, so the per-app skip list, the
+> per-app wordlist profiles below, and the `apps = [...]` scoping on
+> smart commands silently do nothing there.
 
 ### Adding your own vocabulary
 

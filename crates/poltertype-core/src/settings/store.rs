@@ -33,7 +33,25 @@ impl SettingsStore {
         let path = Self::default_path()?;
         let inner = match fs::read_to_string(&path) {
             Ok(s) => match toml::from_str::<Settings>(&s) {
-                Ok(parsed) => parsed,
+                Ok(mut parsed) => {
+                    // Retire the default app skip-list that older
+                    // builds wrote into this file. Persisted rather
+                    // than fixed up in memory: a config that says one
+                    // thing while the app does another is its own bug,
+                    // and the user has to be able to see — and undo —
+                    // what we did to their file.
+                    if retire_default_skip_list(&mut parsed) {
+                        match write_atomically(&path, &parsed) {
+                            Ok(()) => info!(?path, "migrated config.toml"),
+                            Err(e) => warn!(
+                                ?path, err = %e,
+                                "could not persist the skip-list migration; \
+                                 auto-switching is enabled for this run regardless"
+                            ),
+                        }
+                    }
+                    parsed
+                }
                 Err(e) => {
                     warn!(?path, err = %e, "config.toml is invalid, using defaults; \
                         the user's file is preserved for them to fix");

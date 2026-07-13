@@ -149,7 +149,7 @@ impl Default for EngineSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ExceptionSettings {
     /// Foreground apps where auto-switching is disabled. Each entry
@@ -159,109 +159,26 @@ pub struct ExceptionSettings {
     /// (`Ctrl+Shift+Backspace`) ignores this list — devs can still
     /// explicitly fix a wrong-layout word inside an IDE.
     ///
-    /// Defaults cover the most common modern editors / IDEs /
-    /// terminals across all three OSes; users edit `config.toml`
-    /// to adjust.
-    #[serde(default = "default_disabled_apps")]
+    /// **Empty by default: we do not decide for the user where they
+    /// are allowed to type.** We used to ship a ~50-entry list of
+    /// editors, IDEs and terminals here, on the theory that
+    /// auto-switching is most likely to corrupt syntax there. It was
+    /// harmless only for as long as it was inert: no Linux focus
+    /// tracker existed, `focused_exe()` returned `None`, and the list
+    /// never matched. The moment the Hyprland/X11 tracker landed the
+    /// list armed itself and the app went silent in exactly the
+    /// windows a developer types in — indistinguishable, from the
+    /// outside, from "layout switching is broken". A default that only
+    /// works because it never runs is not a default; the engine's own
+    /// guards (`suppress_in_identifiers`, `min_word_length`,
+    /// dictionary confidence) are what keep code safe, and they apply
+    /// everywhere. Users who *do* want an app skipped add it to
+    /// `config.toml` themselves.
+    #[serde(default)]
     pub disabled_apps: Vec<String>,
     /// Words that should never be auto-corrected.
     #[serde(default)]
     pub word_whitelist: Vec<String>,
-}
-
-impl Default for ExceptionSettings {
-    fn default() -> Self {
-        Self {
-            disabled_apps: default_disabled_apps(),
-            word_whitelist: Vec::new(),
-        }
-    }
-}
-
-/// Default per-app skip-list. Conservative: we ship the apps where
-/// auto-switching is most likely to corrupt syntax. Anything else the
-/// user has to add by hand. Matched case-insensitively, basename only.
-pub(crate) fn default_disabled_apps() -> Vec<String> {
-    [
-        // Editors / IDEs (Windows .exe + Linux/macOS bare names).
-        "Code.exe",
-        "code",
-        "Code - Insiders.exe",
-        "code-insiders",
-        "Cursor.exe",
-        "cursor",
-        "Cursor",
-        "idea64.exe",
-        "idea.exe",
-        "idea",
-        "rustrover64.exe",
-        "rustrover",
-        "pycharm64.exe",
-        "pycharm",
-        "webstorm64.exe",
-        "webstorm",
-        "clion64.exe",
-        "clion",
-        "goland64.exe",
-        "goland",
-        "phpstorm64.exe",
-        "phpstorm",
-        "rider64.exe",
-        "rider",
-        "datagrip64.exe",
-        "datagrip",
-        "android-studio.exe",
-        "android-studio",
-        "fleet.exe",
-        "fleet",
-        "sublime_text.exe",
-        "sublime_text",
-        "Sublime Text",
-        "Notepad++.exe",
-        "Zed.exe",
-        "zed",
-        "Zed",
-        "neovide.exe",
-        "neovide",
-        "gvim.exe",
-        "gvim",
-        "nvim-qt.exe",
-        "emacs.exe",
-        // Terminals (Windows + Linux/macOS).
-        "WindowsTerminal.exe",
-        "wt.exe",
-        "powershell.exe",
-        "pwsh.exe",
-        "cmd.exe",
-        "ConEmu64.exe",
-        "ConEmu.exe",
-        "tabby.exe",
-        "tabby",
-        "alacritty.exe",
-        "alacritty",
-        "wezterm-gui.exe",
-        "wezterm",
-        "kitty.exe",
-        "kitty",
-        "konsole",
-        "gnome-terminal",
-        "gnome-terminal-server",
-        "xterm",
-        "tilix",
-        "Terminal", // macOS Terminal.app
-        "iTerm2",
-        // Terminal-hosted shells / multiplexers.
-        "git-bash.exe",
-        "mintty.exe",
-        "tmux",
-        "screen",
-        // Text-mode editors hosted in terminals — we skip them by
-        // window class only loosely; the parent terminal exe already
-        // matches above.
-    ]
-    .iter()
-    .map(|s| (*s).to_owned())
-    .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

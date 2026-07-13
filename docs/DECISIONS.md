@@ -217,12 +217,11 @@ a function name.
 The trade-off in v0.1 is two complementary filters, both
 opt-out-able via `config.toml`:
 
-* **Per-app**: `[exceptions].disabled_apps` ships with a sensible
-  default list — VS Code / Cursor, every JetBrains IDE, Sublime, Zed,
-  Neovide, Windows Terminal, alacritty / kitty / wezterm,
-  PowerShell / cmd, etc. The focus tracker (`poltertype-input::focus`) reads
-  the foreground process executable and the engine matches case-
-  insensitively. Match → skip auto-decision.
+* **Per-app**: `[exceptions].disabled_apps`. The focus tracker
+  (`poltertype-input::focus`) reads the foreground process executable
+  and the engine matches case-insensitively. Match → skip
+  auto-decision. **The list is empty by default** — see "Reversed: no
+  default app skip-list" below.
 * **Per-token**: even outside the IDE list, the engine checks
   `looks_like_code_token(buffer)` from `poltertype-detect`. If the just-
   finished token contains an underscore, has a mid-token capital
@@ -1033,3 +1032,42 @@ only because the app is unsigned and the release notes already tell
 first-time users to strip it by hand; the moment we ship notarised
 builds, that line comes out. Treat the macOS path as unproven until
 someone runs it on a Mac.
+
+## Reversed: no default app skip-list
+
+`[exceptions].disabled_apps` used to ship with ~50 entries — VS Code,
+Cursor, the JetBrains family, Sublime, Zed, Neovide, kitty, alacritty,
+wezterm, konsole, PowerShell, cmd, tmux. The reasoning (above, and it
+still reads well) was that corrupting a function name costs far more
+than missing a prose correction inside an IDE.
+
+It shipped broken and nobody noticed, because it never ran. Until the
+Linux focus tracker landed, `create_focus_tracker()` returned
+`NoopFocusTracker` outside Windows, `focused_exe()` returned `None`,
+and the match never fired. The list was inert decoration on every
+Linux machine.
+
+Then the Hyprland/X11 tracker arrived and armed it. From the user's
+side the app simply stopped working: type a wrong-layout word in
+Sublime — nothing. In kitty — nothing. No error, no notification, no
+log line above `DEBUG`. The correct diagnosis ("your editor is on a
+skip-list you never wrote, and a new focus tracker just started
+enforcing it") is not one any user is going to reach; "the layout
+switching is broken" is.
+
+So the default is now **empty**, and the reasoning above is demoted
+from a shipped default to advice. What actually keeps the corrector
+out of code is the per-token guard (`suppress_in_identifiers`), the
+plausibility-keep, `min_word_length` and the dictionary confidence
+threshold — all of which are engine logic that runs in every app on
+every OS, needs no focus tracker, and has no way to make the product
+look dead. A skip-list is a blunt instrument the user can pick up if
+they want it; it is not something we hand them pre-loaded and aimed at
+their own editor.
+
+The general lesson is worth more than the specific fix: **a default
+whose only saving grace is that it doesn't execute is not a default,
+it is a landmine.** When a dormant feature (here: focus tracking) is
+implemented for a new platform, every config default gated behind it
+changes behaviour on that platform — audit them as part of the same
+change, not after a user reports the product as broken.

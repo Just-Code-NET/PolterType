@@ -4,6 +4,37 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed — PolterType no longer arrives with your editor pre-muted
+
+`[exceptions].disabled_apps` shipped with a ~50-entry default skip-list
+— VS Code, Cursor, the JetBrains IDEs, Sublime, Zed, kitty, alacritty,
+konsole, PowerShell, tmux and more. On Linux it had never done anything:
+`focused_exe()` returned `None` there, so the list could not match. The
+Hyprland/X11 focus tracker added in 0.3.0 made it real, and PolterType
+abruptly went silent in exactly the windows developers type in — no
+error, no notification, nothing above `DEBUG` in the log. It reads, from
+the outside, as "layout switching is broken".
+
+**The default list is now empty.** PolterType corrects everywhere until
+you tell it not to. What keeps the corrector out of your code is
+unchanged and never depended on knowing which app has focus: the
+identifier guard (`engine.suppress_in_identifiers`), plausibility-keep,
+`min_word_length`, and the dictionary confidence threshold.
+
+The skip-list itself still works and is still honoured — it is now
+opt-in. Add apps in `config.toml` or on the Settings → Exceptions pane.
+
+**Existing installs are migrated on first launch.** Shipping an empty
+default in the binary would have fixed nothing for anyone who already
+ran an older build: those 69 entries are written into *their*
+`config.toml`, and the app reads the file, not the default. So this
+release clears the list out of the file — but only when it is still
+the shipped default, entry for entry. Take one app out of the list, or
+add one of your own, and PolterType treats it as yours and never
+touches it. The migration is logged at `INFO` when it fires.
+
 ## [0.4.1] — the three installers finally agree on how to spell a version
 
 ### Fixed — the Windows installer is named like the other two

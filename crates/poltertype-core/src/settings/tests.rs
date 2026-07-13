@@ -123,21 +123,34 @@ manual_switch_last = "Ctrl+Shift+Backspace"
     assert_eq!(parsed.hotkeys.pause_toggle, "Ctrl+Shift+Space");
 }
 
+/// A fresh install auto-switches everywhere. We ship no app skip-list:
+/// the previous default silently disabled the app in every editor,
+/// IDE and terminal, which — once a Linux focus tracker existed to
+/// enforce it — was reported as "layout switching is broken".
 #[test]
-fn default_disabled_apps_covers_common_editors() {
-    let s = Settings::default();
-    let lower: Vec<String> = s
-        .exceptions
-        .disabled_apps
-        .iter()
-        .map(|s| s.to_ascii_lowercase())
-        .collect();
-    for must in ["code.exe", "cursor.exe", "windowsterminal.exe", "alacritty"] {
-        assert!(
-            lower.iter().any(|s| s == must),
-            "expected `{must}` in default disabled_apps"
-        );
-    }
+fn default_disabled_apps_is_empty() {
+    assert!(Settings::default().exceptions.disabled_apps.is_empty());
+}
+
+/// The list is still honoured — it is opt-in, not gone.
+#[test]
+fn user_supplied_disabled_apps_round_trips() {
+    let raw = r#"
+schema_version = 1
+
+[exceptions]
+disabled_apps = ["Code.exe", "kitty"]
+"#;
+    let parsed: Settings = toml::from_str(raw).expect("parse exceptions");
+    assert_eq!(parsed.exceptions.disabled_apps, ["Code.exe", "kitty"]);
+}
+
+/// A `config.toml` with no `[exceptions]` block at all must not
+/// resurrect a skip-list through some other default path.
+#[test]
+fn absent_exceptions_block_yields_no_skips() {
+    let parsed: Settings = toml::from_str("schema_version = 1\n").expect("parse minimal");
+    assert!(parsed.exceptions.disabled_apps.is_empty());
 }
 
 // ─── Legacy kb-switcher config migration ──────────────────────────
@@ -224,4 +237,84 @@ fn no_migration_without_legacy_config_toml() {
 
     assert!(!migrate_dir(&legacy.0, &fresh.0));
     assert!(!fresh.0.join("wordlists").exists());
+}
+
+// ─── Retiring the shipped default skip-list ───────────────────────
+
+/// The whole point: a config written by v0.4.1 or earlier carries the
+/// 69-entry default, and an upgrade must clear it — otherwise the new
+/// empty default in the binary changes nothing for existing users.
+#[test]
+fn retires_an_untouched_shipped_skip_list() {
+    let mut s = Settings::default();
+    s.exceptions.disabled_apps = LEGACY_DEFAULT_DISABLED_APPS
+        .iter()
+        .map(|a| (*a).to_owned())
+        .collect();
+
+    assert!(retire_default_skip_list(&mut s));
+    assert!(s.exceptions.disabled_apps.is_empty());
+}
+
+/// Order is not part of the identity — TOML round-trips and hand edits
+/// reorder freely, and a reordered list is still the untouched default.
+#[test]
+fn retires_the_shipped_list_regardless_of_order() {
+    let mut apps: Vec<String> = LEGACY_DEFAULT_DISABLED_APPS
+        .iter()
+        .map(|a| (*a).to_owned())
+        .collect();
+    apps.reverse();
+    let mut s = Settings::default();
+    s.exceptions.disabled_apps = apps;
+
+    assert!(retire_default_skip_list(&mut s));
+    assert!(s.exceptions.disabled_apps.is_empty());
+}
+
+/// The load-bearing guard. Anything the user actually curated survives
+/// — dropping one entry from the old default is enough to prove intent,
+/// and wiping a list somebody wrote on purpose would be a worse bug
+/// than the one this migration exists to fix.
+#[test]
+fn leaves_a_curated_skip_list_alone() {
+    for curated in [
+        // Shipped default minus one entry — the user took kitty out.
+        LEGACY_DEFAULT_DISABLED_APPS
+            .iter()
+            .filter(|a| **a != "kitty")
+            .map(|a| (*a).to_owned())
+            .collect::<Vec<_>>(),
+        // Shipped default plus one — they added their own.
+        LEGACY_DEFAULT_DISABLED_APPS
+            .iter()
+            .map(|a| (*a).to_owned())
+            .chain(["obs".to_owned()])
+            .collect(),
+        // Nothing like the default at all.
+        vec!["Code.exe".to_owned()],
+    ] {
+        let mut s = Settings::default();
+        s.exceptions.disabled_apps = curated.clone();
+
+        assert!(
+            !retire_default_skip_list(&mut s),
+            "curated list must not be reported as migrated: {curated:?}"
+        );
+        assert_eq!(s.exceptions.disabled_apps, curated);
+    }
+}
+
+/// Runs on every load, so it has to be a no-op the second time.
+#[test]
+fn retiring_the_skip_list_is_idempotent() {
+    let mut s = Settings::default();
+    s.exceptions.disabled_apps = LEGACY_DEFAULT_DISABLED_APPS
+        .iter()
+        .map(|a| (*a).to_owned())
+        .collect();
+
+    assert!(retire_default_skip_list(&mut s));
+    assert!(!retire_default_skip_list(&mut s));
+    assert!(!retire_default_skip_list(&mut Settings::default()));
 }
