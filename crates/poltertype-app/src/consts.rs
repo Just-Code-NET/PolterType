@@ -18,6 +18,13 @@ pub(crate) const DEFAULT_SWITCH_LAST: &str = "Ctrl+Shift+Backspace";
 /// keystream backend; any explicit custom binding wins.
 pub(crate) const WAYLAND_SAFE_SWITCH_LAST: &str = "Ctrl+Shift+F9";
 
+/// Permissions / onboarding guide the tray's "Setup Guide…" alert
+/// entry opens when keyboard hooks fail to start. Pinned to `main` —
+/// the guide must track the latest setup script, not the version of
+/// the binary that failed.
+pub(crate) const SETUP_GUIDE_URL: &str =
+    "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";
+
 /// One-time README seeded into the user layouts folder. Mirrors the
 /// wordlists README's plain-text, no-markdown style.
 pub(crate) const USER_LAYOUTS_README: &str = "\

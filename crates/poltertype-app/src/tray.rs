@@ -9,12 +9,17 @@ use crate::consts::*;
 use crate::icon_render;
 use crate::types::*;
 
-pub(crate) fn tooltip_for(layout: Option<&LayoutId>, paused: bool) -> String {
-    match (layout, paused) {
+pub(crate) fn tooltip_for(layout: Option<&LayoutId>, paused: bool, input_alert: bool) -> String {
+    let base = match (layout, paused) {
         (Some(l), false) => format!("{APP_NAME} — {l}"),
         (Some(l), true) => format!("{APP_NAME} — {l} (paused)"),
         (None, false) => APP_NAME.to_owned(),
         (None, true) => format!("{APP_NAME} (paused)"),
+    };
+    if input_alert {
+        format!("{base} — ⚠ no keyboard access, see Setup Guide")
+    } else {
+        base
     }
 }
 
@@ -34,7 +39,11 @@ pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayS
         }
         Err(e) => warn!(?e, "could not render tray icon"),
     }
-    if let Err(e) = tray.set_tooltip(Some(tooltip_for(state.layout.as_ref(), state.paused))) {
+    if let Err(e) = tray.set_tooltip(Some(tooltip_for(
+        state.layout.as_ref(),
+        state.paused,
+        state.input_alert,
+    ))) {
         warn!(?e, "could not update tray tooltip");
     }
     item_pause.set_text(if state.paused {

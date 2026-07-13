@@ -279,15 +279,31 @@ fn main() -> Result<()> {
         .context("spawn engine thread")?;
 
     // ─── Input listener ────────────────────────────────────────────
-    let mut input_listener = create_listener().ok();
-    if let Some(listener) = input_listener.as_mut() {
-        if let Err(e) = listener.start(key_tx) {
-            warn!(?e, "input listener failed to start");
-        } else {
-            info!(backend = listener.backend_name(), "input listener started");
+    // A failure here means the app's whole reason to exist is off —
+    // so besides the log line we keep the error text and surface it
+    // as an onboarding alert: tooltip suffix, a "Setup Guide" tray
+    // menu entry, and a one-shot notification. A log file the user
+    // has never heard of is not a user interface.
+    let mut input_alert: Option<String> = None;
+    let mut input_listener = match create_listener() {
+        Ok(l) => Some(l),
+        Err(e) => {
+            warn!(
+                ?e,
+                "no input listener backend; engine will receive no events"
+            );
+            input_alert = Some(e.to_string());
+            None
         }
-    } else {
-        warn!("no input listener backend; engine will receive no events");
+    };
+    if let Some(listener) = input_listener.as_mut() {
+        match listener.start(key_tx) {
+            Ok(()) => info!(backend = listener.backend_name(), "input listener started"),
+            Err(e) => {
+                warn!(?e, "input listener failed to start");
+                input_alert = Some(e.to_string());
+            }
+        }
     }
 
     // On the Wayland/evdev backend the OS-level `global-hotkey` grab
@@ -304,6 +320,17 @@ fn main() -> Result<()> {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
     let menu = Menu::new();
+    // Onboarding alert entry — present only when keyboard hooks
+    // failed to start (Wayland without the `input` group, X11 connect
+    // refused, macOS without Accessibility). Clicking opens the
+    // setup guide (docs/PERMISSIONS.md) in the browser.
+    let item_setup = input_alert
+        .as_ref()
+        .map(|_| MenuItem::new("⚠ Keyboard hooks unavailable — Setup Guide…", true, None));
+    if let Some(item) = item_setup.as_ref() {
+        menu.append_items(&[item, &PredefinedMenuItem::separator()])
+            .context("populate tray alert entry")?;
+    }
     let item_settings_ui = MenuItem::new("Settings…", true, None);
     let item_settings_file = MenuItem::new("Edit config.toml…", true, None);
     let item_logs = MenuItem::new("Open Logs Folder…", true, None);
@@ -331,6 +358,7 @@ fn main() -> Result<()> {
         &item_quit,
     ])
     .context("populate tray menu")?;
+    let setup_id = item_setup.as_ref().map(|i| i.id().clone());
     let settings_ui_id = item_settings_ui.id().clone();
     let settings_file_id = item_settings_file.id().clone();
     let logs_id = item_logs.id().clone();
@@ -350,10 +378,26 @@ fn main() -> Result<()> {
 
     let tray: TrayIcon = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip(tooltip_for(initial_layout.as_ref(), false))
+        .with_tooltip(tooltip_for(
+            initial_layout.as_ref(),
+            false,
+            input_alert.is_some(),
+        ))
         .with_icon(initial_icon)
         .build()
         .context("build tray icon")?;
+
+    // One-shot startup notification for the same failure. Uses the
+    // error-notification path (NOT gated by `show_notifications`):
+    // without hooks the app silently does nothing, which is exactly
+    // the "user waits for something that never happens" case.
+    if let Some(reason) = input_alert.as_deref() {
+        spawn_error_notification(format!(
+            "Keyboard hooks are unavailable — automatic layout switching is off.\n\
+             {reason}\n\
+             Tray menu → \"Setup Guide\" explains the fix."
+        ));
+    }
 
     // Cloned reference into the event loop so we can flip the menu
     // item's text between "⏸ Pause auto-switch" and "▶ Resume
@@ -457,6 +501,7 @@ fn main() -> Result<()> {
     let mut tray_state = TrayState {
         layout: initial_layout,
         paused: false,
+        input_alert: input_alert.is_some(),
     };
 
     info!("entering event loop");
@@ -532,6 +577,15 @@ fn main() -> Result<()> {
                     }
                 } else if id == pause_id {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
+                } else if Some(&id) == setup_id.as_ref() {
+                    // Pinned to `main`: the guide must reflect the
+                    // latest setup script, not the binary that failed.
+                    if let Err(e) = opener::open_browser(SETUP_GUIDE_URL) {
+                        warn!(?e, "could not open the setup guide");
+                        spawn_error_notification(format!(
+                            "Could not open the setup guide.\nSee {SETUP_GUIDE_URL}"
+                        ));
+                    }
                 }
             }
             Event::UserEvent(UserEvent::Hotkey(id)) => {

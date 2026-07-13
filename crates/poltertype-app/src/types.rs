@@ -16,12 +16,16 @@ use poltertype_types::LayoutId;
 use tracing::debug;
 
 /// Snapshot of "what should the tray look like right now". We need
-/// both fields to render the icon / tooltip correctly — paused state
+/// all fields to render the icon / tooltip correctly — paused state
 /// affects styling regardless of layout, and vice versa — so we
 /// redraw from the whole struct on every relevant event.
 pub(crate) struct TrayState {
     pub(crate) layout: Option<LayoutId>,
     pub(crate) paused: bool,
+    /// Keyboard hooks failed to start. Fixed at startup: the only
+    /// recovery is fixing permissions and relaunching, so this never
+    /// flips back at runtime.
+    pub(crate) input_alert: bool,
 }
 
 /// Type alias for the shared profile dictionary cache. Behind an
