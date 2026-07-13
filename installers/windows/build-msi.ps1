@@ -1,10 +1,15 @@
 # Build the Windows MSI installer.
 #
 # Inputs:
-#   $env:VERSION     — release version, e.g. "0.1.0" or "v0.1.0-alpha.1"
-#                      (any leading "v" and pre-release suffix are stripped
-#                      before being passed to WiX, which only accepts
-#                      M.m.b[.r] numeric versions).
+#   $env:VERSION     — release version, e.g. "0.1.0" or "v0.1.0-alpha.1".
+#                      A leading "v" is stripped everywhere; the
+#                      pre-release suffix survives into the file name
+#                      but not into the WiX ProductVersion, which only
+#                      accepts M.m.b[.r] numerics. See the normalise
+#                      block below.
+#
+# Output is `poltertype-<version>-x86_64-pc-windows-msvc.msi`, matching
+# the AppImage and DMG naming — all three strip the tag's "v".
 #   $env:BIN_PATH    — path to the already-built poltertype.exe
 #   $env:DATA_DIR    — path to the prepared data tree (FSTs + TOMLs);
 #                      defaults to `target/dist/data`, which is where
@@ -40,9 +45,23 @@ function Get-WixBinDir {
 
 # ─── normalise inputs ─────────────────────────────────────────────────
 $rawVersion = if ($env:VERSION) { $env:VERSION } else { '0.0.0' }
-# Strip leading "v" (tag-like) and any "-prerelease" suffix; WiX rejects
-# semver pre-release tags (it does its own M.m.b[.r] parsing).
-$msiVersion = $rawVersion.TrimStart('v').Split('-')[0]
+
+# Two different versions come out of the tag, and they are not
+# interchangeable:
+#
+#   $fileVersion — for the .msi *file name*. Strips only the tag's
+#                  leading "v", exactly like build-appimage.sh and
+#                  build-dmg.sh do, so all three artifacts of a release
+#                  are named alike. The pre-release suffix stays: an
+#                  rc has to be a distinct file from the final, or
+#                  `poltertype-0.4.0-rc.1` and `poltertype-0.4.0` would
+#                  collide under one name.
+#
+#   $msiVersion  — for WiX's ProductVersion. Also drops the
+#                  "-prerelease" suffix, because WiX does its own
+#                  M.m.b[.r] parsing and rejects semver tags outright.
+$fileVersion = $rawVersion.TrimStart('v')
+$msiVersion  = $fileVersion.Split('-')[0]
 if ($msiVersion -notmatch '^\d+\.\d+(\.\d+(\.\d+)?)?$') {
     throw "Cannot derive an MSI-compatible version from VERSION='$rawVersion' (got '$msiVersion')."
 }
@@ -83,7 +102,7 @@ if ($env:ICON_PATH -and (Test-Path $env:ICON_PATH)) {
 # ─── build ────────────────────────────────────────────────────────────
 $wix = Get-WixBinDir
 $wxsPath = (Resolve-Path 'installers\wix\main.wxs').Path
-$tagged = "poltertype-$rawVersion-x86_64-pc-windows-msvc"
+$tagged = "poltertype-$fileVersion-x86_64-pc-windows-msvc"
 $wixobj = Join-Path $outDirAbs "$tagged.wixobj"
 $msi    = Join-Path $outDirAbs "$tagged.msi"
 

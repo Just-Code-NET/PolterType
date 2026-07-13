@@ -4,6 +4,24 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.4.0
+
+### Fixed — the Windows installer is named like the other two
+
+The MSI shipped as `poltertype-v0.4.0-x86_64-pc-windows-msvc.msi` while
+the AppImage and the DMG dropped the tag's `v`
+(`poltertype-0.4.0-…`). The build script was passing the raw git tag
+into the file name instead of the stripped version — long-standing, and
+harmless to the updater (it matches artifacts by pattern), but it made
+the three downloads on a release page look like they came from
+different projects, and it is a trap for anyone scripting a download by
+filename. The README already documented the `v`-less form; now the
+build agrees with it.
+
+Pre-release tags keep their suffix in the file name
+(`poltertype-0.5.0-rc.1-…msi`), so a release candidate can never
+collide with the final release it precedes.
+
 ## [0.4.0] — PolterType keeps itself up to date
 
 ### Added — PolterType keeps itself up to date
