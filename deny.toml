@@ -30,6 +30,7 @@ ignore = [
     "RUSTSEC-2024-0370", # proc-macro-error (via iced/gtk macro stack)
     "RUSTSEC-2024-0384", # instant (via winit/calloop stack)
     "RUSTSEC-2026-0192", # ttf-parser (via iced font stack; fix = skrifa migration upstream)
+    "RUSTSEC-2026-0206", # rustybuzz (via iced text shaping; same skrifa/harfrust migration upstream)
     # ── quick-xml DoS advisories (fix requires >=0.41, parents pin lower)
     # Both dependency paths only ever parse *trusted, local* XML:
     #   * wayland-scanner (proc-macro) — bundled Wayland protocol
