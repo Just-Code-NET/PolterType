@@ -6,10 +6,15 @@
 > builds the three platform installers in parallel and attaches
 > them to a draft release.
 
-The whole flow takes ~5 minutes of local work plus ~15 minutes of
+The whole flow takes ~15 minutes of local work plus ~15 minutes of
 CI time. Most steps are mechanical — the goal of this doc is to
 make sure nothing gets skipped, since a misnumbered tag or a
 forgotten changelog entry means re-cutting the release.
+
+**The one step people skip is step 2, syncing the docs.** It is
+the only step whose omission nothing detects: the tag is fine, CI
+is green, the installers work, and the documentation quietly
+starts lying. Treat it as a blocker, not a chore.
 
 ## 1. Pre-flight (~2 min)
 
@@ -37,7 +42,83 @@ If any of those fail, fix them in a normal commit BEFORE the
 release commit. The release commit itself should only contain
 the version bump + changelog entry — nothing else.
 
-## 2. Pick the next version
+## 2. Sync the docs — MANDATORY (~10 min)
+
+**No tag ships while the docs still describe the previous
+release.** This step is not a nicety and it is not "later" — it is
+a release blocker, exactly like a failing test. Do it now, in a
+normal commit, *before* the version bump.
+
+Documentation rot is silent. Nothing fails, CI stays green, and
+the app keeps working — so the only thing that catches it is a
+human reading a doc that lies to them. By then it has usually
+been lying for several releases.
+
+### The rule
+
+Every release, walk this table. For each row, either update the
+file or convince yourself it genuinely didn't change.
+
+| Doc | Goes stale when… |
+|---|---|
+| `README.md` | anything user-facing changes — **especially the Status line, the Goals bullets, the install table, and the hotkey table** |
+| `CLAUDE.md` | the `## Known gaps (as of vX.Y.Z)` heading — re-stamp it and re-verify every bullet; a gap that closed must come out |
+| `docs/PLAN.md` | the `Last updated:` line, the phase checkboxes, and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there) |
+| `docs/DECISIONS.md` | you made a call worth defending later — append an entry; don't rewrite history |
+| `docs/DATA_LAYOUT.md` | the app writes a new file or directory on the user's disk |
+| `docs/PERMISSIONS.md` | the app takes a new OS capability — **including network** |
+| `docs/AI.md` | the AI subsystem's wiring status changes |
+| `CONTRIBUTING.md` | a crate is added or removed, or the build/check commands change |
+| `poltertype-web` | any user-visible claim changes. **Separate repo, separate commit** — but the site may only promise what the app actually does |
+
+### Capability and privacy promises are load-bearing
+
+Version numbers going stale is embarrassing. **A capability
+promise going stale is a lie to the user**, and this project makes
+several of them by design: never logs typed text, no telemetry,
+network only where explicitly designed, AI off by default.
+
+If a release changes what the app *can do* — not just what it
+does — then hunt down every place that promise is written and fix
+it in the same breath:
+
+```bash
+# Do the docs still promise something the code stopped guaranteeing?
+grep -rn "no network\|no telemetry\|never.*network\|no build makes" \
+    README.md CLAUDE.md CONTRIBUTING.md docs/*.md
+```
+
+> **This is not hypothetical.** v0.4.0 added the updater — the
+> first network call the app had ever made, on by default. The
+> code was careful and `DECISIONS.md` was thorough. But
+> `README.md` went on advertising "**no telemetry, no network**"
+> in its feature list, and `AI.md` went on asserting "no shipped
+> build makes a network call", for three releases. Both were
+> flatly false the moment the tag was pushed, and both sat
+> directly above a correct description of the very updater that
+> falsified them. Nobody caught it because nothing broke.
+
+### Verify before moving on
+
+```bash
+# 1. Nothing still claims the last version is current.
+#    (Replace 0.4.2 with the version you are ABOUT to leave behind.)
+grep -rn "0\.4\.2\|v0\.4\.2" README.md CLAUDE.md docs/*.md CONTRIBUTING.md
+
+# 2. Every crate in the workspace appears in the docs that list crates.
+ls crates/                                   # compare against
+grep -n "poltertype-" CLAUDE.md CONTRIBUTING.md | grep -c crates
+
+# 3. Skim the diff of the release you are cutting, and ask of each
+#    changed file: "does any doc describe this behaviour?"
+git diff --stat "$(git describe --tags --abbrev=0)"..HEAD
+```
+
+Doc fixes go in their **own commit**, before the release commit
+— `docs: refresh for <what changed>`. The release commit stays
+clean (Cargo.toml + Cargo.lock + CHANGELOG.md, nothing else).
+
+## 3. Pick the next version
 
 PolterType follows [SemVer](https://semver.org/). The pre-release
 phase is over — `v0.1.0` was the first stable tag and the current
@@ -66,7 +147,7 @@ latest and you're shipping fixes, the next is `v0.2.1`.
 > installer — they'll silently keep using the old binaries with
 > the new version number, which is the worst kind of bug.
 
-## 3. Bump the version (~30 seconds with the helper)
+## 4. Bump the version (~30 seconds with the helper)
 
 The fastest way is the dedicated xtask command, which updates the
 three lock-step files (`Cargo.toml`, `CHANGELOG.md`, `Cargo.lock`)
@@ -186,7 +267,7 @@ If the xtask refuses or you want to do it by hand:
 * `Cargo.lock` — never edit by hand; just run
   `cargo check --workspace` after the other two changes.
 
-## 4. Verify the bump (~1 min)
+## 5. Verify the bump (~1 min)
 
 Three quick checks before you commit:
 
@@ -207,11 +288,13 @@ inconsistent (e.g. CI installer named `v0.2.1` but
 `poltertype --version` reports `0.2.0` because Cargo.toml
 wasn't bumped). Fix before committing.
 
-## 5. Commit + tag + push (~1 min)
+## 6. Commit + tag + push (~1 min)
 
 The release commit should contain only the three files above.
 No code, no doc fixes, no formatting drive-bys. If you forgot
-something, do it as a separate commit FIRST and then bump.
+something, do it as a separate commit FIRST and then bump —
+that includes the doc sync from step 2, which by now should
+already be pushed.
 
 ```bash
 git add Cargo.toml Cargo.lock CHANGELOG.md
@@ -224,7 +307,7 @@ git push origin main --tags
 The branch push (`main`) is what makes the version-bump commit
 visible to anyone tracking `main`.
 
-## 6. After the tag (~15 min, mostly waiting)
+## 7. After the tag (~15 min, mostly waiting)
 
 GitHub Actions does the rest. Watch the run:
 
@@ -292,7 +375,14 @@ git push origin v0.2.1
 This is the one place we re-tag — it's safe before publish
 because the draft hasn't been seen by users yet.
 
-## 7. Common mistakes and how to recover
+## 8. Common mistakes and how to recover
+
+**Shipped with stale docs.** The most common one, and the only
+one on this list that nothing will ever warn you about. There is
+no clean recovery and no need for one: fix the docs in a normal
+`docs:` commit and push it — don't re-tag, don't re-release. The
+cost isn't the fix, it's the weeks the wrong thing sat there
+being read. Which is the whole reason step 2 exists.
 
 **Forgot to bump CHANGELOG.** Add a follow-up commit with the
 changelog entry, push it, but DON'T re-tag — the next release
@@ -331,14 +421,24 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
-# 2. Make sure CHANGELOG has a `[Unreleased]` block describing
+# 2. SYNC THE DOCS — mandatory, own commit, before the bump.
+#    Walk the table in step 2. At minimum: README Status line +
+#    Goals bullets, the `Known gaps (as of vX.Y.Z)` heading in
+#    CLAUDE.md, PLAN.md's `Last updated` + settings schema, a
+#    DECISIONS.md entry, and the site if any user-facing claim
+#    moved. If the release changed what the app CAN do, grep for
+#    the old promise everywhere before you tag.
+git diff --stat "$(git describe --tags --abbrev=0)"..HEAD   # what changed?
+git commit -m "docs: refresh for <what changed>"
+
+# 3. Make sure CHANGELOG has a `[Unreleased]` block describing
 #    what's new since the last release. The xtask updates the
 #    heading version, but doesn't write the body for you.
 
-# 3. Bump (writes Cargo.toml, CHANGELOG.md heading, Cargo.lock).
+# 4. Bump (writes Cargo.toml, CHANGELOG.md heading, Cargo.lock).
 cargo xtask version bump
 
-# 4. Eyeball the diff, then commit + tag + push. The bump command
+# 5. Eyeball the diff, then commit + tag + push. The bump command
 #    prints the exact sequence as a copy-paste hint.
 NEW=$(cargo xtask version)
 git add Cargo.toml Cargo.lock CHANGELOG.md
@@ -346,7 +446,7 @@ git commit -m "release: v$NEW"
 git tag "v$NEW"
 git push origin HEAD --tags
 
-# 5. Watch CI, publish the draft.
+# 6. Watch CI, publish the draft.
 gh run watch
 ```
 

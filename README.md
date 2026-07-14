@@ -5,7 +5,7 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-> **Status:** v0.3.0 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.4.2 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11). The macOS backend is
 > written from Apple's API docs and validated on CI, but hasn't yet
 > been runtime-tuned by a hardware-equipped contributor. Installers
@@ -24,8 +24,11 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
   power users (off by default).
 - **Fast** — pure Rust, no WebView, no perceptible typing latency.
 - **Light** — single binary, ~10–15 MB.
-- **Quiet** — tray-only, minimal CPU/RAM, **no telemetry, no network**
-  (AI subsystem requires a separate explicit toggle).
+- **Quiet** — tray-only, minimal CPU/RAM, **zero telemetry**. Exactly
+  one network call exists — the update check (§ [Staying up to
+  date](#staying-up-to-date)) — it sends nothing about you, and one
+  checkbox turns it off. The AI subsystem is off by default and needs
+  a second explicit toggle to reach the network at all.
 - **Configurable** — autostart, per-language allowlist, per-app
   exceptions, hotkeys, sound themes.
 - **Open source** — MIT licensed.
@@ -46,7 +49,8 @@ permissions story.
 
 Builds are published as GitHub Releases —
 [**Releases page**](../../releases). Each release ships three
-artifacts:
+installers (plus `latest.json`, the manifest the in-app updater
+polls — you never download that one by hand):
 
 | OS                                | File                                          | How to install                                                                                                                                                                                                      |
 | --------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,24 +68,35 @@ Building from source is documented in
 ### Staying up to date
 
 You only have to do the above once. From then on PolterType keeps
-itself current: it checks GitHub for new releases once a day,
-downloads the installer for your platform in the background, verifies
-its SHA-256 against the release manifest, and then **waits**. Nothing
-is installed while you are typing — the swap happens when you quit the
+itself current — **this is on by default.** It checks GitHub for new
+releases once a day (first check ~a minute after startup), downloads
+the installer for your platform in the background, verifies its
+SHA-256 against the release manifest, and then **waits**. Nothing is
+installed while you are typing — the swap happens when you quit the
 app, or when you click **⟳ Restart to update** in the tray menu.
 
-This is the only network connection PolterType makes. It is a plain
-`GET` of a small JSON file: no account, no identifier, nothing about
-you or what you type. Turn it off with a checkbox on the Settings
-window's **General** pane, or in `config.toml`:
+This is the **only** part of PolterType that touches the network. It
+is two requests: a `GET` of a small JSON manifest, and — only when
+there's actually a new version — a `GET` of the installer itself. No
+account, no identifier, nothing about you and nothing about what you
+type. What GitHub can see is what any download reveals: your IP, and
+a User-Agent naming the running version (`PolterType/0.4.2
+(updater)`). The exact manifest URL is printed on the Settings
+window's **General** pane, so you never have to take our word for it.
+
+Turn it off with the checkbox on that same pane, or in `config.toml`:
 
 ```toml
 [updates]
-enabled              = false   # never check, never download
-check_interval_hours = 24
+enabled              = true    # ← the default. false = never check, never download
+check_interval_hours = 24      # floor is 1; 0 does NOT mean "off", it means hourly
 ```
 
-Two caveats worth stating plainly:
+Switching it off also deletes anything already downloaded. To never
+have the code in the first place, build from source — but note the
+updater is a normal (non-optional) part of the default build.
+
+Three caveats worth stating plainly:
 
 - **The download is checksum-verified, not signed.** The checksum
   comes from the same GitHub release as the installer, so it catches a
@@ -91,16 +106,27 @@ Two caveats worth stating plainly:
 - **Only our own installers self-update.** If you installed from a
   distro package, or you're running a `cargo build` binary, PolterType
   won't overwrite it — those files aren't ours. You'll get a
-  notification pointing at the Releases page instead.
+  notification pointing at the Releases page instead. The same applies
+  if you're not on x86_64 (or an Apple Silicon Mac): we don't publish
+  an artifact for you, so there's nothing to update to.
+- **The macOS path is unproven.** The Windows and Linux self-update
+  paths are exercised; the `.app`-bundle swap is written from Apple's
+  docs and has never run on real hardware. Treat macOS self-updating
+  as untested rather than broken — and see
+  [docs/PERMISSIONS.md](docs/PERMISSIONS.md) before relying on it.
 
 ## Stack
 
 - Pure Rust — no WebView, no Node.
 - `tao` event loop + `tray-icon` + `global-hotkey` + `single-instance`.
+- `ureq` + `rustls` + `sha2` for the updater — the app's only network
+  code, and the only reason a TLS stack is linked in at all.
 - Optional AI subsystem (`feature = "ai"`) — local ONNX or remote LLM
   detectors / word rewriters. Off by default, and **not wired to the
-  engine yet**: the crate ships stubs, so no build makes network calls
-  regardless of the flags. See [docs/AI.md](docs/AI.md).
+  engine yet**: the crate ships stubs that nothing constructs, so no
+  build makes an AI-related network call regardless of the flags.
+  (The updater is separate, and does go to the network — see above.)
+  See [docs/AI.md](docs/AI.md).
 
 See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 
@@ -113,6 +139,14 @@ the Settings window:
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
 | `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. |
+
+> **On Wayland the force-switch default is `Ctrl+Shift+F9`, not
+> `Ctrl+Shift+Backspace`.** There we read keys from the evdev
+> keystream, which means the chord also reaches the focused app — and
+> `Ctrl+Backspace` deletes the very word you asked to fix. So if you
+> leave the binding at its default, PolterType silently substitutes a
+> key that no app acts on. Bind it explicitly and your choice wins,
+> destructive or not.
 
 ## Smart commands (text triggers)
 
@@ -210,12 +244,15 @@ The engine swaps the active overlay set when the focused app
 changes. See [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md) for the
 full schema.
 
-Wordlist edits apply on next tray restart — the FSTs are built
-into the engine's dictionary set at start, not hot-reloaded.
+Wordlist edits apply **without a restart**: closing the Settings
+window rebuilds the dictionaries automatically, and "Reload
+Settings" in the tray does the same for hand-edited files. (Only
+the *bundled* `data/wordlists/*.txt` need a rebuild — those bake
+into the FST at compile time.)
 
 Writing a comment in another language inside an IDE? Hit
 `Ctrl+Shift+Backspace` after the word — that hotkey ignores every
-filter by design.
+filter by design. (On Wayland: `Ctrl+Shift+F9`, see above.)
 
 ## Settings
 
@@ -236,10 +273,17 @@ Two ways to configure:
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray
 takes you there. After editing the TOML, "Reload Settings" picks
-up the change for live-reloadable settings (general flags,
-exceptions, hotkey bindings) without a restart. Wordlist /
-profile changes still need a tray restart — they're built into
-the engine's dictionary set at start.
+up the change — general flags, exceptions, hotkey bindings, and
+wordlist / profile overlays alike — without a restart. Closing the
+Settings window does the same thing on its way out, so anything you
+changed in the GUI is already live by the time the window is gone.
+
+The tray also carries **Pause auto-switch**, **Open User Wordlists
+Folder…**, **Open User Layouts Folder…**, and — unless you turned
+updates off — **Check for updates…**, which becomes **⟳ Restart to
+update** once a new version is staged. If the keyboard hooks fail to
+start, a **⚠ Setup Guide…** entry appears at the top pointing at
+[docs/PERMISSIONS.md](docs/PERMISSIONS.md).
 
 The GUI runs as a child process (`poltertype --settings`) so
 the tray's `tao::EventLoop` and iced's `winit` event loop don't
@@ -257,8 +301,9 @@ cargo run -p poltertype-app
 cargo build --release -p poltertype-app
 
 # With the AI subsystem compiled in. Note it is not wired to the
-# engine yet — the crate ships stubs and no build makes network
-# calls. See docs/AI.md.
+# engine yet — the crate ships stubs that nothing constructs, so this
+# flag adds no AI behaviour and opens no AI network call. (It does not
+# affect the updater, which is in every build.) See docs/AI.md.
 cargo build --release -p poltertype-app --features ai
 ```
 

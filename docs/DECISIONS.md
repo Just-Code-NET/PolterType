@@ -1033,7 +1033,7 @@ first-time users to strip it by hand; the moment we ship notarised
 builds, that line comes out. Treat the macOS path as unproven until
 someone runs it on a Mac.
 
-## Reversed: no default app skip-list
+## 2026-07-13 — Reversed: no default app skip-list
 
 `[exceptions].disabled_apps` used to ship with ~50 entries — VS Code,
 Cursor, the JetBrains family, Sublime, Zed, Neovide, kitty, alacritty,

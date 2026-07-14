@@ -13,10 +13,13 @@ cargo build -p poltertype-app
 # Run
 cargo run -p poltertype-app
 
-# With the AI subsystem (LocalOnnxDetector + RemoteLlmDetector wiring)
+# With the AI subsystem compiled in. This does NOT turn AI on: the crate
+# ships stubs (LocalOnnxDetector / RemoteLlmDetector) that nothing
+# constructs, so the flag changes no behaviour today. See docs/AI.md.
 cargo build -p poltertype-app --features ai
 
-# With AI + actual remote HTTP capability
+# With AI + the remote HTTP capability compiled in (still unreachable —
+# the client is built and never used)
 cargo build -p poltertype-app --features ai,poltertype-ai/remote
 
 # Lints (CI runs the same)
@@ -111,6 +114,9 @@ crates/
   poltertype-input/   library — InputListener / KeyEmitter trait + per-OS
   poltertype-layout/  library — LayoutSwitcher trait + per-OS
   poltertype-detect/  library — Detector / WordRewriter traits + built-ins
+  poltertype-update/  library — GitHub-Releases updater: manifest, download,
+                                staging, per-OS install. NOT optional — it is
+                                in every build, and it is the only network code
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
   poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
 data/                source-of-truth, committed; consumed by build.rs
@@ -119,6 +125,8 @@ data/                source-of-truth, committed; consumed by build.rs
 docs/
   PLAN.md / DECISIONS.md / PERMISSIONS.md / AI.md
   DATA_LAYOUT.md     on-disk data tree + plug-in foundations
+  ADDING_A_LANGUAGE.md
+  RELEASING.md       the release checklist — read it BEFORE tagging
 installers/          per-platform packaging — see "Releasing" below
   wix/main.wxs              WiX 3.x source for the Windows MSI
   windows/build-msi.ps1     wraps candle.exe + light.exe
@@ -143,7 +151,9 @@ Tray menu **"Settings…"** opens an iced-based GUI with seven panes:
 **Languages**, **Hotkeys**, **Commands**, **Wordlists**, **General**,
 **Exceptions**, **About**. Power users still hit **"Edit
 config.toml…"** for what the GUI doesn't expose (creating a wordlist
-profile, bulk-editing `[[commands]]`, the `[ai]` switches).
+profile, bulk-editing `[[commands]]`, `[updates].check_interval_hours`
+— the General pane has the on/off checkbox but not the interval — and
+the `[ai]` switches).
 
 The Settings GUI is the same `poltertype` binary launched with
 `--settings`; it runs as a child process so the tray's main-thread
@@ -212,15 +222,27 @@ Imperative mood, scope prefix when useful (`engine:`, `win:`, `ui:`,
 
 ## Releasing
 
+> **Read [docs/RELEASING.md](docs/RELEASING.md) first — all of it.**
+> In particular step 2: **syncing the docs is a release blocker.** No
+> tag ships while `README.md`, `CLAUDE.md` and `docs/` still describe
+> the previous release. Nothing in CI will catch it for you.
+
 Releases are cut by pushing a `v*` tag. CI ([release.yml]) then
 builds three installers in parallel and attaches them to a draft
-GitHub Release:
+GitHub Release, along with `latest.json` — the manifest the in-app
+updater polls, generated from the exact artifacts being uploaded so
+the checksums cannot drift out of step with the files:
 
 | Platform | Artifact | Tooling |
 |---|---|---|
 | Linux (x86_64) | `.AppImage` | `linuxdeploy` + appimage plugin |
 | macOS (universal: Intel + Apple Silicon) | `.dmg` | `lipo` + `hdiutil` |
 | Windows (x86_64) | `.msi` | WiX Toolset 3 (`candle` + `light`) |
+| all three | `latest.json` | generated in [release.yml] |
+
+Publishing the draft is what ships the update to **every existing
+user** — the updater resolves `releases/latest`, which skips drafts and
+pre-releases. Sanity-check the artifacts before you publish, not after.
 
 The packaging logic lives in [`installers/`](installers/) so it can
 also be run locally — useful when adjusting the WiX template or the

@@ -1,10 +1,19 @@
 # AI subsystem
 
-> **Status (v0.2.0): designed, not wired.** The extension traits are
+> **Status (v0.4.2): designed, not wired.** The extension traits are
 > real and the built-in detectors use them. The `poltertype-ai` crate
 > exists, compiles, and holds *stubs* — and the binary does not
-> construct or call any of them. **No shipped build makes a network
-> call, with or without the feature flags.**
+> construct or call any of them. **No shipped build makes an
+> AI-related network call, with or without the feature flags.**
+>
+> Read that claim narrowly. Since v0.4.0 the app *does* make one
+> network call, in every build, on by default: the updater's check
+> against GitHub Releases. It has nothing to do with this subsystem —
+> it lives in `poltertype-update`, uses a different HTTP client
+> (`ureq`, not `reqwest`), and sends nothing about the user. See
+> [DECISIONS.md](DECISIONS.md) and the README's "Staying up to date".
+> The point of this document is that **AI** adds no network call; it
+> is no longer true that the binary makes none at all.
 >
 > This document describes the intended design and marks, in each
 > section, what is actually implemented today. Nothing below is a
@@ -44,10 +53,19 @@ trait with no consumer.
 
 ## Privacy posture
 
-**Today: there is no network capability in any build.** `reqwest` is
-an optional dependency of `poltertype-ai` alone, and the one type that
+**Today: no build can make an AI network call.** `reqwest` is an
+optional dependency of `poltertype-ai` alone, and the one type that
 holds a client never issues a request. That is a stronger guarantee
 than the design below, and it is the one that currently holds.
+
+It is, however, a claim about *this subsystem* — not about the
+process. The app has had exactly one network capability since v0.4.0:
+the updater (`poltertype-update`, `ureq`, on by default, GitHub
+Releases only). Nothing routes user text through it and it cannot be
+used to reach an LLM. When wiring the AI subsystem up, do not treat
+the updater's existence as precedent — the gates below still apply in
+full, and "the app already talks to the network" is not an argument
+for skipping any of them.
 
 The design keeps three independent gates between a user and a network
 call. Gates 1 and 2 are real (they are Cargo features); gate 3 is

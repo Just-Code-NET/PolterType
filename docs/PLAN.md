@@ -1,15 +1,16 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-13 (v0.3.0).
+> Created: 2026-05-02. Last updated: 2026-07-14 (v0.4.2).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
 > original intent, the code is the source of truth, not this file. The
 > freshest summaries:
 >
-> * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable", 0.1.1,
->   0.2.x) and §10 below, where every item is marked.
+> * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
+>   0.4.2; most recently the GitHub-Releases auto-updater in 0.4.0) and
+>   §10 below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
@@ -288,7 +289,7 @@ Implementations:
 | `DictionaryDetector` | an FST dictionary over Hunspell-expanded lists. `lingua-rs` and n-grams were **not used** — dropped in favour of FST. | ✅ in 0.1 |
 | `ContextDetector` | takes the previous N words into account (Markov model). | ❌ missing (was planned for v0.2 — not done) |
 | `LocalOnnxDetector` | an ONNX model, offline. | 🚧 stub in `poltertype-ai`, not wired to the engine |
-| `RemoteLlmDetector` | API calls to OpenAI/Anthropic/local Ollama. Explicit opt-in only. | 🚧 stub; no build makes network calls |
+| `RemoteLlmDetector` | API calls to OpenAI/Anthropic/local Ollama. Explicit opt-in only. | 🚧 stub; no build makes an **AI** network call (the updater is separate — see §6) |
 
 Pipeline policy (example):
 
@@ -316,13 +317,16 @@ Pipeline policy (example):
 
 ### 3.5 Settings storage
 
-`TOML` via `serde` (user-readable). Paths:
+`TOML` via `serde` (user-readable). Paths come from
+`ProjectDirs::from("dev", "opensource", "poltertype")`, so they are
+qualifier-scoped rather than bare:
 
-- Win: `%APPDATA%\poltertype\config.toml`
-- macOS: `~/Library/Application Support/poltertype/config.toml`
-- Linux: `$XDG_CONFIG_HOME/poltertype/config.toml`
+- Win: `%APPDATA%\opensource\poltertype\config\config.toml`
+- macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
+- Linux: `~/.config/poltertype/config.toml`
 
-Structure (example):
+Structure — **this mirrors the shipped defaults**; keep it that way,
+it is the only schema listing in `docs/`:
 
 ```toml
 schema_version = 1
@@ -341,24 +345,50 @@ ignored  = []
 
 [engine]
 min_word_length = 3
-confidence_threshold = 0.85
+confidence_threshold = 0.55
 ignore_in_password_fields = true
 idle_timeout_ms = 2000
+suppress_in_identifiers = true   # skip snake_case / camelCase / letter+digit
+suppress_for_all_caps = true     # skip URL, HTTP, API, ССЫЛКА…
 
 [exceptions]
-disabled_apps    = ["Code.exe", "WindowsTerminal.exe"]
+# EMPTY by default, deliberately — see DECISIONS.md, "Reversed: no
+# default app skip-list". Shipping a list of editors and terminals
+# made the app look dead in exactly the windows developers type in.
+disabled_apps    = []
 word_whitelist   = ["nginx", "kubectl", "github"]
 
 [hotkeys]
 pause_toggle        = "Ctrl+Shift+Space"
-manual_switch_last  = "Ctrl+Shift+Backspace"
+manual_switch_last  = "Ctrl+Shift+Backspace"   # Wayland: Ctrl+Shift+F9
+
+# Text-trigger expansions. Not exposed as a table above — repeated
+# [[commands]] entries; see §3.9.
+[[commands]]
+id      = "to-english"
+trigger = "((en))"
+action  = { type = "switch_layout", layout = "en-US" }
+
+# Per-app wordlist overlays, keyed off the focused app (so: Windows,
+# Hyprland and X11 only — inert on macOS and GNOME/KDE Wayland).
+[[wordlists.profiles]]
+id   = "code"
+apps = ["Code.exe", "kitty"]
 
 [sounds]
 theme = "default"          # preset folder
 volume = 0.6
 
+# The app's ONLY network access, and it is ON by default. Added in
+# v0.4.0. See §6, DECISIONS.md and docs/PERMISSIONS.md § Network.
+[updates]
+enabled              = true
+check_interval_hours = 24   # floor of 1 is enforced in code; 0 means hourly, NOT off
+
 [ai]
-enabled = false
+enabled     = false
+allow_remote = false
+# Parsed but inert — nothing reads these yet (docs/AI.md).
 # The list of enabled AI detectors and their configs:
 # see §3.8 for an example
 ```
@@ -375,6 +405,8 @@ The menu — **as it settled in the code** (the original sketch with a
 quick-switch submenu and a "Today: N corrections" counter was **not**
 built):
 
+- ⚠ Keyboard hooks unavailable — Setup Guide… *(only when the hooks
+  failed to start; opens `docs/PERMISSIONS.md`)*
 - ⚙ Settings…
 - 📝 Edit config.toml…
 - 🪵 Open Logs Folder…
@@ -382,6 +414,8 @@ built):
 - ⌨ Open User Layouts Folder…
 - 🔄 Reload Settings
 - ⏸ Pause auto-switch
+- ⟳ Check for updates… *(absent when `[updates].enabled = false`;
+  becomes "⟳ Restart to update — vX.Y.Z" once a version is staged)*
 - ℹ About …
 - ❌ Quit
 
@@ -571,7 +605,8 @@ poltertype/                      # (the Claude config is not here — it's
 │   └── RELEASING.md
 ├── crates/
 │   ├── poltertype-app/          # binary: tray, Settings UI (separate process)
-│   │   └── src/{main.rs, tray.rs, detectors.rs, settings_ui/, settings_proc.rs, icon_render/}
+│   │   └── src/{main.rs, tray.rs, detectors.rs, updater.rs, bridges.rs,
+│   │            hotkeys.rs, user_dirs.rs, settings_ui/, settings_proc/, icon_render/}
 │   ├── poltertype-core/         # engine, settings, layouts, commands, audio
 │   │   └── src/{engine/, settings/, layouts/, commands/, wordlist_profiles/, audio/, data_dir/}
 │   │       └── build.rs         # prepares target/dist/data out of data/
@@ -581,6 +616,9 @@ poltertype/                      # (the Claude config is not here — it's
 │   │   └── src/{windows/, macos/, linux/{hyprland,kde,gsettings,ibus,fcitx,x11}/}
 │   ├── poltertype-detect/       # Detector pipeline
 │   │   └── src/{traits.rs, plausibility.rs, dictionary.rs, enums.rs}
+│   ├── poltertype-update/       # GitHub-Releases updater (v0.4.0+); the
+│   │   │                        # only network code in a default build
+│   │   └── src/{check.rs, manifest.rs, download.rs, staging.rs, version.rs, apply/}
 │   ├── poltertype-ai/           # OPTIONAL (feature `ai`); stubs, not wired
 │   │   └── src/{local.rs, remote/, rewriters.rs, keys.rs}
 │   └── poltertype-types/        # shared types (LayoutId, KeyEvent, ...)
@@ -726,13 +764,13 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of post-0.2.2 `main` (2026-07-13).** Phases 0–8 are, in
+> **Status as of post-0.4.2 `main` (2026-07-14).** Phases 0–8 are, in
 > their core parts, complete and shipped across releases 0.1.0 →
-> 0.2.2; below, what remains open is marked. Items that are **not**
-> done are deliberately left as `[ ]` — that is the current work list.
-> The wording of some items had drifted behind the code (e.g.
-> `HeuristicDetector` in Phase 3 is actually called
-> `WordPlausibilityDetector`); it is corrected here.
+> 0.4.2 — Phase 8's auto-updater landed in 0.4.0; below, what remains
+> open is marked. Items that are **not** done are deliberately left as
+> `[ ]` — that is the current work list. The wording of some items had
+> drifted behind the code (e.g. `HeuristicDetector` in Phase 3 is
+> actually called `WordPlausibilityDetector`); it is corrected here.
 
 ### Phase 0 — Skeleton ✅
 

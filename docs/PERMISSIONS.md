@@ -23,11 +23,17 @@ The app needs **Accessibility** permission, granted once per machine:
 Why: `CGEventTapCreate(kCGSessionEventTap, …)` (used to listen) and
 `CGEventPost` (used to send corrections) both require this.
 
-> **Planned, not built:** a first-launch onboarding window walking the
-> user through the toggle, and a tray entry surfacing "permission
-> denied". Today the user has to know to grant Accessibility on their
-> own. The macOS backend as a whole is CI-validated but has not been
-> runtime-tuned on hardware.
+> **What exists:** when the keyboard hooks fail to start — the usual
+> cause on macOS being exactly this permission — the tray shows a
+> **⚠ Keyboard hooks unavailable — Setup Guide…** entry (which opens
+> this document), a tooltip warning, and a one-shot notification.
+>
+> **Still planned, not built:** a first-launch onboarding *window* that
+> walks the user through the toggle before anything fails, and a banner
+> for "layout switching unavailable". Today the user still has to act
+> on the alert rather than being led through the grant. The macOS
+> backend as a whole is CI-validated but has not been runtime-tuned on
+> hardware.
 
 ## Linux
 
@@ -119,6 +125,39 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
    switch the keyboard while leaving that indicator lying. Stands down
    entirely under XWayland, where the compositor owns layout.
 
-If none respond, layout switching is unavailable and the failure is
-logged. (A tray banner pointing back at this document is planned but
-not implemented — today the only signal is the log.)
+If none respond, PolterType **does not start**: it logs `no layout
+switcher backend; aborting` and exits. There is no degraded mode where
+the app sits in the tray unable to switch anything — a layout switcher
+is a hard requirement, not a nice-to-have.
+
+(The separate case — keyboard *hooks* failing while layout switching
+works — does keep the app running, and surfaces the ⚠ Setup Guide tray
+entry described under macOS above.)
+
+## Network
+
+PolterType asks for no network permission from the OS, but it does use
+the network, and a document that enumerates the app's capabilities
+should say so rather than leave you to find out from the firewall.
+
+**One outbound connection exists, and it is on by default:** the
+updater checks `github.com` for a new release once a day, and
+downloads an installer when there is one. It sends no body, no query
+string and no identifier — GitHub sees your IP and a User-Agent naming
+the running version, exactly as it would for any download. Nothing
+about what you type ever leaves the machine; there is no telemetry of
+any kind, and this connection must never become a place to add any.
+
+Turn it off with the checkbox on the Settings window's **General**
+pane, or `[updates].enabled = false` in `config.toml`. The manifest URL
+is printed on that pane so you can verify the destination yourself.
+See [DECISIONS.md](DECISIONS.md) for the trust model and its limits.
+
+The AI subsystem (`docs/AI.md`) is a *second*, independent gate: off by
+default, feature-gated at compile time, and remote access needs a
+further explicit opt-in. It is not wired to the engine today and makes
+no network calls at all.
+
+**macOS note:** the updater strips `com.apple.quarantine` from the
+bundle it installs. That is defensible only while the app is unsigned —
+it must come out the day we ship notarised builds.

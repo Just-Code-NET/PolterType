@@ -52,7 +52,7 @@ copy that tree into the install location:
 
 | Platform | exe location | data location |
 |---|---|---|
-| Windows MSI | `%LOCALAPPDATA%\poltertype contributors\poltertype\poltertype.exe` | `…\data\` (sibling) |
+| Windows MSI | `%LOCALAPPDATA%\PolterType contributors\PolterType\poltertype.exe` | `…\data\` (sibling) |
 | macOS .dmg | `poltertype.app/Contents/MacOS/poltertype` | `poltertype.app/Contents/Resources/data/` |
 | Linux AppImage | `<mount>/usr/bin/poltertype` | `<mount>/usr/share/poltertype/data/` |
 | dev (`cargo run`) | `target/{debug,release}/poltertype` | `target/dist/data/` |
@@ -110,6 +110,41 @@ matching the pre-filter behaviour. The detector and the
 `apply_correction` pre-flight together still keep the engine from
 typing into an unreachable layout.
 
+## Staged updates (`<data_local_dir>/poltertype/updates/`)
+
+Since v0.4.0 the updater is the one component that writes outside the
+config dir, and it is the largest thing PolterType ever puts on a
+user's disk — so it belongs in this document.
+
+```
+<data_local_dir>/poltertype/
+  updates/
+    pending.json                      bookkeeping: version, artifact
+                                      path, SHA-256, install attempts
+    poltertype-0.4.3-x86_64.AppImage  the downloaded installer
+                                      (20–40 MB, one at a time)
+```
+
+`data_local_dir` is the same `ProjectDirs::from("dev", "opensource",
+"poltertype")` root the config uses — `%LOCALAPPDATA%\opensource\poltertype\data`
+on Windows, `~/Library/Application Support/dev.opensource.poltertype`
+on macOS, `~/.local/share/poltertype` on Linux.
+
+Three rules make this directory safe to delete at any time:
+
+* **A staged artifact is only ever *staged*.** It is written,
+  checksum-verified against the release manifest, and left alone. The
+  install happens on quit or on an explicit "Restart to update" —
+  never while the app holds a keyboard hook.
+* **The record is subordinate to the file.** A `pending.json` whose
+  artifact has vanished (you cleaned your cache, a disk tool swept the
+  dir) is treated as *no pending update*, and the stale record is
+  removed — not as an update we promise and can't deliver.
+* **Failure is bounded.** After `MAX_INSTALL_ATTEMPTS` (3) failed
+  installs the staged version is abandoned rather than retried
+  forever. Turning updates off deletes the directory's contents
+  outright.
+
 ## Plug-ins (loader live; marketplace future)
 
 The `plugins/` directory under `<data_dir>/` holds data-only language
@@ -151,10 +186,11 @@ pack before publishing.
   surface is data-only: TOMLs and FSTs. This caps the security
   blast-radius of a malicious pack and rules out platform-portability
   headaches.
-* **Network calls.** PolterType's no-network rule (see CLAUDE.md)
-  applies to plug-ins. A pack that wants to fetch updates does it
-  through a separate user-driven download / installer step, not at
-  PolterType runtime.
+* **Network calls.** Plug-ins get **none**. The app's single network
+  capability (the updater — see CLAUDE.md and DECISIONS.md) is not a
+  door plug-ins can walk through: a pack that wants to fetch updates
+  does it through a separate user-driven download / installer step,
+  not at PolterType runtime.
 * **Settings injection.** Plug-ins can ship default short-stop words
   and dictionary entries; they cannot toggle global engine flags
   (autostart, hotkeys, …). The user owns those.
@@ -181,7 +217,9 @@ two layers solve different problems:
 The per-app overlays are declared as `[[wordlists.profiles]]` entries
 in `config.toml`; the engine swaps the active overlay set when the
 focused app changes. **Caveat:** focus tracking is implemented on
-Windows only, so on macOS and Linux the profile set never switches.
+**Windows, Hyprland and X11** — and nowhere else. On macOS and on
+non-Hyprland Wayland (GNOME/KDE) the tracker is a no-op, so the
+profile set never switches there.
 
 Order of precedence at load time (last writer wins on `id` collision):
 
