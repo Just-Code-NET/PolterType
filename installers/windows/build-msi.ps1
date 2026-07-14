@@ -122,7 +122,7 @@ Write-Host "light:  $wixobj  →  $msi"
 # -spdb skips the .wixpdb (we don't need symbol info for MSI). No UI
 # extension: a perUser install runs through the system's default
 # dialog flow; pulling WixUIExtension in just adds a wizard with a
-# license screen that nobody reads on a beta build.
+# license screen that nobody reads.
 & "$wix\light.exe" `
     -spdb `
     -out $msi `

@@ -35,9 +35,9 @@ env:
 # make each pipeline readable, parallelise cleanly, and let a single
 # platform fail without holding up the others.
 #
-# Beta installers are *unsigned* (no Apple Developer ID, no Windows
+# The installers are *unsigned* (no Apple Developer ID, no Windows
 # code-signing cert in this phase). The release notes call out the
-# Gatekeeper / SmartScreen workaround so testers know what to do.
+# Gatekeeper / SmartScreen workaround so users know what to do.
 #
 # About the Node.js 20 deprecation warnings GitHub emits at the top
 # of each run: those come from third-party actions
@@ -298,15 +298,23 @@ jobs:
           draft: true
           fail_on_unmatched_files: true
           generate_release_notes: true
-          # Body shown above the autogen'd commit list. Tells testers
-          # what they need to know about *unsigned* beta builds — the
-          # workarounds here are the difference between "it works" and
-          # "Gatekeeper said no, I gave up".
+          # Body shown above the autogen'd commit list. Tells users what
+          # they need to know about *unsigned* builds — the workarounds
+          # here are the difference between "it works" and "Gatekeeper
+          # said no, I gave up".
+          #
+          # Do NOT reintroduce "beta" here. PolterType has been out of
+          # beta since v0.1.0 (README, docs/PLAN.md); the installers being
+          # unsigned is a separate, still-true fact, and conflating the
+          # two told every visitor the product was less finished than it
+          # is — on the very page the website's download buttons open.
           body: |
             ## PolterType ${{ github.ref_name }}
 
-            **Beta build — unsigned binaries.** The MSI / DMG / AppImage
-            below are produced by CI on `${{ github.sha }}`.
+            **Unsigned binaries.** The MSI / DMG / AppImage below are
+            produced by CI on `${{ github.sha }}`. Code signing is not
+            in place yet, so Windows and macOS will warn on first launch
+            — see the workarounds below.
 
             ### Install
 

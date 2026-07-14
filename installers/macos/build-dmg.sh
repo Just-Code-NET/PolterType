@@ -27,8 +27,9 @@
 # `poltertype_core::data_dir` checks for first on darwin. The exe lives in
 # `Contents/MacOS/`, so `<exe_dir>/../Resources/data` lands here.
 #
-# The DMG is *unsigned and unnotarised* — fine for closed beta, not
-# for the App Store. macOS Gatekeeper will say "PolterType cannot be
+# The DMG is *unsigned and unnotarised* — code signing is a later
+# phase, and this is not App Store-ready. macOS Gatekeeper will say
+# "PolterType cannot be
 # opened because the developer cannot be verified" on first launch;
 # the documented workaround is in CONTRIBUTING.md / the release notes
 # (right-click → Open, or `xattr -dr com.apple.quarantine /Applications/poltertype.app`).

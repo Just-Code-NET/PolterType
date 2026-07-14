@@ -14,7 +14,8 @@ forgotten changelog entry means re-cutting the release.
 **The one step people skip is step 2, syncing the docs.** It is
 the only step whose omission nothing detects: the tag is fine, CI
 is green, the installers work, and the documentation quietly
-starts lying. Treat it as a blocker, not a chore.
+drifts out of step with the code. Treat it as a blocker, not a
+chore.
 
 ## 1. Pre-flight (~2 min)
 
@@ -51,8 +52,8 @@ normal commit, *before* the version bump.
 
 Documentation rot is silent. Nothing fails, CI stays green, and
 the app keeps working — so the only thing that catches it is a
-human reading a doc that lies to them. By then it has usually
-been lying for several releases.
+human reading a doc that no longer matches the code. By then it
+has usually been wrong for several releases.
 
 ### The rule
 
@@ -71,32 +72,52 @@ file or convince yourself it genuinely didn't change.
 | `CONTRIBUTING.md` | a crate is added or removed, or the build/check commands change |
 | `poltertype-web` | any user-visible claim changes. **Separate repo, separate commit** — but the site may only promise what the app actually does |
 
-### Capability and privacy promises are load-bearing
+### Watch the compound claims
 
-Version numbers going stale is embarrassing. **A capability
-promise going stale is a lie to the user**, and this project makes
-several of them by design: never logs typed text, no telemetry,
-network only where explicitly designed, AI off by default.
+A stale version number is embarrassing. A stale statement about
+**what the app can do** is worse, because a reader has no way to
+tell it from a true one.
 
-If a release changes what the app *can do* — not just what it
-does — then hunt down every place that promise is written and fix
-it in the same breath:
+The dangerous shape is the *compound* claim — a sentence that
+bundles several guarantees together. Half of it can stop being
+true while the other half stays true forever, and the true half
+keeps the sentence looking healthy. Nobody re-reads a bullet they
+already believe.
+
+If a release changes what the app *can do*, grep for every place
+the old wording lives and fix each one:
 
 ```bash
-# Do the docs still promise something the code stopped guaranteeing?
+# Does any doc still describe a capability the code has moved past?
 grep -rn "no network\|no telemetry\|never.*network\|no build makes" \
     README.md CLAUDE.md CONTRIBUTING.md docs/*.md
 ```
 
-> **This is not hypothetical.** v0.4.0 added the updater — the
-> first network call the app had ever made, on by default. The
-> code was careful and `DECISIONS.md` was thorough. But
-> `README.md` went on advertising "**no telemetry, no network**"
-> in its feature list, and `AI.md` went on asserting "no shipped
-> build makes a network call", for three releases. Both were
-> flatly false the moment the tag was pushed, and both sat
-> directly above a correct description of the very updater that
-> falsified them. Nobody caught it because nothing broke.
+> **A worked example — and read it precisely, because the precise
+> version is the lesson.** v0.4.0 added the updater: the first
+> network call the app had ever made, on by default. The code was
+> careful, `DECISIONS.md` was thorough, and **nothing about the
+> app's privacy posture changed** — the updater fetches a manifest
+> from a public repo, sends no body, no query string and no
+> identifier, and PolterType collects no telemetry today for
+> exactly the same reason it collected none in v0.1: we don't, and
+> we won't.
+>
+> What went stale was narrower, and purely factual. `README.md`
+> advertised "**no telemetry, no network**". The first half was
+> still true. The second half was not, from the moment the tag
+> was pushed — and it stayed in the README for three releases,
+> forty lines above a correct description of the very updater it
+> contradicted. `AI.md` had the same problem in a different shape:
+> "no shipped build makes a network call" was written to mean *the
+> AI subsystem opens no socket*, which is still true, but as
+> phrased it was a claim about the whole binary, which was not.
+>
+> Neither was a broken promise to users. Both were the docs
+> falling behind the code — which is the only kind of rot this
+> step exists to catch, and it is quite enough. Say what the app
+> does, keep saying it accurately, and don't let a true clause
+> smuggle a stale one past you.
 
 ### Verify before moving on
 
