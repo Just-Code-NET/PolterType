@@ -62,15 +62,34 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 # log out and back in, or run `newgrp input`
 ```
 
-### Option B — AT-SPI (planned, not implemented)
+### Option B — AT-SPI (listener: planned, not implemented)
 
-**This does not exist yet.** There is no `atspi` dependency and no
-AT-SPI listener in `poltertype-input`; on Wayland, option A is
-currently the only path. The idea: if the user's accessibility bus is
-enabled (default on GNOME, opt-in on KDE), subscribe to keyboard
-events via the `atspi` crate — no `sudo`, but higher latency, and some
-inputs (especially in non-toolkit apps) are missed. It would serve as
-a fallback when option A is not available.
+**The keyboard listener via AT-SPI does not exist.** On Wayland,
+option A is currently the only listening path. The idea: if the
+user's accessibility bus is enabled, subscribe to keyboard events —
+no `sudo`, but higher latency, and some inputs (especially in
+non-toolkit apps) are missed. It would serve as a fallback when
+option A is not available.
+
+### The accessibility bus IS used — for the caret, not for keys
+
+Since v0.5.0 `poltertype-input` connects to the session's AT-SPI
+bus (plain user-session IPC — no group, no `sudo`, no network) for
+one narrow purpose: the **suggestion tooltip's position**. It
+subscribes to `object:text-caret-moved` events and asks the focused
+widget for the caret's *rectangle* (`GetCharacterExtents`), so the
+tooltip can appear next to the text being typed. It never requests
+text content — coordinates only, and nothing is logged.
+
+On startup it also raises the session flag
+`org.a11y.Status.IsEnabled` (the same flag screen readers raise):
+toolkits keep their accessibility bridges dormant until some
+assistive client sets it. Apps started while the flag is up expose
+caret positions; apps that predate it stay silent until restarted —
+PolterType then falls back to pointer/window anchoring. The flag is
+session-scoped, is never unset by PolterType (unsetting could break
+a real screen reader started later), and disappears at logout. If
+the a11y stack is absent or disabled, everything degrades silently.
 
 ### Option C — X11
 

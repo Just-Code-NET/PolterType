@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-14 (v0.4.2).
+> Created: 2026-05-02. Last updated: 2026-07-24 (v0.5.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,8 +9,9 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.4.2; most recently the GitHub-Releases auto-updater in 0.4.0) and
->   §10 below, where every item is marked.
+>   0.5.0; most recently the spelling-suggestions tooltip with its
+>   AT-SPI caret anchoring in 0.5.0) and §10 below, where every item
+>   is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
@@ -48,6 +49,7 @@
 | 2026-07-11 | **Correction pipeline v2**: switch the layout first, then delete (not the other way around). | Details in `DECISIONS.md` (entry of 2026-07-11): removes the race with the echo from our own emitter. |
 | 2026-07-13 | **Linux `FocusTracker`**: Hyprland IPC + X11 EWMH, identity = executable basename via `/proc`, 150 ms TTL cache. GNOME/KDE Wayland stay noop (no compositor-agnostic query). | Closes the "quietest hole" from §3.9 on the two Linux paths that can answer honestly. Details in `DECISIONS.md` (2026-07-13). |
 | 2026-07-13 | **Hook-failure alert instead of a silent tray**: menu entry → setup guide, tooltip suffix, one-shot notification. A "Run setup" button that invokes `sudo` itself was rejected. | The listener returned a descriptive error since day one; the tray just never showed it. Self-`sudo` is the scary pattern the docs warn against. |
+| 2026-07-24 | **Spelling suggestions**: dictionary-driven tooltip for mistyped same-layout words (`poltertype-popup` crate, `[suggestions]`, on by default). Below-threshold layout verdicts surface as the leading tooltip entry instead of being dropped. | Extends the correction promise to plain typos with the data we already bundle. Details in `DECISIONS.md` (2026-07-24). |
 
 ---
 
@@ -378,6 +380,17 @@ apps = ["Code.exe", "kitty"]
 [sounds]
 theme = "default"          # preset folder
 volume = 0.6
+
+# Spelling-suggestion tooltip for mistyped (same-layout) words —
+# added 2026-07-24. Purely local: candidates come from the bundled
+# dictionaries (a second, surface-form FST per language), ranked by a
+# keyboard-aware edit distance. The tooltip never takes keyboard
+# focus; entries are applied by click or by accept_modifiers+digit.
+[suggestions]
+enabled              = true
+max_suggestions      = 5            # clamped to 1..=9 (one digit key each)
+tooltip_timeout_secs = 30           # clamped to 3..=600 at read time
+accept_modifiers     = "Ctrl+Shift" # + digit 1..9; "" disables keyboard accept
 
 # The app's ONLY network access, and it is ON by default. Added in
 # v0.4.0. See §6, DECISIONS.md and docs/PERMISSIONS.md § Network.
@@ -764,10 +777,12 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of post-0.4.2 `main` (2026-07-14).** Phases 0–8 are, in
+> **Status as of v0.5.0 (2026-07-24).** Phases 0–8 are, in
 > their core parts, complete and shipped across releases 0.1.0 →
-> 0.4.2 — Phase 8's auto-updater landed in 0.4.0; below, what remains
-> open is marked. Items that are **not** done are deliberately left as
+> 0.5.0 — Phase 8's auto-updater landed in 0.4.0, and 0.5.0 added
+> the spelling-suggestions tooltip (surface FSTs, `poltertype-popup`,
+> AT-SPI caret anchoring — see `DECISIONS.md` 2026-07-24); below,
+> what remains open is marked. Items that are **not** done are deliberately left as
 > `[ ]` — that is the current work list. The wording of some items had
 > drifted behind the code (e.g. `HeuristicDetector` in Phase 3 is
 > actually called `WordPlausibilityDetector`); it is corrected here.

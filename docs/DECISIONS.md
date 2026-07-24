@@ -1071,3 +1071,177 @@ it is a landmine.** When a dormant feature (here: focus tracking) is
 implemented for a new platform, every config default gated behind it
 changes behaviour on that platform — audit them as part of the same
 change, not after a user reports the product as broken.
+
+## 2026-07-24 — Spelling suggestions: surface FSTs, a DFA that survives Cyrillic, and a focus-free tooltip
+
+The engine's promise was "your wrong-layout word gets fixed"; plain
+typos (`слоао`, `hwllo`) got nothing. Suggestions close that gap:
+when a completed word is kept by the decision pipeline **and** is not
+in the current language's dictionary, the engine offers nearby
+dictionary words in a small tooltip — click one, or press
+`Ctrl+Shift+<digit>`, and the word is replaced in place. On by
+default (`[suggestions]`), purely local, and the typed text never
+reaches a log line — only counts do.
+
+**A second, surface-form FST per language.** The membership FSTs are
+built with the lossy `letters_only_lower` normalisation — `п'ять` is
+stored as `пять`, which is fine for "is this a word?" and fatal for
+"type this word into the user's text". `build.rs` now also emits
+`<stem>-surface.fst` (lowercase, apostrophes folded to `'`, hyphens
+kept), and suggestions stream off that one, so `пять` comes back as
+`п'ять`. One decoding pass produces both shapes; ≤2-letter surface
+entries are dropped (suggestions never target short tokens). Cost:
+~2-4 MB per language on disk and resident, only for loaded layouts.
+
+**`levenshtein_automata`, not fst's `levenshtein` feature.** The
+candidate walk intersects the surface FST with an edit-distance
+automaton (d=1, then d=2 for tokens ≥5 letters when d=1 found
+little). fst 0.4's own Levenshtein automaton silently mismatches
+multibyte queries — even `слово` within d=1 *of itself* streams zero
+results — which rules it out for a Cyrillic-first product. The
+tantivy crate handles UTF-8 correctly and counts adjacent
+transpositions as one edit, which matches how humans mistype. The
+parametric tables build once per Suggester; per-query DFAs are cheap.
+
+**Keyboard-aware ranking.** Raw candidates are re-ranked by a
+weighted optimal-string-alignment distance: substituting a key by its
+*physical neighbour* costs ~0.4 instead of 1.0 (positions derived
+from Set-1 scancodes — layout-independent physics, per-layout char
+maps), transpositions 0.6, plus small first/last-letter and
+shared-prefix signals, and a penalty for weak-list entries. So
+`hwllo` prefers `hello` (w↔e adjacent) over `hallo`, with no
+frequency data needed.
+
+**Below-threshold layout verdicts get a second life.** A Switch
+verdict whose confidence missed `confidence_threshold` used to be
+dropped on the floor. It is now the *leading* tooltip entry, badged
+with the target layout; accepting it runs the full switch-and-replay
+correction. The engine stays conservative automatically while the
+user gets to overrule it with one click.
+
+**The tooltip must never take keyboard focus**, or it would break the
+very typing it exists to fix. New `poltertype-popup` crate (a fourth
+platform-code island alongside input/layout/update): Wayland uses a
+`wlr-layer-shell` overlay with `keyboard_interactivity: None`
+(Hyprland/Sway; GNOME/KDE expose no layer-shell to third parties →
+noop), X11 an override-redirect window, macOS/Windows are noop seams
+for now. Rendering is tiny-skia + cosmic-text — both already in the
+tree via iced's software renderer, so no new licences.
+
+**Anchoring: AT-SPI caret first, proxies after.** The tooltip sits
+next to the text-insertion point via an anchor chain, best first:
+
+1. **AT-SPI caret extents** — a background watcher (zbus *blocking*,
+   no async runtime; the long-lived signal subscription is why this
+   is a real bus connection while `poltertype-layout` stays on CLI
+   shell-outs) subscribes to `object:text-caret-moved` and resolves
+   each event through `GetCharacterExtents`. Extents are requested
+   **window-relative** (`ATSPI_COORD_TYPE_WINDOW`) and composed with
+   the compositor's live window rect — native-Wayland toolkits
+   report *screen* coordinates against the window's initial
+   placement, which goes stale on every re-tile (observed live).
+   The watcher also raises `org.a11y.Status.IsEnabled` (after the
+   a11y-bus handshake — a write during `at-spi-bus-launcher`
+   activation gets overwritten by its initial state): toolkits keep
+   their a11y bridge dormant until an AT client raises that flag,
+   and PolterType now is one. Apps already running before the flag
+   went up stay silent until restarted — accepted; the chain
+   degrades per-app, not globally.
+2. **Pointer inside the focused window** (Hyprland `cursorpos` / X11
+   `QueryPointer`) — after a click into the text, the pointer hovers
+   near the caret.
+3. **Focused window rect** (Hyprland IPC `activewindow` now parsed
+   for `at:`/`size:`/`monitor:`; X11 `GetGeometry` +
+   `TranslateCoordinates`), bottom-centre — chat inputs and prompts.
+4. **Output bottom edge** when nothing is known.
+
+Around the anchor point the popup walks the sides by preference —
+above → below → right → left, first side with room wins, clamped to
+the output with a margin (`poltertype-popup/src/place.rs`, pure and
+unit-tested). "Above" clears the caret line's top, "below" its
+bottom, so the line being typed is never covered.
+
+**A click on the tooltip races its own observation.** The engine
+watches mouse buttons (BTN_LEFT evdev pseudo-scancode) and treats a
+click as "caret moved" — which would kill the very offer the click
+is accepting, since the popup's `Accepted` event arrives through
+another thread. Resolution: when a pointer press lands while an
+offer is live, the engine *freezes* the screen model (word +
+separators + in-progress tail) into the offer for a ~500 ms grace
+window instead of dropping it. A click ON the overlay never reached
+the app below, so the frozen state is exactly what's on screen; an
+accept inside the grace applies from it, and the correction's absorb
+machinery is granted exactly one benign pointer-press allowance for
+whichever ordering the race produced. A click *elsewhere* is voided
+by the first following keypress or the grace lapsing. Bare modifier
+presses no longer count as "commands" (`is_modifier_scancode`) — on
+the Linux listener a modifier's own press already carries its flag,
+and `Ctrl↓` was killing the accept chord before its digit arrived;
+an idle-timeout carve-out similarly keeps a live offer's word stash
+valid while the user pauses to read the tooltip.
+
+**Accept paths and their races.** Tooltip clicks arrive as
+`EngineCommand::AcceptSuggestion { generation, index }`; the digit
+chord is matched straight off the key stream on *every* platform
+(registering nine OS-global hotkeys would steal those combos from
+every app even with no tooltip up; stream matching costs one mutex
+peek and only while an offer is pending). Every offer carries a
+monotonic generation; an accept is honoured only if the generation
+matches, the deadline hasn't passed, and the buffer's completed-word
+stash still equals the offered word's scancodes — so a stale click
+can never replace the wrong text. The replacement itself reuses
+`apply_correction` wholesale (absorb window, echo bookkeeping,
+compensation loop), with `from == to` skipping the layout-switch
+pre-flight and the `Corrected`/`LayoutChanged` events. Suggestion
+text is typed as reverse-mapped scancodes (the only injection that
+works in terminals); characters the layout can't type (uk apostrophe)
+fall back to `send_text`.
+
+**Known trade-offs, accepted deliberately:**
+
+* The accept chord's keypress still reaches the focused app (we
+  never block keys) — same accepted risk as the Wayland hotkeys;
+  `Ctrl+Shift+digit` is bound by virtually nothing.
+* An offer dies when the *next* word completes — the tooltip's
+  full 30 s apply only while the word is still the last thing the
+  buffer can vouch for. A tooltip that outlives its ability to act
+  would be lying about clickability.
+* Overlay-only words are suggested in their stripped form (user
+  overlays are stored `letters_only_lower`); acceptable for the
+  project-jargon lists overlays hold.
+
+**Alternatives considered.** An iced/winit popup window — rejected:
+winit can't position toplevels on Wayland at all, and a normal
+window steals focus. `zwp_input_method_v2` for real caret rects —
+rejected for now: only one IM client may bind it (fcitx users lose),
+and it drags a whole input-method identity with it. SymSpell-style
+precomputed deletion tables — unnecessary: FST∩DFA already answers
+in microseconds at our dictionary sizes without a second index.
+
+**"Add to dictionary" closes the loop.** Field feedback within the
+first hour: the tooltip fires on everything the dictionaries don't
+know — jargon, names, project vocabulary. The remedy is in the
+tooltip itself: a set-apart last row (divider, accent colour) that
+appends the word to the user's global overlay file and inserts it
+into the running dictionary set **in place** (`add_overlay_word` —
+one HashSet insert; a full from-disk reload would re-read and, via
+the `&'static` FST plumbing, re-leak every dictionary blob per added
+word). The engine only emits `AddToDictionary { layout, word }`; the
+app owns the file and the swap. The row rides along only when a
+tooltip would show anyway — a popup whose sole content is "add to
+dictionary" would itself be the noise it exists to stop.
+
+**Words started mid-text get no tooltip.** Typing right after a
+click / arrow keys / Esc means the caret may sit inside a word the
+buffer never saw; the typed keys are then a *fragment*, suggestions
+computed on a fragment are noise, and accepting one splices the
+replacement into the middle of the on-screen word. `WordBuffer` now
+records whether each word's first key arrived after an *observed*
+separator (`started_clean` on `WordCompleted`), and the engine
+offers suggestions only for clean starts. Deliberate asymmetry:
+auto layout-correction is NOT gated on this — correcting a
+wrong-layout fragment right after clicking into a field is
+long-standing, test-pinned behaviour, and the dictionary Keep
+protects valid fragments there. Cost accepted: the first word typed
+after a click into an empty field misses its tooltip; every word
+after it is covered.

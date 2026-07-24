@@ -117,6 +117,8 @@ crates/
   poltertype-update/  library — GitHub-Releases updater: manifest, download,
                                 staging, per-OS install. NOT optional — it is
                                 in every build, and it is the only network code
+  poltertype-popup/   library — suggestion tooltip: focus-free overlay
+                                (Wayland layer-shell / X11 override-redirect)
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
   poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
 data/                source-of-truth, committed; consumed by build.rs

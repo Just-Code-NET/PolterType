@@ -5,12 +5,13 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-> **Status:** v0.4.2 — out of beta since v0.1.0. Works end-to-end on
-> Windows and on Linux (both Wayland and X11). The macOS backend is
-> written from Apple's API docs and validated on CI, but hasn't yet
-> been runtime-tuned by a hardware-equipped contributor. Installers
-> are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
-> full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
+> **Status:** v0.5.0 — out of beta since v0.1.0. Works end-to-end on
+> Windows and on Linux (both Wayland and X11); the new spelling-
+> suggestions tooltip renders on Hyprland/Sway and X11. The macOS
+> backend is written from Apple's API docs and validated on CI, but
+> hasn't yet been runtime-tuned by a hardware-equipped contributor.
+> Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md)
+> for the full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
 
 ![PolterType settings window — Languages panel](docs/screenshots/settings-window.png)
 
@@ -80,7 +81,7 @@ is two requests: a `GET` of a small JSON manifest, and — only when
 there's actually a new version — a `GET` of the installer itself. No
 account, no identifier, nothing about you and nothing about what you
 type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.4.2
+a User-Agent naming the running version (`PolterType/0.5.0
 (updater)`). The exact manifest URL is printed on the Settings
 window's **General** pane, so you never have to take our word for it.
 
@@ -147,6 +148,31 @@ the Settings window:
 > leave the binding at its default, PolterType silently substitutes a
 > key that no app acts on. Bind it explicitly and your choice wins,
 > destructive or not.
+
+## Spelling suggestions
+
+Wrong-layout words get auto-corrected; plain typos get *suggested*.
+When a word you just finished isn't in the dictionary for the
+language you're typing, a small tooltip appears near the focused
+window with up to 5 nearby dictionary words — click one, or press
+`Ctrl+Shift+<digit>`, and the word is replaced in place. When the
+engine saw a possible wrong-layout word but wasn't confident enough
+to auto-switch, that candidate leads the list with a layout badge, so
+the borderline cases become your one-click call.
+
+Everything is local: candidates come from the bundled dictionaries
+(plus your own wordlist overlays), ranked by a keyboard-aware edit
+distance that knows `hwllo` is a slipped finger away from `hello`.
+The last row of every tooltip is **Add to dictionary** — one click
+teaches PolterType your jargon, names and project vocabulary for
+good. The tooltip never steals keyboard focus and disappears after
+30 seconds or the moment you type past it. Tune or disable it on the
+**Suggestions** pane (`[suggestions]` in `config.toml`).
+
+> The tooltip currently renders on **Hyprland/Sway (Wayland
+> layer-shell) and X11**. GNOME/KDE Wayland, macOS and Windows don't
+> have an overlay backend yet; there the feature stays engine-side
+> only.
 
 ## Smart commands (text triggers)
 

@@ -38,6 +38,8 @@ deployed:
     ...
   wordlists/              bundled dictionaries
     en_us.fst             FST built by build.rs from <stem>.txt.gz
+    en_us-surface.fst     surface forms (apostrophes/hyphens kept) —
+                          the spelling-suggestions corpus
     en_us-stop.txt        curated 1- / 2-letter stop words
     uk_ua-weak.txt        valid-but-rare entries, demoted in scoring
     ...

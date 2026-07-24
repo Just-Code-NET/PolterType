@@ -4,6 +4,69 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — spelling suggestions for plain typos
+
+Until now PolterType only helped when the *layout* was wrong. Typos
+typed in the *right* layout — `слоао`, `hwllo` — got nothing. Now,
+when a completed word isn't a dictionary word (and isn't something
+the engine would auto-correct), a small tooltip appears near the
+focused window with up to 5 nearby dictionary words. Click one, or
+press `Ctrl+Shift+<digit>`, and the word is replaced in place —
+including any separators and next-word keystrokes you'd already
+typed.
+
+The details that make it behave:
+
+- **Candidates come from the bundled dictionaries** via a new
+  surface-form FST per language, so `п'ять` is suggested *with* its
+  apostrophe. Ranking is keyboard-aware: substituting a key with its
+  physical neighbour ranks higher than a random edit, and adjacent
+  transpositions count as a single slip.
+- **Low-confidence layout verdicts join the list.** When the detector
+  saw a cross-layout word but stayed below the confidence threshold,
+  that candidate now leads the tooltip (badged with the layout)
+  instead of being dropped — you make the call the engine wasn't sure
+  enough to make.
+- **The tooltip appears next to the text you're typing.** It anchors
+  to the real caret via accessibility (AT-SPI) in apps that expose
+  it, falling back to the pointer, then the focused window.
+  PolterType raises the session's `org.a11y.Status.IsEnabled` flag so
+  application a11y bridges wake up — apps already running before
+  PolterType's first launch join in after they restart. Placement
+  picks whichever side of the caret has room (above first, then
+  below/right/left) and never covers the line being typed. Clicks on
+  the tooltip are carefully disambiguated from clicks that move the
+  caret — mid-text insertions replace exactly the mistyped word and
+  leave the surrounding text alone.
+- **The tooltip never takes keyboard focus** (Wayland layer-shell on
+  Hyprland/Sway, override-redirect on X11) and hides itself after 30
+  seconds, on Esc / click elsewhere / caret movement, or the moment
+  it can no longer act on the word. GNOME/KDE Wayland, macOS and
+  Windows have no overlay backend yet — the feature quietly stays
+  engine-side there.
+- **"Add to dictionary" lives in the tooltip.** The last row adds the
+  flagged word to your wordlist overlay
+  (`<config-dir>/poltertype/wordlists/<stem>.txt`) with one click or
+  digit — jargon, names and project vocabulary stop being flagged
+  immediately and permanently. No tooltip appears at all for words
+  typed right after a click / arrow keys / Esc: the typed keys may
+  be a fragment of a longer word on screen, and a suggestion
+  computed on a fragment would corrupt it if accepted.
+- **Local, silent, off-switchable.** No network, nothing typed ever
+  reaches a log, and `[suggestions] enabled = false` (or the new
+  Settings → Suggestions pane) turns the whole thing off. Defaults:
+  on, 5 suggestions, 30 s, `Ctrl+Shift` + digit (the modifier half is
+  configurable — e.g. `accept_modifiers = "Ctrl+Meta"`).
+
+### Fixed
+
+- The Windows MSI never shipped `uk_ua-weak.txt`, so the weak-word
+  deferral (the `туче` → `next` case from 0.4.x) silently didn't work
+  on Windows installs. The WiX manifest lists each data file
+  explicitly and the weak list was forgotten; it is packaged now.
+
 ## [0.4.2] — PolterType stops muting itself in your editor
 
 ### Fixed — PolterType no longer arrives with your editor pre-muted
