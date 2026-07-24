@@ -3867,7 +3867,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-ai"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "keyring",
  "poltertype-detect",
@@ -3880,7 +3880,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-app"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -3907,7 +3907,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-core"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "crossbeam-channel",
  "directories",
@@ -3928,7 +3928,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-detect"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "fst",
  "levenshtein_automata",
@@ -3941,7 +3941,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-input"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
@@ -3959,7 +3959,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-layout"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "core-foundation 0.10.1",
  "poltertype-types",
@@ -3971,7 +3971,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-popup"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "cosmic-text",
  "crossbeam-channel",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-types"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
@@ -3993,7 +3993,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-update"
-version = "0.4.2"
+version = "0.5.0"
 dependencies = [
  "directories",
  "semver",
