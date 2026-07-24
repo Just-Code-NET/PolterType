@@ -199,6 +199,16 @@ mod engine_integration_tests {
         }
 
         fn start_with(idle_timeout_ms: u64, emitter: MockEmitter, fail_switch: bool) -> Self {
+            Self::start_full(idle_timeout_ms, emitter, fail_switch, None, None)
+        }
+
+        fn start_full(
+            idle_timeout_ms: u64,
+            emitter: MockEmitter,
+            fail_switch: bool,
+            suggester: Option<Arc<dyn poltertype_detect::SuggestionProvider>>,
+            detectors_override: Option<Vec<Box<dyn Detector>>>,
+        ) -> Self {
             let mut settings = crate::settings::Settings::default();
             settings.engine.idle_timeout_ms = idle_timeout_ms;
             let settings = Arc::new(SettingsStore::for_tests(settings));
@@ -207,10 +217,12 @@ mod engine_integration_tests {
             let mut switcher = MockSwitcher::new("en-US", &["en-US", "uk-UA"]);
             switcher.fail_switch = fail_switch;
             let switcher = Arc::new(switcher);
-            let detectors: Vec<Box<dyn Detector>> = vec![Box::new(AlwaysOther(
-                LayoutId::from("en-US"),
-                LayoutId::from("uk-UA"),
-            ))];
+            let detectors: Vec<Box<dyn Detector>> = detectors_override.unwrap_or_else(|| {
+                vec![Box::new(AlwaysOther(
+                    LayoutId::from("en-US"),
+                    LayoutId::from("uk-UA"),
+                ))]
+            });
             let (key_tx, key_rx) = crossbeam_channel::bounded::<KeyEvent>(1024);
             let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<EngineCommand>();
             let (out_tx, out_rx) = crossbeam_channel::unbounded::<SwitcherEvent>();
@@ -223,6 +235,7 @@ mod engine_integration_tests {
                 Arc::new(NoopFocusTracker),
                 Arc::new(crate::audio::AudioPlayer::for_tests()),
                 out_tx,
+                suggester,
             );
             let engine_thread = std::thread::spawn(move || engine.run(key_rx, cmd_rx));
             Self {
@@ -249,19 +262,46 @@ mod engine_integration_tests {
         }
 
         fn key(&self, sc: u32, direction: KeyDirection, shift: bool) {
+            self.key_mods(
+                sc,
+                direction,
+                poltertype_types::Modifiers {
+                    shift,
+                    ..poltertype_types::Modifiers::NONE
+                },
+            );
+        }
+
+        fn key_mods(
+            &self,
+            sc: u32,
+            direction: KeyDirection,
+            modifiers: poltertype_types::Modifiers,
+        ) {
             self.key_tx
                 .send(KeyEvent {
                     vk: sc,
                     scancode: sc,
                     direction,
-                    modifiers: poltertype_types::Modifiers {
-                        shift,
-                        ..poltertype_types::Modifiers::NONE
-                    },
+                    modifiers,
                     injected: false,
                     timestamp_ms: 0,
                 })
                 .expect("engine alive");
+        }
+
+        /// Block until an event matching `pred` arrives (draining and
+        /// discarding everything before it), or panic after ~5 s.
+        fn wait_for(&self, pred: impl Fn(&SwitcherEvent) -> bool) -> SwitcherEvent {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let left = deadline.saturating_duration_since(Instant::now());
+                match self.out_rx.recv_timeout(left) {
+                    Ok(ev) if pred(&ev) => return ev,
+                    Ok(_) => continue,
+                    Err(_) => panic!("expected event never arrived"),
+                }
+            }
         }
 
         /// Wait until the engine has drained everything we sent AND
@@ -617,6 +657,501 @@ mod engine_integration_tests {
                 EmitOp::Keys(GHBDSN.iter().copied().chain([SPACE]).collect()),
             ],
             "the word after a click must correct with exactly its own length"
+        );
+    }
+
+    // ─── Spelling suggestions ────────────────────────────────────────
+
+    /// Never has an opinion — leaves every word as typed, so the
+    /// suggestions gate is reached on each completed word.
+    struct NoOpinionDetector;
+
+    impl Detector for NoOpinionDetector {
+        fn name(&self) -> &'static str {
+            "test-no-opinion"
+        }
+        fn judge(&self, _ctx: &poltertype_detect::DetectionContext<'_>) -> Verdict {
+            Verdict::NoOpinion
+        }
+    }
+
+    /// Like `AlwaysOther`, but too unsure to clear the 0.55 threshold
+    /// — the verdict must surface as the leading tooltip entry
+    /// instead of an auto-switch.
+    struct TimidOther(LayoutId, LayoutId);
+
+    impl Detector for TimidOther {
+        fn name(&self) -> &'static str {
+            "test-timid-other"
+        }
+        fn judge(&self, ctx: &poltertype_detect::DetectionContext<'_>) -> Verdict {
+            let target = if *ctx.current_layout == self.0 {
+                self.1.clone()
+            } else {
+                self.0.clone()
+            };
+            Verdict::Switch(DetectionVerdict {
+                best_layout: target,
+                confidence: 0.30,
+                reason: "test-low-confidence".into(),
+            })
+        }
+    }
+
+    /// Deterministic provider: every token is "unknown" and maps to a
+    /// fixed candidate list.
+    struct FixedSuggestions(Vec<&'static str>);
+
+    impl poltertype_detect::SuggestionProvider for FixedSuggestions {
+        fn is_known(&self, _layout: &LayoutId, _typed: &str) -> bool {
+            false
+        }
+        fn suggest(
+            &self,
+            _layout: &LayoutId,
+            _typed: &str,
+            max: usize,
+        ) -> Vec<poltertype_detect::Suggestion> {
+            self.0
+                .iter()
+                .take(max)
+                .map(|s| poltertype_detect::Suggestion {
+                    text: (*s).to_owned(),
+                    score: 0.5,
+                })
+                .collect()
+        }
+    }
+
+    fn suggestion_harness() -> Harness {
+        Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(FixedSuggestions(vec!["hello"]))),
+            Some(vec![Box::new(NoOpinionDetector)]),
+        )
+    }
+
+    /// `hwllo` / `hello` under en-US.
+    const HWLLO: [u32; 5] = [0x23, 0x11, 0x26, 0x26, 0x18];
+    const HELLO: [u32; 5] = [0x23, 0x12, 0x26, 0x26, 0x18];
+
+    fn ready_generation(h: &Harness) -> u64 {
+        match h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. })) {
+            SwitcherEvent::SuggestionsReady { generation, .. } => generation,
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn mistyped_word_yields_offer_without_touching_text() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady {
+            original, entries, ..
+        } = ev
+        else {
+            unreachable!()
+        };
+        assert_eq!(original, "hwllo");
+        assert_eq!(
+            entries.len(),
+            2,
+            "one suggestion + the add-to-dictionary row"
+        );
+        assert_eq!(entries[0].text, "hello");
+        assert!(entries[0].switch_to.is_none());
+        assert_eq!(entries[0].action, SuggestionAction::Replace);
+        // The escape hatch always closes the list, carrying the typed
+        // word so the accept path knows what to add.
+        assert_eq!(entries[1].action, SuggestionAction::AddToDictionary);
+        assert_eq!(entries[1].text, "hwllo");
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty(), "an offer alone must not emit keystrokes");
+    }
+
+    /// Accepting the add-to-dictionary row must emit the
+    /// `AddToDictionary` event and touch nothing on screen.
+    #[test]
+    fn add_to_dictionary_entry_emits_event_and_no_keystrokes() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady {
+            generation,
+            entries,
+            ..
+        } = ev
+        else {
+            unreachable!()
+        };
+        let add_index = entries
+            .iter()
+            .position(|e| e.action == SuggestionAction::AddToDictionary)
+            .expect("add-to-dictionary row present");
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: add_index,
+                from_pointer: true,
+            })
+            .expect("engine alive");
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
+        let SwitcherEvent::AddToDictionary { layout, word } = ev else {
+            unreachable!()
+        };
+        assert_eq!(layout, LayoutId::from("en-US"));
+        assert_eq!(word, "hwllo");
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "adding to the dictionary must not type anything"
+        );
+    }
+
+    /// A word that starts right after a click may be a fragment of a
+    /// longer on-screen word — no tooltip for it. The next word,
+    /// started after an observed separator, gets one again.
+    #[test]
+    fn unclean_word_start_suppresses_the_offer() {
+        let h = suggestion_harness();
+        h.press(poltertype_types::SC_POINTER_BUTTON); // click into text
+        h.release(poltertype_types::SC_POINTER_BUTTON);
+        type_word(&h, &HWLLO);
+        h.tap(SPACE); // completes, but started unclean
+        type_word(&h, &HWLLO);
+        h.tap(SPACE); // boundary-started — offer expected
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady { generation, .. } = ev else {
+            unreachable!()
+        };
+        assert_eq!(
+            generation, 1,
+            "exactly one offer: the click-started word must have stayed quiet"
+        );
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty());
+    }
+
+    #[test]
+    fn accept_command_replaces_word_in_place() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: false,
+            })
+            .expect("engine alive");
+        h.settle();
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "same-layout replacement must not switch layouts"
+        );
+        let (ops, events) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ],
+            "delete word+boundary, retype suggestion scancodes + boundary"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::SuggestionApplied { .. })),
+            "expected a SuggestionApplied event"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::Corrected { .. })),
+            "a same-layout replacement is not a layout correction"
+        );
+    }
+
+    #[test]
+    fn accept_digit_chord_replaces_word() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _generation = ready_generation(&h);
+        let chord = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x02, KeyDirection::Press, chord); // Ctrl+Shift+1
+        h.key_mods(0x02, KeyDirection::Release, chord);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ]
+        );
+    }
+
+    /// A tooltip click reaches the engine twice: once as the physical
+    /// `SC_POINTER_BUTTON` press in the key stream (which abandons
+    /// the buffer — a click usually moves the caret) and once as the
+    /// popup's `Accepted` command. The click never reached the app
+    /// below (the overlay swallowed it), so the frozen screen state
+    /// must still authorise the replacement.
+    #[test]
+    fn click_accept_survives_pointer_abandon() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        // Physical click observed first…
+        h.press(poltertype_types::SC_POINTER_BUTTON);
+        h.release(poltertype_types::SC_POINTER_BUTTON);
+        std::thread::sleep(Duration::from_millis(60));
+        // …the tooltip's Accepted event arrives a beat later.
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: true,
+            })
+            .expect("engine alive");
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ],
+            "a tooltip click must replace the word despite its own pointer-abandon"
+        );
+    }
+
+    /// The other ordering of the same race: the popup's `Accepted`
+    /// command wins, and the physical click's key-stream observation
+    /// lands while the correction is already absorbing. The allowance
+    /// must swallow it instead of aborting as "caret moved".
+    #[test]
+    fn click_accept_tolerates_click_racing_the_correction() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: true,
+            })
+            .expect("engine alive");
+        h.press(poltertype_types::SC_POINTER_BUTTON);
+        h.release(poltertype_types::SC_POINTER_BUTTON);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ],
+            "the queued click observation must not abort the accepted replacement"
+        );
+    }
+
+    /// A click that did NOT land on the tooltip: the user clicked
+    /// somewhere else and kept typing. The grace window must die on
+    /// that first keypress, and a (hypothetical, late) accept must be
+    /// declined — the caret is somewhere the engine can't vouch for.
+    #[test]
+    fn click_elsewhere_then_typing_kills_offer() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        h.press(poltertype_types::SC_POINTER_BUTTON);
+        h.release(poltertype_types::SC_POINTER_BUTTON);
+        h.tap(0x1E); // `a` — typing resumes elsewhere
+        let _ = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsDismissed { .. }));
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: true,
+            })
+            .expect("engine alive");
+        h.settle();
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "an accept after the grace was voided must not touch the text"
+        );
+    }
+
+    /// Regression for the two bugs the first live Hyprland run hit:
+    ///
+    /// 1. The evdev listener stamps a modifier's OWN press with its
+    ///    flag (`Ctrl↓` arrives with `control: true`), which used to
+    ///    read as a "command" and abandon the buffer — killing the
+    ///    accept chord before its digit landed.
+    /// 2. Pausing to *read* the tooltip (longer than
+    ///    `idle_timeout_ms`) used to void the offer on the very next
+    ///    event — i.e. the accept chord itself.
+    ///
+    /// This drives the realistic sequence: word → pause past the
+    /// idle timeout → `Ctrl↓ Shift↓ 1↓ 1↑ Shift↑ Ctrl↑` with
+    /// listener-faithful modifier flags. The replacement must land.
+    #[test]
+    fn accept_chord_survives_modifier_presses_and_idle_gap() {
+        let h = Harness::start_full(
+            400, // idle_timeout_ms — the pause below exceeds it
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(FixedSuggestions(vec!["hello"]))),
+            Some(vec![Box::new(NoOpinionDetector)]),
+        );
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _generation = ready_generation(&h);
+        std::thread::sleep(Duration::from_millis(700)); // reading the tooltip
+
+        let m = |control: bool, shift: bool| poltertype_types::Modifiers {
+            control,
+            shift,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x1D, KeyDirection::Press, m(true, false)); // Ctrl↓
+        h.key_mods(0x2A, KeyDirection::Press, m(true, true)); // Shift↓
+        h.key_mods(0x02, KeyDirection::Press, m(true, true)); // 1↓
+        h.key_mods(0x02, KeyDirection::Release, m(true, true));
+        h.key_mods(0x2A, KeyDirection::Release, m(true, false));
+        h.key_mods(0x1D, KeyDirection::Release, m(false, false));
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ],
+            "the accept chord must survive its own modifier presses and an idle-length pause"
+        );
+    }
+
+    #[test]
+    fn stale_generation_accept_is_ignored() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let first = ready_generation(&h);
+        // A second word completes → the first offer is dead.
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let second = ready_generation(&h);
+        assert_ne!(first, second);
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation: first,
+                index: 0,
+                from_pointer: false,
+            })
+            .expect("engine alive");
+        h.settle();
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty(), "a stale accept must not touch the text");
+    }
+
+    #[test]
+    fn caret_jump_dismisses_offer() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        h.tap(0x01); // Esc — caret context gone
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsDismissed { .. }));
+        let SwitcherEvent::SuggestionsDismissed { generation: g } = ev else {
+            unreachable!()
+        };
+        assert_eq!(g, generation);
+        // A late accept after the dismissal must be a no-op.
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: false,
+            })
+            .expect("engine alive");
+        h.settle();
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty());
+    }
+
+    #[test]
+    fn low_confidence_alt_leads_entries_and_switches_on_accept() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(FixedSuggestions(vec!["hello"]))),
+            Some(vec![Box::new(TimidOther(
+                LayoutId::from("en-US"),
+                LayoutId::from("uk-UA"),
+            ))]),
+        );
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady {
+            generation,
+            entries,
+            ..
+        } = ev
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            entries[0].switch_to,
+            Some(LayoutId::from("uk-UA")),
+            "below-threshold verdict must lead the entry list"
+        );
+        assert_eq!(entries[0].text, "привіт");
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: false,
+            })
+            .expect("engine alive");
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "accepting the cross-layout entry must switch the layout"
+        );
+        let (ops, events) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(7),
+                EmitOp::Keys(GHBDSN.iter().copied().chain([SPACE]).collect()),
+            ],
+            "cross-layout accept replays the original scancodes"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::Corrected { .. })),
+            "a cross-layout accept IS a layout correction"
         );
     }
 }

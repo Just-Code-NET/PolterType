@@ -21,6 +21,17 @@ pub enum WordBoundary {
         /// last-word state — the screen no longer matches what we
         /// recorded.
         tainted: bool,
+        /// The word's first key arrived right after an *observed*
+        /// boundary — as opposed to right after a click / navigation
+        /// / Esc / idle abandon, where the caret may sit in the
+        /// middle of existing text. An unclean start means the typed
+        /// keys are possibly a fragment of a longer on-screen word:
+        /// spelling suggestions computed on a fragment are noise, and
+        /// accepting one would splice a replacement into the middle
+        /// of that word. Auto layout-correction is deliberately NOT
+        /// gated on this (fixing a wrong-layout fragment right after
+        /// clicking into a field is long-standing behaviour).
+        started_clean: bool,
     },
     /// Caret moved to an unknown place (navigation key, mouse click,
     /// Esc). Word tracking restarted; the engine should invalidate

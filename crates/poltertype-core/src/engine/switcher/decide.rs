@@ -38,6 +38,7 @@ impl SwitcherEngine {
         buffer: &mut WordBuffer,
         boundary_scancode: u32,
         boundary_shift: bool,
+        started_clean: bool,
         key_rx: &Receiver<KeyEvent>,
     ) {
         let snap = self.settings.snapshot();
@@ -303,6 +304,12 @@ impl SwitcherEngine {
             }
         }
 
+        // A Switch verdict that stays below the confidence threshold
+        // is remembered: the engine won't auto-apply it, but the
+        // suggestions tooltip offers it as a candidate — the user gets
+        // to make the call the detector wasn't confident enough for.
+        let mut low_conf_alt: Option<(LayoutId, String)> = None;
+
         let action = match chosen {
             Some(Verdict::Keep { reason }) => SwitchAction::KeepCurrent {
                 reason: format!("veto by detector: {reason}"),
@@ -330,12 +337,18 @@ impl SwitcherEngine {
                     reason: v.reason,
                 }
             }
-            Some(Verdict::Switch(v)) => SwitchAction::KeepCurrent {
-                reason: format!(
-                    "detector confidence {:.2} below threshold {:.2}",
-                    v.confidence, snap.engine.confidence_threshold
-                ),
-            },
+            Some(Verdict::Switch(v)) => {
+                low_conf_alt = candidates
+                    .iter()
+                    .find(|(l, _)| l == &v.best_layout)
+                    .map(|(l, t)| (l.clone(), t.clone()));
+                SwitchAction::KeepCurrent {
+                    reason: format!(
+                        "detector confidence {:.2} below threshold {:.2}",
+                        v.confidence, snap.engine.confidence_threshold
+                    ),
+                }
+            }
             Some(Verdict::NoOpinion) | None => SwitchAction::KeepCurrent {
                 reason: "no detector had an opinion".into(),
             },
@@ -345,6 +358,22 @@ impl SwitcherEngine {
             SwitchAction::KeepCurrent { reason } => {
                 debug!(%reason, "decision: keep current");
                 let _ = self.out_tx.send(SwitcherEvent::KeptCurrent { reason });
+                // The word stays as typed — if it's not even a
+                // dictionary word, offer spelling suggestions. Only
+                // for words that started right after an observed
+                // boundary: after a click / nav / Esc the typed keys
+                // may be a fragment of a longer on-screen word, and a
+                // suggestion computed on a fragment is noise that
+                // corrupts the word if accepted.
+                if started_clean {
+                    self.maybe_offer_suggestions(
+                        &keys,
+                        &current_text,
+                        &current_layout,
+                        low_conf_alt,
+                        &snap,
+                    );
+                }
             }
             SwitchAction::SwitchAndReplay {
                 target_layout,
@@ -378,6 +407,7 @@ impl SwitcherEngine {
                     snap.general.sound_on_correct,
                     Some(&replay),
                     Some((key_rx, buffer)),
+                    0,
                 );
             }
         }

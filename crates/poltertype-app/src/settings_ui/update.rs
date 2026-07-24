@@ -223,6 +223,30 @@ impl SettingsApp {
                 }
                 self.wordlist_content.perform(action);
             }
+            // ── Suggestions ──────────────────────────────────────
+            Message::SuggestionsToggled(b) => self.settings.suggestions.enabled = b,
+            Message::SuggestionMaxDelta(delta) => {
+                // 1..=9 is the same clamp `SuggestionSettings::
+                // max_clamped` applies at read time — each entry is
+                // addressed by one digit key, so the UI must not be
+                // able to express a count the engine would ignore.
+                let cur = i64::try_from(self.settings.suggestions.max_suggestions).unwrap_or(5);
+                let next = (cur + delta).clamp(1, 9);
+                self.settings.suggestions.max_suggestions = usize::try_from(next).unwrap_or(5);
+            }
+            Message::SuggestionTimeoutDelta(delta) => {
+                // Same 3..=600 window `SuggestionSettings::timeout`
+                // clamps to at read time — see the update-interval
+                // rationale above for why the UI mirrors the clamp.
+                let cur =
+                    i64::try_from(self.settings.suggestions.tooltip_timeout_secs).unwrap_or(30);
+                let next = (cur + delta).clamp(3, 600);
+                self.settings.suggestions.tooltip_timeout_secs = u64::try_from(next).unwrap_or(30);
+            }
+            Message::SuggestionModifiersChanged(s) => {
+                self.settings.suggestions.accept_modifiers = s
+            }
+
             Message::ThemeChoiceChanged(choice) => {
                 self.settings.general.ui_theme = choice.config_value().to_owned();
             }

@@ -1,5 +1,7 @@
 //! X11 focus tracker (`_NET_ACTIVE_WINDOW`).
 
+use std::sync::Arc;
+
 use parking_lot::Mutex;
 use tracing::debug;
 use x11rb::connection::Connection;
@@ -7,8 +9,9 @@ use x11rb::errors::ReplyError;
 use x11rb::protocol::xproto::{Atom, AtomEnum, ConnectionExt as _, Window};
 use x11rb::rust_connection::RustConnection;
 
-use crate::focus::FocusTracker;
+use crate::focus::{CaretHint, FocusTracker, FocusedWindowGeometry};
 
+use super::atspi_caret::{AtspiCaretWatcher, CaretSample};
 use super::proc_exe::exe_basename_for_pid;
 
 /// A live display connection plus the two EWMH atoms we query. Built
@@ -27,12 +30,16 @@ struct X11FocusConn {
 /// the fallback when `/proc` is unreadable or the WM didn't set a PID.
 pub(crate) struct X11FocusTracker {
     state: Mutex<Option<X11FocusConn>>,
+    /// Shared AT-SPI caret watcher; `None` when the a11y bus is
+    /// unavailable (the tooltip then anchors to pointer/window).
+    caret: Option<Arc<AtspiCaretWatcher>>,
 }
 
 impl X11FocusTracker {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(caret: Option<Arc<AtspiCaretWatcher>>) -> Self {
         Self {
             state: Mutex::new(None),
+            caret,
         }
     }
 }
@@ -60,6 +67,52 @@ impl FocusTracker for X11FocusTracker {
                 None
             }
         }
+    }
+
+    fn focused_window_geometry(&self) -> Option<FocusedWindowGeometry> {
+        let mut state = self.state.lock();
+        if state.is_none() {
+            match connect() {
+                Ok(c) => *state = Some(c),
+                Err(e) => {
+                    debug!(%e, "x11 focus: connect failed");
+                    return None;
+                }
+            }
+        }
+        let s = state.as_ref()?;
+        match query_focused_geometry(s) {
+            Ok(v) => v,
+            Err(()) => {
+                *state = None;
+                None
+            }
+        }
+    }
+
+    fn pointer_position(&self) -> Option<(i32, i32)> {
+        let mut state = self.state.lock();
+        if state.is_none() {
+            match connect() {
+                Ok(c) => *state = Some(c),
+                Err(e) => {
+                    debug!(%e, "x11 focus: connect failed");
+                    return None;
+                }
+            }
+        }
+        let s = state.as_ref()?;
+        match query_pointer_position(s) {
+            Ok(v) => v,
+            Err(()) => {
+                *state = None;
+                None
+            }
+        }
+    }
+
+    fn caret_hint(&self) -> Option<CaretHint> {
+        self.caret.as_ref()?.latest().map(CaretSample::into_hint)
     }
 
     fn backend_name(&self) -> &'static str {
@@ -125,6 +178,69 @@ fn first_u32_prop(
         .map_err(|e| debug!(?e, "x11 focus: get_property send failed"))?;
     match cookie.reply() {
         Ok(reply) => Ok(reply.value32().and_then(|mut it| it.next())),
+        Err(ReplyError::X11Error(_)) => Ok(None),
+        Err(e) => {
+            debug!(?e, "x11 focus: connection error");
+            Err(())
+        }
+    }
+}
+
+/// Root-relative geometry of the active window: `GetGeometry` gives
+/// the size, `TranslateCoordinates` against the root turns the
+/// window-local origin into global screen coordinates (the window's
+/// own x/y are relative to its WM frame parent, not the root). Same
+/// error contract as the property queries: `Err(())` = dead
+/// connection, window-level races = `Ok(None)`.
+fn query_focused_geometry(s: &X11FocusConn) -> Result<Option<FocusedWindowGeometry>, ()> {
+    let window = match first_u32_prop(s, s.root, s.net_active_window, AtomEnum::WINDOW.into())? {
+        Some(w) if w != 0 => w,
+        _ => return Ok(None),
+    };
+    let geom_cookie = s
+        .conn
+        .get_geometry(window)
+        .map_err(|e| debug!(?e, "x11 focus: get_geometry send failed"))?;
+    let geom = match geom_cookie.reply() {
+        Ok(g) => g,
+        Err(ReplyError::X11Error(_)) => return Ok(None),
+        Err(e) => {
+            debug!(?e, "x11 focus: connection error");
+            return Err(());
+        }
+    };
+    let xlate_cookie = s
+        .conn
+        .translate_coordinates(window, s.root, 0, 0)
+        .map_err(|e| debug!(?e, "x11 focus: translate_coordinates send failed"))?;
+    let xlate = match xlate_cookie.reply() {
+        Ok(t) => t,
+        Err(ReplyError::X11Error(_)) => return Ok(None),
+        Err(e) => {
+            debug!(?e, "x11 focus: connection error");
+            return Err(());
+        }
+    };
+    Ok(Some(FocusedWindowGeometry {
+        x: i32::from(xlate.dst_x),
+        y: i32::from(xlate.dst_y),
+        width: u32::from(geom.width),
+        height: u32::from(geom.height),
+        output: None,
+        output_x: 0,
+        output_y: 0,
+    }))
+}
+
+/// Global pointer position off the root window — the suggestion
+/// tooltip's caret proxy. Same error contract as the other queries.
+fn query_pointer_position(s: &X11FocusConn) -> Result<Option<(i32, i32)>, ()> {
+    let cookie = s
+        .conn
+        .query_pointer(s.root)
+        .map_err(|e| debug!(?e, "x11 focus: query_pointer send failed"))?;
+    match cookie.reply() {
+        Ok(p) => Ok(Some((i32::from(p.root_x), i32::from(p.root_y)))),
         Err(ReplyError::X11Error(_)) => Ok(None),
         Err(e) => {
             debug!(?e, "x11 focus: connection error");

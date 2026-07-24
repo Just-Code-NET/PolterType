@@ -57,6 +57,15 @@ pub struct LayoutDictionary {
     /// switch by itself, only opens the door to one when a strong
     /// alt exists.
     pub weak: HashSet<String>,
+    /// Surface-form FST for the suggestions engine: the same corpus
+    /// as `embedded`, but canonicalised with
+    /// [`crate::surface_lower`] instead of the lossy
+    /// [`crate::letters_only_lower`] — apostrophes and hyphens
+    /// survive, because a suggestion is *typed back* into the user's
+    /// text (`п'ять` must not degrade to `пять`). `None` when the
+    /// layout ships no `<stem>-surface.fst` — suggestions silently
+    /// degrade to overlay-only candidates for that layout.
+    pub surface: Option<Arc<FstSet<&'static [u8]>>>,
 }
 
 impl LayoutDictionary {
@@ -71,7 +80,17 @@ impl LayoutDictionary {
             user_overlay,
             short_stop_words,
             weak,
+            surface: None,
         }
+    }
+
+    /// Attach the surface-form FST (suggestions corpus). Separate from
+    /// [`Self::new`] so the many existing constructors and tests don't
+    /// carry a parameter they never use.
+    #[must_use]
+    pub fn with_surface(mut self, surface: FstSet<&'static [u8]>) -> Self {
+        self.surface = Some(Arc::new(surface));
+        self
     }
 
     /// Convenience: empty embedded FST + given overlay + given short
@@ -96,6 +115,7 @@ impl LayoutDictionary {
             user_overlay: overlay,
             short_stop_words,
             weak,
+            surface: None,
         }
     }
 
@@ -223,6 +243,45 @@ impl DictionaryDetector {
         let lower = text.to_lowercase();
         let dicts = self.dicts.read();
         dicts.get(layout).is_some_and(|d| d.is_weak(&lower))
+    }
+
+    /// Insert `word` into `layout`'s user overlay **in place** — the
+    /// hot path for the tooltip's "add to dictionary". A full
+    /// from-disk reload would re-read (and re-leak, via the
+    /// `&'static` FST plumbing) every dictionary blob per added word;
+    /// this is one HashSet insert under the write lock. The caller
+    /// persists the word to the overlay file separately — this only
+    /// updates the running process.
+    ///
+    /// Returns `false` when the layout has no dictionary loaded or
+    /// the word normalises to nothing.
+    pub fn add_overlay_word(&self, layout: &LayoutId, word: &str) -> bool {
+        let normalized = letters_only_lower(word);
+        if normalized.is_empty() {
+            return false;
+        }
+        let mut dicts = self.dicts.write();
+        match dicts.get_mut(layout) {
+            Some(d) => {
+                d.user_overlay.insert(normalized);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Run `f` against `layout`'s dictionary under the read lock.
+    /// `None` if the layout has no dictionary loaded. This is how the
+    /// suggestions engine reaches the surface FST / overlays *through*
+    /// the hot-swap handle, so per-app wordlist-profile swaps apply to
+    /// suggestions the same instant they apply to detection.
+    pub fn with_dict<R>(
+        &self,
+        layout: &LayoutId,
+        f: impl FnOnce(&LayoutDictionary) -> R,
+    ) -> Option<R> {
+        let dicts = self.dicts.read();
+        dicts.get(layout).map(f)
     }
 }
 

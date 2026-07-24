@@ -33,6 +33,17 @@ impl DetectionContext<'_> {
     }
 }
 
+/// One ranked spelling suggestion. `text` is the surface form to type
+/// back into the user's text (apostrophes/hyphens intact, capitalised
+/// to match the typed token); `score` is the weighted edit distance
+/// it was ranked by — lower is better, kept for tests and debug
+/// overlays (never logged with the text itself).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Suggestion {
+    pub text: String,
+    pub score: f32,
+}
+
 /// Tiny per-layout linguistic profile used by the plausibility scorer.
 /// Loaded from the layout-mapping TOMLs in `poltertype-core::layouts`.
 #[derive(Debug, Clone)]

@@ -51,6 +51,22 @@ pub fn is_submission_scancode(sc: u32) -> bool {
     matches!(sc, 0x1C | 0x0F | 0x60)
 }
 
+/// Bare modifier keys: left/right Ctrl, Shift, Alt, Meta, plus Caps
+/// Lock. A modifier's *own* press/release can never edit text, but on
+/// the Linux listener the event already carries its modifier flag
+/// (state is updated before the event is emitted) — so without this
+/// exemption `Ctrl↓` alone reads as a "command" and abandons the
+/// buffer, killing the suggestion-accept chord before its digit ever
+/// arrives (and needlessly tainting mid-flight words on a stray Ctrl
+/// tap). Left-hand codes are SC Set-1; right-hand ones are the raw
+/// evdev codes the listener forwards for extended keys.
+pub fn is_modifier_scancode(sc: u32) -> bool {
+    matches!(
+        sc,
+        0x1D | 0x2A | 0x36 | 0x38 | 0x3A | 0x61 | 0x64 | 0x7D | 0x7E
+    )
+}
+
 /// Case-insensitive basename match against the user's disabled-apps
 /// list. We use ASCII-lowercase rather than full Unicode lowering
 /// because every executable basename we ever match is ASCII.

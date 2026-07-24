@@ -37,6 +37,10 @@ pub struct Settings {
     pub wordlists: WordlistSettings,
     #[serde(default)]
     pub sounds: SoundSettings,
+    /// Spelling-suggestion tooltip for mistyped (same-layout) words.
+    /// See [`SuggestionSettings`].
+    #[serde(default)]
+    pub suggestions: SuggestionSettings,
     /// Background update checks against GitHub Releases. The **only**
     /// network access a default build performs — see [`UpdateSettings`].
     #[serde(default)]
@@ -58,6 +62,7 @@ impl Default for Settings {
             commands: Vec::new(),
             wordlists: WordlistSettings::default(),
             sounds: SoundSettings::default(),
+            suggestions: SuggestionSettings::default(),
             updates: UpdateSettings::default(),
             ai: AiSettings::default(),
         }
@@ -210,6 +215,57 @@ impl Default for SoundSettings {
             theme: "default".into(),
             volume: 0.6,
         }
+    }
+}
+
+/// Spelling suggestions for mistyped words.
+///
+/// When a completed word is (a) not a wrong-layout word the engine
+/// would auto-correct and (b) not in the current language's
+/// dictionary, the engine offers nearby dictionary words in a small
+/// tooltip. Clicking one — or pressing the accept chord + a digit —
+/// replaces the word in place. Purely local computation over the
+/// bundled dictionaries: no network, nothing typed ever leaves RAM.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SuggestionSettings {
+    /// Master switch. On by default — the tooltip never steals focus
+    /// and never touches text by itself, so it is safe to show.
+    pub enabled: bool,
+    /// Most suggestions ever offered at once. Clamped to 1..=9 at
+    /// read time — each entry is addressed by one digit key.
+    pub max_suggestions: usize,
+    /// Seconds the tooltip stays on screen before hiding itself.
+    pub tooltip_timeout_secs: u64,
+    /// Modifier half of the keyboard-accept chord: pressing
+    /// `<modifiers>+1` … `<modifiers>+9` applies the Nth suggestion
+    /// while the tooltip is up. Parsed like `[hotkeys]` strings
+    /// (`"Ctrl+Shift"`, `"Ctrl+Alt"`, …). Empty disables keyboard
+    /// accept, leaving click-to-apply only.
+    pub accept_modifiers: String,
+}
+
+impl Default for SuggestionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_suggestions: 5,
+            tooltip_timeout_secs: 30,
+            accept_modifiers: "Ctrl+Shift".into(),
+        }
+    }
+}
+
+impl SuggestionSettings {
+    /// `max_suggestions` with the 1..=9 digit-addressability clamp.
+    pub fn max_clamped(&self) -> usize {
+        self.max_suggestions.clamp(1, 9)
+    }
+
+    /// Tooltip lifetime with a sane floor (a sub-second tooltip is
+    /// unusable) and ceiling (an hour-long tooltip is a leak).
+    pub fn timeout(&self) -> Duration {
+        Duration::from_secs(self.tooltip_timeout_secs.clamp(3, 600))
     }
 }
 

@@ -177,6 +177,30 @@ pub(crate) fn build_dictionary_detector(layouts: &Arc<LayoutDb>) -> DictionaryDe
     DictionaryDetector::new(collect_dicts(layouts))
 }
 
+/// Build the spelling-suggestion provider. Shares the dictionary
+/// detector's hot-swappable dict set (so per-app wordlist profiles
+/// and "Reload Settings" swaps apply to suggestions instantly) and
+/// derives one keyboard geometry per layout — the ranking metric's
+/// "was this a finger slip?" signal.
+pub(crate) fn build_suggester(
+    layouts: &LayoutDb,
+    dicts: DictionaryDetector,
+) -> Arc<poltertype_detect::Suggester> {
+    let geometry = layouts
+        .iter()
+        .map(|(id, m)| {
+            let pairs = m.keys.iter().flat_map(|(&sc, &(plain, shift))| {
+                std::iter::once((sc, plain)).chain(shift.map(|s| (sc, s)))
+            });
+            (
+                id.clone(),
+                poltertype_detect::KeyboardGeometry::from_scancode_chars(pairs),
+            )
+        })
+        .collect();
+    Arc::new(poltertype_detect::Suggester::new(dicts, geometry))
+}
+
 pub(crate) fn collect_dicts(
     layouts: &LayoutDb,
 ) -> std::collections::HashMap<poltertype_types::LayoutId, poltertype_detect::LayoutDictionary> {
@@ -184,6 +208,38 @@ pub(crate) fn collect_dicts(
         .iter()
         .filter_map(|(id, m)| m.dictionary.as_ref().map(|d| (id.clone(), d.clone())))
         .collect()
+}
+
+/// Persist `word` into the user's global wordlist overlay for
+/// `layout` and make it live immediately: append to
+/// `<config-dir>/poltertype/wordlists/<stem>.txt` (created on first
+/// use; stem mirrors the bundled naming — `en-US` → `en_us.txt`) and
+/// insert into the running dictionary set in place. Deliberately NOT
+/// a full `reload_user_dictionaries` — that re-reads and re-leaks
+/// every FST blob, far too heavy per added word.
+///
+/// Known edge: while a per-app wordlist *profile* is active, the next
+/// profile swap replaces the in-memory set with its startup-built
+/// cache, hiding the word until a restart / Reload Settings — the
+/// file keeps it durable either way.
+pub(crate) fn add_word_to_user_overlay(
+    layout: &poltertype_types::LayoutId,
+    word: &str,
+    handle: &DictionaryDetector,
+) -> anyhow::Result<()> {
+    use std::io::Write as _;
+    let dir = crate::user_dirs::ensure_user_wordlist_dir()?;
+    let stem = layout.as_str().to_lowercase().replace('-', "_");
+    let path = dir.join(format!("{stem}.txt"));
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    writeln!(f, "{}", word.to_lowercase())?;
+    let live = handle.add_overlay_word(layout, word);
+    // The word itself stays out of the log, as everywhere else.
+    tracing::info!(%stem, live, "added a word to the user wordlist overlay");
+    Ok(())
 }
 
 /// Re-read `<config-dir>/poltertype/wordlists/<stem>.txt` from disk

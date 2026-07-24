@@ -111,6 +111,25 @@ impl LayoutMapping {
         }
     }
 
+    /// Reverse lookup: which physical key (and shift state) produces
+    /// `ch` under this layout? Used by the suggestion-accept path to
+    /// type a replacement as scancodes — the only injection that works
+    /// in Wayland-native / terminal apps. Linear over the ~48-key
+    /// table; callers do this a handful of times per accepted word.
+    /// Unshifted match wins when a character appears in both columns.
+    pub fn key_for_char(&self, ch: char) -> Option<(u32, bool)> {
+        let mut shifted_hit = None;
+        for (&sc, &(plain, shift)) in &self.keys {
+            if plain == ch {
+                return Some((sc, false));
+            }
+            if shift == Some(ch) && shifted_hit.is_none() {
+                shifted_hit = Some((sc, true));
+            }
+        }
+        shifted_hit
+    }
+
     /// Translate an entire word buffer into a string under this layout.
     /// Untranslatable keystrokes are dropped silently.
     pub fn translate_buffer(&self, keys: &[WordKey]) -> String {

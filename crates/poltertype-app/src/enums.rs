@@ -1,6 +1,7 @@
 //! Event-loop message enums.
 
 use poltertype_core::engine::SwitcherEvent;
+use poltertype_popup::PopupUiEvent;
 use poltertype_update::PendingUpdate;
 use tray_icon::menu::MenuId;
 
@@ -9,6 +10,8 @@ pub(crate) enum UserEvent {
     Menu(MenuId),
     Hotkey(u32),
     Engine(SwitcherEvent),
+    /// Suggestion-tooltip interaction (click / timeout).
+    Popup(PopupUiEvent),
     Update(UpdateOutcome),
 }
 

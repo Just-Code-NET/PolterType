@@ -1,0 +1,48 @@
+//! Backend selection.
+
+use crossbeam_channel::Sender;
+use tracing::info;
+
+use crate::enums::PopupUiEvent;
+use crate::noop::NoopPopup;
+use crate::traits::SuggestionPopup;
+
+/// Create the tooltip backend for this platform. `events` receives
+/// clicks and timeouts; the caller routes them to the engine.
+///
+/// Selection on Linux mirrors the input-listener probe order:
+/// Wayland session → layer-shell (works on wlroots compositors —
+/// Hyprland, Sway; GNOME/KDE expose no layer-shell to third-party
+/// apps, detected at connect time → noop). X11 session →
+/// override-redirect window. Everything else → noop.
+pub fn create_popup(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    let popup = create_for_platform(events);
+    info!(backend = popup.backend_name(), "suggestion popup backend");
+    popup
+}
+
+#[cfg(target_os = "linux")]
+fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        match crate::linux::wayland::WaylandPopup::try_new(events.clone()) {
+            Ok(p) => return Box::new(p),
+            Err(e) => {
+                tracing::warn!(err = %e, "layer-shell popup unavailable; probing X11");
+            }
+        }
+    }
+    if std::env::var_os("DISPLAY").is_some() {
+        match crate::linux::x11::X11Popup::try_new(events) {
+            Ok(p) => return Box::new(p),
+            Err(e) => {
+                tracing::warn!(err = %e, "X11 popup unavailable");
+            }
+        }
+    }
+    Box::new(NoopPopup)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn create_for_platform(_events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    Box::new(NoopPopup)
+}

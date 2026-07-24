@@ -24,6 +24,7 @@ mod detectors;
 mod enums;
 mod hotkeys;
 mod settings_proc;
+mod suggest_popup;
 mod tray;
 mod types;
 mod updater;
@@ -35,6 +36,7 @@ use crate::detectors::*;
 use crate::enums::*;
 use crate::hotkeys::*;
 use crate::settings_proc::*;
+use crate::suggest_popup::*;
 use crate::tray::*;
 use crate::types::*;
 use crate::updater::*;
@@ -56,6 +58,7 @@ use poltertype_core::settings::SettingsStore;
 use poltertype_detect::Detector;
 use poltertype_input::{KeyEvent, create_emitter, create_focus_tracker, create_listener};
 use poltertype_layout::create_switcher;
+use poltertype_popup::{PopupUiEvent, create_popup};
 use poltertype_types::LayoutId;
 use single_instance::SingleInstance;
 use tao::event::Event;
@@ -214,6 +217,10 @@ fn main() -> Result<()> {
     // per-app overlays as the user moves between editors / chat /
     // browser / IDE.
     let dict_reload_handle = dictionary.handle();
+    // The suggester shares the same hot-swappable dict set through
+    // another handle clone — per-app profile swaps and settings
+    // reloads reach suggestions without any extra plumbing.
+    let suggester = build_suggester(&layouts, dictionary.handle());
     let detectors: Vec<Box<dyn Detector>> = vec![
         Box::new(dictionary),
         Box::new(build_plausibility_detector(&layouts)),
@@ -274,6 +281,7 @@ fn main() -> Result<()> {
         Arc::clone(&focus_tracker),
         Arc::clone(&audio),
         engine_event_tx,
+        Some(suggester),
     );
     std::thread::Builder::new()
         .name("poltertype-engine".into())
@@ -500,6 +508,14 @@ fn main() -> Result<()> {
 
     spawn_event_bridges(event_loop.create_proxy(), engine_event_rx.clone())?;
 
+    // Suggestion tooltip. The backend spawns its own thread (or is a
+    // noop on platforms without an overlay path); clicks and timeouts
+    // come back through the popup bridge as `UserEvent::Popup`.
+    let (popup_event_tx, popup_event_rx) = unbounded::<PopupUiEvent>();
+    let popup = create_popup(popup_event_tx);
+    spawn_popup_bridge(event_loop.create_proxy(), popup_event_rx)?;
+    let focus_for_popup = Arc::clone(&focus_tracker);
+
     // Background updates. The worker owns every network call this app
     // makes; the event loop only ever sees the result. `check_now_tx`
     // is how the tray's "Check for updates…" click cuts the worker's
@@ -674,16 +690,57 @@ fn main() -> Result<()> {
                     let _ = cmd_tx_for_loop.send(EngineCommand::SwitchLastForcefully);
                 }
             }
-            Event::UserEvent(UserEvent::Engine(ev)) => {
-                handle_engine_event(
-                    ev,
+            Event::UserEvent(UserEvent::Engine(ev)) => match ev {
+                SwitcherEvent::SuggestionsReady {
+                    generation,
+                    original,
+                    entries,
+                    timeout,
+                    accept_modifiers,
+                } => {
+                    show_suggestion_popup(
+                        popup.as_ref(),
+                        &focus_for_popup,
+                        generation,
+                        original,
+                        entries,
+                        timeout,
+                        accept_modifiers,
+                    );
+                }
+                SwitcherEvent::SuggestionsDismissed { .. } => popup.hide(),
+                SwitcherEvent::SuggestionApplied { .. } => {
+                    // The engine already played the sound; the tooltip
+                    // hid on click. Nothing tray-side to update, and
+                    // the replacement text stays out of the logs.
+                    info!("suggestion applied");
+                }
+                SwitcherEvent::AddToDictionary { layout, word } => {
+                    if let Err(e) = add_word_to_user_overlay(&layout, &word, &dict_reload_handle) {
+                        warn!(?e, "could not add the word to the user wordlist overlay");
+                    }
+                }
+                other => handle_engine_event(
+                    other,
                     &tray,
                     &item_pause_for_loop,
                     &mut tray_state,
                     &settings_for_loop,
                     &layouts,
-                );
-            }
+                ),
+            },
+            Event::UserEvent(UserEvent::Popup(pe)) => match pe {
+                PopupUiEvent::Accepted { generation, index } => {
+                    let _ = cmd_tx_for_loop.send(EngineCommand::AcceptSuggestion {
+                        generation,
+                        index,
+                        from_pointer: true,
+                    });
+                }
+                PopupUiEvent::TimedOut { generation } => {
+                    let _ = cmd_tx_for_loop.send(EngineCommand::DismissSuggestions { generation });
+                }
+            },
             Event::UserEvent(UserEvent::Update(outcome)) => {
                 match outcome {
                     UpdateOutcome::Staged(pending) => {

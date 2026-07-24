@@ -28,6 +28,7 @@ impl SettingsApp {
             Pane::Wordlists => self.view_wordlists(),
             Pane::General => self.view_general(),
             Pane::Exceptions => self.view_exceptions(),
+            Pane::Suggestions => self.view_suggestions(),
             Pane::About => self.view_about(),
         };
 
@@ -119,6 +120,7 @@ impl SettingsApp {
                 .push(item("Wordlists", Pane::Wordlists))
                 .push(item("General", Pane::General))
                 .push(item("Exceptions", Pane::Exceptions))
+                .push(item("Suggestions", Pane::Suggestions))
                 .push(item("About", Pane::About))
                 .push(Space::with_height(Length::Fill))
                 .push(
@@ -955,6 +957,140 @@ impl SettingsApp {
             .push(card(appearance))
             .push(card(updates))
             .push(card(folders))
+            .into()
+    }
+
+    pub(super) fn view_suggestions(&self) -> Element<'_, Message> {
+        let b = self.brand();
+        let s = &self.settings.suggestions;
+
+        // `on_press` only while suggestions are on — an iced Button
+        // with no handler renders disabled, the same "this number
+        // means nothing right now" signal the Updates card uses for
+        // its interval row.
+        let step = |label: &'static str, msg: Message| {
+            let btn = Button::new(Text::new(label).size(12))
+                .style(theme::secondary)
+                .padding(Padding {
+                    top: 4.0,
+                    right: 8.0,
+                    bottom: 4.0,
+                    left: 8.0,
+                });
+            if s.enabled { btn.on_press(msg) } else { btn }
+        };
+        let value_color = if s.enabled { b.ink } else { b.muted };
+
+        let max_row = Row::new()
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(Text::new("Max suggestions (1–9):").size(13))
+            .push(step("-1", Message::SuggestionMaxDelta(-1)))
+            .push(
+                Text::new(format!("{:>2}", s.max_suggestions))
+                    .size(13)
+                    .font(Font::MONOSPACE)
+                    .color(value_color),
+            )
+            .push(step("+1", Message::SuggestionMaxDelta(1)))
+            .push(
+                Text::new("Each entry is applied with one digit key, so 9 is the ceiling.")
+                    .size(11)
+                    .color(b.muted),
+            );
+
+        let timeout_row = Row::new()
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(Text::new("Tooltip timeout (seconds):").size(13))
+            .push(step("-5", Message::SuggestionTimeoutDelta(-5)))
+            .push(
+                Text::new(format!("{:>3}", s.tooltip_timeout_secs))
+                    .size(13)
+                    .font(Font::MONOSPACE)
+                    .color(value_color),
+            )
+            .push(step("+5", Message::SuggestionTimeoutDelta(5)))
+            .push(
+                Text::new("3–600 seconds; the tooltip hides itself when the time is up.")
+                    .size(11)
+                    .color(b.muted),
+            );
+
+        let tooltip_card = Column::new()
+            .spacing(12)
+            .push(section_title(b, "Tooltip"))
+            .push(
+                Checkbox::new("Show suggestions for mistyped words", s.enabled)
+                    .text_size(13)
+                    .on_toggle(Message::SuggestionsToggled),
+            )
+            .push(max_row)
+            .push(timeout_row);
+
+        // A `TextInput` without `on_input` renders disabled — same
+        // conditional-handler trick as the steppers above.
+        let mut modifiers_input = TextInput::new("e.g. Ctrl+Shift", &s.accept_modifiers)
+            .style(theme::input)
+            .size(13)
+            .width(Length::Fixed(180.0));
+        if s.enabled {
+            modifiers_input = modifiers_input.on_input(Message::SuggestionModifiersChanged);
+        }
+
+        let mut chord_card = Column::new()
+            .spacing(12)
+            .push(section_title(b, "Keyboard accept"))
+            .push(
+                Row::new()
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(Text::new("Keyboard accept modifiers:").size(13))
+                    .push(modifiers_input),
+            )
+            .push(
+                Text::new(
+                    "'+'-separated: Ctrl, Shift, Alt, Meta — e.g. Ctrl+Shift. Applied with \
+                     digit keys 1–9. Leave empty to disable keyboard accept.",
+                )
+                .size(11)
+                .color(b.muted),
+            );
+        // Non-empty but chord-disabling input (bare `Shift`, a typo)
+        // gets a warning instead of a rejection — the engine treats
+        // it as "no chord" rather than erroring, so the pane must
+        // say so or the setting looks configured while doing nothing.
+        if !s.accept_modifiers.trim().is_empty()
+            && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
+        {
+            chord_card = chord_card.push(
+                Text::new(
+                    "At least one of Ctrl / Alt / Meta is required — as written, keyboard \
+                     accept is off (clicking a suggestion still works).",
+                )
+                .size(11)
+                .color(b.warn),
+            );
+        }
+
+        Column::new()
+            .spacing(14)
+            .push(pane_header(
+                b,
+                "Suggestions",
+                "Offer dictionary suggestions in a small tooltip when a typed word looks \
+                 misspelled. Clicking a suggestion (or pressing the accept chord + a digit) \
+                 replaces the word."
+                    .to_owned(),
+            ))
+            .push(card(tooltip_card))
+            .push(card(chord_card))
+            .push(tip(
+                b,
+                "Tip: suggestions come from the same bundled dictionaries the detector \
+                 already uses. Everything is computed locally — nothing you type leaves \
+                 your machine.",
+            ))
             .into()
     }
 

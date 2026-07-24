@@ -27,6 +27,7 @@ poltertype-input  = { workspace = true }
 poltertype-layout = { workspace = true }
 poltertype-detect = { workspace = true }
 poltertype-update = { workspace = true }
+poltertype-popup  = { workspace = true }
 
 # Both poltertype-input and poltertype-layout already depend on this; we re-pull it
 # here so Cargo's feature unification keeps everyone on the same view.

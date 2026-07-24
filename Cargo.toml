@@ -8,6 +8,7 @@ members = [
     "crates/poltertype-detect",
     "crates/poltertype-update",
     "crates/poltertype-ai",
+    "crates/poltertype-popup",
     "crates/poltertype-types",
     "xtask",
 ]
@@ -44,6 +45,7 @@ poltertype-detect = { path = "crates/poltertype-detect" }
 poltertype-core   = { path = "crates/poltertype-core" }
 poltertype-update = { path = "crates/poltertype-update" }
 poltertype-ai     = { path = "crates/poltertype-ai" }
+poltertype-popup  = { path = "crates/poltertype-popup" }
 
 # Logging
 tracing            = "0.1"
@@ -86,6 +88,15 @@ bitflags = "2"
 # Compact immutable set/map for embedded dictionaries (BurntSushi).
 fst = "0.4"
 
+# Levenshtein DFAs for the suggestions engine: compiles a typed token
+# into an edit-distance automaton that streams every dictionary word
+# within distance N straight off the surface FST. NOT fst's built-in
+# `levenshtein` feature — that automaton mismatches multibyte (Cyrillic)
+# queries entirely (even `слово` within d=1 of itself finds nothing).
+# This crate (tantivy's) handles UTF-8 correctly and counts adjacent
+# transpositions as single edits, which matches how humans mistype.
+levenshtein_automata = "0.2"
+
 # Cross-platform "open this file in the user's default app".
 opener = "0.7"
 
@@ -113,11 +124,26 @@ iced = { version = "0.13", default-features = false, features = [
     "canvas",
 ] }
 
-# Linux: evdev / X11. (D-Bus access is via shell-out to canonical
-# CLI tools — see crates/poltertype-layout/src/linux/. Saves dragging
-# zbus + an async runtime into the build.)
+# Linux: evdev / X11. (poltertype-layout's D-Bus access stays a
+# shell-out to canonical CLI tools — see crates/poltertype-layout/
+# src/linux/ — those are one-shot queries. The AT-SPI caret watcher
+# in poltertype-input needs a long-lived signal subscription, which a
+# CLI shell-out cannot provide, so it links zbus directly.)
 evdev = "0.13"
 x11rb = "0.13"
+# zbus's blocking API on its built-in async-io executor thread —
+# explicitly NOT the `tokio` feature: no tokio in the tree. Already
+# present transitively (notify-rust), so no new licences either.
+zbus  = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
+# Suggestion tooltip (poltertype-popup): CPU rendering + Wayland
+# layer-shell. All of these are already in the dependency tree via
+# iced's tiny-skia renderer and tray-icon's Wayland support, so they
+# add no new licences and almost no compile time.
+tiny-skia   = "0.11"
+cosmic-text = "0.12"
+smithay-client-toolkit = "0.19"
+wayland-client         = "0.31"
 
 # Win32 API bindings (Microsoft official). Per-target deps in the
 # crates that need them — features there select narrow modules.

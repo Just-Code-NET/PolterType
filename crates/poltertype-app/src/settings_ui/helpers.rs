@@ -298,6 +298,17 @@ pub fn save_overlay_file(
     Ok(path)
 }
 
+/// Whether `[suggestions].accept_modifiers` actually arms the
+/// keyboard-accept chord. Delegates to the engine's own
+/// `AcceptModifiers::parse`, so the pane's hint can never contradict
+/// what the engine will do (the test in `tests.rs` pins the shared
+/// semantics). Bare `Shift` fails on purpose — `Shift+1` is just `!`
+/// on most layouts, so the engine refuses it and the pane must say
+/// so instead of looking configured.
+pub fn accept_modifiers_enable_keyboard(s: &str) -> bool {
+    poltertype_core::engine::AcceptModifiers::parse(s).is_some()
+}
+
 /// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't
 /// be captured as the hotkey itself — the user is mid-combination.
 /// We filter them in the keyboard subscription so the captured combo

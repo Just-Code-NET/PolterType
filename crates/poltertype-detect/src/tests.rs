@@ -648,3 +648,234 @@ fn relative_fit_prefers_real_word() {
     assert!(real_uk_word > nonsense_in_uk);
     assert!(hello_in_en > nonsense_in_uk);
 }
+
+// ─── Suggestions (Suggester) ─────────────────────────────────────────
+
+/// Build a surface FST for tests. Mirrors `dict_with_embedded`'s
+/// in-memory builder; entries must be `surface_lower`-shaped.
+fn surface_set(words: &[&str]) -> FstSet<&'static [u8]> {
+    let mut sorted: Vec<String> = words.iter().map(|s| (*s).to_owned()).collect();
+    sorted.sort();
+    sorted.dedup();
+    let mut builder = fst::SetBuilder::memory();
+    for w in &sorted {
+        builder.insert(w).expect("surface FST insert");
+    }
+    let bytes: Vec<u8> = builder.into_inner().expect("surface FST finish");
+    FstSet::new(bytes.leak() as &'static [u8]).expect("valid surface FST")
+}
+
+fn qwerty_geometry() -> KeyboardGeometry {
+    let rows: [(u32, &str); 4] = [
+        (0x02, "1234567890-="),
+        (0x10, "qwertyuiop[]"),
+        (0x1E, "asdfghjkl;'"),
+        (0x2C, "zxcvbnm,./"),
+    ];
+    KeyboardGeometry::from_scancode_chars(rows.iter().flat_map(|(base, s)| {
+        s.chars()
+            .enumerate()
+            .map(move |(i, c)| (base + i as u32, c))
+    }))
+}
+
+fn uk_geometry() -> KeyboardGeometry {
+    let rows: [(u32, &str); 3] = [
+        (0x10, "йцукенгшщзхї"),
+        (0x1E, "фівапролджє"),
+        (0x2C, "ячсмитьбю."),
+    ];
+    KeyboardGeometry::from_scancode_chars(rows.iter().flat_map(|(base, s)| {
+        s.chars()
+            .enumerate()
+            .map(move |(i, c)| (base + i as u32, c))
+    }))
+}
+
+/// Suggester over a single layout with the given surface corpus,
+/// overlay, weak list and keyboard geometry.
+fn suggester_for(
+    layout: &LayoutId,
+    surface_words: &[&str],
+    overlay: HashSet<String>,
+    weak: HashSet<String>,
+    geometry: KeyboardGeometry,
+) -> Suggester {
+    let dict = LayoutDictionary::from_overlay_only(overlay, HashSet::new(), weak)
+        .with_surface(surface_set(surface_words));
+    let mut dicts = HashMap::new();
+    dicts.insert(layout.clone(), dict);
+    let mut geo = HashMap::new();
+    geo.insert(layout.clone(), geometry);
+    Suggester::new(DictionaryDetector::new(dicts), geo)
+}
+
+#[test]
+fn suggests_adjacent_key_slip_first() {
+    let en = LayoutId::from("en-US");
+    // `hwllo`: `w` sits right above/next to `e` — classic slip.
+    // `hollow` is also within distance 2 but must rank below.
+    let s = suggester_for(
+        &en,
+        &["hello", "hollow", "hallo"],
+        HashSet::new(),
+        HashSet::new(),
+        qwerty_geometry(),
+    );
+    let out = s.suggest(&en, "hwllo", 5);
+    assert!(!out.is_empty(), "expected suggestions for `hwllo`");
+    assert_eq!(out[0].text, "hello");
+}
+
+#[test]
+fn suggests_transposition() {
+    let en = LayoutId::from("en-US");
+    let s = suggester_for(
+        &en,
+        &["hello", "helm"],
+        HashSet::new(),
+        HashSet::new(),
+        qwerty_geometry(),
+    );
+    let out = s.suggest(&en, "hlelo", 5);
+    assert_eq!(out[0].text, "hello");
+    assert!(
+        out[0].score < 1.0,
+        "transposition should cost less than a full edit, got {}",
+        out[0].score
+    );
+}
+
+#[test]
+fn restores_apostrophe_from_surface_form() {
+    let uk = LayoutId::from("uk-UA");
+    // The membership FST stores `пять`; the surface FST stores
+    // `п'ять`. The user typed the word without the apostrophe (the
+    // uk mapping has no apostrophe key), and the suggestion must
+    // come back WITH it — that is the whole reason the surface FST
+    // exists.
+    let s = suggester_for(
+        &uk,
+        &["п'ять", "пита"],
+        HashSet::new(),
+        HashSet::new(),
+        uk_geometry(),
+    );
+    let out = s.suggest(&uk, "пять", 5);
+    assert_eq!(out[0].text, "п'ять");
+}
+
+#[test]
+fn restores_title_case() {
+    let uk = LayoutId::from("uk-UA");
+    let s = suggester_for(
+        &uk,
+        &["слово", "слон"],
+        HashSet::new(),
+        HashSet::new(),
+        uk_geometry(),
+    );
+    // `Слоао`: `а` is one key left of `в` on the uk home row.
+    let out = s.suggest(&uk, "Слоао", 5);
+    assert_eq!(out[0].text, "Слово");
+}
+
+#[test]
+fn never_suggests_for_short_tokens() {
+    let en = LayoutId::from("en-US");
+    let s = suggester_for(
+        &en,
+        &["abc", "abd"],
+        HashSet::new(),
+        HashSet::new(),
+        qwerty_geometry(),
+    );
+    assert!(s.suggest(&en, "ab", 5).is_empty());
+}
+
+#[test]
+fn never_echoes_the_typed_token() {
+    let en = LayoutId::from("en-US");
+    let s = suggester_for(
+        &en,
+        &["hello", "hells"],
+        HashSet::new(),
+        HashSet::new(),
+        qwerty_geometry(),
+    );
+    let out = s.suggest(&en, "hello", 5);
+    assert!(out.iter().all(|s| s.text != "hello"));
+}
+
+#[test]
+fn weak_entries_rank_below_strong_ones() {
+    let uk = LayoutId::from("uk-UA");
+    let mut weak = HashSet::new();
+    weak.insert("хмарі".to_owned());
+    // Both candidates are one substitution away from the typo; the
+    // weak entry must lose to the everyday word.
+    let s = suggester_for(
+        &uk,
+        &["хмара", "хмарі"],
+        HashSet::new(),
+        weak,
+        uk_geometry(),
+    );
+    let out = s.suggest(&uk, "хмарв", 5);
+    let strong = out.iter().position(|x| x.text == "хмара");
+    let weak_pos = out.iter().position(|x| x.text == "хмарі");
+    match (strong, weak_pos) {
+        (Some(a), Some(b)) => assert!(a < b, "weak entry ranked above strong one"),
+        (Some(_), None) => {} // weak fell off the score cap — also fine
+        other => panic!("expected the strong candidate present, got {other:?}"),
+    }
+}
+
+#[test]
+fn overlay_words_are_suggestable() {
+    let en = LayoutId::from("en-US");
+    let mut overlay = HashSet::new();
+    overlay.insert("kubectl".to_owned());
+    let s = suggester_for(&en, &[], overlay, HashSet::new(), qwerty_geometry());
+    let out = s.suggest(&en, "kubectk", 5);
+    assert_eq!(out[0].text, "kubectl");
+}
+
+#[test]
+fn distance_two_is_gated_by_token_length() {
+    let en = LayoutId::from("en-US");
+    // `abcd` (4 letters) is below the d=2 threshold, and `abcdxy`
+    // is only reachable at distance 2 → nothing may be offered.
+    let s = suggester_for(
+        &en,
+        &["abcdxy"],
+        HashSet::new(),
+        HashSet::new(),
+        qwerty_geometry(),
+    );
+    assert!(s.suggest(&en, "abcd", 5).is_empty());
+}
+
+#[test]
+fn respects_max_count() {
+    let en = LayoutId::from("en-US");
+    let s = suggester_for(
+        &en,
+        &[
+            "cast", "cost", "cyst", "case", "case", "most", "mist", "must",
+        ],
+        HashSet::new(),
+        HashSet::new(),
+        qwerty_geometry(),
+    );
+    let out = s.suggest(&en, "csst", 2);
+    assert!(out.len() <= 2);
+}
+
+#[test]
+fn surface_lower_folds_apostrophes_and_keeps_hyphens() {
+    assert_eq!(surface_lower("П’ЯТЬ"), "п'ять");
+    assert_eq!(surface_lower("імʼя"), "ім'я");
+    assert_eq!(surface_lower("а-а-а"), "а-а-а");
+    assert_eq!(surface_lower("Don't;"), "don't");
+}

@@ -20,6 +20,7 @@
 //! target/dist/data/
 //!   wordlists/
 //!     <stem>.fst                  ← FST built from .txt.gz + extras
+//!     <stem>-surface.fst          ← surface-form FST (suggestions)
 //!     <stem>-stop.txt             ← copied as-is
 //!   layout-mappings/
 //!     <stem>.toml                 ← copied as-is
@@ -158,11 +159,18 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     // Bulk wordlist source ships gzipped (uk_ua alone is 84 MB raw,
     // ~10 MB gzipped). Plain `.txt` honoured as a fallback so a
     // contributor inspecting a wordlist can `gunzip -k` and rebuild.
-    let mut words: Vec<String> = read_wordlist(&txt_gz);
+    //
+    // Each entry is normalised twice in one pass: the lossy
+    // `letters_only_lower` shape for the membership FST (must match
+    // what the dictionary detector looks up) and the `surface_lower`
+    // shape for the suggestions FST, which keeps apostrophes and
+    // hyphens — a suggestion gets *typed into the user's text*, so
+    // `п'ять` must come out as `п'ять`, not `пять`.
+    let (mut words, mut surface_words) = read_wordlist_both(&txt_gz);
     if words.is_empty() {
-        words = read_wordlist(&txt);
+        (words, surface_words) = read_wordlist_both(&txt);
     }
-    let extras_words = read_wordlist(&extras);
+    let (extras_words, extras_surface) = read_wordlist_both(&extras);
     let extras_count = extras_words.len();
     // Carve out the 1- and 2-letter entries from the curated extras
     // *before* they get folded into the bulk FST. The runtime
@@ -191,6 +199,26 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
         builder.insert(w).expect("FST insert");
     }
     builder.finish().expect("FST finish");
+
+    // Surface-form FST for the suggestions engine. ≤2-letter entries
+    // are dropped: suggestions never target short tokens, and the bulk
+    // corpora are noisy at that length (same rationale as the runtime
+    // short-token regime skipping the membership FST).
+    surface_words.extend(extras_surface);
+    surface_words.retain(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 3);
+    surface_words.sort();
+    surface_words.dedup();
+    let surface_path = out_dir.join(format!("{stem}-surface.fst"));
+    if surface_words.is_empty() {
+        let _ = fs::remove_file(&surface_path);
+    } else {
+        let writer = BufWriter::new(File::create(&surface_path).expect("create surface FST"));
+        let mut builder = SetBuilder::new(writer).expect("surface FST set builder");
+        for w in &surface_words {
+            builder.insert(w).expect("surface FST insert");
+        }
+        builder.finish().expect("surface FST finish");
+    }
 
     // Compose the dist stop-words file: the source `<stem>-stop.txt`
     // verbatim (including comments — the runtime parser ignores them)
@@ -259,8 +287,9 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
         );
     } else {
         println!(
-            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {stop_count} short stop-words + {weak_count} weak entries",
-            words.len()
+            "cargo:warning=wordlist {tag}: {} entries (FST, +{extras_count} extras) + {} surface forms + {stop_count} short stop-words + {weak_count} weak entries",
+            words.len(),
+            surface_words.len()
         );
     }
 }
@@ -371,6 +400,49 @@ fn read_wordlist(path: &Path) -> Vec<String> {
         .collect()
 }
 
+/// Like [`read_wordlist`], but produces both normalisations in one
+/// pass over the (potentially multi-million-line) source: the lossy
+/// membership shape and the surface shape for the suggestions FST.
+/// One pass matters — gunzipping uk_ua twice would double the
+/// slowest step of this script for no reason.
+fn read_wordlist_both(path: &Path) -> (Vec<String>, Vec<String>) {
+    let f = match File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (Vec::new(), Vec::new()),
+        Err(e) => {
+            println!(
+                "cargo:warning=wordlist read failed for {}: {e}",
+                path.display()
+            );
+            return (Vec::new(), Vec::new());
+        }
+    };
+    let lines: Box<dyn BufRead> = if path
+        .extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("gz"))
+    {
+        Box::new(BufReader::new(GzDecoder::new(f)))
+    } else {
+        Box::new(BufReader::new(f))
+    };
+    let mut letters = Vec::new();
+    let mut surface = Vec::new();
+    for l in lines.lines().map_while(Result::ok) {
+        let trimmed = l.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let normalized = letters_only_lower(trimmed);
+        if normalized.is_empty() {
+            continue;
+        }
+        letters.push(normalized);
+        surface.push(surface_lower(trimmed));
+    }
+    (letters, surface)
+}
+
 /// Mirror of `poltertype_detect::letters_only_lower`. Duplicated here because
 /// build scripts can't depend on workspace crates without inflating
 /// build-time deps; the runtime dictionary lookup canonicalises typed
@@ -381,6 +453,30 @@ fn letters_only_lower(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         if ch.is_alphabetic() {
+            for low in ch.to_lowercase() {
+                out.push(low);
+            }
+        }
+    }
+    out
+}
+
+/// Mirror of `poltertype_detect::surface_lower` (suggestions
+/// normalisation): lowercase, keep letters plus apostrophes and
+/// hyphens, fold the apostrophe variants (`’`, `ʼ`) to `'`. Keep the
+/// two in sync — the suggester queries the surface FST with tokens
+/// canonicalised by the runtime twin of this function.
+fn surface_lower(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        // Apostrophes first: `ʼ` (U+02BC) is Unicode category Lm —
+        // `is_alphabetic()` returns true for it, so the alphabetic
+        // branch would keep it un-folded.
+        if matches!(ch, '\'' | '’' | 'ʼ') {
+            out.push('\'');
+        } else if ch == '-' {
+            out.push('-');
+        } else if ch.is_alphabetic() {
             for low in ch.to_lowercase() {
                 out.push(low);
             }

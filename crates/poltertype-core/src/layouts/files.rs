@@ -104,12 +104,34 @@ pub fn build_dictionary(
         weak.extend(extra);
     }
 
-    Some(LayoutDictionary::new(
-        bundled_fst,
-        user_overlay,
-        short_stop_words,
-        weak,
-    ))
+    let mut dict = LayoutDictionary::new(bundled_fst, user_overlay, short_stop_words, weak);
+
+    // ── surface-form FST (suggestions corpus) ──
+    // Same leak-for-'static pattern as the membership FST above.
+    // Missing file is fine: older data dirs predate suggestions, and
+    // the feature degrades to overlay-only candidates.
+    let surface_path = data_dir
+        .join("wordlists")
+        .join(format!("{stem}-surface.fst"));
+    match std::fs::read(&surface_path) {
+        Ok(bytes) => {
+            let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
+            match FstSet::new(leaked) {
+                Ok(s) => dict = dict.with_surface(s),
+                Err(e) => {
+                    tracing::error!(stem, err = %e, "surface FST is malformed; suggestions degraded for this layout");
+                }
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            info!(stem, "no surface FST; suggestions degraded for this layout");
+        }
+        Err(e) => {
+            warn!(?surface_path, err = %e, "surface FST read failed; suggestions degraded");
+        }
+    }
+
+    Some(dict)
 }
 
 /// Read `<data_dir>/wordlists/<stem>-stop.txt` if it exists. Missing

@@ -218,6 +218,35 @@
                                     <File Id="StopFrFr"
                                           Source="$(var.DataDir)\wordlists\fr_fr-stop.txt"
                                           Name="fr_fr-stop.txt" />
+                                    <!-- Surface-form FSTs (suggestions engine —
+                                         apostrophes/hyphens preserved). -->
+                                    <File Id="SurfaceEnUs"
+                                          Source="$(var.DataDir)\wordlists\en_us-surface.fst"
+                                          Name="en_us-surface.fst" />
+                                    <File Id="SurfaceUkUa"
+                                          Source="$(var.DataDir)\wordlists\uk_ua-surface.fst"
+                                          Name="uk_ua-surface.fst" />
+                                    <File Id="SurfaceRuRu"
+                                          Source="$(var.DataDir)\wordlists\ru_ru-surface.fst"
+                                          Name="ru_ru-surface.fst" />
+                                    <File Id="SurfaceDeDe"
+                                          Source="$(var.DataDir)\wordlists\de_de-surface.fst"
+                                          Name="de_de-surface.fst" />
+                                    <File Id="SurfaceEsEs"
+                                          Source="$(var.DataDir)\wordlists\es_es-surface.fst"
+                                          Name="es_es-surface.fst" />
+                                    <File Id="SurfaceFrFr"
+                                          Source="$(var.DataDir)\wordlists\fr_fr-surface.fst"
+                                          Name="fr_fr-surface.fst" />
+                                    <!-- Curated weak-word lists. WiX errors on absent
+                                         Source files, so entries track the files that
+                                         actually exist in data/wordlists/ — today only
+                                         uk_ua ships one. (Fixes the weak list silently
+                                         missing from Windows installs since it landed;
+                                         the runtime treats a missing file as empty.) -->
+                                    <File Id="WeakUkUa"
+                                          Source="$(var.DataDir)\wordlists\uk_ua-weak.txt"
+                                          Name="uk_ua-weak.txt" />
                                     <RemoveFolder Id="RemoveDataWordlistsDir"
                                                   Directory="DataWordlistsDir"
                                                   On="uninstall" />

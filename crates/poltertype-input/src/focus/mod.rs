@@ -21,7 +21,9 @@ mod linux_impl;
 mod factory;
 mod noop;
 mod traits;
+mod types;
 
 pub use factory::*;
 pub use noop::*;
 pub use traits::*;
+pub use types::*;

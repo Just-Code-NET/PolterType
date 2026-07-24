@@ -40,6 +40,25 @@ impl FocusTracker for CachedFocusTracker {
         fresh
     }
 
+    fn focused_window_geometry(&self) -> Option<crate::focus::FocusedWindowGeometry> {
+        // Uncached pass-through: geometry is queried once per
+        // tooltip show, and a 150 ms-stale rect would misplace the
+        // popup after a window move.
+        self.inner.focused_window_geometry()
+    }
+
+    fn pointer_position(&self) -> Option<(i32, i32)> {
+        // Uncached for the same reason as the geometry above.
+        self.inner.pointer_position()
+    }
+
+    fn caret_hint(&self) -> Option<crate::focus::CaretHint> {
+        // Uncached: the watcher already keeps its own freshest-sample
+        // slot, and `age` must reflect the real event time — a TTL
+        // layer here would only add staleness on top.
+        self.inner.caret_hint()
+    }
+
     fn backend_name(&self) -> &'static str {
         self.inner.backend_name()
     }

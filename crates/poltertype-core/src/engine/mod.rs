@@ -20,7 +20,7 @@ pub use buffer::{WordBoundary, WordBuffer};
 pub use decision::DecisionPolicy;
 pub use enums::{EngineCommand, SwitcherEvent};
 pub use switcher::SwitcherEngine;
-pub use types::{Chord, KeystreamHotkeys};
+pub use types::{AcceptModifiers, Chord, KeystreamHotkeys, SuggestionAction, SuggestionEntry};
 
 #[cfg(test)]
 mod tests;

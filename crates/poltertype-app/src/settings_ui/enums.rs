@@ -13,6 +13,7 @@ pub enum Pane {
     Wordlists,
     General,
     Exceptions,
+    Suggestions,
     About,
 }
 
@@ -203,6 +204,19 @@ pub enum Message {
     /// Editor sent us an action (insert / delete / move cursor / …).
     /// We pass it straight through to `text_editor::Content::perform`.
     WordlistEdit(text_editor::Action),
+
+    // ── Suggestions pane ───────────────────────────────────────────
+    /// `[suggestions].enabled` — master switch for the typo tooltip.
+    SuggestionsToggled(bool),
+    /// `[suggestions].max_suggestions`, stepped by the ± buttons.
+    SuggestionMaxDelta(i64),
+    /// `[suggestions].tooltip_timeout_secs`, stepped by the ± buttons.
+    SuggestionTimeoutDelta(i64),
+    /// `[suggestions].accept_modifiers` text input. Stored verbatim —
+    /// the pane shows an inline hint for strings that disable the
+    /// chord instead of rejecting keystrokes, so users can fix typos
+    /// in place (same posture as the command-trigger draft).
+    SuggestionModifiersChanged(String),
 
     /// Segmented theme picker on the General pane. Applies to the
     /// window immediately; persisted via the normal footer Save.

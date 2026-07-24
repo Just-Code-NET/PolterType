@@ -24,7 +24,7 @@
 //!
 //! ## Sections
 //!
-//! Side-nav with six panes:
+//! Side-nav panes:
 //!
 //! * **Languages** — checkboxes for every layout the OS reports as
 //!   active (queried via `LayoutSwitcher::list_active`). Toggling a
@@ -34,6 +34,10 @@
 //! * **Hotkeys** — current pause / switch-last bindings, plus a
 //!   "Rebind" button per row that flips the UI into capture mode
 //!   and writes the next valid `<modifier>+<key>` combo back.
+//! * **Commands** — the `[[commands]]` snippet triggers: one row per
+//!   existing command with a delete button, plus a validated "add a
+//!   new command" form (name, trigger, action kind, param, optional
+//!   apps filter).
 //! * **Wordlists** — multiline editor for the user-side wordlist
 //!   overlays in `<config-dir>/poltertype/wordlists/<stem>.txt`
 //!   (and `<stem>-stop.txt`). Pick a layout, pick the file kind,
@@ -51,6 +55,10 @@
 //! * **Exceptions** — the per-app skip list (`disabled_apps`). One
 //!   row per entry with a delete button; an "Add" row at the bottom
 //!   for new entries.
+//! * **Suggestions** — the `[suggestions]` typo-tooltip knobs:
+//!   master switch, max entries (1–9), tooltip timeout, and the
+//!   keyboard-accept modifier chord (with an inline warning when the
+//!   string would leave keyboard accept disabled).
 //! * **About** — version + links to poltertype.com / the repo / the
 //!   issue tracker (opened in the browser). The bottom row also
 //!   exposes a "Reset to defaults" button as a power-user escape

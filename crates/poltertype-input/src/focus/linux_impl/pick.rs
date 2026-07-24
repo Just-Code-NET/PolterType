@@ -2,9 +2,12 @@
 
 use std::sync::Arc;
 
+use tracing::info;
+
 use crate::focus::{FocusTracker, NoopFocusTracker};
 use crate::linux::{SessionKind, session_kind};
 
+use super::atspi_caret::AtspiCaretWatcher;
 use super::cache::CachedFocusTracker;
 use super::consts::FOCUS_CACHE_TTL;
 use super::hyprland::HyprlandFocusTracker;
@@ -25,15 +28,31 @@ use super::x11::X11FocusTracker;
 pub(crate) fn create_linux_focus_tracker() -> Arc<dyn FocusTracker> {
     if hyprland_available() {
         return Arc::new(CachedFocusTracker::new(
-            Box::new(HyprlandFocusTracker),
+            Box::new(HyprlandFocusTracker::new(caret_watcher())),
             FOCUS_CACHE_TTL,
         ));
     }
     if session_kind() == SessionKind::X11 {
         return Arc::new(CachedFocusTracker::new(
-            Box::new(X11FocusTracker::new()),
+            Box::new(X11FocusTracker::new(caret_watcher())),
             FOCUS_CACHE_TTL,
         ));
     }
     Arc::new(NoopFocusTracker)
+}
+
+/// One AT-SPI caret watcher per tracker — created only for a branch
+/// that actually builds one (the probe branches are exclusive, so
+/// this runs at most once per factory call). It owns a thread and a
+/// bus connection, hence the sharing via `Arc` rather than a
+/// per-backend instance. Failure is a normal, log-once condition:
+/// headless CI, a11y stack disabled or absent.
+fn caret_watcher() -> Option<Arc<AtspiCaretWatcher>> {
+    match AtspiCaretWatcher::try_new() {
+        Ok(w) => Some(Arc::new(w)),
+        Err(e) => {
+            info!(%e, "AT-SPI caret watcher unavailable; tooltip anchoring falls back to pointer/window");
+            None
+        }
+    }
 }

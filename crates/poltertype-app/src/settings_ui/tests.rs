@@ -283,6 +283,39 @@ fn branded_themes_classify_and_map_to_their_palettes() {
     assert_eq!(theme::brand_palette(&dark).ink, dark.palette().text);
 }
 
+/// `accept_modifiers_enable_keyboard` delegates to the engine's
+/// `AcceptModifiers::parse`; this test pins the shared acceptance
+/// rule so an engine-side change that would silently flip the
+/// Suggestions-pane hint shows up here first.
+#[test]
+fn accept_modifiers_hint_mirrors_engine_parse_rule() {
+    // Armed: at least one non-Shift modifier, aliases + case +
+    // whitespace tolerated.
+    for ok in [
+        "Ctrl+Shift",
+        "control+alt",
+        "Cmd",
+        "Win",
+        "Option",
+        "Meta+Shift",
+        " Ctrl + Shift ",
+        "super",
+    ] {
+        assert!(
+            accept_modifiers_enable_keyboard(ok),
+            "`{ok}` should arm the keyboard-accept chord"
+        );
+    }
+    // Disarmed: empty (by design), bare Shift (digits would fire on
+    // plain `!`/`@`/… typing), unknown tokens, wrong separator.
+    for off in ["", "   ", "Shift", "Ctrl+Foo", "Ctrl,Shift", "hyper"] {
+        assert!(
+            !accept_modifiers_enable_keyboard(off),
+            "`{off}` should leave the keyboard-accept chord off"
+        );
+    }
+}
+
 /// Lone modifier presses must not be accepted as a hotkey on
 /// their own — otherwise the moment a user clicks "Rebind" and
 /// taps Ctrl, capture finishes immediately with a useless

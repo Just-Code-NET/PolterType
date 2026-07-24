@@ -1,0 +1,25 @@
+[package]
+name                  = "poltertype-popup"
+description           = "Suggestion tooltip: a tiny focus-stealing-free overlay window per OS."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crossbeam-channel = { workspace = true }
+thiserror         = { workspace = true }
+tracing           = { workspace = true }
+tiny-skia         = { workspace = true }
+cosmic-text       = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+smithay-client-toolkit = { workspace = true }
+wayland-client         = { workspace = true }
+x11rb                  = { workspace = true }

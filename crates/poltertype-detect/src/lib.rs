@@ -14,6 +14,7 @@
 mod dictionary;
 mod enums;
 mod plausibility;
+mod suggest;
 mod text;
 mod traits;
 mod types;
@@ -23,9 +24,10 @@ pub use poltertype_types::{DetectionInput, DetectionVerdict, LayoutId};
 pub use dictionary::{DictionaryDetector, LayoutDictionary};
 pub use enums::{RewriteVerdict, Script, Verdict};
 pub use plausibility::WordPlausibilityDetector;
-pub use text::{letters_only_lower, looks_like_acronym, looks_like_code_token};
-pub use traits::{Detector, WordRewriter};
-pub use types::{DetectionContext, LayoutProfile, RewriteRequest};
+pub use suggest::{KeyboardGeometry, Suggester};
+pub use text::{letters_only_lower, looks_like_acronym, looks_like_code_token, surface_lower};
+pub use traits::{Detector, SuggestionProvider, WordRewriter};
+pub use types::{DetectionContext, LayoutProfile, RewriteRequest, Suggestion};
 
 #[cfg(test)]
 mod tests;

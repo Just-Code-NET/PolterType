@@ -1,8 +1,10 @@
 //! Engine message enums: outbound notifications and inbound commands.
 
+use std::time::Duration;
+
 use poltertype_layout::LayoutId;
 
-use super::types::KeystreamHotkeys;
+use super::types::{KeystreamHotkeys, SuggestionEntry};
 
 /// Outbound notifications the engine emits.
 #[derive(Debug, Clone)]
@@ -22,6 +24,35 @@ pub enum SwitcherEvent {
     /// Engine looked at the buffer but decided to keep the current
     /// layout — useful for debug overlays.
     KeptCurrent { reason: String },
+    /// A completed word is not a dictionary word and the engine has
+    /// replacement candidates — the app shows them in the suggestion
+    /// tooltip. `generation` ties later accept / dismiss round-trips
+    /// to exactly this offer; a stale generation is ignored.
+    SuggestionsReady {
+        generation: u64,
+        original: String,
+        entries: Vec<SuggestionEntry>,
+        /// How long the tooltip should stay up (the popup owns the
+        /// timer; the engine validates its own deadline on accept).
+        timeout: Duration,
+        /// Digit-chord hint for the tooltip footer, e.g.
+        /// `"Ctrl+Shift"` — empty when keyboard accept is disabled.
+        accept_modifiers: String,
+    },
+    /// The offer identified by `generation` is no longer actionable
+    /// (next word committed, caret moved, pause, …) — hide the
+    /// tooltip if it is still showing it.
+    SuggestionsDismissed { generation: u64 },
+    /// A suggestion was applied in place of `original`.
+    SuggestionApplied {
+        original: String,
+        replacement: String,
+    },
+    /// The user picked "add to dictionary" on a suggestion offer.
+    /// The engine owns no files — the app appends `word` to the
+    /// user's wordlist overlay for `layout` and hot-swaps the
+    /// dictionaries, after which the word stops being flagged.
+    AddToDictionary { layout: LayoutId, word: String },
 }
 
 /// Commands sent into the engine from the app loop.
@@ -40,6 +71,21 @@ pub enum EngineCommand {
     /// thing that observes `Ctrl+Shift+Space` at all. An empty value
     /// disables keystream detection (the OS grab is doing the job).
     SetKeystreamHotkeys(KeystreamHotkeys),
+    /// Apply suggestion `index` of offer `generation` (tooltip click,
+    /// or the digit chord matched in-stream). Ignored when the
+    /// generation is stale or the word is no longer replaceable.
+    /// `from_pointer` marks tooltip clicks: exactly one physical
+    /// click is then in flight in the key stream and must be
+    /// tolerated by the correction's absorb machinery instead of
+    /// aborting it as "caret moved".
+    AcceptSuggestion {
+        generation: u64,
+        index: usize,
+        from_pointer: bool,
+    },
+    /// The tooltip for offer `generation` went away on the popup side
+    /// (timeout, Esc) — drop the engine's pending state to match.
+    DismissSuggestions { generation: u64 },
 }
 
 pub enum Either<A, B> {

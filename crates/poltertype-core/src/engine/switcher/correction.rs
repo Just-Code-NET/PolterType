@@ -19,6 +19,16 @@ use crate::engine::types::{LastWord, WindowDrain};
 use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
+    /// Returns `true` once keystrokes were actually emitted (delete +
+    /// replay happened, however imperfectly) — `false` means the
+    /// correction aborted with the user's text untouched.
+    ///
+    /// `pointer_click_allowance`: how many pointer presses the absorb
+    /// machinery may swallow instead of treating as "caret moved".
+    /// Zero everywhere except a tooltip-click accept, where exactly
+    /// one physical click (the one that clicked the tooltip — an
+    /// overlay surface the app below never saw) is in flight in the
+    /// key stream.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn apply_correction(
         &self,
@@ -31,8 +41,14 @@ impl SwitcherEngine {
         play_sound: bool,
         replay_keys: Option<&[ReplayKey]>,
         live: Option<(&Receiver<KeyEvent>, &mut WordBuffer)>,
-    ) {
+        pointer_click_allowance: usize,
+    ) -> bool {
         debug!(%from, %to, %original, %corrected, %reason, "applying correction");
+
+        // A same-layout replacement (spelling suggestion) has no
+        // layout to flip and no pre-flight to run — everything below
+        // that is switch-related is keyed off this.
+        let switching = from != to;
 
         // Pre-flight: confirm the target layout is currently active in
         // the OS BEFORE we touch the user's text.
@@ -47,34 +63,36 @@ impl SwitcherEngine {
         //
         // On query failure we fall through and let `switch_to` surface
         // the original error (still safe — no keystrokes sent yet).
-        match self.layout_switcher.list_active() {
-            Ok(list) if !list.contains(to) => {
-                warn!(
-                    target = %to,
-                    active = ?list,
-                    "target layout not active in OS; aborting correction before any keystrokes"
-                );
-                return;
+        if switching {
+            match self.layout_switcher.list_active() {
+                Ok(list) if !list.contains(to) => {
+                    warn!(
+                        target = %to,
+                        active = ?list,
+                        "target layout not active in OS; aborting correction before any keystrokes"
+                    );
+                    return false;
+                }
+                Err(e) => {
+                    warn!(
+                        ?e,
+                        "could not list active layouts before correction; continuing"
+                    );
+                }
+                _ => {} // active list contains target — proceed.
             }
-            Err(e) => {
-                warn!(
-                    ?e,
-                    "could not list active layouts before correction; continuing"
-                );
-            }
-            _ => {} // active list contains target — proceed.
-        }
 
-        // Switch the layout FIRST. Flipping the layout doesn't touch
-        // existing text, so if it fails we abort with the user's word
-        // fully intact (the old order — backspaces, then switch —
-        // destroyed the word whenever the switch failed). It also
-        // overlaps the compositor's xkb propagation with the backspace
-        // burst, and means any keystrokes the user lands mid-correction
-        // already produce glyphs in the layout they intended.
-        if let Err(e) = self.layout_switcher.switch_to(to) {
-            warn!(?e, target = %to, "layout switch failed; aborting correction before any keystrokes");
-            return;
+            // Switch the layout FIRST. Flipping the layout doesn't touch
+            // existing text, so if it fails we abort with the user's word
+            // fully intact (the old order — backspaces, then switch —
+            // destroyed the word whenever the switch failed). It also
+            // overlaps the compositor's xkb propagation with the backspace
+            // burst, and means any keystrokes the user lands mid-correction
+            // already produce glyphs in the layout they intended.
+            if let Err(e) = self.layout_switcher.switch_to(to) {
+                warn!(?e, target = %to, "layout switch failed; aborting correction before any keystrokes");
+                return false;
+            }
         }
 
         // ── Absorb: wait for the user's fingers to lift ─────────────
@@ -101,6 +119,7 @@ impl SwitcherEngine {
         // text is untouched; we just leave the layout switched and
         // taint the buffer.
         let mut live = live;
+        let mut click_allowance = pointer_click_allowance;
         let mut tail: Vec<KeyEvent> = Vec::new();
         let mut resume: Option<KeyEvent> = None;
         let mut suspicious = false;
@@ -108,7 +127,7 @@ impl SwitcherEngine {
             let deadline = Instant::now() + Duration::from_millis(600);
             let mut quiet_probes = 0u8;
             loop {
-                let w = self.drain_correction_window(rx);
+                let w = self.drain_correction_window(rx, &mut click_allowance);
                 tail.extend(w.word_keys);
                 suspicious |= w.suspicious;
                 if let Some(r) = w.resume {
@@ -150,8 +169,10 @@ impl SwitcherEngine {
                 buffer.poison();
             }
             *self.last_word.write() = None;
-            let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
-            return;
+            if switching {
+                let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
+            }
+            return false;
         }
 
         // ── Delete: word + boundary + absorbed tail (+ its boundary) ─
@@ -166,13 +187,13 @@ impl SwitcherEngine {
             self.push_echoes(self.key_emitter.take_emitted());
             if let Err(e) = sent {
                 warn!(?e, "send_backspaces failed; aborting correction");
-                return;
+                return false;
             }
             let Some((rx, _)) = live.as_ref() else { break };
             // Give raced physical events a moment to travel
             // device → listener thread → our channel.
             std::thread::sleep(Duration::from_millis(12));
-            let w = self.drain_correction_window(rx);
+            let w = self.drain_correction_window(rx, &mut click_allowance);
             suspicious |= w.suspicious;
             let mut extra = w.word_keys.len();
             tail.extend(w.word_keys);
@@ -222,7 +243,7 @@ impl SwitcherEngine {
                     Err(InputError::Unsupported(_)) => false,
                     Err(e) => {
                         warn!(?e, "send_keys failed; correction may be partial");
-                        return;
+                        return false;
                     }
                 }
             }
@@ -245,21 +266,26 @@ impl SwitcherEngine {
             self.push_echoes(self.key_emitter.take_emitted());
             if let Err(e) = sent {
                 warn!(?e, "send_text failed; correction may be partial");
-                return;
+                return false;
             }
         }
 
         if play_sound {
             self.audio.play(SoundEvent::Correct);
         }
-        let _ = self.out_tx.send(SwitcherEvent::Corrected {
-            from_layout: from.clone(),
-            to_layout: to.clone(),
-            original_text: original.to_owned(),
-            corrected_text: corrected.to_owned(),
-            reason: reason.to_owned(),
-        });
-        let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
+        // `Corrected` / `LayoutChanged` are layout-correction events;
+        // a same-layout replacement announces itself via
+        // `SuggestionApplied` from its own caller instead.
+        if switching {
+            let _ = self.out_tx.send(SwitcherEvent::Corrected {
+                from_layout: from.clone(),
+                to_layout: to.clone(),
+                original_text: original.to_owned(),
+                corrected_text: corrected.to_owned(),
+                reason: reason.to_owned(),
+            });
+            let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
+        }
 
         // ── Settle & seed ───────────────────────────────────────────
         if let Some((rx, buffer)) = live {
@@ -280,7 +306,7 @@ impl SwitcherEngine {
             let mut post_resume: Option<KeyEvent> = None;
             let settle_deadline = Instant::now() + Duration::from_millis(400);
             loop {
-                let w = self.drain_correction_window(rx);
+                let w = self.drain_correction_window(rx, &mut click_allowance);
                 post_tail.extend(w.word_keys);
                 suspicious |= w.suspicious;
                 if let Some(r) = w.resume {
@@ -320,6 +346,7 @@ impl SwitcherEngine {
                 }
             }
         }
+        true
     }
 
     /// Feed absorbed keystrokes into the buffer as the in-progress
@@ -343,14 +370,25 @@ impl SwitcherEngine {
     /// the user managed to type while a correction was in flight;
     /// stops at the first boundary press (`resume` — the user finished
     /// their next word too). Anything murkier (Backspace, nav, click,
-    /// shortcut) sets `suspicious`.
-    fn drain_correction_window(&self, rx: &Receiver<KeyEvent>) -> WindowDrain {
+    /// shortcut) sets `suspicious`. `click_allowance` pointer presses
+    /// are swallowed benignly — see `apply_correction`.
+    fn drain_correction_window(
+        &self,
+        rx: &Receiver<KeyEvent>,
+        click_allowance: &mut usize,
+    ) -> WindowDrain {
         let mut out = WindowDrain::default();
         while let Ok(ev) = rx.try_recv() {
             if self.consume_echo(&ev) {
                 continue;
             }
             if ev.injected || ev.direction != KeyDirection::Press {
+                continue;
+            }
+            if ev.scancode == poltertype_types::SC_POINTER_BUTTON && *click_allowance > 0 {
+                // The click that accepted the tooltip, echoing through
+                // the key stream — it never reached the app below.
+                *click_allowance -= 1;
                 continue;
             }
             out.saw_user_press = true;
@@ -439,6 +477,7 @@ impl SwitcherEngine {
             true,
             Some(&replay),
             Some((key_rx, buffer)),
+            0,
         );
     }
 }

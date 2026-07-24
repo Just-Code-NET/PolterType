@@ -11,7 +11,7 @@ use crate::audio::SoundEvent;
 use crate::engine::buffer::{WordBoundary, WordBuffer};
 use crate::engine::consts::PASTE_GUARD;
 use crate::engine::enums::{Either, EngineCommand, SwitcherEvent};
-use crate::engine::heuristics::is_paste_shortcut;
+use crate::engine::heuristics::{is_modifier_scancode, is_paste_shortcut};
 use crate::engine::types::ChordState;
 
 use super::engine::SwitcherEngine;
@@ -56,16 +56,39 @@ impl SwitcherEngine {
                         last_event_at = Instant::now();
                         continue;
                     }
+                    // Click-grace bookkeeping first: a frozen offer
+                    // (pointer press seen, tooltip click possibly in
+                    // flight) dies on the first real keypress or when
+                    // its window lapses.
+                    self.click_grace_tick(&ev);
                     self.check_keystream_hotkeys(&ev, &mut chord_state, &mut buffer, &key_rx);
                     if last_event_at.elapsed() > idle_timeout {
-                        debug!("idle timeout — abandoning word buffer");
-                        // Not a plain clear: if a word was mid-flight
-                        // the screen still holds its head, and
-                        // correcting just the tail would chop the word
-                        // in half. `abandon` taints the current word
-                        // so the engine skips deciding on it.
-                        buffer.abandon();
-                        *self.last_word.write() = None;
+                        // A live suggestion offer overrides the idle
+                        // hygiene while no word is mid-flight: the
+                        // tooltip PROMISES the word is replaceable for
+                        // its whole lifetime, and the user pausing to
+                        // read it is the expected interaction — the
+                        // first key of the accept chord must not be
+                        // the event that voids the offer. Anything
+                        // that actually invalidates the caret during
+                        // the pause (click, nav, Esc, focus chord) is
+                        // observed as its own event and dismisses the
+                        // offer through the normal paths.
+                        if self.has_live_suggestion() && buffer.keys().is_empty() {
+                            debug!("idle timeout skipped — live suggestion offer");
+                        } else {
+                            debug!("idle timeout — abandoning word buffer");
+                            // Not a plain clear: if a word was
+                            // mid-flight the screen still holds its
+                            // head, and correcting just the tail would
+                            // chop the word in half. `abandon` taints
+                            // the current word so the engine skips
+                            // deciding on it. A pending offer dies
+                            // with the buffer.
+                            buffer.abandon();
+                            *self.last_word.write() = None;
+                            self.dismiss_suggestions(None);
+                        }
                     }
                     last_event_at = Instant::now();
                     self.handle_key(ev, &mut buffer, &key_rx);
@@ -94,10 +117,15 @@ impl SwitcherEngine {
                 *self.keystream_hotkeys.write() = hk;
             }
             EngineCommand::TogglePause => {
-                let mut g = self.paused.write();
-                *g = !*g;
-                let now = *g;
+                let now = {
+                    let mut g = self.paused.write();
+                    *g = !*g;
+                    *g
+                };
                 info!(paused = now, "pause toggled");
+                if now {
+                    self.dismiss_suggestions(None);
+                }
                 let _ = self.out_tx.send(SwitcherEvent::PausedChanged(now));
                 self.audio.play(if now {
                     SoundEvent::Pause
@@ -140,6 +168,13 @@ impl SwitcherEngine {
                 // re-stash a new last_word.
                 let taken = self.last_word.write().take();
                 if let Some(last) = taken {
+                    // A pending suggestion offer was computed for the
+                    // pre-switch rendering. The force-switch replays
+                    // the SAME scancodes, so the accept path's
+                    // buffer-identity check would still pass — and a
+                    // late click would replace the transliterated
+                    // word with a suggestion for the old one.
+                    self.dismiss_suggestions(None);
                     self.force_switch_last(last, buffer, key_rx);
                 } else {
                     debug!(
@@ -150,6 +185,17 @@ impl SwitcherEngine {
             EngineCommand::SettingsReloaded => {
                 self.audio.refresh_from(&self.settings);
                 buffer.reset();
+                self.dismiss_suggestions(None);
+            }
+            EngineCommand::AcceptSuggestion {
+                generation,
+                index,
+                from_pointer,
+            } => {
+                self.accept_suggestion(generation, index, from_pointer, buffer, key_rx);
+            }
+            EngineCommand::DismissSuggestions { generation } => {
+                self.dismiss_suggestions(Some(generation));
             }
         }
     }
@@ -176,14 +222,37 @@ impl SwitcherEngine {
         if is_paste_shortcut(&ev) {
             *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
         }
-        if ev.modifiers.is_command() {
+        if ev.modifiers.is_command() && !is_modifier_scancode(ev.scancode) {
             // Shortcuts (Ctrl+C, Cmd+V, …) — abandon, don't accumulate.
             // A shortcut can edit text arbitrarily (Ctrl+X, Ctrl+Z), so
             // a word that was mid-flight is no longer trustworthy;
-            // `abandon` taints it. The stashed last-word survives —
-            // the manual switch-last chord itself is a shortcut.
+            // `abandon` taints it, and a pending suggestion offer dies
+            // with it (its screen position is no longer vouched for).
+            // The stashed last-word survives — the manual switch-last
+            // chord itself is a shortcut.
+            //
+            // Bare modifier presses are exempt (see
+            // `is_modifier_scancode`): `Ctrl↓` can't edit anything,
+            // and the suggestion-accept chord must survive its own
+            // modifiers — the digit that follows is what accepts (its
+            // own command-abandon lands *after* the chord matched in
+            // `check_keystream_hotkeys`, on an already-consumed offer).
             buffer.abandon();
+            // A shortcut can also move the caret (Ctrl+End, Cmd+click
+            // chords, app-specific jumps) — the next word may start
+            // mid-word.
+            buffer.mark_context_unclean();
+            self.dismiss_suggestions(None);
             return;
+        }
+
+        // A pointer press is about to abandon the buffer below — if a
+        // suggestion tooltip is up, freeze the screen model first so
+        // a click ON the tooltip (whose Accepted event arrives via
+        // the command channel a moment later) can still be honoured.
+        if ev.direction == KeyDirection::Press && ev.scancode == poltertype_types::SC_POINTER_BUTTON
+        {
+            self.freeze_suggestion_for_click(buffer);
         }
 
         // Cross-layout letter hint: keeps Cyrillic words intact when
@@ -212,14 +281,27 @@ impl SwitcherEngine {
             WordBoundary::Abandoned => {
                 // Caret went somewhere unknown (click / nav / Esc) —
                 // a stashed last-word would be corrected at the wrong
-                // screen position now.
+                // screen position now. Same goes for a pending
+                // suggestion offer — EXCEPT during a click-grace
+                // window, where this very abandon was caused by a
+                // pointer press that may have landed on the tooltip;
+                // the frozen offer outlives it just long enough for
+                // the tooltip's Accepted event to arrive.
                 *self.last_word.write() = None;
+                if !self.has_click_grace() {
+                    self.dismiss_suggestions(None);
+                }
             }
             WordBoundary::WordCompleted {
                 boundary_scancode,
                 boundary_shift,
                 tainted,
+                started_clean,
             } => {
+                // Whatever happens to this word, the previous word's
+                // offer no longer points at the last thing on screen —
+                // `decide()` below may immediately issue a fresh one.
+                self.dismiss_suggestions(None);
                 if tainted {
                     debug!("completed word is tainted — skipping decision");
                     *self.last_word.write() = None;
@@ -235,7 +317,13 @@ impl SwitcherEngine {
                     // correcting.
                     debug!("paste guard active — skipping correction for completed word");
                 } else {
-                    self.decide(buffer, boundary_scancode, boundary_shift, key_rx);
+                    self.decide(
+                        buffer,
+                        boundary_scancode,
+                        boundary_shift,
+                        started_clean,
+                        key_rx,
+                    );
                 }
             }
         }

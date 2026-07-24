@@ -61,6 +61,50 @@ impl FocusTracker for WindowsFocusTracker {
         }
     }
 
+    fn focused_window_geometry(&self) -> Option<crate::focus::FocusedWindowGeometry> {
+        // Safety: `GetWindowRect` writes into the RECT we own; no
+        // handles to release.
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.0.is_null() {
+                return None;
+            }
+            let mut rect = windows::Win32::Foundation::RECT::default();
+            if let Err(e) = windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut rect)
+            {
+                warn!(?e, "GetWindowRect failed");
+                return None;
+            }
+            let width = u32::try_from(rect.right.saturating_sub(rect.left)).ok()?;
+            let height = u32::try_from(rect.bottom.saturating_sub(rect.top)).ok()?;
+            Some(crate::focus::FocusedWindowGeometry {
+                x: rect.left,
+                y: rect.top,
+                width,
+                height,
+                // Virtual-screen coordinates are already global on
+                // Windows; no output mapping needed.
+                output: None,
+                output_x: 0,
+                output_y: 0,
+            })
+        }
+    }
+
+    fn pointer_position(&self) -> Option<(i32, i32)> {
+        // Safety: `GetCursorPos` writes into the POINT we own.
+        unsafe {
+            let mut p = windows::Win32::Foundation::POINT::default();
+            match windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) {
+                Ok(()) => Some((p.x, p.y)),
+                Err(e) => {
+                    warn!(?e, "GetCursorPos failed");
+                    None
+                }
+            }
+        }
+    }
+
     fn backend_name(&self) -> &'static str {
         "windows-foreground-process"
     }

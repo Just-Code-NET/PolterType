@@ -67,6 +67,13 @@ pub(crate) fn handle_engine_event(
         SwitcherEvent::KeptCurrent { reason } => {
             debug!(%reason, "decision: keep current");
         }
+        // Handled in the event loop before delegation here (they need
+        // the popup handle / dict handle / focus tracker, which are
+        // loop-local).
+        SwitcherEvent::SuggestionsReady { .. }
+        | SwitcherEvent::SuggestionsDismissed { .. }
+        | SwitcherEvent::SuggestionApplied { .. }
+        | SwitcherEvent::AddToDictionary { .. } => {}
     }
 }
 
@@ -224,6 +231,25 @@ pub(crate) fn spawn_event_bridges(
         })
         .context("spawn engine event bridge thread")?;
 
+    Ok(())
+}
+
+/// Forward suggestion-tooltip interactions (clicks, timeouts) into
+/// the tao loop — same shape as the engine-event bridge.
+pub(crate) fn spawn_popup_bridge(
+    proxy: EventLoopProxy<UserEvent>,
+    popup_rx: Receiver<poltertype_popup::PopupUiEvent>,
+) -> Result<()> {
+    std::thread::Builder::new()
+        .name("popup-event-bridge".into())
+        .spawn(move || {
+            for ev in popup_rx.iter() {
+                if proxy.send_event(UserEvent::Popup(ev)).is_err() {
+                    break;
+                }
+            }
+        })
+        .context("spawn popup event bridge thread")?;
     Ok(())
 }
 

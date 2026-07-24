@@ -45,3 +45,7 @@ x11rb = { workspace = true, features = ["xinput", "xtest"] }
 # `fetch_events` is blocking by default; our single-thread fan-in
 # would otherwise deadlock on the first device that has no traffic.
 libc  = "0.2"
+# AT-SPI2 a11y bus (focus/linux_impl/atspi_caret.rs) — the only real
+# source of on-screen caret coordinates on Linux. Blocking API only;
+# the watcher owns one background thread, no async runtime of ours.
+zbus  = { workspace = true }

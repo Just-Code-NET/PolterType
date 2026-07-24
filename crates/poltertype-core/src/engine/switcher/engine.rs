@@ -3,17 +3,18 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
 use std::time::Instant;
 
 use crossbeam_channel::Sender;
 use parking_lot::{Mutex, RwLock};
-use poltertype_detect::Detector;
+use poltertype_detect::{Detector, SuggestionProvider};
 use poltertype_input::{FocusTracker, KeyEmitter};
 use poltertype_layout::LayoutSwitcher;
 
 use crate::audio::AudioPlayer;
 use crate::engine::enums::SwitcherEvent;
-use crate::engine::types::{KeystreamHotkeys, LastWord};
+use crate::engine::types::{KeystreamHotkeys, LastWord, PendingSuggestion};
 use crate::layouts::LayoutDb;
 use crate::settings::SettingsStore;
 
@@ -61,6 +62,15 @@ pub struct SwitcherEngine {
     /// the app enables them (Wayland) via
     /// [`EngineCommand::SetKeystreamHotkeys`](crate::engine::enums::EngineCommand::SetKeystreamHotkeys).
     pub(super) keystream_hotkeys: RwLock<KeystreamHotkeys>,
+    /// Spelling-suggestion provider (`None` = feature not wired /
+    /// disabled at construction). See `docs/PLAN.md` §3.8.B — this is
+    /// the suggestion seam the AI subsystem can later replace.
+    pub(super) suggester: Option<Arc<dyn SuggestionProvider>>,
+    /// The one in-flight suggestion offer, if any. Generation-stamped
+    /// so a stale tooltip click can never replace the wrong word.
+    pub(super) pending_suggestion: Mutex<Option<PendingSuggestion>>,
+    /// Monotonic stamp source for [`PendingSuggestion::generation`].
+    pub(super) suggestion_generation: AtomicU64,
     /// Wall-clock deadline before which auto-correction is suppressed
     /// because the user just pasted (Ctrl+V / Ctrl+Shift+V / Shift+Insert).
     ///
@@ -89,6 +99,7 @@ impl SwitcherEngine {
         focus_tracker: Arc<dyn FocusTracker>,
         audio: Arc<AudioPlayer>,
         out_tx: Sender<SwitcherEvent>,
+        suggester: Option<Arc<dyn SuggestionProvider>>,
     ) -> Self {
         Self {
             settings,
@@ -103,6 +114,9 @@ impl SwitcherEngine {
             last_word: Arc::new(RwLock::new(None)),
             expected_echo: Mutex::new(VecDeque::new()),
             keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),
+            suggester,
+            pending_suggestion: Mutex::new(None),
+            suggestion_generation: AtomicU64::new(0),
             paste_guard_until: RwLock::new(Instant::now()),
         }
     }

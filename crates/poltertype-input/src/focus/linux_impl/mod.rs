@@ -23,7 +23,13 @@
 //! sits on the engine's word-boundary path plus the 250 ms wordlist-
 //! profile watcher — so the factory wraps whichever backend it picks
 //! in a small TTL cache ([`cache::CachedFocusTracker`]).
+//!
+//! Both backends additionally share one [`atspi_caret`] watcher — the
+//! AT-SPI2 caret-position source behind `caret_hint()`; it is
+//! event-driven (its own thread + a11y bus connection), so it sits
+//! outside the TTL cache entirely.
 
+mod atspi_caret;
 mod cache;
 mod consts;
 mod hyprland;

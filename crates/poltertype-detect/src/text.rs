@@ -26,6 +26,35 @@ pub fn letters_only_lower(s: &str) -> String {
     out
 }
 
+/// Suggestions-side canonicalisation: lowercase, keep letters plus
+/// apostrophes and hyphens, fold the apostrophe variants (`’` U+2019,
+/// `ʼ` U+02BC) to `'`. Everything else is dropped.
+///
+/// [`letters_only_lower`] is deliberately lossy — membership lookup
+/// doesn't care that `п'ять` lost its apostrophe. A *suggestion* does:
+/// it gets typed back into the user's text, so the surface FST (built
+/// by `poltertype-core/build.rs` with a mirror of this function — keep
+/// the two in sync) stores `п'ять` verbatim, and queries against it
+/// must canonicalise the same way.
+pub fn surface_lower(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        // Apostrophes first: `ʼ` (U+02BC) is Unicode category Lm —
+        // `is_alphabetic()` returns true for it, so the alphabetic
+        // branch would keep it un-folded.
+        if matches!(ch, '\'' | '’' | 'ʼ') {
+            out.push('\'');
+        } else if ch == '-' {
+            out.push('-');
+        } else if ch.is_alphabetic() {
+            for low in ch.to_lowercase() {
+                out.push(low);
+            }
+        }
+    }
+    out
+}
+
 /// Heuristic: does `text` look like a programming-language identifier
 /// rather than natural-language prose? When this returns `true`, the
 /// engine suppresses *automatic* layout-switching for that buffer —
