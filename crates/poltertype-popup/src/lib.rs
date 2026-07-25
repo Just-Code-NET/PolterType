@@ -36,7 +36,13 @@
 mod enums;
 mod factory;
 mod noop;
+// The shared placement + renderer are consumed only by the Linux
+// backends today. On Windows/macOS (noop-only) compiling them trips
+// `-D dead_code` on the CI lanes — un-gate these (and `tests`) when
+// a backend lands there.
+#[cfg(target_os = "linux")]
 mod place;
+#[cfg(target_os = "linux")]
 mod render;
 mod traits;
 mod types;
@@ -49,5 +55,5 @@ pub use factory::create_popup;
 pub use traits::SuggestionPopup;
 pub use types::{PopupEntry, PopupModel};
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod tests;
