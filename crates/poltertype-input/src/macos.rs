@@ -162,13 +162,19 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                 let scancode = mac_keycode_to_sc1(vk as u16);
                 let flags = event.get_flags();
                 let injected = user_data != 0;
+                // Fold Caps Lock into the shift bit the way the X11
+                // backend does: caps-on + no Shift = uppercase, caps-on
+                // + held Shift = lowercase. The engine's all-caps and
+                // replay logic rely on this combined bit.
+                let shift = flags.contains(CGEventFlags::CGEventFlagShift)
+                    ^ flags.contains(CGEventFlags::CGEventFlagAlphaShift);
 
                 let ev_out = KeyEvent {
                     vk,
                     scancode,
                     direction,
                     modifiers: Modifiers {
-                        shift: flags.contains(CGEventFlags::CGEventFlagShift),
+                        shift,
                         control: flags.contains(CGEventFlags::CGEventFlagControl),
                         alt: flags.contains(CGEventFlags::CGEventFlagAlternate),
                         meta: flags.contains(CGEventFlags::CGEventFlagCommand),
@@ -328,6 +334,15 @@ impl KeyEmitter for MacosEmitter {
 }
 
 // ─── Apple → Win SC Set-1 keycode mapping ────────────────────────────
+//
+// The engine's buffer classifier is written against Windows SC-1
+// scancodes (0x2A = LShift, 0x36 = RShift, 0x39 = Space, 0x0E =
+// Backspace, …). Apple virtual keycodes overlap that range with
+// DIFFERENT meanings — e.g. Apple 0x39 is Caps Lock but SC-1 0x39 is
+// Space, Apple 0x3C (RShift) lands in the classifier's F-row
+// "end and discard" range. Every key the classifier pattern-matches
+// must therefore be translated explicitly; an identity fallback is
+// only safe for keys outside all of the classifier's ranges.
 
 fn mac_keycode_to_sc1(kvk: u16) -> u32 {
     match kvk {
@@ -370,22 +385,62 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x19 => 0x0A, // 9
         0x1D => 0x0B, // 0
         // Boundaries / nav
-        0x24 => 0x1C, // Return
-        0x30 => 0x0F, // Tab
-        0x31 => 0x39, // Space
-        0x33 => 0x0E, // Delete (= Backspace)
-        0x35 => 0x01, // Esc
-        0x2B => 0x33, // Comma
-        0x2F => 0x34, // Period
-        0x2C => 0x35, // Slash
-        0x29 => 0x27, // ;
-        0x27 => 0x28, // '
-        0x21 => 0x1A, // [
-        0x1E => 0x1B, // ]
-        0x2A => 0x2B, // backslash
-        0x32 => 0x29, // backtick
-        0x18 => 0x0D, // =
-        0x1B => 0x0C, // -
+        0x24 => 0x1C,  // Return
+        0x4C => 0x1C,  // Numpad Enter
+        0x30 => 0x0F,  // Tab
+        0x31 => 0x39,  // Space
+        0x33 => 0x0E,  // Delete (= Backspace)
+        0x75 => 0x53,  // Forward Delete
+        0x35 => 0x01,  // Esc
+        0x2B => 0x33,  // Comma
+        0x2F => 0x34,  // Period
+        0x2C => 0x35,  // Slash
+        0x29 => 0x27,  // ;
+        0x27 => 0x28,  // '
+        0x21 => 0x1A,  // [
+        0x1E => 0x1B,  // ]
+        0x2A => 0x2B,  // backslash
+        0x32 => 0x29,  // backtick
+        0x18 => 0x0D,  // =
+        0x1B => 0x0C,  // -
+        // Modifiers — must map onto the SC-1 modifier slots the
+        // classifier recognises as "discard, stay inside the word".
+        // Identity passthrough here was disastrous: Apple 0x3C
+        // (RShift) / 0x3B (LControl) landed in the classifier's
+        // F-row range and KILLED any word typed with the right
+        // modifier, and Apple 0x39 (Caps Lock) aliased onto SC-1
+        // Space, splitting words in two.
+        0x38 => 0x2A, // LShift
+        0x3C => 0x36, // RShift
+        0x3B => 0x1D, // LControl
+        0x3E => 0x1D, // RControl
+        0x3A => 0x38, // LOption (Alt)
+        0x3D => 0x38, // ROption
+        0x37 => 0x5B, // LCommand (SC-1 LWin)
+        0x36 => 0x5C, // RCommand (SC-1 RWin)
+        0x39 => 0x3A, // Caps Lock
+        // Arrow cluster (SC-1 extended positions → nav, end the word).
+        0x7E => 0x48, // Up
+        0x7D => 0x50, // Down
+        0x7B => 0x4B, // Left
+        0x7C => 0x4D, // Right
+        0x73 => 0x47, // Home
+        0x77 => 0x4F, // End
+        0x74 => 0x49, // PageUp
+        0x79 => 0x51, // PageDown
+        // Function row (SC-1 F1..F12 → end the word like on Windows).
+        0x7A => 0x3B, // F1
+        0x78 => 0x3C, // F2
+        0x63 => 0x3D, // F3
+        0x76 => 0x3E, // F4
+        0x60 => 0x3F, // F5
+        0x61 => 0x40, // F6
+        0x62 => 0x41, // F7
+        0x64 => 0x42, // F8
+        0x65 => 0x43, // F9
+        0x6D => 0x44, // F10
+        0x67 => 0x57, // F11
+        0x6F => 0x58, // F12
         _ => kvk as u32,
     }
 }
