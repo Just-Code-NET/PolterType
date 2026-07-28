@@ -59,7 +59,12 @@ use std::ffi::c_void;
 type DispatchQueueT = *mut c_void;
 
 unsafe extern "C" {
-    fn dispatch_get_main_queue() -> DispatchQueueT;
+    /// The main dispatch queue. Modern libdispatch headers alias
+    /// `dispatch_get_main_queue()` to this global (`DISPATCH_GLOBAL_OBJECT`),
+    /// and the function symbol itself is no longer exported by
+    /// libSystem — so we link the object directly, like the `dispatch`
+    /// crate does.
+    static _dispatch_main_q: c_void;
     fn dispatch_sync_f(
         queue: DispatchQueueT,
         context: *mut c_void,
@@ -98,7 +103,7 @@ where
     };
     unsafe {
         dispatch_sync_f(
-            dispatch_get_main_queue(),
+            &raw const _dispatch_main_q as DispatchQueueT,
             &mut ctx as *mut Ctx<T, F> as *mut c_void,
             trampoline::<T, F>,
         );
