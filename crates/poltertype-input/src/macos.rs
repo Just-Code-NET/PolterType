@@ -52,6 +52,14 @@ use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modif
 const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 
+/// Magic value stamped into `kCGEventSourceUserData` on every event
+/// WE post, so the listener can tag them `injected` and the engine
+/// never mistakes our own backspaces / retypes for user keystrokes.
+/// Without this the emitted events echo back through the tap as
+/// "real" input: the backspace burst poisons the word buffer right
+/// after a correction, and every second word gets skipped as tainted.
+const EMITTER_TAG: i64 = 0x504F4C54; // "POLT"
+
 // ─── Accessibility permission prompt ─────────────────────────────────
 //
 // `CGEventTapCreate` fails *silently* when the app lacks Accessibility
@@ -298,9 +306,11 @@ impl KeyEmitter for MacosEmitter {
         for _ in 0..n {
             let down = CGEvent::new_keyboard_event(src.clone(), KVK_DELETE, true)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event(down) failed".into()))?;
+            down.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             down.post(CGEventTapLocation::HID);
             let up = CGEvent::new_keyboard_event(src.clone(), KVK_DELETE, false)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event(up) failed".into()))?;
+            up.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             up.post(CGEventTapLocation::HID);
         }
         Ok(())
@@ -318,11 +328,13 @@ impl KeyEmitter for MacosEmitter {
             let down = CGEvent::new_keyboard_event(src.clone(), 0, true)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event failed".into()))?;
             down.set_string_from_utf16_unchecked(&utf16);
+            down.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             down.post(CGEventTapLocation::HID);
 
             let up = CGEvent::new_keyboard_event(src.clone(), 0, false)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event failed".into()))?;
             up.set_string_from_utf16_unchecked(&utf16);
+            up.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             up.post(CGEventTapLocation::HID);
         }
         Ok(())
