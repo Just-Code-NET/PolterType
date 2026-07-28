@@ -103,7 +103,26 @@ fn main() -> Result<()> {
     let _log_guard = init_tracing();
     info!(version = env!("CARGO_PKG_VERSION"), "{APP_NAME} starting");
 
-    let instance = SingleInstance::new(APP_ID).context("create single-instance lock")?;
+    // On macOS the `single-instance` crate treats the id as a file
+    // path and flocks it. A bare id lands in the process cwd — which
+    // is `/` (read-only system volume) when the app is launched via
+    // Finder / `open`, so startup died with "Read-only file system".
+    // Give it an absolute path under the per-user config dir instead.
+    // On Linux (abstract socket) and Windows (named mutex) the id is
+    // not a path, so keep it untouched there.
+    #[cfg(target_os = "macos")]
+    let lock_id: String = {
+        let dir = poltertype_core::settings::SettingsStore::project_dirs()
+            .map(|d| d.config_dir().to_path_buf())
+            .unwrap_or_else(|_| std::env::temp_dir());
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            warn!(?e, ?dir, "could not create config dir for instance lock");
+        }
+        dir.join("poltertype.lock").to_string_lossy().into_owned()
+    };
+    #[cfg(not(target_os = "macos"))]
+    let lock_id: &str = APP_ID;
+    let instance = SingleInstance::new(&lock_id).context("create single-instance lock")?;
     if !instance.is_single() {
         warn!("another instance is already running, exiting");
         return Ok(());
