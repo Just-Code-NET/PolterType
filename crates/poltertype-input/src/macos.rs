@@ -30,7 +30,7 @@ use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortRef;
 use core_foundation::runloop::{
     CFRunLoop, CFRunLoopAddSource, CFRunLoopRunInMode, CFRunLoopSource, CFRunLoopSourceRef,
-    kCFRunLoopCommonModes,
+    kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
 use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
@@ -91,6 +91,8 @@ fn request_accessibility_prompt() {
 // ─── Listener ────────────────────────────────────────────────────────
 
 static EVENT_SINK: OnceLock<parking_lot::RwLock<Option<Sender<KeyEvent>>>> = OnceLock::new();
+
+static FIRST_EVENT_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
     EVENT_SINK.get_or_init(|| parking_lot::RwLock::new(None))
@@ -176,6 +178,9 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                 };
                 if let Some(slot) = EVENT_SINK.get() {
                     if let Some(sink) = slot.read().as_ref() {
+                        if !FIRST_EVENT_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                            debug!("first macOS key event delivered to engine");
+                        }
                         if let Err(err) = sink.try_send(ev_out) {
                             debug!(?err, "dropping macOS key event");
                         }
@@ -231,9 +236,13 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     let _ = ready_tx.send(Ok(()));
 
     loop {
-        // Safety: standard CFRunLoop call.
+        // Safety: standard CFRunLoop call. Must run the loop in a real
+        // mode (kCFRunLoopDefaultMode is in the common-mode set the
+        // tap source was added to) — passing kCFRunLoopCommonModes as
+        // the *run* mode is legal per the docs but on macOS 15 the tap
+        // source never fires that way, so the callback starves.
         unsafe {
-            let _ = CFRunLoopRunInMode(kCFRunLoopCommonModes, 60.0, 0);
+            let _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 60.0, 0);
         }
         if EVENT_SINK.get().map(|s| s.read().is_none()).unwrap_or(true) {
             break;
