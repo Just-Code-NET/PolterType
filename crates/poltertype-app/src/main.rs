@@ -368,7 +368,17 @@ fn main() -> Result<()> {
         .is_some_and(|l| l.backend_name() == "linux-wayland-evdev");
 
     // ─── Tao event loop + tray + global hotkeys ────────────────────
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    #[allow(unused_mut)]
+    let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    #[cfg(target_os = "macos")]
+    {
+        // Tray-only app: LSUIElement alone is not enough — tao
+        // explicitly applies ActivationPolicy::Regular (its default)
+        // at startup, which puts us in the Dock anyway. Accessory
+        // keeps us out of the Dock and the Cmd+Tab switcher.
+        use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
+        event_loop.set_activation_policy(ActivationPolicy::Accessory);
+    }
 
     let menu = Menu::new();
     // Onboarding alert entry — present only when keyboard hooks
