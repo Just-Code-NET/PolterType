@@ -52,6 +52,42 @@ use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modif
 const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 
+// ─── Accessibility permission prompt ─────────────────────────────────
+//
+// `CGEventTapCreate` fails *silently* when the app lacks Accessibility
+// rights — no system dialog. The supported way to ask is
+// `AXIsProcessTrustedWithOptions({ kAXTrustedCheckOptionPrompt: true })`,
+// which drops the app into System Settings → Privacy & Security →
+// Accessibility and shows the "PolterType would like to control this
+// computer" alert. We call it when the tap fails to attach so a
+// first-launch user gets the prompt instead of a dead tray icon.
+
+use core_foundation::dictionary::CFDictionaryRef;
+use core_foundation::string::CFStringRef;
+
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
+    static kAXTrustedCheckOptionPrompt: CFStringRef;
+}
+
+/// Check Accessibility trust; prompt the user when not yet trusted.
+fn request_accessibility_prompt() {
+    use core_foundation::base::TCFType;
+    unsafe {
+        let key = core_foundation::string::CFString::wrap_under_get_rule(
+            kAXTrustedCheckOptionPrompt,
+        );
+        let value = core_foundation::boolean::CFBoolean::true_value();
+        let options = core_foundation::dictionary::CFDictionary::from_CFType_pairs(&[(
+            key.as_CFType(),
+            value.as_CFType(),
+        )]);
+        let trusted = AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef());
+        debug!(trusted, "AXIsProcessTrustedWithOptions(prompt) result");
+    }
+}
+
 // ─── Listener ────────────────────────────────────────────────────────
 
 static EVENT_SINK: OnceLock<parking_lot::RwLock<Option<Sender<KeyEvent>>>> = OnceLock::new();
@@ -159,6 +195,10 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     ) {
         Ok(t) => t,
         Err(()) => {
+            // Trigger the system Accessibility prompt so the user has
+            // a one-click path to System Settings, then report the
+            // failure as before.
+            request_accessibility_prompt();
             let _ = ready_tx.send(Err(
                 "CGEventTapCreate failed (likely missing Accessibility permission)".into(),
             ));
