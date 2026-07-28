@@ -195,6 +195,16 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                         if !FIRST_EVENT_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
                             debug!("first macOS key event delivered to engine");
                         }
+                        debug!(
+                            scancode = ev_out.scancode,
+                            ?direction,
+                            shift = ev_out.modifiers.shift,
+                            ctrl = ev_out.modifiers.control,
+                            alt = ev_out.modifiers.alt,
+                            meta = ev_out.modifiers.meta,
+                            injected = ev_out.injected,
+                            "mac key"
+                        );
                         if let Err(err) = sink.try_send(ev_out) {
                             debug!(?err, "dropping macOS key event");
                         }
