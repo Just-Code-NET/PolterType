@@ -118,7 +118,9 @@ fn main() -> Result<()> {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             warn!(?e, ?dir, "could not create config dir for instance lock");
         }
-        dir.join("poltertype.lock").to_string_lossy().into_owned()
+        dir.join(format!("{APP_ID}.lock"))
+            .to_string_lossy()
+            .into_owned()
     };
     #[cfg(not(target_os = "macos"))]
     let lock_id: &str = APP_ID;
