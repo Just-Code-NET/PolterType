@@ -83,9 +83,8 @@ unsafe extern "C" {
 fn request_accessibility_prompt() {
     use core_foundation::base::TCFType;
     unsafe {
-        let key = core_foundation::string::CFString::wrap_under_get_rule(
-            kAXTrustedCheckOptionPrompt,
-        );
+        let key =
+            core_foundation::string::CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
         let value = core_foundation::boolean::CFBoolean::true_value();
         let options = core_foundation::dictionary::CFDictionary::from_CFType_pairs(&[(
             key.as_CFType(),
@@ -100,7 +99,8 @@ fn request_accessibility_prompt() {
 
 static EVENT_SINK: OnceLock<parking_lot::RwLock<Option<Sender<KeyEvent>>>> = OnceLock::new();
 
-static FIRST_EVENT_LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FIRST_EVENT_LOGGED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
     EVENT_SINK.get_or_init(|| parking_lot::RwLock::new(None))
@@ -407,24 +407,24 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x19 => 0x0A, // 9
         0x1D => 0x0B, // 0
         // Boundaries / nav
-        0x24 => 0x1C,  // Return
-        0x4C => 0x1C,  // Numpad Enter
-        0x30 => 0x0F,  // Tab
-        0x31 => 0x39,  // Space
-        0x33 => 0x0E,  // Delete (= Backspace)
-        0x75 => 0x53,  // Forward Delete
-        0x35 => 0x01,  // Esc
-        0x2B => 0x33,  // Comma
-        0x2F => 0x34,  // Period
-        0x2C => 0x35,  // Slash
-        0x29 => 0x27,  // ;
-        0x27 => 0x28,  // '
-        0x21 => 0x1A,  // [
-        0x1E => 0x1B,  // ]
-        0x2A => 0x2B,  // backslash
-        0x32 => 0x29,  // backtick
-        0x18 => 0x0D,  // =
-        0x1B => 0x0C,  // -
+        0x24 => 0x1C, // Return
+        0x4C => 0x1C, // Numpad Enter
+        0x30 => 0x0F, // Tab
+        0x31 => 0x39, // Space
+        0x33 => 0x0E, // Delete (= Backspace)
+        0x75 => 0x53, // Forward Delete
+        0x35 => 0x01, // Esc
+        0x2B => 0x33, // Comma
+        0x2F => 0x34, // Period
+        0x2C => 0x35, // Slash
+        0x29 => 0x27, // ;
+        0x27 => 0x28, // '
+        0x21 => 0x1A, // [
+        0x1E => 0x1B, // ]
+        0x2A => 0x2B, // backslash
+        0x32 => 0x29, // backtick
+        0x18 => 0x0D, // =
+        0x1B => 0x0C, // -
         // Modifiers — mapped onto the SC-1 modifier slots the
         // classifier recognises as "discard, stay inside the word".
         // Note: macOS delivers pure modifier presses as `FlagsChanged`

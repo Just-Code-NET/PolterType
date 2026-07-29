@@ -33,7 +33,9 @@ mod imp {
     /// Minimal XML escaping for the program path (`&` is legal in
     /// file names).
     fn xml_escape(s: &str) -> String {
-        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
     }
 
     fn plist_body(exe: &Path) -> String {
@@ -61,7 +63,9 @@ mod imp {
 
     fn launchctl(args: &[&str]) {
         match std::process::Command::new("launchctl").args(args).status() {
-            Ok(st) if !st.success() => debug!(?args, status = ?st, "launchctl: non-zero exit (fine if job was (un)loaded already)"),
+            Ok(st) if !st.success() => {
+                debug!(?args, status = ?st, "launchctl: non-zero exit (fine if job was (un)loaded already)")
+            }
             Ok(_) => {}
             Err(e) => warn!(?e, ?args, "could not run launchctl"),
         }
