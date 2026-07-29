@@ -51,7 +51,7 @@ fn caret_watcher() -> Option<Arc<AtspiCaretWatcher>> {
     match AtspiCaretWatcher::try_new() {
         Ok(w) => Some(Arc::new(w)),
         Err(e) => {
-            info!(%e, "AT-SPI caret watcher unavailable; tooltip anchoring falls back to pointer/window");
+            info!(%e, "AT-SPI caret watcher unavailable; tooltip anchoring falls back to the window");
             None
         }
     }

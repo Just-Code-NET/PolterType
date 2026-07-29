@@ -15,7 +15,7 @@
 //! read it once per tooltip show via [`AtspiCaretWatcher::latest`].
 //! A missing bus or registry (headless session, a11y stack disabled)
 //! fails [`AtspiCaretWatcher::try_new`] — callers log once and fall
-//! back to pointer/window anchoring.
+//! back to window anchoring.
 //!
 //! PRIVACY: this module must never read or log *text*. Offsets and
 //! glyph rectangles only — no `GetText` / `GetTextAtOffset`, ever.
@@ -200,7 +200,7 @@ impl AtspiCaretWatcher {
 /// Blocking signal loop. Ends — with a single `warn` — when the bus
 /// dies: the a11y stack restarting mid-session is rare enough that
 /// reconnect logic isn't worth its failure modes yet, and the caller
-/// degrades to pointer/window anchoring either way.
+/// degrades to window anchoring either way.
 fn watch(conn: &Connection, messages: MessageIterator, latest: &Mutex<Option<CaretSample>>) {
     for msg in messages {
         let msg = match msg {

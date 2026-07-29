@@ -2,19 +2,18 @@
 
 /// Where the tooltip should appear.
 ///
-/// There is no caret-position API on any of our Linux paths (and none
-/// planned on Wayland), so the anchors are proxies, best first: the
-/// pointer position when it sits inside the focused window (the user
-/// clicked into the text they're editing — the pointer hovers near
-/// the caret), the focused window's bottom-centre otherwise (chat
-/// inputs and shell prompts live there), a screen edge when nothing
-/// is known.
+/// No Wayland protocol or X11 property answers "where is the text
+/// caret"; the accessibility stack is the one API that does, and only
+/// for apps with a live a11y bridge. So the anchors run best-first:
+/// the AT-SPI caret when it is available and fresh, the focused
+/// window's bottom-centre otherwise (chat inputs and shell prompts
+/// live there), a screen edge when nothing is known.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PopupAnchor {
     /// A point of interest in global compositor coordinates — the
-    /// caret (AT-SPI) or the pointer standing in for it. `height` is
-    /// the vertical extent at that point (the caret's line height; 0
-    /// for a pointer): "above" placements clear the top of it,
+    /// AT-SPI caret. `height` is the vertical extent at that point
+    /// (the caret's line height; 0 when the app reports none):
+    /// "above" placements clear the top of it,
     /// "below" placements clear the bottom, so the tooltip never
     /// covers the very line being typed.
     Point {

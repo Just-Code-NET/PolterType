@@ -1,6 +1,6 @@
 //! Placement of the tooltip around its anchor point.
 //!
-//! The anchor is the caret proxy (pointer position). The tooltip
+//! The anchor is the text caret. The tooltip
 //! prefers to hang *above* the point — "над словом" — and walks the
 //! sides by preference when there is no room: above → below → right
 //! → left, taking the first side where it fits fully on the screen.

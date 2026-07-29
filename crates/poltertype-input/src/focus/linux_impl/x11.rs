@@ -31,7 +31,7 @@ struct X11FocusConn {
 pub(crate) struct X11FocusTracker {
     state: Mutex<Option<X11FocusConn>>,
     /// Shared AT-SPI caret watcher; `None` when the a11y bus is
-    /// unavailable (the tooltip then anchors to pointer/window).
+    /// unavailable (the tooltip then anchors to the window).
     caret: Option<Arc<AtspiCaretWatcher>>,
 }
 
@@ -82,27 +82,6 @@ impl FocusTracker for X11FocusTracker {
         }
         let s = state.as_ref()?;
         match query_focused_geometry(s) {
-            Ok(v) => v,
-            Err(()) => {
-                *state = None;
-                None
-            }
-        }
-    }
-
-    fn pointer_position(&self) -> Option<(i32, i32)> {
-        let mut state = self.state.lock();
-        if state.is_none() {
-            match connect() {
-                Ok(c) => *state = Some(c),
-                Err(e) => {
-                    debug!(%e, "x11 focus: connect failed");
-                    return None;
-                }
-            }
-        }
-        let s = state.as_ref()?;
-        match query_pointer_position(s) {
             Ok(v) => v,
             Err(()) => {
                 *state = None;
@@ -230,23 +209,6 @@ fn query_focused_geometry(s: &X11FocusConn) -> Result<Option<FocusedWindowGeomet
         output_x: 0,
         output_y: 0,
     }))
-}
-
-/// Global pointer position off the root window — the suggestion
-/// tooltip's caret proxy. Same error contract as the other queries.
-fn query_pointer_position(s: &X11FocusConn) -> Result<Option<(i32, i32)>, ()> {
-    let cookie = s
-        .conn
-        .query_pointer(s.root)
-        .map_err(|e| debug!(?e, "x11 focus: query_pointer send failed"))?;
-    match cookie.reply() {
-        Ok(p) => Ok(Some((i32::from(p.root_x), i32::from(p.root_y)))),
-        Err(ReplyError::X11Error(_)) => Ok(None),
-        Err(e) => {
-            debug!(?e, "x11 focus: connection error");
-            Err(())
-        }
-    }
 }
 
 /// The instance half of `WM_CLASS` (the first NUL-terminated string,

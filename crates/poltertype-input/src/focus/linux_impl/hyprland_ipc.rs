@@ -199,38 +199,6 @@ pub(crate) fn parse_monitors(reply: &str) -> Vec<HyprMonitor> {
     out
 }
 
-/// The global pointer position (`cursorpos` request) — the tooltip's
-/// caret proxy. Same transport strategy as [`active_window_reply`].
-pub(crate) fn cursor_position() -> Option<(i32, i32)> {
-    let reply = if let Some(p) = socket_path() {
-        match socket_request(&p, "cursorpos") {
-            Ok(reply) if !reply.trim_start().starts_with("unknown request") => Some(reply),
-            Ok(reply) => {
-                debug!(%reply, "hypr socket refused cursorpos; using hyprctl");
-                None
-            }
-            Err(e) => {
-                debug!(?e, "hypr socket cursorpos failed; using hyprctl");
-                None
-            }
-        }
-    } else {
-        None
-    };
-    let reply = match reply {
-        Some(r) => r,
-        None => {
-            let out = Command::new("hyprctl").arg("cursorpos").output().ok()?;
-            if !out.status.success() {
-                return None;
-            }
-            String::from_utf8_lossy(&out.stdout).into_owned()
-        }
-    };
-    let (x, y) = parse_pair(reply.trim(), ',')?;
-    Some((x as i32, y as i32))
-}
-
 /// `"11, 22"` with the given separator → `(11, 22)`.
 fn parse_pair(v: &str, sep: char) -> Option<(i64, i64)> {
     let (a, b) = v.trim().split_once(sep)?;

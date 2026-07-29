@@ -47,11 +47,6 @@ impl FocusTracker for CachedFocusTracker {
         self.inner.focused_window_geometry()
     }
 
-    fn pointer_position(&self) -> Option<(i32, i32)> {
-        // Uncached for the same reason as the geometry above.
-        self.inner.pointer_position()
-    }
-
     fn caret_hint(&self) -> Option<crate::focus::CaretHint> {
         // Uncached: the watcher already keeps its own freshest-sample
         // slot, and `age` must reflect the real event time — a TTL

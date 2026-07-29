@@ -181,7 +181,7 @@ fn run(
         if state.view.is_some() {
             loop {
                 match cmd_rx.try_recv() {
-                    Ok(cmd) => state.handle_cmd(cmd, &qh),
+                    Ok(cmd) => serve(&mut state, &mut event_queue, &qh, cmd),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => return,
                 }
@@ -200,11 +200,41 @@ fn run(
                 return;
             }
             match cmd_rx.recv() {
-                Ok(cmd) => state.handle_cmd(cmd, &qh),
+                Ok(cmd) => serve(&mut state, &mut event_queue, &qh, cmd),
                 Err(_) => return,
             }
         }
     }
+}
+
+/// Run one command, round-tripping the queue before a `Show`.
+///
+/// Placement needs the outputs' names, logical sizes and scales, and
+/// those arrive as *events*, not with the globals — while
+/// `registry_queue_init` has answered by the time this thread starts,
+/// the `wl_output`/`xdg_output` replies to `OutputState`'s own binds
+/// have not. Between popups the thread is parked on the command
+/// channel and reads nothing from the socket, so without this the
+/// first popup of every session was placed against an empty output
+/// list: no bounds to clamp against, and `output: None` on the layer
+/// surface, which hands the compositor the choice of monitor. (The
+/// second popup onwards worked, because the tick loop had pumped the
+/// queue by then — which is exactly why the bug looked intermittent.)
+/// Refreshing per show also picks up hotplugs and mode changes that
+/// happened while parked. One round-trip per popup, on a thread that
+/// has nothing else to do.
+fn serve(
+    state: &mut WlState,
+    queue: &mut EventQueue<WlState>,
+    qh: &QueueHandle<WlState>,
+    cmd: Cmd,
+) {
+    if matches!(cmd, Cmd::Show(_)) {
+        if let Err(e) = queue.roundtrip(state) {
+            warn!(err = %e, "popup output refresh failed; placing with stale output info");
+        }
+    }
+    state.handle_cmd(cmd, qh);
 }
 
 /// Non-blocking queue pump: flush requests, read whatever the socket
@@ -348,6 +378,9 @@ impl WlState {
             w = rendered.pixmap.width(),
             h = rendered.pixmap.height(),
             scale,
+            resolved_output = ?output.as_ref().and_then(|o| self.output_state.info(o)).and_then(|i| i.name),
+            ?output_size,
+            ?placement,
             "popup surface mapped"
         );
         let deadline = Instant::now() + model.timeout;

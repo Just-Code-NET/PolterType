@@ -91,20 +91,6 @@ impl FocusTracker for WindowsFocusTracker {
         }
     }
 
-    fn pointer_position(&self) -> Option<(i32, i32)> {
-        // Safety: `GetCursorPos` writes into the POINT we own.
-        unsafe {
-            let mut p = windows::Win32::Foundation::POINT::default();
-            match windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p) {
-                Ok(()) => Some((p.x, p.y)),
-                Err(e) => {
-                    warn!(?e, "GetCursorPos failed");
-                    None
-                }
-            }
-        }
-    }
-
     fn backend_name(&self) -> &'static str {
         "windows-foreground-process"
     }

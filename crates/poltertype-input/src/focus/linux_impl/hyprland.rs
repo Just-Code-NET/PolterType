@@ -6,8 +6,8 @@ use crate::focus::{CaretHint, FocusTracker, FocusedWindowGeometry};
 
 use super::atspi_caret::{AtspiCaretWatcher, CaretSample};
 use super::hyprland_ipc::{
-    active_window_reply, cursor_position, monitors_reply, parse_active_window,
-    parse_active_window_rect, parse_monitors,
+    active_window_reply, monitors_reply, parse_active_window, parse_active_window_rect,
+    parse_monitors,
 };
 use super::proc_exe::exe_basename_for_pid;
 
@@ -17,7 +17,7 @@ use super::proc_exe::exe_basename_for_pid;
 /// when `/proc` is unreadable (sandboxed apps).
 pub(crate) struct HyprlandFocusTracker {
     /// Shared AT-SPI caret watcher; `None` when the a11y bus is
-    /// unavailable (the tooltip then anchors to pointer/window).
+    /// unavailable (the tooltip then anchors to the window).
     caret: Option<Arc<AtspiCaretWatcher>>,
 }
 
@@ -57,10 +57,6 @@ impl FocusTracker for HyprlandFocusTracker {
             output_x,
             output_y,
         })
-    }
-
-    fn pointer_position(&self) -> Option<(i32, i32)> {
-        cursor_position()
     }
 
     fn caret_hint(&self) -> Option<CaretHint> {

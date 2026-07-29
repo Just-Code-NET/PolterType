@@ -20,23 +20,14 @@ pub trait FocusTracker: Send + Sync {
         None
     }
 
-    /// Global pointer position, when the backend can answer. The
-    /// suggestion tooltip uses it as a caret proxy when
-    /// [`Self::caret_hint`] has nothing fresh: after a click into a
-    /// text field the pointer hovers near the caret. Same query
-    /// cadence and caching posture as
-    /// [`Self::focused_window_geometry`].
-    fn pointer_position(&self) -> Option<(i32, i32)> {
-        None
-    }
-
     /// Last known on-screen caret position, when a caret source is
     /// running (the AT-SPI watcher on Linux). Same caveats as
-    /// [`Self::pointer_position`]: bonus data — many apps expose it,
-    /// none guarantee it — queried once per suggestion-tooltip show,
-    /// never on the keystroke path. Check [`CaretHint::age`] before
-    /// trusting it: a stale sample means the focused app emits no
-    /// a11y caret events, and the pointer/window fallback is better.
+    /// [`Self::focused_window_geometry`]: bonus data — many apps
+    /// expose it, none guarantee it — queried once per
+    /// suggestion-tooltip show, never on the keystroke path. Check
+    /// [`CaretHint::age`] before trusting it: a stale sample means the
+    /// focused app emits no a11y caret events, and anchoring the
+    /// tooltip to the window is the better answer.
     fn caret_hint(&self) -> Option<CaretHint> {
         None
     }
