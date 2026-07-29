@@ -9,6 +9,7 @@ members = [
     "crates/poltertype-update",
     "crates/poltertype-ai",
     "crates/poltertype-popup",
+    "crates/poltertype-tray",
     "crates/poltertype-types",
     "xtask",
 ]
@@ -46,6 +47,7 @@ poltertype-core   = { path = "crates/poltertype-core" }
 poltertype-update = { path = "crates/poltertype-update" }
 poltertype-ai     = { path = "crates/poltertype-ai" }
 poltertype-popup  = { path = "crates/poltertype-popup" }
+poltertype-tray   = { path = "crates/poltertype-tray" }
 
 # Logging
 tracing            = "0.1"
@@ -75,6 +77,11 @@ tray-icon       = "0.19"
 global-hotkey   = "0.6"
 auto-launch     = "0.5"
 single-instance = "0.3"
+# Linux tray only (poltertype-tray): `tray-icon` already pulls this in
+# via `libappindicator`, so pinning it here buys a handle on GLib's log
+# router, not a new dependency. Keep the version in step with whatever
+# `tray-icon` resolves, or two copies of glib land in the tree.
+glib            = "0.18"
 
 # Audio
 rodio = "0.20"

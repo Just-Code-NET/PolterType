@@ -3895,6 +3895,7 @@ dependencies = [
  "poltertype-input",
  "poltertype-layout",
  "poltertype-popup",
+ "poltertype-tray",
  "poltertype-types",
  "poltertype-update",
  "single-instance",
@@ -3981,6 +3982,14 @@ dependencies = [
  "tracing",
  "wayland-client",
  "x11rb",
+]
+
+[[package]]
+name = "poltertype-tray"
+version = "0.6.0"
+dependencies = [
+ "glib",
+ "tracing",
 ]
 
 [[package]]

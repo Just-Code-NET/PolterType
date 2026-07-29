@@ -26,6 +26,14 @@ ignore = [
     "RUSTSEC-2024-0418", # gdk-sys
     "RUSTSEC-2024-0419", # gdk-pixbuf
     "RUSTSEC-2024-0420", # gtk-sys
+    # glib 0.18's `VariantStrIter` is unsound (NULL-deref under
+    # optimisation). Same GTK3 stack and the same wait: the fix is
+    # glib >=0.20, which needs gtk-rs 0.20, which needs a tray-icon
+    # that has left GTK3. Nothing here calls the affected API — the
+    # crate reaches us through tray-icon/tao for the tray widgets,
+    # and poltertype-tray's own use is `log_set_handler`, which does
+    # not touch `GVariant` iteration.
+    "RUSTSEC-2024-0429", # glib
     # ── unmaintained, transitive, no safe upgrade ───────────────────
     "RUSTSEC-2024-0370", # proc-macro-error (via iced/gtk macro stack)
     "RUSTSEC-2024-0384", # instant (via winit/calloop stack)

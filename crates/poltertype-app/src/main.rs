@@ -428,6 +428,11 @@ fn main() -> Result<()> {
         None => icon_render::unknown()?,
     };
 
+    // Before the tray exists: the GTK backend greets its construction
+    // with a deprecation warning meant for whoever links it, not for
+    // the user reading the journal. See `poltertype-tray`.
+    poltertype_tray::quiet_gtk_tray_logs();
+
     let tray: TrayIcon = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip(tooltip_for(

@@ -1,0 +1,23 @@
+[package]
+name                  = "poltertype-tray"
+description           = "Per-OS quirks of the system tray, kept out of the binary crate."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing = { workspace = true }
+
+# `glib` reaches this crate anyway, under `tray-icon` →
+# `libappindicator`; naming it here adds a direct handle on a library
+# that is already linked, not a new dependency. Linux-only for the
+# same reason it is there at all — the GTK tray backend.
+[target.'cfg(target_os = "linux")'.dependencies]
+glib = { workspace = true }
