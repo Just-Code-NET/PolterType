@@ -309,8 +309,44 @@ pub fn accept_modifiers_enable_keyboard(s: &str) -> bool {
     poltertype_core::engine::AcceptModifiers::parse(s).is_some()
 }
 
-/// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't
-/// be captured as the hotkey itself — the user is mid-combination.
+/// Display form of a stored hotkey token for keycap chips. Config
+/// keeps the portable names (`Ctrl`, `Alt`, `Meta`); on macOS the
+/// chips use the platform's own glyphs (⌃ ⌥ ⇧ ⌘) and key symbols —
+/// those are the names printed on the user's keyboard.
+pub fn display_key_token(tok: &str) -> String {
+    #[cfg(target_os = "macos")]
+    {
+        match tok.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => "⌃".into(),
+            "alt" | "option" => "⌥".into(),
+            "shift" => "⇧".into(),
+            "meta" | "cmd" | "command" | "super" | "win" => "⌘".into(),
+            "backspace" => "⌫".into(),
+            "enter" | "return" => "↩".into(),
+            "tab" => "⇥".into(),
+            "esc" | "escape" => "⎋".into(),
+            "space" => "Space".into(),
+            "up" => "↑".into(),
+            "down" => "↓".into(),
+            "left" => "←".into(),
+            "right" => "→".into(),
+            _ => tok.to_owned(),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        tok.to_owned()
+    }
+}
+
+/// Modifier list for prose hints, in the platform's vocabulary.
+#[cfg(target_os = "macos")]
+pub const MODIFIER_NAMES_PROSE: &str = "⌃ / ⌥ / ⇧ / ⌘";
+/// Modifier list for prose hints, in the platform's vocabulary.
+#[cfg(not(target_os = "macos"))]
+pub const MODIFIER_NAMES_PROSE: &str = "Ctrl / Alt / Shift / Meta";
+
+/// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't/// be captured as the hotkey itself — the user is mid-combination.
 /// We filter them in the keyboard subscription so the captured combo
 /// is always `<modifier(s)>+<non-modifier-key>`.
 pub fn is_modifier_key(key: &Key) -> bool {

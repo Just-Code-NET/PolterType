@@ -196,6 +196,15 @@ pub struct HotkeySettings {
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
+            // macOS: Ctrl+(Shift)+Space are the OS's own input-source
+            // switching shortcuts — a global hotkey registration would
+            // preempt them and break layout switching for the user.
+            // Ctrl+Shift+P collides with nothing standard on macOS
+            // (Ctrl+P alone is the readline "previous line", but the
+            // Shift chord is free).
+            #[cfg(target_os = "macos")]
+            pause_toggle: "Ctrl+Shift+P".into(),
+            #[cfg(not(target_os = "macos"))]
             pause_toggle: "Ctrl+Shift+Space".into(),
             manual_switch_last: "Ctrl+Shift+Backspace".into(),
         }

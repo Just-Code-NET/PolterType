@@ -290,6 +290,11 @@ impl SettingsApp {
             ))
             .push(tip(
                 b,
+                #[cfg(target_os = "macos")]
+                "Tip: capture refuses single-letter combinations and bare \
+                 keys — at least one of ⌃ / ⌥ / ⇧ / ⌘ is required. \
+                 Esc cancels capture without changing anything.",
+                #[cfg(not(target_os = "macos"))]
                 "Tip: capture refuses single-letter combinations and bare \
                  keys — at least one of Ctrl / Alt / Shift / Cmd is required. \
                  Esc cancels capture without changing anything.",
@@ -1050,6 +1055,10 @@ impl SettingsApp {
             )
             .push(
                 Text::new(
+                    #[cfg(target_os = "macos")]
+                    "'+'-separated: Ctrl (⌃), Shift (⇧), Alt (⌥), Meta (⌘) — e.g. Ctrl+Shift. \
+                     Applied with digit keys 1–9. Leave empty to disable keyboard accept.",
+                    #[cfg(not(target_os = "macos"))]
                     "'+'-separated: Ctrl, Shift, Alt, Meta — e.g. Ctrl+Shift. Applied with \
                      digit keys 1–9. Leave empty to disable keyboard accept.",
                 )
@@ -1065,6 +1074,10 @@ impl SettingsApp {
         {
             chord_card = chord_card.push(
                 Text::new(
+                    #[cfg(target_os = "macos")]
+                    "At least one of Ctrl (⌃) / Alt (⌥) / Meta (⌘) is required — as written, \
+                     keyboard accept is off (clicking a suggestion still works).",
+                    #[cfg(not(target_os = "macos"))]
                     "At least one of Ctrl / Alt / Meta is required — as written, keyboard \
                      accept is off (clicking a suggestion still works).",
                 )
@@ -1270,14 +1283,15 @@ fn keycap_chip(text: String) -> Element<'static, Message> {
 
 /// A hotkey combo as a row of keycap chips: `Ctrl+Shift+Space` →
 /// [Ctrl] + [Shift] + [Space] — the same rendering the site uses for
-/// hotkey chords.
+/// hotkey chords. On macOS the chips use the platform's glyphs
+/// (⌃⇧⌘) via `display_key_token`.
 fn hotkey_chips(b: &'static theme::BrandPalette, combo: &str) -> Element<'static, Message> {
     let mut row = Row::new().spacing(4).align_y(Alignment::Center);
     for (i, part) in combo.split('+').enumerate() {
         if i > 0 {
             row = row.push(Text::new("+").size(11).color(b.muted));
         }
-        row = row.push(keycap_chip(part.to_owned()));
+        row = row.push(keycap_chip(display_key_token(part)));
     }
     row.into()
 }
