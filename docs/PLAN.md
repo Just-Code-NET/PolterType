@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-24 (v0.5.0).
+> Created: 2026-05-02. Last updated: 2026-07-29 (v0.6.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,9 +9,9 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.5.0; most recently the spelling-suggestions tooltip with its
->   AT-SPI caret anchoring in 0.5.0) and §10 below, where every item
->   is marked.
+>   0.6.0; most recently the key gate, which holds keystrokes back for
+>   the length of a correction so the user's own typing cannot land
+>   inside it) and §10 below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
@@ -777,11 +777,13 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.5.0 (2026-07-24).** Phases 0–8 are, in
+> **Status as of v0.6.0 (2026-07-29).** Phases 0–8 are, in
 > their core parts, complete and shipped across releases 0.1.0 →
-> 0.5.0 — Phase 8's auto-updater landed in 0.4.0, and 0.5.0 added
+> 0.6.0 — Phase 8's auto-updater landed in 0.4.0, 0.5.0 added
 > the spelling-suggestions tooltip (surface FSTs, `poltertype-popup`,
-> AT-SPI caret anchoring — see `DECISIONS.md` 2026-07-24); below,
+> AT-SPI caret anchoring — see `DECISIONS.md` 2026-07-24), and 0.6.0
+> made corrections survive a user who keeps typing through them
+> (`EVIOCGRAB`, `DECISIONS.md` 2026-07-29); below,
 > what remains open is marked. Items that are **not** done are deliberately left as
 > `[ ]` — that is the current work list. The wording of some items had
 > drifted behind the code (e.g. `HeuristicDetector` in Phase 3 is

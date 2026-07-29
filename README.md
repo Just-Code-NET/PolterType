@@ -5,13 +5,19 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-> **Status:** v0.5.0 — out of beta since v0.1.0. Works end-to-end on
-> Windows and on Linux (both Wayland and X11); the new spelling-
-> suggestions tooltip renders on Hyprland/Sway and X11. The macOS
-> backend is written from Apple's API docs and validated on CI, but
-> hasn't yet been runtime-tuned by a hardware-equipped contributor.
-> Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md)
-> for the full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
+> **Status:** v0.6.0 — out of beta since v0.1.0. Works end-to-end on
+> Windows and on Linux (both Wayland and X11); the spelling-
+> suggestions tooltip renders on Hyprland/Sway and X11. On
+> Linux/Wayland a correction now holds your keystrokes back while it
+> types and replays them behind itself, so carrying straight on with
+> the next word no longer scrambles the result — except behind an
+> input remapper such as keyd, where PolterType stands down and falls
+> back to detecting and repairing instead
+> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). The macOS backend is
+> written from Apple's API docs and validated on CI, but hasn't yet
+> been runtime-tuned by a hardware-equipped contributor. Installers
+> are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
+> full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
 
 ![PolterType settings window — Languages panel](docs/screenshots/settings-window.png)
 
@@ -81,7 +87,7 @@ is two requests: a `GET` of a small JSON manifest, and — only when
 there's actually a new version — a `GET` of the installer itself. No
 account, no identifier, nothing about you and nothing about what you
 type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.5.0
+a User-Agent naming the running version (`PolterType/0.6.0
 (updater)`). The exact manifest URL is printed on the Settings
 window's **General** pane, so you never have to take our word for it.
 
