@@ -74,6 +74,12 @@ unsafe extern "C" {
 }
 
 /// Run `f` on the main dispatch queue and return its result.
+///
+/// Ordering note: callers on worker threads (the layout poller, the
+/// engine) can arrive *before* the tao event loop starts draining the
+/// main queue. They simply block in `dispatch_sync_f` until the run
+/// loop starts — never a deadlock, because the main thread itself
+/// takes the inline path and never waits on a worker.
 fn run_on_main<T, F>(f: F) -> T
 where
     T: Send,
@@ -108,7 +114,13 @@ where
             trampoline::<T, F>,
         );
     }
-    ctx.out.expect("main-queue closure did not run")
+    match ctx.out {
+        Some(v) => v,
+        // dispatch_sync_f returns only after the closure ran, so the
+        // slot is always filled; this branch is here because the
+        // compiler can't see through the FFI boundary.
+        None => unreachable!("dispatch_sync_f returned without running the closure"),
+    }
 }
 
 // ─── Switcher impl ───────────────────────────────────────────────────

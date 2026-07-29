@@ -124,7 +124,7 @@ fn main() -> Result<()> {
             .into_owned()
     };
     #[cfg(not(target_os = "macos"))]
-    let lock_id: &str = APP_ID;
+    let lock_id: String = APP_ID.to_owned();
     let instance = SingleInstance::new(&lock_id).context("create single-instance lock")?;
     if !instance.is_single() {
         warn!("another instance is already running, exiting");

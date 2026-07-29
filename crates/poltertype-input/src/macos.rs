@@ -425,13 +425,16 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x32 => 0x29,  // backtick
         0x18 => 0x0D,  // =
         0x1B => 0x0C,  // -
-        // Modifiers — must map onto the SC-1 modifier slots the
+        // Modifiers — mapped onto the SC-1 modifier slots the
         // classifier recognises as "discard, stay inside the word".
-        // Identity passthrough here was disastrous: Apple 0x3C
-        // (RShift) / 0x3B (LControl) landed in the classifier's
-        // F-row range and KILLED any word typed with the right
-        // modifier, and Apple 0x39 (Caps Lock) aliased onto SC-1
-        // Space, splitting words in two.
+        // Note: macOS delivers pure modifier presses as `FlagsChanged`
+        // events, which the tap mask doesn't subscribe to yet, so
+        // these arms are dormant until it does — they exist for
+        // correctness and parity with the Windows/Linux streams,
+        // where modifiers do arrive. Without the mapping, Apple 0x3C
+        // (RShift) / 0x3B (LControl) would land in the classifier's
+        // F-row range and KILL any word typed with them, and Apple
+        // 0x39 (Caps Lock) would alias onto SC-1 Space.
         0x38 => 0x2A, // LShift
         0x3C => 0x36, // RShift
         0x3B => 0x1D, // LControl
@@ -450,7 +453,9 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x77 => 0x4F, // End
         0x74 => 0x49, // PageUp
         0x79 => 0x51, // PageDown
-        // Function row (SC-1 F1..F12 → end the word like on Windows).
+        // Function row (SC-1 F1..F10 land in the classifier's
+        // end-and-discard range; F11/F12 sit outside it, same as on
+        // Windows — parity, not an omission).
         0x7A => 0x3B, // F1
         0x78 => 0x3C, // F2
         0x63 => 0x3D, // F3
