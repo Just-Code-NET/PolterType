@@ -6,6 +6,86 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-29 — A `poltertype-tray` crate, for one function
+
+Building the tray makes `libayatana-appindicator` print a deprecation
+notice to stderr on every start — addressed to whoever links it, which
+is `tray-icon`, not us. There is no lever on our side: the sys crate
+`dlopen`s `libayatana-appindicator3.so.1` by name, its `backcompat`
+feature only adds unversioned-`.so` fallbacks, and `tray-icon` 0.24 —
+five versions ahead of the one we pin — still loads the same object.
+
+**Redirected, not silenced.** A GLib log handler on that one domain
+hands the text to `tracing` at debug level. The message stays reachable
+the day the library actually disappears (which would break the tray),
+without sitting in the journal of every Linux user. Every other GLib
+domain keeps GLib's default handler.
+
+**Why a whole crate for fifteen lines.** `poltertype-app` contains no
+`#[cfg(target_os = "...")]` at all — platform code lives in dedicated
+crates, and that rule is worth more than the crate it costs. The
+alternatives were to put the first `#[cfg]` in the binary and amend the
+rule, or to hide a GTK concern inside an unrelated platform crate. So
+`poltertype-tray` exists, holding per-OS tray quirks; the `TrayIcon`
+itself is still built in the app, because `tray-icon` already
+abstracts it. The list in `CLAUDE.md` is now five crates, not four.
+
+**`cargo deny` gained an entry on the way.** RUSTSEC-2024-0429 (glib
+0.18's unsound `VariantStrIter`) fails the advisory check — it already
+did before this change, since `tray-icon` and `tao` have pulled glib
+into the lockfile all along; the advisory is simply newer than the last
+release. The fix is glib >=0.20, which needs gtk-rs 0.20, which needs a
+`tray-icon` that has left GTK3 — the same wait as the nine GTK3 entries
+above it. Nothing here calls the affected API.
+
+---
+
+## 2026-07-29 — The tooltip anchors to the caret or the window, never the mouse
+
+The suggestion tooltip's anchor chain had the pointer position sitting
+between the AT-SPI caret and the focused window, justified as "after a
+click into the text the pointer hovers near the caret". That premise
+holds for about a second. Nothing in the chain could tell a pointer
+resting where the user last clicked from one parked in the middle of
+the screen while they typed, and the second case is the common one —
+you click into a chat box, take your hand back to the keyboard, and the
+mouse stays wherever it was. Reported against a chat input at the very
+bottom of a display, with the tooltip appearing in the centre of it;
+reproduced with the caret 600 px below the pointer, the tooltip landing
+on the pointer every time.
+
+**Removed rather than repaired.** The honest fix would need to know
+when the pointer was last moved *and* that it was moved into text,
+which neither Hyprland's `cursorpos` nor X11's `QueryPointer` can say
+and which no amount of click-tracking recovers once the pointer drifts.
+Without a caret the tooltip now falls to the window rect — bottom-centre,
+`BOTTOM_OFFSET` above the window's bottom edge. That is coarse for a
+caret in the middle of a code editor, and right for the chat inputs and
+shell prompts that dominate this feature; more to the point it is always
+in the focused window, which the pointer anchor could not promise. The
+`FocusTracker::pointer_position` method and its three backends went with
+it.
+
+**A second bug hid behind the first.** The Wayland popup thread blocks
+on its command channel while no popup is up, so it reads nothing from
+the compositor between shows. `OutputState`'s replies — the output
+names, logical sizes and scales that every placement depends on — had
+not arrived when the *first* popup of a session was built: it got
+`bounds: None` (no edge clamping at all) and `output: None` on the layer
+surface, which hands the compositor the choice of monitor while the
+margins were computed against a different one's origin. The second popup
+onwards worked, because the tick loop had pumped the queue by then,
+which is exactly why it looked intermittent. The thread now round-trips
+the queue before serving a `Show` — one round-trip on a thread that has
+nothing else to do, and it picks up hotplugs and mode changes that
+happened while parked as a bonus.
+
+Verified live on a four-output Hyprland session, including a
+`transform: 3` rotated output (logical bounds correctly `1440×2560`) and
+a fractional-scale one (`2048×1280` at scale 2).
+
+---
+
 ## 2026-07-29 — Hold keystrokes back with `EVIOCGRAB` during a correction
 
 A correction is a burst of injected keys, and the compositor

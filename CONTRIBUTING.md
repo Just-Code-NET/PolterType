@@ -119,6 +119,8 @@ crates/
                                 in every build, and it is the only network code
   poltertype-popup/   library — suggestion tooltip: focus-free overlay
                                 (Wayland layer-shell / X11 override-redirect)
+  poltertype-tray/    library — per-OS tray quirks (Linux: keeps the GTK
+                                backend's deprecation warning off stderr)
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
   poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
 data/                source-of-truth, committed; consumed by build.rs

@@ -4,6 +4,44 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.6.0
+
+### Fixed — the suggestion tooltip lands where you are typing
+
+Two bugs put the tooltip somewhere other than the text being corrected.
+
+- **The tooltip followed the mouse, not the caret.** When the focused
+  app exposed no AT-SPI caret, the anchor fell back to the pointer
+  position, on the theory that the user had just clicked into the text
+  they were editing. Nothing checked that the pointer was still *at*
+  that click, so an idle mouse parked mid-screen pulled the tooltip to
+  the middle of the display while the caret sat in a chat box at the
+  bottom edge. The pointer anchor is gone: without a caret the tooltip
+  now hangs above the bottom edge of the focused window, which is the
+  neighbourhood of the chat inputs and shell prompts this feature is
+  for.
+- **The first tooltip of every session was placed blind.** On Wayland
+  the popup thread parks on its command channel between popups and
+  reads nothing from the compositor, so the outputs' names, sizes and
+  scales — which arrive as events, not with the globals — had not been
+  received when the first popup was built. That popup got no screen
+  bounds to clamp against and no named output, leaving the choice of
+  monitor to the compositor while the coordinates had been computed for
+  a different one. The popup thread now refreshes its output state
+  before every show, which also picks up hotplugs and mode changes that
+  happened while it was parked.
+
+### Fixed — no more appindicator deprecation notice on Linux
+
+Every start printed `libayatana-appindicator is deprecated. Please use
+libayatana-appindicator-glib in newly written code.` to stderr. The
+notice is aimed at whoever links the library — `tray-icon`, through
+`libappindicator` — and there is nothing a user can do about it. It now
+goes to PolterType's own log at debug level instead of the journal, so
+it stays available to us without being noise for you. New
+`poltertype-tray` crate, which exists so the binary crate can keep
+holding no platform-conditional code at all.
+
 ## [0.6.0] — PolterType stops tripping over your typing
 
 ### Fixed — corrections no longer scramble the word you type next
