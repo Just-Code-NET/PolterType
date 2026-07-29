@@ -102,6 +102,7 @@ impl SwitcherEngine {
                         EngineCommand::AcceptSuggestion {
                             generation,
                             index,
+                            typed_digit: true,
                             from_pointer: false,
                         },
                         buffer,

@@ -4,7 +4,7 @@ use super::codes::*;
 use super::consts::*;
 use super::emit::*;
 use super::types::*;
-use crate::{EmittedKey, InputError, KeyEmitter, ReplayKey};
+use crate::{EmittedKey, InputError, KeyEmitter, Modifiers, ReplayKey};
 use std::thread;
 use tracing::{debug, warn};
 
@@ -69,10 +69,13 @@ impl KeyEmitter for X11Emitter {
             return Ok(());
         }
         debug!(count = keys.len(), "x11 replay starting");
-        // Let the freshly-locked XKB group reach the focused client
-        // before we replay against it — see `GROUP_SETTLE`.
-        thread::sleep(GROUP_SETTLE);
-
+        // No settle sleep here on purpose — the freshly-locked XKB
+        // group does need to reach the focused client before we replay
+        // against it, but waiting for that at the last moment before
+        // emitting opens a window in which a physical keystroke lands
+        // on screen ahead of our text. The engine owns the wait now,
+        // measured from the layout switch and taken before the
+        // deletion: see `LAYOUT_SETTLE` in poltertype-core.
         self.ensure_conn()?;
         let g = self.conn.lock();
         let c = g
@@ -104,6 +107,35 @@ impl KeyEmitter for X11Emitter {
                 release(c, &self.emitted, EV_LEFTSHIFT)?;
                 thread::sleep(KEY_STEP);
             }
+        }
+        Ok(())
+    }
+
+    fn release_modifiers(&self, held: Modifiers) -> Result<(), InputError> {
+        let mut codes: Vec<u32> = Vec::new();
+        if held.control {
+            codes.push(EV_LEFTCTRL);
+        }
+        if held.shift {
+            codes.push(EV_LEFTSHIFT);
+        }
+        if held.alt {
+            codes.push(EV_LEFTALT);
+        }
+        if held.meta {
+            codes.push(EV_LEFTMETA);
+        }
+        if codes.is_empty() {
+            return Ok(());
+        }
+        self.ensure_conn()?;
+        let g = self.conn.lock();
+        let c = g
+            .as_ref()
+            .ok_or_else(|| InputError::Os("x11 connection not initialised".into()))?;
+        for code in codes {
+            release(c, &self.emitted, code)?;
+            thread::sleep(KEY_STEP);
         }
         Ok(())
     }

@@ -46,6 +46,17 @@ impl SwitcherEngine {
         if ev.direction != KeyDirection::Press {
             return false;
         }
+        // Where the key gate can run, our emitter is unproxied — which
+        // is exactly the condition under which the listener can tag our
+        // own events. An untagged press there is the user's, and
+        // matching it against this queue would eat a real keystroke
+        // that shares a scancode with something we just replayed. That
+        // used to be survivable (the key still reached the screen, we
+        // just lost track of it); with keystrokes held back during a
+        // burst it would delete them outright.
+        if self.key_gate.available() && !ev.injected {
+            return false;
+        }
         let mut q = self.expected_echo.lock();
         let now = Instant::now();
         while let Some(&(_, deadline)) = q.front() {
@@ -70,6 +81,13 @@ impl SwitcherEngine {
             },
             None => false,
         }
+    }
+
+    /// Is the user holding a modifier right now? Read from the last
+    /// event seen, so it follows both presses and releases.
+    pub(super) fn modifiers_held(&self) -> bool {
+        let m = *self.held_modifiers.read();
+        m.control || m.shift || m.alt || m.meta
     }
 
     pub(super) fn echo_pending(&self) -> bool {

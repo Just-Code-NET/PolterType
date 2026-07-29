@@ -55,6 +55,25 @@ pub trait KeyEmitter: Send + Sync {
         ))
     }
 
+    /// Release modifier keys the user is physically holding, before we
+    /// type anything.
+    ///
+    /// Our injected keys travel the same path to the application as
+    /// theirs, so a held `Ctrl` turns a replay into a burst of
+    /// shortcuts and nothing is typed at all — which is exactly what
+    /// happens when a correction is triggered *by* a chord: accepting
+    /// a suggestion with `Ctrl+Meta+<digit>`, or the manual
+    /// switch-last hotkey. The user's own release lands on an
+    /// already-up key later and is ignored; we deliberately do not
+    /// press them back, since re-pressing a modifier the user has
+    /// meanwhile let go of would leave it stuck down.
+    ///
+    /// Backends that cannot do this keep the default no-op — they just
+    /// have the bug.
+    fn release_modifiers(&self, _held: Modifiers) -> Result<(), InputError> {
+        Ok(())
+    }
+
     /// Drain the log of key events this emitter has synthesised since
     /// the last call. Backends whose events come back through the
     /// listener with a trustworthy `injected = true` flag (Windows,

@@ -118,6 +118,50 @@ correctly take the Wayland path instead.
   no-`sudo` alternative. **Not implemented** — there is no portal code
   in the tree today.
 
+### Holding keystrokes back during a correction (input remappers)
+
+A correction is a burst of injected keys, and anything the user types
+while it is on the wire lands *inside* it. PolterType therefore holds
+the keyboard for the length of a burst (`EVIOCGRAB`) and types the held
+keystrokes out itself, in order, once the correction is down. No extra
+permission is needed — it uses the `/dev/input/event*` access
+`setup-linux.sh` already grants.
+
+**It stands down behind an input remapper.** keyd (and anything with
+the same design) holds every keyboard exclusively — *including
+PolterType's own virtual one* — and re-emits through a single virtual
+device. Grabbing that device would block PolterType's own corrections
+along with the user's typing, so at startup PolterType checks whether
+it can grab its own emitter and, when it cannot, quietly leaves the
+keyboard alone. The log line says so at `INFO`:
+
+```
+key gate off: an input remapper holds our emitter …
+```
+
+Corrections still work — they just fall back to detecting and repairing
+a keystroke that got in, rather than preventing it.
+
+To get the stronger behaviour back under keyd, exclude PolterType's
+device in `/etc/keyd/default.conf` so it is not proxied:
+
+```ini
+[ids]
+*
+-1234:5678   # poltertype virtual keyboard — leave it unproxied
+```
+
+Restart `keyd` and PolterType; the startup line should become
+`key gate ready`. Verify the id against your own machine first — it is
+whatever `poltertype virtual keyboard` reports:
+
+```bash
+sudo libinput list-devices | grep -A2 'poltertype virtual keyboard'
+```
+
+`POLTERTYPE_HOLD_KEYS=0` in the environment turns the whole mechanism
+off regardless.
+
 ### Switching layout
 
 Switching uses whichever backend is alive in the session. No `sudo`

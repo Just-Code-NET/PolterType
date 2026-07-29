@@ -9,8 +9,9 @@ use std::time::Instant;
 use crossbeam_channel::Sender;
 use parking_lot::{Mutex, RwLock};
 use poltertype_detect::{Detector, SuggestionProvider};
-use poltertype_input::{FocusTracker, KeyEmitter};
+use poltertype_input::{FocusTracker, KeyEmitter, KeyGate};
 use poltertype_layout::LayoutSwitcher;
+use poltertype_types::Modifiers;
 
 use crate::audio::AudioPlayer;
 use crate::engine::enums::SwitcherEvent;
@@ -24,6 +25,22 @@ pub struct SwitcherEngine {
     pub(super) detectors: Vec<Box<dyn Detector>>,
     pub(super) layout_switcher: Arc<dyn LayoutSwitcher>,
     pub(super) key_emitter: Arc<dyn KeyEmitter>,
+    /// Holds the user's keystrokes back while a correction burst is on
+    /// the wire, so nothing of theirs can land in the middle of our
+    /// text. A no-op gate (every platform but Linux/evdev, and stacks
+    /// where grabbing would gag us instead) leaves the engine on its
+    /// absorb-and-repair path.
+    pub(super) key_gate: KeyGate,
+    /// Modifiers the user was holding as of the last event we saw.
+    ///
+    /// A correction triggered *by* a chord — accepting a suggestion
+    /// with `Ctrl+Meta+<digit>`, the manual switch-last hotkey — starts
+    /// while those keys are still physically down, and our replay
+    /// travels the same path to the application as the user's own
+    /// keystrokes. Emitting under a held `Ctrl` types nothing at all:
+    /// every key of the replay arrives as a shortcut. So the emitter is
+    /// told to let them go first.
+    pub(super) held_modifiers: RwLock<Modifiers>,
     pub(super) focus_tracker: Arc<dyn FocusTracker>,
     pub(super) audio: Arc<AudioPlayer>,
     pub(super) out_tx: Sender<SwitcherEvent>,
@@ -96,6 +113,7 @@ impl SwitcherEngine {
         detectors: Vec<Box<dyn Detector>>,
         layout_switcher: Arc<dyn LayoutSwitcher>,
         key_emitter: Arc<dyn KeyEmitter>,
+        key_gate: KeyGate,
         focus_tracker: Arc<dyn FocusTracker>,
         audio: Arc<AudioPlayer>,
         out_tx: Sender<SwitcherEvent>,
@@ -107,6 +125,8 @@ impl SwitcherEngine {
             detectors,
             layout_switcher,
             key_emitter,
+            key_gate,
+            held_modifiers: RwLock::new(Modifiers::NONE),
             focus_tracker,
             audio,
             out_tx,

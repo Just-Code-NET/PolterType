@@ -6,6 +6,79 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-29 — Hold keystrokes back with `EVIOCGRAB` during a correction
+
+A correction is a burst of injected keys, and the compositor
+interleaves whatever the user types into it. Counting after the fact
+cannot place a key that landed *inside* our own text (`зтзь ш ` came
+out as `ipnpm `), so the fix is to stop the user's keys from reaching
+applications until the burst has landed — `EVIOCGRAB`, the evdev
+equivalent of a Windows low-level hook swallowing events. We keep
+reading the grabbed devices, so the engine still sees every keystroke
+and types them out behind the correction, in order
+(`poltertype-input::KeyGate`).
+
+Measured on Hyprland + keyd (uinput injection at fixed inter-key gaps,
+result read back through the clipboard). Typing a whole command
+straight through — `зтзь ш кгт `, 90–190 ms gaps:
+
+| | wrong |
+|---|---|
+| absorb + repair only | 4 of 6 |
+| first working gate | 6 of 6 (worse: characters *missing*) |
+| gate, after the three fixes below | **0 of 6** |
+
+The gate only became a win once three things were fixed, none of them
+in the gate's own logic — each was found by measuring rather than
+reasoning:
+
+1. **The 2 s device rescan blocked the read loop for 70–140 ms.**
+   `evdev::enumerate()` opens every node under `/dev/input` and reads
+   its capabilities; doing that on the thread that reads key events
+   left the engine blind for ~5 % of wall-clock time, events arriving
+   late and in bursts. It now reads the directory and opens only
+   genuinely new paths — and remembers the verdict per path, since most
+   nodes are sound cards that will never be keyboards. (A win with or
+   without the gate.)
+2. **Releasing a device costs 13–25 ms.** The gate grabbed every open
+   device — mice, lid switch, idle HID endpoints — so a correction
+   spent ~100 ms in `EVIOCGRAB(0)` inside the very thread that has to
+   notice the user typing. It now holds only keyboards, and only ones
+   used in the last 30 s: in practice one device.
+3. **A grab that outlived its correction was catastrophic.** The next
+   correction then counted held keystrokes as though they were on
+   screen and deleted text that was never there — a whole word gone,
+   far worse than a transposition. `release()` waits for the device
+   thread to confirm (250 ms, which costs the user nothing since their
+   text is already on screen), and `hold()` refuses to start on top of
+   a stale grab.
+
+Safety: the device thread owns the grab and drops it after
+[`MAX_HOLD`] (1.2 s) whatever the engine does, so a hung or panicking
+correction cannot leave the keyboard dead; a crashed process is safe by
+construction, as the kernel releases on close. Held keys are never
+silently eaten — Backspace, arrows and Esc are re-emitted after our
+text, which is where they would have landed anyway. Shortcuts are the
+one gap: they need modifiers the emitter cannot reproduce, so the gate
+lets go immediately instead.
+
+**Behind an input remapper the gate cannot run, and knows it.** keyd
+holds every physical keyboard *and our own uinput device* exclusively
+and re-emits through one virtual keyboard, so the only grabbable source
+of the user's keys also carries ours — grabbing it silently gags the
+correction itself (verified: injection from a keyd-claimed device under
+that grab produces nothing at all). The probe is exact and cheap: if we
+can grab our own emitter, nobody is proxying it. Those users keep the
+detect-and-repair path, and `docs/PERMISSIONS.md` documents the keyd
+one-liner that gets them the gate.
+
+Also worth recording, since it looked like an answer for a while: keyd
+claims a uinput device by the *breadth of keys it declares*, not by
+name or vendor. Declaring only what the emitter can actually type (51
+keys) is still claimed; only an implausibly small keyboard escapes.
+Masquerading under keyd's own vendor id works but is a lie about what
+the device is, so it is not shipped.
+
 ## 2026-05-02 — Use Win SC Set-1 scancodes as the canonical key identity
 
 The engine indexes layout-mapping tables by *scancode*, not by

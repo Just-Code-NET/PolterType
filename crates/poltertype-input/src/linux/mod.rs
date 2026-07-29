@@ -18,15 +18,43 @@
 
 #![allow(unused_imports, dead_code)] // Linux-only code; Windows doesn't compile this.
 
+use tracing::info;
+
 use crate::{InputError, InputListener, KeyEmitter};
 
 pub mod wayland;
 pub mod x11;
 
-pub fn create_listener() -> Result<Box<dyn InputListener>, InputError> {
+pub fn create_listener(gate: &crate::KeyGate) -> Result<Box<dyn InputListener>, InputError> {
     match session_kind() {
         SessionKind::X11 => Ok(Box::new(x11::X11Listener::new())),
-        SessionKind::Wayland | SessionKind::Unknown => Ok(Box::new(wayland::EvdevListener::new())),
+        SessionKind::Wayland | SessionKind::Unknown => Ok(Box::new(match gate.evdev_inner() {
+            Some(g) => wayland::EvdevListener::with_gate(std::sync::Arc::clone(g)),
+            None => wayland::EvdevListener::new(),
+        })),
+    }
+}
+
+/// Only the evdev backend can hold keystrokes back. X11 has its own
+/// grab primitives (`XGrabKeyboard`), but the XTest emitter there does
+/// not race the user the same way — the server serialises injected and
+/// real events into one queue — so there is nothing to protect against
+/// yet.
+///
+/// Whether the returned gate can hold anything is decided at runtime by
+/// [`EvdevGate::probe_availability`], not here — behind an input
+/// remapper it stands down, because grabbing would gag our own
+/// corrections. `POLTERTYPE_HOLD_KEYS=0` turns it off outright.
+pub fn create_key_gate() -> crate::KeyGate {
+    if std::env::var_os("POLTERTYPE_HOLD_KEYS").is_some_and(|v| v == "0") {
+        info!("key gate disabled by POLTERTYPE_HOLD_KEYS=0");
+        return crate::KeyGate::disabled();
+    }
+    match session_kind() {
+        SessionKind::X11 => crate::KeyGate::disabled(),
+        SessionKind::Wayland | SessionKind::Unknown => {
+            crate::KeyGate::evdev(std::sync::Arc::new(wayland::EvdevGate::new()))
+        }
     }
 }
 

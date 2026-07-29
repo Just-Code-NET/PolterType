@@ -60,7 +60,7 @@ impl UinputEmitter {
         // `VirtualDevice::builder()`.
         let dev = VirtualDevice::builder()
             .map_err(|e| InputError::Os(format!("uinput build: {e}")))?
-            .name("poltertype virtual keyboard")
+            .name(EMITTER_DEVICE_NAME)
             .with_keys(&keys)
             .map_err(|e| InputError::Os(format!("uinput with_keys: {e}")))?
             .build()
@@ -109,13 +109,15 @@ impl KeyEmitter for UinputEmitter {
             return Ok(());
         }
         debug!(count = keys.len(), "uinput replay starting");
-        // `hyprctl switchxkblayout` returns instantly but the
-        // compositor still needs a moment to propagate the new xkb
-        // state to the focused client; firing scancodes too quickly
-        // makes them land under the old layout (and you see the
-        // original `lfdfq` rather than `давай`). 30 ms is far below
-        // human-noticeable but enough on this stack.
-        thread::sleep(Duration::from_millis(30));
+        // No settle sleep here on purpose. `hyprctl switchxkblayout`
+        // returns instantly while the compositor propagates the new
+        // xkb state asynchronously, so a replay CAN outrun it (you see
+        // the original `lfdfq` rather than `давай`) — but a blind
+        // sleep at the last moment before emitting is precisely the
+        // window in which a physical keystroke lands on screen ahead
+        // of our text and scrambles the result. The engine owns that
+        // wait now, measured from the actual layout switch and taken
+        // before the deletion: see `LAYOUT_SETTLE` in poltertype-core.
         self.ensure_device()?;
         let mut g = self.device.lock();
         let dev = g
@@ -188,6 +190,39 @@ impl KeyEmitter for UinputEmitter {
                 )?;
                 thread::sleep(step);
             }
+        }
+        Ok(())
+    }
+
+    fn release_modifiers(&self, held: Modifiers) -> Result<(), InputError> {
+        let mut codes: Vec<KeyCode> = Vec::new();
+        // Both sides of each: the listener tracks "shift is down", not
+        // which shift, and releasing a key that is already up is a
+        // no-op at the compositor.
+        if held.control {
+            codes.extend([KeyCode::KEY_LEFTCTRL, KeyCode::KEY_RIGHTCTRL]);
+        }
+        if held.shift {
+            codes.extend([KeyCode::KEY_LEFTSHIFT, KeyCode::KEY_RIGHTSHIFT]);
+        }
+        if held.alt {
+            codes.extend([KeyCode::KEY_LEFTALT, KeyCode::KEY_RIGHTALT]);
+        }
+        if held.meta {
+            codes.extend([KeyCode::KEY_LEFTMETA, KeyCode::KEY_RIGHTMETA]);
+        }
+        if codes.is_empty() {
+            return Ok(());
+        }
+        self.ensure_device()?;
+        let mut g = self.device.lock();
+        let dev = g
+            .as_mut()
+            .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
+        let step = Duration::from_millis(4);
+        for kc in codes {
+            release(dev, &self.emitted, kc)?;
+            thread::sleep(step);
         }
         Ok(())
     }

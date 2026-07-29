@@ -19,12 +19,20 @@ use tracing::{debug, info, trace, warn};
 
 pub struct EvdevListener {
     stop: Arc<AtomicBool>,
+    /// Shared with whoever asks for correction-time holds. Only this
+    /// listener's device thread ever touches the devices themselves.
+    gate: Arc<EvdevGate>,
 }
 
 impl EvdevListener {
     pub fn new() -> Self {
+        Self::with_gate(Arc::new(EvdevGate::new()))
+    }
+
+    pub(crate) fn with_gate(gate: Arc<EvdevGate>) -> Self {
         Self {
             stop: Arc::new(AtomicBool::new(false)),
+            gate,
         }
     }
 }
@@ -41,10 +49,15 @@ impl InputListener for EvdevListener {
         }
         info!(count = devices.len(), "opened evdev keyboard devices");
 
+        // Decide once, now that the emitter's device exists, whether
+        // holding keystrokes back during corrections is safe here.
+        self.gate.probe_availability();
+
         let stop = Arc::clone(&self.stop);
+        let gate = Arc::clone(&self.gate);
         thread::Builder::new()
             .name("poltertype-input-evdev".into())
-            .spawn(move || drain_devices(devices, sink, stop))
+            .spawn(move || drain_devices(devices, sink, stop, gate))
             .map_err(|e| InputError::Os(format!("spawn evdev thread: {e}")))?;
         Ok(())
     }

@@ -52,7 +52,11 @@ mod engine_integration_tests {
         Backspaces(usize),
         Keys(Vec<u32>), // scancodes only, shift not asserted here
         Text(String),
+        ReleaseModifiers,
     }
+
+    /// Fires from inside a replay burst — see `MockEmitter::during_replay`.
+    type ReplayHook = Box<dyn Fn() + Send>;
 
     /// Records every operation and mimics the uinput emitter's echo
     /// log (press+release per backspace / replay key, shift presses
@@ -64,6 +68,10 @@ mod engine_integration_tests {
         ops: Mutex<Vec<EmitOp>>,
         emitted: Mutex<Vec<EmittedKey>>,
         echo_copy: Mutex<Vec<EmittedKey>>,
+        /// Called from `send_keys` once the burst is on the wire: a
+        /// test's stand-in for a physical keystroke the compositor
+        /// interleaves with our replay.
+        during_replay: Mutex<Option<ReplayHook>>,
     }
 
     impl MockEmitter {
@@ -109,6 +117,14 @@ mod engine_integration_tests {
                     self.log(0x2A, KeyDirection::Release);
                 }
             }
+            if let Some(hook) = self.during_replay.lock().as_ref() {
+                hook();
+            }
+            Ok(())
+        }
+
+        fn release_modifiers(&self, _held: poltertype_types::Modifiers) -> Result<(), InputError> {
+            self.ops.lock().push(EmitOp::ReleaseModifiers);
             Ok(())
         }
 
@@ -209,8 +225,31 @@ mod engine_integration_tests {
             suggester: Option<Arc<dyn poltertype_detect::SuggestionProvider>>,
             detectors_override: Option<Vec<Box<dyn Detector>>>,
         ) -> Self {
+            Self::start_tuned(
+                idle_timeout_ms,
+                emitter,
+                fail_switch,
+                suggester,
+                detectors_override,
+                None,
+            )
+        }
+
+        /// `accept_modifiers` overrides the suggestion-accept chord, so
+        /// a test can run the exact combination a user configured.
+        fn start_tuned(
+            idle_timeout_ms: u64,
+            emitter: MockEmitter,
+            fail_switch: bool,
+            suggester: Option<Arc<dyn poltertype_detect::SuggestionProvider>>,
+            detectors_override: Option<Vec<Box<dyn Detector>>>,
+            accept_modifiers: Option<&str>,
+        ) -> Self {
             let mut settings = crate::settings::Settings::default();
             settings.engine.idle_timeout_ms = idle_timeout_ms;
+            if let Some(m) = accept_modifiers {
+                settings.suggestions.accept_modifiers = m.to_owned();
+            }
             let settings = Arc::new(SettingsStore::for_tests(settings));
             let layouts = Arc::new(LayoutDb::load_embedded());
             let emitter = Arc::new(emitter);
@@ -232,6 +271,9 @@ mod engine_integration_tests {
                 detectors,
                 Arc::<MockSwitcher>::clone(&switcher) as Arc<dyn poltertype_layout::LayoutSwitcher>,
                 Arc::<MockEmitter>::clone(&emitter) as Arc<dyn KeyEmitter>,
+                // The gate is a no-op in tests: these exercise the
+                // path taken when keystrokes cannot be held back.
+                poltertype_input::KeyGate::disabled(),
                 Arc::new(NoopFocusTracker),
                 Arc::new(crate::audio::AudioPlayer::for_tests()),
                 out_tx,
@@ -578,6 +620,145 @@ mod engine_integration_tests {
         );
     }
 
+    /// Send one press+release of `sc` into the engine's key stream from
+    /// wherever it is called — used to simulate a keystroke the
+    /// compositor interleaves with a burst we are still emitting.
+    fn intrude(key_tx: &Sender<KeyEvent>, sc: u32) {
+        for direction in [KeyDirection::Press, KeyDirection::Release] {
+            let _ = key_tx.send(KeyEvent {
+                vk: sc,
+                scancode: sc,
+                direction,
+                modifiers: poltertype_types::Modifiers::NONE,
+                injected: false,
+                timestamp_ms: 0,
+            });
+        }
+    }
+
+    /// СИМПТОМ 3 (`зтзь ш ` → `ipnpm `): the next word's first key
+    /// reaches the compositor while the replay burst is still going
+    /// out, so it lands on screen *among* our own characters — before
+    /// all of them when it slips into the gap ahead of the replay.
+    /// Nothing in the key stream says where it landed, so the engine
+    /// erases everything it just typed, the intruder included, and
+    /// re-emits the lot in typed order.
+    #[test]
+    fn keystroke_inside_the_replay_is_repaired() {
+        let h = Harness::start(60_000);
+        let key_tx = h.key_tx.clone();
+        let fired = Arc::new(Mutex::new(false));
+        {
+            let fired = Arc::clone(&fired);
+            *h.emitter.during_replay.lock() = Some(Box::new(move || {
+                // Only the first burst gets raced: the repair must then
+                // succeed and settle.
+                if std::mem::replace(&mut *fired.lock(), true) {
+                    return;
+                }
+                intrude(&key_tx, GHBDSN[0]);
+            }));
+        }
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+
+        let (ops, _) = h.stop();
+        let word: Vec<u32> = GHBDSN.iter().copied().chain([SPACE]).collect();
+        let repaired: Vec<u32> = word.iter().copied().chain([GHBDSN[0]]).collect();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(7),
+                EmitOp::Keys(word),
+                // The 7 characters we put on screen plus the one that
+                // got in among them.
+                EmitOp::Backspaces(8),
+                EmitOp::Keys(repaired),
+            ],
+            "an intruding keystroke must trigger a re-emit in typed order"
+        );
+    }
+
+    /// The repair is budgeted. A user who keeps landing keys inside
+    /// every burst must not put the engine in an emit loop over their
+    /// text — it gives up and leaves the screen alone instead.
+    #[test]
+    fn relentless_intrusion_stops_at_the_repair_budget() {
+        let h = Harness::start(60_000);
+        let key_tx = h.key_tx.clone();
+        *h.emitter.during_replay.lock() = Some(Box::new(move || {
+            intrude(&key_tx, GHBDSN[0]);
+        }));
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+
+        let (ops, _) = h.stop();
+        let replays = ops.iter().filter(|o| matches!(o, EmitOp::Keys(_))).count();
+        assert_eq!(
+            replays,
+            1 + INTRUSION_REPAIRS,
+            "one replay plus the repair budget, then stop, got {ops:?}"
+        );
+    }
+
+    /// The user's report: "Ctrl+Meta+<digit> does nothing". A
+    /// correction fired by a chord starts while that chord's own
+    /// modifiers are still physically down, and our replay reaches the
+    /// application the same way the user's keys do — so under a held
+    /// Ctrl every replayed key arrives as a shortcut and nothing is
+    /// typed at all. Verified against the real compositor too: with
+    /// the modifiers released by hand the same accept replaced the
+    /// word, with them held it did nothing.
+    #[test]
+    fn accept_chord_releases_its_own_modifiers_before_typing() {
+        // This user's configured chord, which also exercises parsing
+        // `Meta` — the half the default `Ctrl+Shift` never touches.
+        let h = suggestion_harness_with_chord(Some("Ctrl+Meta"));
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _generation = ready_generation(&h);
+        // Ctrl+Meta, the modifier half of this user's accept chord.
+        let chord = poltertype_types::Modifiers {
+            control: true,
+            meta: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x1D, KeyDirection::Press, chord);
+        h.key_mods(0x7D, KeyDirection::Press, chord);
+        h.key_mods(0x02, KeyDirection::Press, chord);
+        h.settle();
+
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops.first(),
+            Some(&EmitOp::ReleaseModifiers),
+            "the chord's modifiers must be let go before anything is typed, got {ops:?}"
+        );
+        assert!(
+            ops.iter().any(|o| matches!(o, EmitOp::Keys(_))),
+            "and the replacement must still be typed, got {ops:?}"
+        );
+    }
+
+    /// The common case must not pay for it: no modifiers held, no
+    /// release burst — those are keystrokes too, and every one of them
+    /// widens the window a user keystroke can land in.
+    #[test]
+    fn plain_correction_does_not_release_modifiers() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+
+        let (ops, _) = h.stop();
+        assert!(
+            !ops.contains(&EmitOp::ReleaseModifiers),
+            "nothing was held, so nothing should be released, got {ops:?}"
+        );
+    }
+
     /// Arrow keys mid-word poison the word: no correction may fire on
     /// a word the buffer only partially observed.
     #[test]
@@ -724,12 +905,17 @@ mod engine_integration_tests {
     }
 
     fn suggestion_harness() -> Harness {
-        Harness::start_full(
+        suggestion_harness_with_chord(None)
+    }
+
+    fn suggestion_harness_with_chord(accept_modifiers: Option<&str>) -> Harness {
+        Harness::start_tuned(
             60_000,
             MockEmitter::default(),
             false,
             Some(Arc::new(FixedSuggestions(vec!["hello"]))),
             Some(vec![Box::new(NoOpinionDetector)]),
+            accept_modifiers,
         )
     }
 
@@ -797,6 +983,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: add_index,
+                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -847,6 +1034,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
+                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -896,7 +1084,12 @@ mod engine_integration_tests {
         assert_eq!(
             ops,
             vec![
-                EmitOp::Backspaces(6),
+                // The chord's own Ctrl+Shift are still down; typing
+                // under them would produce shortcuts, not text.
+                EmitOp::ReleaseModifiers,
+                // 5 word + 1 boundary + the chord's own digit, which
+                // the application received on its way past us.
+                EmitOp::Backspaces(7),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ]
         );
@@ -923,6 +1116,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
+                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -952,6 +1146,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
+                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -987,6 +1182,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
+                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -1041,7 +1237,11 @@ mod engine_integration_tests {
         assert_eq!(
             ops,
             vec![
-                EmitOp::Backspaces(6),
+                // No `ReleaseModifiers` here, unlike the test above:
+                // this run lets Ctrl and Shift back up while the
+                // correction is still absorbing, so by the time it
+                // types there is nothing held to get in the way.
+                EmitOp::Backspaces(7),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ],
             "the accept chord must survive its own modifier presses and an idle-length pause"
@@ -1063,6 +1263,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation: first,
                 index: 0,
+                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -1088,6 +1289,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
+                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -1129,6 +1331,7 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
+                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");

@@ -26,10 +26,12 @@ mod windows;
 
 mod enums;
 mod factory;
+mod gate;
 mod traits;
 mod types;
 
 pub use enums::*;
 pub use factory::*;
+pub use gate::*;
 pub use traits::*;
 pub use types::*;

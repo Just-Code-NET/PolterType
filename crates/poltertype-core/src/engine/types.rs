@@ -174,6 +174,55 @@ pub struct WindowDrain {
     pub resume: Option<KeyEvent>,
     /// Backspace / nav / click / shortcut seen — screen state unclear.
     pub suspicious: bool,
+    /// The press that set `suspicious`, when it is one we could still
+    /// re-emit (Backspace, arrows, Esc, Enter/Tab). A held correction
+    /// swallowed it before the application saw it, so it has to be
+    /// typed out rather than lost. `None` for shortcuts and pointer
+    /// presses, which we have no faithful way to reproduce.
+    pub stopper: Option<KeyEvent>,
     /// Any non-echo user press seen at all (quiet-probe signal).
     pub saw_user_press: bool,
+}
+
+/// RAII hold on the user's keyboard for the length of one emission
+/// burst. Held keys are still delivered to the engine — they just do
+/// not reach the focused application until this is dropped, so nothing
+/// of the user's can land in the middle of the text we are typing.
+///
+/// Dropping releases, on every path out of a correction including a
+/// panic. The backend enforces its own ceiling on top of that, so even
+/// a leak here cannot leave the keyboard dead.
+pub struct HeldKeys<'a> {
+    gate: &'a poltertype_input::KeyGate,
+    active: bool,
+}
+
+impl<'a> HeldKeys<'a> {
+    /// Ask the gate to hold. `active()` reports whether it actually is
+    /// — callers must stay correct when it isn't.
+    pub fn acquire(gate: &'a poltertype_input::KeyGate) -> Self {
+        Self {
+            gate,
+            active: gate.hold(),
+        }
+    }
+
+    pub fn active(&self) -> bool {
+        self.active
+    }
+
+    /// Let the user's keys through again, before the guard goes out of
+    /// scope. Idempotent.
+    pub fn release(&mut self) {
+        if self.active {
+            self.gate.release();
+            self.active = false;
+        }
+    }
+}
+
+impl Drop for HeldKeys<'_> {
+    fn drop(&mut self) {
+        self.release();
+    }
 }

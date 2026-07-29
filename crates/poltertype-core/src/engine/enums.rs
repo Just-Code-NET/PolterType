@@ -81,6 +81,13 @@ pub enum EngineCommand {
     AcceptSuggestion {
         generation: u64,
         index: usize,
+        /// The accept came from a digit chord matched off the key
+        /// stream, so the digit itself was typed into the document on
+        /// the way past and now sits left of the caret — it has to be
+        /// erased along with the word. Chords are matched, not
+        /// grabbed: registering nine global hotkeys would steal those
+        /// combinations from every application.
+        typed_digit: bool,
         from_pointer: bool,
     },
     /// The tooltip for offer `generation` went away on the popup side

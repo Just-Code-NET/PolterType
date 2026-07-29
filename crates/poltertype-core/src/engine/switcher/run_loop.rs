@@ -56,6 +56,10 @@ impl SwitcherEngine {
                         last_event_at = Instant::now();
                         continue;
                     }
+                    // Remember what the user is holding: a correction
+                    // fired by a chord must let those keys go before
+                    // typing, or the replay lands as shortcuts.
+                    *self.held_modifiers.write() = ev.modifiers;
                     // Click-grace bookkeeping first: a frozen offer
                     // (pointer press seen, tooltip click possibly in
                     // flight) dies on the first real keypress or when
@@ -190,9 +194,17 @@ impl SwitcherEngine {
             EngineCommand::AcceptSuggestion {
                 generation,
                 index,
+                typed_digit,
                 from_pointer,
             } => {
-                self.accept_suggestion(generation, index, from_pointer, buffer, key_rx);
+                self.accept_suggestion(
+                    generation,
+                    index,
+                    typed_digit,
+                    from_pointer,
+                    buffer,
+                    key_rx,
+                );
             }
             EngineCommand::DismissSuggestions { generation } => {
                 self.dismiss_suggestions(Some(generation));

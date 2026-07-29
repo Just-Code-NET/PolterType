@@ -268,6 +268,7 @@ impl SwitcherEngine {
         &self,
         generation: u64,
         index: usize,
+        typed_digit: bool,
         from_pointer: bool,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
@@ -361,6 +362,7 @@ impl SwitcherEngine {
             &run,
             &tail,
             click_allowance,
+            typed_digit,
             buffer,
             key_rx,
         );
@@ -378,6 +380,7 @@ impl SwitcherEngine {
         boundary_run: &[(u32, bool)],
         tail_keys: &[WordKey],
         click_allowance: usize,
+        typed_digit: bool,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
@@ -392,9 +395,10 @@ impl SwitcherEngine {
         };
 
         // Screen model left of the caret:
-        // `<word><boundary_run><in-progress keys>[caret]` — delete all
-        // of it, retype with the word replaced.
-        let backspaces = pending.keys.len() + boundary_run.len() + tail_keys.len();
+        // `<word><boundary_run><in-progress keys>[<chord digit>][caret]`
+        // — delete all of it, retype with the word replaced.
+        let backspaces =
+            pending.keys.len() + boundary_run.len() + tail_keys.len() + usize::from(typed_digit);
         if boundary_run.is_empty() {
             // The separator the offer was made over is gone (it can
             // only shrink via backspacing, which re-opens the word and

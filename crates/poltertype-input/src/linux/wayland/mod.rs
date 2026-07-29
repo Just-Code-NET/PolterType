@@ -16,14 +16,20 @@
 
 #![allow(unused_imports, dead_code)] // Linux-only; gated by cfg in lib.rs.
 
+mod consts;
 mod devices;
 mod emit;
 mod emitter;
+mod gate;
 mod listener;
+#[cfg(test)]
+mod tests;
 mod types;
 
+pub use consts::*;
 pub use devices::*;
 pub use emit::*;
 pub use emitter::*;
+pub use gate::*;
 pub use listener::*;
 pub use types::*;

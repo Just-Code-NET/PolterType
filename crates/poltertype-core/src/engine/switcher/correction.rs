@@ -11,10 +11,13 @@ use tracing::{debug, warn};
 
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
-use crate::engine::consts::PASTE_GUARD;
+use crate::engine::consts::{
+    HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBE, INTRUSION_QUIET_PROBES,
+    INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG,
+};
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::heuristics::{is_paste_shortcut, is_submission_scancode};
-use crate::engine::types::{LastWord, WindowDrain};
+use crate::engine::types::{HeldKeys, LastWord, WindowDrain};
 
 use super::engine::SwitcherEngine;
 
@@ -49,6 +52,10 @@ impl SwitcherEngine {
         // layout to flip and no pre-flight to run — everything below
         // that is switch-related is keyed off this.
         let switching = from != to;
+
+        // When the layout flip happened — the replay must not outrun
+        // the compositor's xkb propagation. See `LAYOUT_SETTLE`.
+        let mut switched_at: Option<Instant> = None;
 
         // Pre-flight: confirm the target layout is currently active in
         // the OS BEFORE we touch the user's text.
@@ -93,6 +100,7 @@ impl SwitcherEngine {
                 warn!(?e, target = %to, "layout switch failed; aborting correction before any keystrokes");
                 return false;
             }
+            switched_at = Some(Instant::now());
         }
 
         // ── Absorb: wait for the user's fingers to lift ─────────────
@@ -104,11 +112,11 @@ impl SwitcherEngine {
         // before deleting anything, watch the key stream: as long as
         // presses keep arriving, keep absorbing them into the plan
         // (they are the start of the user's next word — on screen
-        // already, in the layout we just switched to). Only when the
-        // stream has been quiet for two probes (~50 ms — within a
-        // fast typist's inter-key gap) do we start emitting. The
-        // absorbed tail is deleted together with the word and
-        // re-typed after the boundary, preserving order.
+        // already, in the layout we just switched to). Only once the
+        // stream has come back empty three times running (~60 ms of
+        // silence, past a fast typist's inter-key gap) do we start
+        // emitting. The absorbed tail is deleted together with the
+        // word and re-typed after the boundary, preserving order.
         //
         // If a *boundary* arrives while absorbing, the user finished
         // their next word too — stop there, include it, and re-process
@@ -145,10 +153,20 @@ impl SwitcherEngine {
                     quiet_probes = 0;
                 } else {
                     quiet_probes += 1;
-                    // ~90 ms of silence. A fast typist's inter-key gap
-                    // is ~45-60 ms plus listener lag, so two probes
-                    // can land inside a single gap — three cannot.
-                    if quiet_probes >= 3 {
+                    // Three empty probes, two 30 ms sleeps between
+                    // them: ~60 ms of silence. A fast typist's
+                    // inter-key gap is ~45-60 ms plus listener lag, so
+                    // two probes can land inside a single gap.
+                    //
+                    // A correction fired by a chord waits for that
+                    // chord to come up as well. Our replay reaches the
+                    // application the same way the user's keys do, so
+                    // typing under their held `Ctrl` produces
+                    // shortcuts and nothing lands — telling the
+                    // emitter to release the modifiers is not enough
+                    // where a remapper keeps its own idea of what is
+                    // down. The deadline below bounds the wait.
+                    if quiet_probes >= 3 && !self.modifiers_held() {
                         break;
                     }
                 }
@@ -175,99 +193,354 @@ impl SwitcherEngine {
             return false;
         }
 
-        // ── Delete: word + boundary + absorbed tail (+ its boundary) ─
-        //
-        // A bounded compensation loop catches the stragglers that
-        // still manage to land during the burst itself: each one both
-        // soaked up one of our backspaces and must be deleted and
-        // re-typed, so it costs exactly one extra backspace either way.
-        let mut to_delete = backspaces + tail.len() + usize::from(resume.is_some());
-        for round in 0..3 {
-            let sent = self.key_emitter.send_backspaces(to_delete);
-            self.push_echoes(self.key_emitter.take_emitted());
-            if let Err(e) = sent {
-                warn!(?e, "send_backspaces failed; aborting correction");
-                return false;
+        // Wait out the compositor's xkb propagation before touching
+        // anything — here rather than just before the replay, so it
+        // can't widen the gap between our last look at the key stream
+        // and our first emitted key. Normally already elapsed.
+        if let Some(t) = switched_at {
+            let since = t.elapsed();
+            if since < LAYOUT_SETTLE {
+                std::thread::sleep(LAYOUT_SETTLE - since);
             }
-            let Some((rx, _)) = live.as_ref() else { break };
-            // Give raced physical events a moment to travel
-            // device → listener thread → our channel.
-            std::thread::sleep(Duration::from_millis(12));
-            let w = self.drain_correction_window(rx, &mut click_allowance);
-            suspicious |= w.suspicious;
-            let mut extra = w.word_keys.len();
-            tail.extend(w.word_keys);
-            if let Some(r) = w.resume {
-                if is_submission_scancode(r.scancode) || resume.is_some() {
-                    // A second boundary (or a submission key) landed
-                    // mid-deletion — too murky to reconstruct.
-                    suspicious = true;
-                } else {
-                    resume = Some(r);
-                    extra += 1;
-                }
-            }
-            if extra == 0 {
-                break;
-            }
-            debug!(
-                extra,
-                round, "user keystrokes raced the deletion; compensating"
-            );
-            to_delete = extra;
         }
 
-        // ── Replay: word + boundary + tail (+ resume boundary) ──────
+        // ── Emit: delete → replay ───────────────────────────────────
         //
-        // Prefer replaying the original scancodes against the freshly
-        // switched layout (the only path that works in Wayland-native
-        // / terminal apps). Backends that have a real Unicode-emit API
-        // (`KEYEVENTF_UNICODE`, `CGEventKeyboardSetUnicodeString`)
-        // return `Unsupported`; we fall back to `send_text` for them.
-        let extra_keys: Vec<ReplayKey> = tail
-            .iter()
-            .chain(resume.iter())
-            .map(|ev| ReplayKey {
-                scancode: ev.scancode,
-                shift: ev.modifiers.shift,
-            })
-            .collect();
-        let replayed = match replay_keys {
-            Some(rk) => {
-                let mut full: Vec<ReplayKey> = rk.to_vec();
-                full.extend(extra_keys.iter().copied());
-                let sent = self.key_emitter.send_keys(&full);
-                self.push_echoes(self.key_emitter.take_emitted());
-                match sent {
-                    Ok(()) => true,
-                    Err(InputError::Unsupported(_)) => false,
-                    Err(e) => {
-                        warn!(?e, "send_keys failed; correction may be partial");
-                        return false;
-                    }
-                }
+        // Erase the on-screen characters, then retype the corrected
+        // word plus everything the user typed while we were preparing.
+        //
+        // A keystroke that lands *inside* that burst is ordered against
+        // our emitted events by the compositor, and no after-the-fact
+        // counting can undo it: `зтзь ш ` came out as `ipnpm ` because
+        // the `i` reached the app between our deletion and our replay,
+        // and `pinpm ` / `pnpmi ` when it reached it mid-replay.
+        //
+        // So we hold the user's keys back for exactly as long as the
+        // burst takes. Held keys still reach us — they just queue up
+        // instead of landing in our text, and we type them out
+        // ourselves once the correction is down. Where the gate can't
+        // run (no evdev, or a remapper in the way) we fall back to
+        // probing for an intrusion afterwards and re-emitting.
+        // Let go of anything the user is holding before typing. A
+        // chord-triggered correction (suggestion accept, manual
+        // switch-last) fires with its own modifiers still down, and a
+        // replay under a held Ctrl produces shortcuts, not text — the
+        // user sees the correction simply not happen.
+        let holding = *self.held_modifiers.read();
+        if holding.control || holding.shift || holding.alt || holding.meta {
+            debug!(?holding, "releasing held modifiers before emitting");
+            if let Err(e) = self.key_emitter.release_modifiers(holding) {
+                warn!(
+                    ?e,
+                    "could not release held modifiers; replay may be swallowed"
+                );
             }
-            None => false,
-        };
-        if !replayed {
-            let mut text = corrected.to_owned();
-            if let Some(mapping) = self.layouts.get(to) {
-                for k in &extra_keys {
-                    if let Some(c) = mapping.translate_key(poltertype_types::WordKey {
-                        scancode: k.scancode,
-                        shift: k.shift,
-                        timestamp_ms: 0,
-                    }) {
-                        text.push(c);
-                    }
-                }
-            }
-            let sent = self.key_emitter.send_text(&text);
             self.push_echoes(self.key_emitter.take_emitted());
-            if let Err(e) = sent {
-                warn!(?e, "send_text failed; correction may be partial");
-                return false;
+        }
+
+        let mut held = HeldKeys::acquire(&self.key_gate);
+        let mut repairs_left = INTRUSION_REPAIRS;
+        let mut to_delete = backspaces + tail.len() + usize::from(resume.is_some());
+        loop {
+            // ── Delete: word + boundary + absorbed tail ─────────────
+            //
+            // A bounded compensation loop catches the stragglers that
+            // still manage to land during the burst itself: each one
+            // both soaked up one of our backspaces and must be deleted
+            // and re-typed, so it costs exactly one extra backspace
+            // either way. The loop exits on a probe that comes back
+            // empty, and the replay follows immediately after it.
+            for round in 0..3 {
+                let sent = self.key_emitter.send_backspaces(to_delete);
+                self.push_echoes(self.key_emitter.take_emitted());
+                if let Err(e) = sent {
+                    warn!(?e, "send_backspaces failed; aborting correction");
+                    return false;
+                }
+                let Some((rx, _)) = live.as_ref() else { break };
+                // With the keyboard held, nothing of the user's can
+                // have reached the screen, so there is nothing to
+                // compensate for — what they typed is waiting for us
+                // and gets typed out after the replay instead.
+                if held.active() {
+                    break;
+                }
+                // Give raced physical events time to travel
+                // device → listener thread → our channel.
+                std::thread::sleep(POST_EMIT_LAG);
+                let w = self.drain_correction_window(rx, &mut click_allowance);
+                suspicious |= w.suspicious;
+                let mut extra = w.word_keys.len();
+                tail.extend(w.word_keys);
+                if let Some(r) = w.resume {
+                    if is_submission_scancode(r.scancode) || resume.is_some() {
+                        // A second boundary (or a submission key) landed
+                        // mid-deletion — too murky to reconstruct.
+                        suspicious = true;
+                    } else {
+                        resume = Some(r);
+                        extra += 1;
+                    }
+                }
+                if extra == 0 {
+                    break;
+                }
+                debug!(
+                    extra,
+                    round, "user keystrokes raced the deletion; compensating"
+                );
+                to_delete = extra;
             }
+
+            // ── Replay: word + boundary + tail (+ resume boundary) ──
+            //
+            // Prefer replaying the original scancodes against the
+            // freshly switched layout (the only path that works in
+            // Wayland-native / terminal apps). Backends that have a
+            // real Unicode-emit API (`KEYEVENTF_UNICODE`,
+            // `CGEventKeyboardSetUnicodeString`) return `Unsupported`;
+            // we fall back to `send_text` for them.
+            let extra_keys: Vec<ReplayKey> = tail
+                .iter()
+                .chain(resume.iter())
+                .map(|ev| ReplayKey {
+                    scancode: ev.scancode,
+                    shift: ev.modifiers.shift,
+                })
+                .collect();
+            let mut emitted = 0usize;
+            let replayed = match replay_keys {
+                Some(rk) => {
+                    let mut full: Vec<ReplayKey> = rk.to_vec();
+                    full.extend(extra_keys.iter().copied());
+                    emitted = full.len();
+                    let sent = self.key_emitter.send_keys(&full);
+                    self.push_echoes(self.key_emitter.take_emitted());
+                    match sent {
+                        Ok(()) => true,
+                        Err(InputError::Unsupported(_)) => false,
+                        Err(e) => {
+                            warn!(?e, "send_keys failed; correction may be partial");
+                            return false;
+                        }
+                    }
+                }
+                None => false,
+            };
+            if !replayed {
+                let mut text = corrected.to_owned();
+                if let Some(mapping) = self.layouts.get(to) {
+                    for k in &extra_keys {
+                        if let Some(c) = mapping.translate_key(poltertype_types::WordKey {
+                            scancode: k.scancode,
+                            shift: k.shift,
+                            timestamp_ms: 0,
+                        }) {
+                            text.push(c);
+                        }
+                    }
+                }
+                emitted = text.chars().count();
+                let sent = self.key_emitter.send_text(&text);
+                self.push_echoes(self.key_emitter.take_emitted());
+                if let Err(e) = sent {
+                    warn!(?e, "send_text failed; correction may be partial");
+                    return false;
+                }
+            }
+
+            let Some((rx, _)) = live.as_ref() else {
+                break;
+            };
+
+            // ── Flush: type out what the gate held back ─────────────
+            //
+            // These keys never reached the application, so there is
+            // nothing on screen to delete and nothing to disentangle —
+            // they simply go on the end, in the order they were
+            // pressed. Keep going while the user keeps typing, up to a
+            // bound; whatever they press after we let go reaches the
+            // application by itself.
+            if held.active() {
+                let flush_deadline = Instant::now() + HELD_FLUSH;
+                // One empty sweep is not "the user stopped" — it is
+                // shorter than an inter-key gap, and letting go on it
+                // drops whatever they press a moment later into the
+                // hole between our last sweep and the actual ungrab.
+                let mut quiet = 0u8;
+                loop {
+                    std::thread::sleep(POST_EMIT_LAG);
+                    let w = self.drain_correction_window(rx, &mut click_allowance);
+                    let mut pending: Vec<ReplayKey> = w
+                        .word_keys
+                        .iter()
+                        .map(|ev| ReplayKey {
+                            scancode: ev.scancode,
+                            shift: ev.modifiers.shift,
+                        })
+                        .collect();
+                    suspicious |= w.suspicious;
+                    tail.extend(w.word_keys);
+                    if let Some(r) = w.resume {
+                        pending.push(ReplayKey {
+                            scancode: r.scancode,
+                            shift: r.modifiers.shift,
+                        });
+                        if is_submission_scancode(r.scancode) || resume.is_some() {
+                            suspicious = true;
+                        } else {
+                            resume = Some(r);
+                        }
+                    }
+                    // Backspace / arrows / Esc were swallowed too. They
+                    // are the user editing, so they have to be typed
+                    // out — after our text, which is where they would
+                    // have landed had we not been in the way. A
+                    // shortcut needs modifiers we cannot reproduce and
+                    // arrives here as `None`; all we can do is stop
+                    // holding immediately so the next one gets through.
+                    if let Some(s) = w.stopper {
+                        pending.push(ReplayKey {
+                            scancode: s.scancode,
+                            shift: s.modifiers.shift,
+                        });
+                    }
+                    if pending.is_empty() {
+                        quiet += 1;
+                    } else {
+                        quiet = 0;
+                        debug!(
+                            count = pending.len(),
+                            "typing out keystrokes the gate held back"
+                        );
+                        let sent = self.key_emitter.send_keys(&pending);
+                        self.push_echoes(self.key_emitter.take_emitted());
+                        if let Err(e) = sent {
+                            warn!(?e, "flushing held keystrokes failed");
+                            break;
+                        }
+                    }
+                    if quiet >= HELD_FLUSH_QUIET_PROBES
+                        || suspicious
+                        || Instant::now() >= flush_deadline
+                    {
+                        break;
+                    }
+                }
+                // Letting go is synchronous, so the moment it returns
+                // the line is drawn: everything already on the stream
+                // was held back and is ours to type out, everything
+                // after it reaches the application by itself. One last
+                // sweep collects the stragglers on our side of it.
+                held.release();
+                let w = self.drain_correction_window(rx, &mut click_allowance);
+                let mut last: Vec<ReplayKey> = w
+                    .word_keys
+                    .iter()
+                    .map(|ev| ReplayKey {
+                        scancode: ev.scancode,
+                        shift: ev.modifiers.shift,
+                    })
+                    .collect();
+                suspicious |= w.suspicious;
+                tail.extend(w.word_keys);
+                if let Some(r) = w.resume {
+                    last.push(ReplayKey {
+                        scancode: r.scancode,
+                        shift: r.modifiers.shift,
+                    });
+                    if is_submission_scancode(r.scancode) || resume.is_some() {
+                        suspicious = true;
+                    } else {
+                        resume = Some(r);
+                    }
+                }
+                if let Some(st) = w.stopper {
+                    last.push(ReplayKey {
+                        scancode: st.scancode,
+                        shift: st.modifiers.shift,
+                    });
+                }
+                if !last.is_empty() {
+                    debug!(count = last.len(), "typing out the last held keystrokes");
+                    let sent = self.key_emitter.send_keys(&last);
+                    self.push_echoes(self.key_emitter.take_emitted());
+                    if let Err(e) = sent {
+                        warn!(?e, "flushing the last held keystrokes failed");
+                    }
+                }
+                break;
+            }
+
+            // ── Intrusion probe (gate unavailable) ──────────────────
+            //
+            // Anything on the wire now was pressed while the replay was
+            // going out (the deletion loop left the stream quiet
+            // moments ago), so it is on screen somewhere *inside* the
+            // text we just typed. We can't tell where — but we know
+            // exactly how many characters we put down, so erasing that
+            // many plus the intruders and retyping puts everything back
+            // in typed order.
+            //
+            // The repair is another burst, though, and firing it while
+            // the user is still mid-word just hands the next keystroke
+            // the same race to win. So wait for a pause first, and if
+            // one never comes, leave the screen exactly as it is and
+            // stop vouching for it — a scrambled word the user can fix
+            // beats a correction chasing their fingers across the line.
+            if suspicious {
+                break;
+            }
+            let mut intruders = 0usize;
+            let mut quiet = 0u8;
+            let probe_deadline = Instant::now() + INTRUSION_PROBE;
+            loop {
+                std::thread::sleep(POST_EMIT_LAG);
+                let w = self.drain_correction_window(rx, &mut click_allowance);
+                let saw_press = w.saw_user_press;
+                suspicious |= w.suspicious;
+                intruders += w.word_keys.len();
+                tail.extend(w.word_keys);
+                if let Some(r) = w.resume {
+                    if is_submission_scancode(r.scancode) || resume.is_some() {
+                        suspicious = true;
+                    } else {
+                        resume = Some(r);
+                        intruders += 1;
+                    }
+                }
+                if suspicious {
+                    break;
+                }
+                if saw_press {
+                    quiet = 0;
+                } else {
+                    quiet += 1;
+                }
+                // Clean burst: one empty probe settles it.
+                if intruders == 0
+                    || quiet >= INTRUSION_QUIET_PROBES
+                    || Instant::now() >= probe_deadline
+                {
+                    break;
+                }
+            }
+            if intruders == 0 {
+                break;
+            }
+            if suspicious || repairs_left == 0 || quiet < INTRUSION_QUIET_PROBES {
+                // Spent the budget, or the user never paused. The
+                // screen holds something we did not put there and
+                // cannot place — track nothing, correct nothing.
+                suspicious = true;
+                break;
+            }
+            repairs_left -= 1;
+            debug!(
+                intruders,
+                emitted, "keystrokes landed inside the replay; re-emitting in typed order"
+            );
+            to_delete = emitted + intruders;
         }
 
         if play_sound {
@@ -382,6 +655,12 @@ impl SwitcherEngine {
             if self.consume_echo(&ev) {
                 continue;
             }
+            if !ev.injected {
+                // Releases are dropped below, but they are the only
+                // sign that the chord which triggered this correction
+                // has been let go of — see `modifiers_held`.
+                *self.held_modifiers.write() = ev.modifiers;
+            }
             if ev.injected || ev.direction != KeyDirection::Press {
                 continue;
             }
@@ -396,6 +675,9 @@ impl SwitcherEngine {
                 *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
             }
             if ev.modifiers.is_command() {
+                // A shortcut needs its modifiers held to mean anything,
+                // and the emitter only speaks Shift — no faithful
+                // re-emit, so it is deliberately left as `None`.
                 out.suspicious = true;
                 break;
             }
@@ -418,6 +700,11 @@ impl SwitcherEngine {
                 // reconstruct where it landed.
                 KeyKind::Backspace | KeyKind::EndAndDiscard => {
                     out.suspicious = true;
+                    // A pointer press has no keyboard form to re-emit;
+                    // everything else does.
+                    if ev.scancode != poltertype_types::SC_POINTER_BUTTON {
+                        out.stopper = Some(ev);
+                    }
                     break;
                 }
             }
