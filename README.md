@@ -36,8 +36,8 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
   date](#staying-up-to-date)) — it sends nothing about you, and one
   checkbox turns it off. The AI subsystem is off by default and needs
   a second explicit toggle to reach the network at all.
-- **Configurable** — autostart, per-language allowlist, per-app
-  exceptions, hotkeys, sound themes.
+- **Configurable** — per-language allowlist, per-app exceptions,
+  hotkeys, sound themes.
 - **Open source** — MIT licensed.
 
 ## Platforms
@@ -308,6 +308,13 @@ Two ways to configure:
    - Windows: `%APPDATA%\opensource\poltertype\config\config.toml`
    - macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
    - Linux: `~/.config/poltertype/config.toml`
+
+One checkbox in **General** does not do what it says yet:
+**"Start automatically when I sign in"** is stored in `config.toml`
+(`[general].autostart`, and it defaults to `true`) but nothing acts
+on it — PolterType does not register itself as a login item on any
+platform. Add it to your desktop environment's startup entries by
+hand until that lands.
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray
 takes you there. After editing the TOML, "Reload Settings" picks

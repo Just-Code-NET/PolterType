@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-29 (v0.6.1).
+> Created: 2026-05-02. Last updated: 2026-07-30 (v0.6.1).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -108,7 +108,7 @@ integration).
 | `iced` 0.13+ | settings window UI |
 | `tray-icon` | system tray (Win/Mac/Linux) |
 | `global-hotkey` | global hotkeys |
-| `auto-launch` | run at login (Win/Mac/Linux) |
+| `auto-launch` | run at login (Win/Mac/Linux) — **declared, never wired**: it has no consumer in any crate, and `[general].autostart` is read by nothing. See "Known gaps". |
 | `single-instance` | forbid a second process |
 | `tao` *(optional)* | shared event loop for tray + hotkeys + iced |
 | `tokio` | async runtime, channels, timers |
@@ -334,7 +334,9 @@ it is the only schema listing in `docs/`:
 schema_version = 1
 
 [general]
-autostart = true
+autostart = true           # PARSED BUT INERT — nothing registers a
+                           # login item on any platform yet. The GUI
+                           # checkbox only writes this key.
 sound_on_correct = true
 show_notifications = false
 ui_language = "system"     # or "en", "uk"
@@ -373,6 +375,10 @@ action  = { type = "switch_layout", layout = "en-US" }
 
 # Per-app wordlist overlays, keyed off the focused app (so: Windows,
 # Hyprland and X11 only — inert on macOS and GNOME/KDE Wayland).
+[wordlists]
+default_profile = ""       # profile used when no `apps` list matches;
+                           # "" means global overlay files only
+
 [[wordlists.profiles]]
 id   = "code"
 apps = ["Code.exe", "kitty"]

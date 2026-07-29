@@ -187,8 +187,14 @@ function with a special case.
   RAM-only and short-lived.
 * The OS hook callback never blocks — events go straight onto a
   `crossbeam-channel`; the engine processes them on a worker thread.
-* Platform code lives behind `cfg`-gated modules in `poltertype-input` and
-  `poltertype-layout`. No `#[cfg(target_os = "…")]` outside those crates.
+* Platform code lives behind `cfg`-gated modules in `poltertype-input`,
+  `poltertype-layout`, `poltertype-update`, `poltertype-popup` and
+  `poltertype-tray`. No `#[cfg(target_os = "…")]` outside those five
+  crates — `poltertype-app` holds none at all, which is why a
+  one-function GTK quirk got its own crate instead of a `#[cfg]` in
+  `main.rs` (see `docs/DECISIONS.md`). The shape is one crate per
+  *capability* with per-OS modules inside it, behind a trait and a
+  factory — not one crate per platform.
 
 ## File organization (one kind of thing per file)
 
