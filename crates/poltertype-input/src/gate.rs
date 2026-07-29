@@ -1,5 +1,8 @@
 //! `KeyGate` — the "hold the user's keystrokes back while we type" seam.
 
+// Only the evdev backend has anything behind the gate; on every other
+// platform `KeyGate` is an empty struct and this import would be dead.
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
 
 /// Holds physical keystrokes back from applications for the duration of
