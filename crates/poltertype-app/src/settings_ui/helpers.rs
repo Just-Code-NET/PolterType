@@ -339,13 +339,6 @@ pub fn display_key_token(tok: &str) -> String {
     }
 }
 
-/// Modifier list for prose hints, in the platform's vocabulary.
-#[cfg(target_os = "macos")]
-pub const MODIFIER_NAMES_PROSE: &str = "⌃ / ⌥ / ⇧ / ⌘";
-/// Modifier list for prose hints, in the platform's vocabulary.
-#[cfg(not(target_os = "macos"))]
-pub const MODIFIER_NAMES_PROSE: &str = "Ctrl / Alt / Shift / Meta";
-
 /// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't/// be captured as the hotkey itself — the user is mid-combination.
 /// We filter them in the keyboard subscription so the captured combo
 /// is always `<modifier(s)>+<non-modifier-key>`.
