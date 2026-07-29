@@ -18,6 +18,7 @@
 mod icon_render;
 mod settings_ui;
 
+mod autostart;
 mod bridges;
 mod consts;
 mod detectors;
@@ -139,6 +140,11 @@ fn main() -> Result<()> {
         }
     };
     info!(path = ?settings.path(), "settings loaded");
+
+    // Make the OS autostart entry match the setting (macOS
+    // LaunchAgent; no-op elsewhere for now). Runs on every startup so
+    // a config edited by hand takes effect too.
+    autostart::sync(settings.snapshot().general.autostart);
 
     // ─── Layout switcher (built first so we can query active OS
     //                     layouts before loading the DB) ────────────

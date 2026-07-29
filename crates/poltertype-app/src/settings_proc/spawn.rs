@@ -81,6 +81,11 @@ pub(crate) fn spawn_settings_ui(deps: SettingsCloseDeps) {
                 Err(e) => warn!(?e, "could not reload config.toml after settings UI exit"),
             }
 
+            // (1a) The autostart checkbox edits config.toml like any
+            // other setting; re-apply it to the OS now that the file
+            // is re-read.
+            crate::autostart::sync(deps.settings.snapshot().general.autostart);
+
             // (2) Global wordlist reload — same path as the tray
             // "Reload Settings" menu entry.
             let n = reload_user_dictionaries(&deps.dict_reload_handle);
