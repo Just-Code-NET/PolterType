@@ -36,7 +36,12 @@ pub const INTRUSION_REPAIRS: usize = 2;
 /// the user is still mid-word only moves the scramble along — better
 /// to leave the text alone and stop vouching for the screen. Bounded
 /// so a user who never pauses can't stall the engine.
-pub const INTRUSION_PROBE: Duration = Duration::from_millis(400);
+///
+/// Must stay comfortably above `POST_EMIT_LAG * INTRUSION_QUIET_PROBES`
+/// (the shortest run of silence that authorises a repair), or a loaded
+/// machine whose sleeps overshoot hits the deadline first and declines
+/// a repair it should have made.
+pub const INTRUSION_PROBE: Duration = Duration::from_millis(600);
 
 /// Consecutive silent probes (of [`POST_EMIT_LAG`] each) that count as
 /// "the user has stopped typing" before a repair burst goes out. The

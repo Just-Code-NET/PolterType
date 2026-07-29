@@ -620,6 +620,13 @@ mod engine_integration_tests {
         );
     }
 
+    /// A key that appears nowhere in the correction being replayed.
+    /// An intruder sharing a scancode with our own replay can be
+    /// swallowed by the echo queue instead — which is a real hazard,
+    /// but not the one these tests are about, and it made them depend
+    /// on how fast the echoes happened to arrive.
+    const INTRUDER: u32 = 0x2D; // `X` — not in GHBDSN, not SPACE
+
     /// Send one press+release of `sc` into the engine's key stream from
     /// wherever it is called — used to simulate a keystroke the
     /// compositor interleaves with a burst we are still emitting.
@@ -656,7 +663,7 @@ mod engine_integration_tests {
                 if std::mem::replace(&mut *fired.lock(), true) {
                     return;
                 }
-                intrude(&key_tx, GHBDSN[0]);
+                intrude(&key_tx, INTRUDER);
             }));
         }
         type_word(&h, &GHBDSN);
@@ -665,7 +672,7 @@ mod engine_integration_tests {
 
         let (ops, _) = h.stop();
         let word: Vec<u32> = GHBDSN.iter().copied().chain([SPACE]).collect();
-        let repaired: Vec<u32> = word.iter().copied().chain([GHBDSN[0]]).collect();
+        let repaired: Vec<u32> = word.iter().copied().chain([INTRUDER]).collect();
         assert_eq!(
             ops,
             vec![
@@ -688,7 +695,7 @@ mod engine_integration_tests {
         let h = Harness::start(60_000);
         let key_tx = h.key_tx.clone();
         *h.emitter.during_replay.lock() = Some(Box::new(move || {
-            intrude(&key_tx, GHBDSN[0]);
+            intrude(&key_tx, INTRUDER);
         }));
         type_word(&h, &GHBDSN);
         h.tap(SPACE);
