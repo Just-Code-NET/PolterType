@@ -12,6 +12,19 @@ pub(crate) const APP_NAME: &str = "PolterType";
 /// Cross-platform default for the manual "switch the last word" hotkey.
 pub(crate) const DEFAULT_SWITCH_LAST: &str = "Ctrl+Shift+Backspace";
 
+/// Cross-platform default for the pause/resume hotkey. Mirrors
+/// `HotkeySettings::default()` in `poltertype-core`, which stays
+/// platform-neutral on purpose.
+pub(crate) const DEFAULT_PAUSE_TOGGLE: &str = "Ctrl+Shift+Space";
+
+/// macOS substitute for [`DEFAULT_PAUSE_TOGGLE`]. `Ctrl+Space` and
+/// `Ctrl+Shift+Space` are macOS's own "select previous/next input
+/// source" shortcuts, so registering them globally preempts the very
+/// layout switching this app exists to complement. `Ctrl+Shift+P` is
+/// free of any system binding. Applied only when the user is still on
+/// the default; an explicit choice is always honoured.
+pub(crate) const MACOS_SAFE_PAUSE_TOGGLE: &str = "Ctrl+Shift+P";
+
 /// Wayland substitute for [`DEFAULT_SWITCH_LAST`]: a key the focused app
 /// won't act on destructively (unlike `Ctrl+Backspace`, which deletes a
 /// word). Used only when the user keeps the default on the evdev

@@ -1,0 +1,22 @@
+[package]
+name                  = "poltertype-shell"
+description           = "Per-OS quirks of the desktop app shell, kept out of the binary crate."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing = { workspace = true }
+# Needed on every platform, even though only macOS acts on it, so
+# `keep_out_of_dock` has one signature everywhere — a no-op that took
+# a different type than the real thing would compile on the wrong
+# argument. `tao` already reaches the binary as the event-loop crate,
+# so this is a handle on something already linked.
+tao = { workspace = true }

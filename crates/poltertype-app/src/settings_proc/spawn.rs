@@ -84,7 +84,13 @@ pub(crate) fn spawn_settings_ui(deps: SettingsCloseDeps) {
             // (1a) The autostart checkbox edits config.toml like any
             // other setting; re-apply it to the OS now that the file
             // is re-read.
-            crate::autostart::sync(deps.settings.snapshot().general.autostart);
+            poltertype_autostart::sync(
+                deps.settings.snapshot().general.autostart,
+                poltertype_autostart::App {
+                    id: crate::consts::APP_ID,
+                    name: crate::consts::APP_NAME,
+                },
+            );
 
             // (2) Global wordlist reload — same path as the tray
             // "Reload Settings" menu entry.

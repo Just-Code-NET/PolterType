@@ -3890,11 +3890,13 @@ dependencies = [
  "opener",
  "parking_lot 0.12.5",
  "poltertype-ai",
+ "poltertype-autostart",
  "poltertype-core",
  "poltertype-detect",
  "poltertype-input",
  "poltertype-layout",
  "poltertype-popup",
+ "poltertype-shell",
  "poltertype-tray",
  "poltertype-types",
  "poltertype-update",
@@ -3904,6 +3906,13 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "tray-icon",
+]
+
+[[package]]
+name = "poltertype-autostart"
+version = "0.6.1"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]
@@ -3982,6 +3991,14 @@ dependencies = [
  "tracing",
  "wayland-client",
  "x11rb",
+]
+
+[[package]]
+name = "poltertype-shell"
+version = "0.6.1"
+dependencies = [
+ "tao",
+ "tracing",
 ]
 
 [[package]]

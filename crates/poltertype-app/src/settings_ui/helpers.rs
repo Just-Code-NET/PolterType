@@ -310,33 +310,34 @@ pub fn accept_modifiers_enable_keyboard(s: &str) -> bool {
 }
 
 /// Display form of a stored hotkey token for keycap chips. Config
-/// keeps the portable names (`Ctrl`, `Alt`, `Meta`); on macOS the
-/// chips use the platform's own glyphs (⌃ ⌥ ⇧ ⌘) and key symbols —
-/// those are the names printed on the user's keyboard.
+/// keeps the portable names (`Ctrl`, `Alt`, `Meta`); where the
+/// platform prints a glyph on the key instead, the chip shows the
+/// glyph — that is what the user reads off their keyboard.
 pub fn display_key_token(tok: &str) -> String {
-    #[cfg(target_os = "macos")]
-    {
-        match tok.to_ascii_lowercase().as_str() {
-            "ctrl" | "control" => "⌃".into(),
-            "alt" | "option" => "⌥".into(),
-            "shift" => "⇧".into(),
-            "meta" | "cmd" | "command" | "super" | "win" => "⌘".into(),
-            "backspace" => "⌫".into(),
-            "enter" | "return" => "↩".into(),
-            "tab" => "⇥".into(),
-            "esc" | "escape" => "⎋".into(),
-            "space" => "Space".into(),
-            "up" => "↑".into(),
-            "down" => "↓".into(),
-            "left" => "←".into(),
-            "right" => "→".into(),
-            _ => tok.to_owned(),
-        }
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        tok.to_owned()
-    }
+    poltertype_shell::key_glyph(tok).map_or_else(|| tok.to_owned(), str::to_owned)
+}
+
+/// Join key names the way the platform writes them: the glyph where
+/// there is one, the portable name otherwise. Used for prose that
+/// only has to *identify* the keys ("at least one of …").
+pub fn key_list(names: &[&str], sep: &str) -> String {
+    names
+        .iter()
+        .map(|n| poltertype_shell::key_glyph(n).unwrap_or(n).to_owned())
+        .collect::<Vec<_>>()
+        .join(sep)
+}
+
+/// Join key names annotated with their glyphs (`Ctrl (⌃)`). Used for
+/// prose the user has to act on — the name is what goes in
+/// `config.toml`, so it has to stay visible even where the keyboard
+/// says something else.
+pub fn named_key_list(names: &[&str], sep: &str) -> String {
+    names
+        .iter()
+        .map(|n| poltertype_shell::key_name_with_glyph(n))
+        .collect::<Vec<_>>()
+        .join(sep)
 }
 
 /// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't

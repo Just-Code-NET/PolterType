@@ -18,7 +18,6 @@
 mod icon_render;
 mod settings_ui;
 
-mod autostart;
 mod bridges;
 mod consts;
 mod detectors;
@@ -104,27 +103,13 @@ fn main() -> Result<()> {
     let _log_guard = init_tracing();
     info!(version = env!("CARGO_PKG_VERSION"), "{APP_NAME} starting");
 
-    // On macOS the `single-instance` crate treats the id as a file
-    // path and flocks it. A bare id lands in the process cwd — which
-    // is `/` (read-only system volume) when the app is launched via
-    // Finder / `open`, so startup died with "Read-only file system".
-    // Give it an absolute path under the per-user config dir instead.
-    // On Linux (abstract socket) and Windows (named mutex) the id is
-    // not a path, so keep it untouched there.
-    #[cfg(target_os = "macos")]
-    let lock_id: String = {
-        let dir = poltertype_core::settings::SettingsStore::project_dirs()
-            .map(|d| d.config_dir().to_path_buf())
-            .unwrap_or_else(|_| std::env::temp_dir());
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            warn!(?e, ?dir, "could not create config dir for instance lock");
-        }
-        dir.join(format!("{APP_ID}.lock"))
-            .to_string_lossy()
-            .into_owned()
-    };
-    #[cfg(not(target_os = "macos"))]
-    let lock_id: String = APP_ID.to_owned();
+    // `single-instance` means something different by "id" on each OS —
+    // on macOS a file path it flocks, which is why this is not just
+    // `APP_ID`. See `poltertype_shell::instance_lock_id`.
+    let config_dir = poltertype_core::settings::SettingsStore::project_dirs()
+        .map(|d| d.config_dir().to_path_buf())
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let lock_id = poltertype_shell::instance_lock_id(APP_ID, &config_dir);
     let instance = SingleInstance::new(&lock_id).context("create single-instance lock")?;
     if !instance.is_single() {
         warn!("another instance is already running, exiting");
@@ -141,10 +126,15 @@ fn main() -> Result<()> {
     };
     info!(path = ?settings.path(), "settings loaded");
 
-    // Make the OS autostart entry match the setting (macOS
-    // LaunchAgent; no-op elsewhere for now). Runs on every startup so
-    // a config edited by hand takes effect too.
-    autostart::sync(settings.snapshot().general.autostart);
+    // Make the OS autostart entry match the setting. Runs on every
+    // startup so a config edited by hand takes effect too.
+    poltertype_autostart::sync(
+        settings.snapshot().general.autostart,
+        poltertype_autostart::App {
+            id: APP_ID,
+            name: APP_NAME,
+        },
+    );
 
     // ─── Layout switcher (built first so we can query active OS
     //                     layouts before loading the DB) ────────────
@@ -368,17 +358,11 @@ fn main() -> Result<()> {
         .is_some_and(|l| l.backend_name() == "linux-wayland-evdev");
 
     // ─── Tao event loop + tray + global hotkeys ────────────────────
-    #[allow(unused_mut)]
     let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
-    #[cfg(target_os = "macos")]
-    {
-        // Tray-only app: LSUIElement alone is not enough — tao
-        // explicitly applies ActivationPolicy::Regular (its default)
-        // at startup, which puts us in the Dock anyway. Accessory
-        // keeps us out of the Dock and the Cmd+Tab switcher.
-        use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
-        event_loop.set_activation_policy(ActivationPolicy::Accessory);
-    }
+    // Tray-only app: on macOS `LSUIElement` alone does not keep us out
+    // of the Dock, because tao applies its own activation policy over
+    // it. Must happen before `run`.
+    poltertype_shell::keep_out_of_dock(&mut event_loop);
 
     let menu = Menu::new();
     // Onboarding alert entry — present only when keyboard hooks
@@ -505,10 +489,25 @@ fn main() -> Result<()> {
     // the documented default so the user never ends up with a tray app
     // that silently lost its hotkeys after a typo.
     let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
-    let hk_pause = parse_hotkey_or_default(
-        &settings.snapshot().hotkeys.pause_toggle,
-        "Ctrl+Shift+Space",
-    );
+    // Pause default is backend-dependent for the same reason
+    // switch-last is, one platform over: on macOS `Ctrl+Space` and
+    // `Ctrl+Shift+Space` belong to the system input-source switcher,
+    // so registering the default globally would take the user's
+    // layout-switching shortcut away from them. Keyed off the live
+    // backend rather than a build target, so a config written on one
+    // OS still means what it says on another.
+    let configured_pause = settings.snapshot().hotkeys.pause_toggle;
+    let on_macos_tis = layout_switcher.backend_name() == "macos-tis";
+    let pause_src = if on_macos_tis && configured_pause == DEFAULT_PAUSE_TOGGLE {
+        info!(
+            rebound_to = MACOS_SAFE_PAUSE_TOGGLE,
+            "macOS: default pause ({DEFAULT_PAUSE_TOGGLE}) is the system input-source shortcut; using a free chord"
+        );
+        MACOS_SAFE_PAUSE_TOGGLE
+    } else {
+        &configured_pause
+    };
+    let hk_pause = parse_hotkey_or_default(pause_src, DEFAULT_PAUSE_TOGGLE);
     // Switch-last default is backend-dependent. The cross-platform
     // default `Ctrl+Shift+Backspace` is fine where the OS *consumes* the
     // hotkey (Windows/X11), but on the Wayland keystream path we can

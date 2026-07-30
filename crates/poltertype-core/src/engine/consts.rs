@@ -31,17 +31,28 @@ pub const LAYOUT_SETTLE: Duration = Duration::from_millis(30);
 /// with correct text; past that we stop touching their text at all.
 pub const INTRUSION_REPAIRS: usize = 2;
 
-/// How long the intrusion probe waits for the key stream to go quiet
-/// before repairing. A repair is itself a burst, so starting one while
-/// the user is still mid-word only moves the scramble along — better
-/// to leave the text alone and stop vouching for the screen. Bounded
-/// so a user who never pauses can't stall the engine.
+/// How many times the intrusion probe samples the key stream before
+/// giving up on finding a pause. A repair is itself a burst, so
+/// starting one while the user is still mid-word only moves the
+/// scramble along — better to leave the text alone and stop vouching
+/// for the screen. Bounded so a user who never pauses can't stall the
+/// engine.
 ///
-/// Must stay comfortably above `POST_EMIT_LAG * INTRUSION_QUIET_PROBES`
-/// (the shortest run of silence that authorises a repair), or a loaded
-/// machine whose sleeps overshoot hits the deadline first and declines
-/// a repair it should have made.
-pub const INTRUSION_PROBE: Duration = Duration::from_millis(600);
+/// Counted in probes rather than wall-clock on purpose. The loop's
+/// own unit is one [`POST_EMIT_LAG`] sleep per sample, so a deadline
+/// measured by the clock races the sleeps that drive it: overshoot
+/// enough of them — 142 tests on a 3-core CI runner will — and the
+/// deadline expires before [`INTRUSION_QUIET_PROBES`] silent samples
+/// can accumulate, and the engine declines a repair it should have
+/// made. That surfaced as an intermittent test failure on macOS CI,
+/// but the same load makes a real user lose a correction. Counting
+/// samples keeps the decision identical whatever the scheduler does;
+/// only the wall-clock duration stretches, which is exactly the part
+/// that should stretch on a busy machine.
+///
+/// Must stay comfortably above [`INTRUSION_QUIET_PROBES`], the
+/// shortest run of silence that authorises a repair.
+pub const INTRUSION_PROBES: u8 = 24;
 
 /// Consecutive silent probes (of [`POST_EMIT_LAG`] each) that count as
 /// "the user has stopped typing" before a repair burst goes out. The

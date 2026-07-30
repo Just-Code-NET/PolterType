@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
 use crate::engine::consts::{
-    HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBE, INTRUSION_QUIET_PROBES,
+    HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES,
     INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG,
 };
 use crate::engine::enums::SwitcherEvent;
@@ -493,7 +493,7 @@ impl SwitcherEngine {
             }
             let mut intruders = 0usize;
             let mut quiet = 0u8;
-            let probe_deadline = Instant::now() + INTRUSION_PROBE;
+            let mut probes = 0u8;
             loop {
                 std::thread::sleep(POST_EMIT_LAG);
                 let w = self.drain_correction_window(rx, &mut click_allowance);
@@ -518,10 +518,8 @@ impl SwitcherEngine {
                     quiet += 1;
                 }
                 // Clean burst: one empty probe settles it.
-                if intruders == 0
-                    || quiet >= INTRUSION_QUIET_PROBES
-                    || Instant::now() >= probe_deadline
-                {
+                probes += 1;
+                if intruders == 0 || quiet >= INTRUSION_QUIET_PROBES || probes >= INTRUSION_PROBES {
                     break;
                 }
             }

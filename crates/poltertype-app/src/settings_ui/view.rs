@@ -290,14 +290,12 @@ impl SettingsApp {
             ))
             .push(tip(
                 b,
-                #[cfg(target_os = "macos")]
-                "Tip: capture refuses single-letter combinations and bare \
-                 keys — at least one of ⌃ / ⌥ / ⇧ / ⌘ is required. \
-                 Esc cancels capture without changing anything.",
-                #[cfg(not(target_os = "macos"))]
-                "Tip: capture refuses single-letter combinations and bare \
-                 keys — at least one of Ctrl / Alt / Shift / Cmd is required. \
-                 Esc cancels capture without changing anything.",
+                format!(
+                    "Tip: capture refuses single-letter combinations and bare \
+                     keys — at least one of {} is required. \
+                     Esc cancels capture without changing anything.",
+                    key_list(&["Ctrl", "Alt", "Shift", "Cmd"], " / ")
+                ),
             ))
             .into()
     }
@@ -1054,14 +1052,11 @@ impl SettingsApp {
                     .push(modifiers_input),
             )
             .push(
-                Text::new(
-                    #[cfg(target_os = "macos")]
-                    "'+'-separated: Ctrl (⌃), Shift (⇧), Alt (⌥), Meta (⌘) — e.g. Ctrl+Shift. \
-                     Applied with digit keys 1–9. Leave empty to disable keyboard accept.",
-                    #[cfg(not(target_os = "macos"))]
-                    "'+'-separated: Ctrl, Shift, Alt, Meta — e.g. Ctrl+Shift. Applied with \
+                Text::new(format!(
+                    "'+'-separated: {} — e.g. Ctrl+Shift. Applied with \
                      digit keys 1–9. Leave empty to disable keyboard accept.",
-                )
+                    named_key_list(&["Ctrl", "Shift", "Alt", "Meta"], ", ")
+                ))
                 .size(11)
                 .color(b.muted),
             );
@@ -1073,14 +1068,11 @@ impl SettingsApp {
             && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
         {
             chord_card = chord_card.push(
-                Text::new(
-                    #[cfg(target_os = "macos")]
-                    "At least one of Ctrl (⌃) / Alt (⌥) / Meta (⌘) is required — as written, \
-                     keyboard accept is off (clicking a suggestion still works).",
-                    #[cfg(not(target_os = "macos"))]
-                    "At least one of Ctrl / Alt / Meta is required — as written, keyboard \
+                Text::new(format!(
+                    "At least one of {} is required — as written, keyboard \
                      accept is off (clicking a suggestion still works).",
-                )
+                    named_key_list(&["Ctrl", "Alt", "Meta"], " / ")
+                ))
                 .size(11)
                 .color(b.warn),
             );
@@ -1264,8 +1256,8 @@ fn section_title(b: &'static theme::BrandPalette, text: &'static str) -> Element
 }
 
 /// Muted footnote at the bottom of a pane.
-fn tip(b: &'static theme::BrandPalette, text: &'static str) -> Element<'static, Message> {
-    Text::new(text).size(11).color(b.muted).into()
+fn tip(b: &'static theme::BrandPalette, text: impl Into<String>) -> Element<'static, Message> {
+    Text::new(text.into()).size(11).color(b.muted).into()
 }
 
 /// One mono glyph on a raised key — the site's `.keycap`.

@@ -1,0 +1,21 @@
+[package]
+name                  = "poltertype-autostart"
+description           = "Run-at-login registration, per OS, kept out of the binary crate."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tracing = { workspace = true }
+
+# No per-OS dependencies on purpose. Every backend drives the
+# platform's own tool (`launchctl`, `reg.exe`) or writes a plain file,
+# so this crate needs neither a registry binding nor a line of unsafe
+# — see the note in `lib.rs`.
