@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::Receiver;
 use poltertype_input::{InputError, KeyDirection, KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
+use poltertype_types::logsafe;
 use tracing::{debug, warn};
 
 use crate::audio::SoundEvent;
@@ -46,7 +47,14 @@ impl SwitcherEngine {
         live: Option<(&Receiver<KeyEvent>, &mut WordBuffer)>,
         pointer_click_allowance: usize,
     ) -> bool {
-        debug!(%from, %to, %original, %corrected, %reason, "applying correction");
+        debug!(
+            %from,
+            %to,
+            original = %logsafe::redact_word(original),
+            corrected = %logsafe::redact_word(corrected),
+            %reason,
+            "applying correction"
+        );
 
         // A same-layout replacement (spelling suggestion) has no
         // layout to flip and no pre-flight to run — everything below

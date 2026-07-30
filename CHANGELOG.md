@@ -6,6 +6,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **Typed words no longer appear in logs — at any level, in any
+  build.** The decision diagnostics embedded the word they judged
+  ("current \`…\` is a dictionary word", `original=… corrected=…`),
+  and the correction summary logged both words at INFO — the default
+  level — so a release build with default settings wrote typed words
+  into the on-disk log, contradicting the README's privacy promise.
+  Every such site now renders words as `<N chars>`. Developers can
+  see the words in a **debug build only** by setting
+  `POLTERTYPE_UNSAFE_LOG_WORDS=1`; release builds redact
+  unconditionally, at compile time.
+
 ### Fixed
 
 - **Wrong-layout words containing a cross-layout letter now get

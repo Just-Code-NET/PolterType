@@ -7,8 +7,12 @@
 
 mod consts;
 mod enums;
+pub mod logsafe;
 mod types;
 
 pub use consts::*;
 pub use enums::*;
 pub use types::*;
+
+#[cfg(test)]
+mod tests;

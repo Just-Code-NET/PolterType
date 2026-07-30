@@ -5,7 +5,7 @@ use crossbeam_channel::Receiver;
 use poltertype_detect::{Verdict, looks_like_code_token};
 use poltertype_input::{KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
-use poltertype_types::SwitchAction;
+use poltertype_types::{SwitchAction, logsafe};
 use tracing::{debug, warn};
 
 use crate::commands::find_matching_command;
@@ -186,12 +186,13 @@ impl SwitcherEngine {
         // anyway (the line is already submitted). Stay out of it.
         if is_submission_boundary(boundary_char) {
             debug!(
-                token = %current_text,
+                token = %logsafe::redact_word(&current_text),
                 "skipping auto-switch: submission boundary (Enter/Tab)"
             );
             let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
                 reason: format!(
-                    "submission boundary after `{current_text}` — not re-emitting Enter/Tab"
+                    "submission boundary after {} — not re-emitting Enter/Tab",
+                    logsafe::redact_word(&current_text)
                 ),
             });
             return;
@@ -205,13 +206,14 @@ impl SwitcherEngine {
         // half-way through. Skip.
         if is_structural_boundary(boundary_char) {
             debug!(
-                token = %current_text,
+                token = %logsafe::redact_word(&current_text),
                 boundary = %boundary_char,
                 "skipping auto-switch: structural boundary"
             );
             let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
                 reason: format!(
-                    "structural boundary `{boundary_char}` after `{current_text}` — likely URL / path / email / code"
+                    "structural boundary `{boundary_char}` after {} — likely URL / path / email / code",
+                    logsafe::redact_word(&current_text)
                 ),
             });
             return;
@@ -238,12 +240,13 @@ impl SwitcherEngine {
         // `last_word` was stashed above before any filter ran.
         if snap.engine.suppress_for_all_caps && looks_like_all_caps(&current_text) {
             debug!(
-                token = %current_text,
+                token = %logsafe::redact_word(&current_text),
                 "skipping auto-switch: word is ALL CAPS (likely abbreviation)"
             );
             let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
                 reason: format!(
-                    "`{current_text}` is ALL CAPS — likely an abbreviation, not a wrong-layout word"
+                    "{} is ALL CAPS — likely an abbreviation, not a wrong-layout word",
+                    logsafe::redact_word(&current_text)
                 ),
             });
             return;
@@ -274,12 +277,15 @@ impl SwitcherEngine {
             render_for_code_check(&keys, &current_layout, &self.layouts, &current_text);
         if snap.engine.suppress_in_identifiers && looks_like_code_token(&token_for_code_check) {
             debug!(
-                token = %current_text,
-                cleaned = %token_for_code_check,
+                token = %logsafe::redact_word(&current_text),
+                cleaned = %logsafe::redact_word(&token_for_code_check),
                 "skipping auto-switch: looks like code identifier"
             );
             let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
-                reason: format!("token `{current_text}` looks like an identifier"),
+                reason: format!(
+                    "token {} looks like an identifier",
+                    logsafe::redact_word(&current_text)
+                ),
             });
             return;
         }

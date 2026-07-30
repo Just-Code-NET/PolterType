@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use poltertype_types::{DetectionVerdict, LayoutId};
+use poltertype_types::{DetectionVerdict, LayoutId, logsafe};
 
 use crate::enums::{Script, Verdict};
 use crate::text::{looks_like_acronym, non_word_char_count};
@@ -150,7 +150,10 @@ impl Detector for WordPlausibilityDetector {
         // `HELLO`) still go through the normal scoring path.
         if looks_like_acronym(current_text) {
             return Verdict::Keep {
-                reason: format!("current `{current_text}` looks like an all-caps acronym"),
+                reason: format!(
+                    "current {} looks like an all-caps acronym",
+                    logsafe::redact_word(current_text)
+                ),
             };
         }
 
@@ -162,8 +165,11 @@ impl Detector for WordPlausibilityDetector {
         if current_fit >= self.keep_threshold {
             return Verdict::Keep {
                 reason: format!(
-                    "current `{current_text}` plausibly fits {} ({:.2} ≥ keep {:.2})",
-                    ctx.current_layout, current_fit, self.keep_threshold
+                    "current {} plausibly fits {} ({:.2} ≥ keep {:.2})",
+                    logsafe::redact_word(current_text),
+                    ctx.current_layout,
+                    current_fit,
+                    self.keep_threshold
                 ),
             };
         }

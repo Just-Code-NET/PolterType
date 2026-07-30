@@ -32,22 +32,20 @@ pub(crate) fn handle_engine_event(
         SwitcherEvent::Corrected {
             from_layout,
             to_layout,
-            original_text,
-            corrected_text,
+            original_text: _,
+            corrected_text: _,
             reason,
         } => {
-            info!(
-                %from_layout,
-                %to_layout,
-                original = %original_text,
-                corrected = %corrected_text,
-                %reason,
-                "correction applied"
-            );
+            // The typed text stays out of this line deliberately —
+            // this fires at INFO, which is the default log level, so
+            // anything here lands in the on-disk log of a release
+            // build. The layout transition plus the (already
+            // redacted) reason is the whole diagnostic story; the
+            // words themselves are only visible via
+            // `poltertype_types::logsafe` in an opted-in debug build.
+            info!(%from_layout, %to_layout, %reason, "correction applied");
             // System notification — the user explicitly opted into
-            // these via `[general].show_notifications`. We never log
-            // the actual typed text in the notification body (per
-            // CLAUDE.md: never log user-typed text); the notification
+            // these via `[general].show_notifications`. The body
             // shows only the layout transition, which is the useful
             // "what just happened" signal.
             if settings.snapshot().general.show_notifications {

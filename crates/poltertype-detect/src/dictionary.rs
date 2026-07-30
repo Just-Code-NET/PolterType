@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use fst::Set as FstSet;
 use parking_lot::RwLock;
-use poltertype_types::{DetectionVerdict, LayoutId};
+use poltertype_types::{DetectionVerdict, LayoutId, logsafe};
 
 use crate::enums::Verdict;
 use crate::text::{letters_only_lower, non_word_char_count};
@@ -363,7 +363,8 @@ impl Detector for DictionaryDetector {
         if !current_has_stray && self.is_in_overlay(ctx.current_layout, &current_text) {
             return Verdict::Keep {
                 reason: format!(
-                    "current `{current_text}` is a {} overlay {label} word",
+                    "current {} is a {} overlay {label} word",
+                    logsafe::redact_word(&current_text),
                     ctx.current_layout
                 ),
             };
@@ -373,7 +374,10 @@ impl Detector for DictionaryDetector {
                 return Verdict::Switch(DetectionVerdict {
                     best_layout: (*layout).clone(),
                     confidence: 0.95,
-                    reason: format!("`{alt_text}` is a {layout} overlay {label} word"),
+                    reason: format!(
+                        "{} is a {layout} overlay {label} word",
+                        logsafe::redact_word(alt_text)
+                    ),
                 });
             }
         }
@@ -395,7 +399,8 @@ impl Detector for DictionaryDetector {
         if current_in_dict && !current_is_weak && !current_has_stray {
             return Verdict::Keep {
                 reason: format!(
-                    "current `{current_text}` is a {} {label} word",
+                    "current {} is a {} {label} word",
+                    logsafe::redact_word(&current_text),
                     ctx.current_layout
                 ),
             };
@@ -404,19 +409,26 @@ impl Detector for DictionaryDetector {
             if lookup(layout, alt_text) {
                 let reason = if current_is_weak {
                     format!(
-                        "current `{current_text}` is a weak {} {label} word; \
-                         alt `{alt_text}` is a strong {layout} hit",
-                        ctx.current_layout
+                        "current {} is a weak {} {label} word; \
+                         alt {} is a strong {layout} hit",
+                        logsafe::redact_word(&current_text),
+                        ctx.current_layout,
+                        logsafe::redact_word(alt_text)
                     )
                 } else if current_in_dict {
                     format!(
-                        "current render `{current_raw}` carries stray punctuation — \
-                         skeleton `{current_text}` is only a coincidental {} hit; \
-                         alt `{alt_text}` is a {layout} {label} word",
-                        ctx.current_layout
+                        "current render {} carries stray punctuation — \
+                         its skeleton is only a coincidental {} hit; \
+                         alt {} is a {layout} {label} word",
+                        logsafe::redact_word(current_raw),
+                        ctx.current_layout,
+                        logsafe::redact_word(alt_text)
                     )
                 } else {
-                    format!("`{alt_text}` is a {layout} {label} word")
+                    format!(
+                        "{} is a {layout} {label} word",
+                        logsafe::redact_word(alt_text)
+                    )
                 };
                 return Verdict::Switch(DetectionVerdict {
                     best_layout: (*layout).clone(),
@@ -438,8 +450,9 @@ impl Detector for DictionaryDetector {
             };
             return Verdict::Keep {
                 reason: format!(
-                    "current `{current_text}` is a {qualifier} {} {label} hit \
+                    "current {} is a {qualifier} {} {label} hit \
                      (no alt-side dict hit to override it)",
+                    logsafe::redact_word(&current_text),
                     ctx.current_layout
                 ),
             };
