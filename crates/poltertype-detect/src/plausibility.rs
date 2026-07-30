@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use poltertype_types::{DetectionVerdict, LayoutId};
 
 use crate::enums::{Script, Verdict};
-use crate::text::looks_like_acronym;
+use crate::text::{looks_like_acronym, non_word_char_count};
 use crate::traits::Detector;
 use crate::types::{DetectionContext, LayoutProfile};
 
@@ -104,7 +104,21 @@ impl WordPlausibilityDetector {
             _ => 0.75,
         };
 
-        Some((script_fit * 0.5 + vowel_fit * 0.5 - cluster_penalty).clamp(0.0, 1.0))
+        // (4) Stray punctuation: characters that can't be part of a
+        //     word in any layout (`;`, `]`, digits, …) — apostrophes
+        //     and hyphens exempt. Real prose never carries these
+        //     mid-token, and in the wrong-layout scenario they are
+        //     exactly the scancodes whose alt-layout rendering IS a
+        //     letter (0x27 → `;` in en-US, `ñ` in es-ES) — so the
+        //     rendering that keeps them as punctuation cannot be the
+        //     layout the user meant. Before this term `espa;ol`
+        //     scored a perfect 1.0 en-US fit and the keep-veto froze
+        //     the correction the landing page demos. 0.4 per stray:
+        //     one drops a 1.0 fit under `keep_threshold` (0.7) while
+        //     leaving the clean candidate's advantage intact.
+        let stray_penalty = non_word_char_count(text) as f32 * 0.4;
+
+        Some((script_fit * 0.5 + vowel_fit * 0.5 - cluster_penalty - stray_penalty).clamp(0.0, 1.0))
     }
 }
 

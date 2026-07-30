@@ -25,7 +25,10 @@ pub use dictionary::{DictionaryDetector, LayoutDictionary};
 pub use enums::{RewriteVerdict, Script, Verdict};
 pub use plausibility::WordPlausibilityDetector;
 pub use suggest::{KeyboardGeometry, Suggester};
-pub use text::{letters_only_lower, looks_like_acronym, looks_like_code_token, surface_lower};
+pub use text::{
+    letters_only_lower, looks_like_acronym, looks_like_code_token, non_word_char_count,
+    surface_lower,
+};
 pub use traits::{Detector, SuggestionProvider, WordRewriter};
 pub use types::{DetectionContext, LayoutProfile, RewriteRequest, Suggestion};
 

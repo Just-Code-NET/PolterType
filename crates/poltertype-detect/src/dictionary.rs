@@ -9,7 +9,7 @@ use parking_lot::RwLock;
 use poltertype_types::{DetectionVerdict, LayoutId};
 
 use crate::enums::Verdict;
-use crate::text::letters_only_lower;
+use crate::text::{letters_only_lower, non_word_char_count};
 use crate::traits::Detector;
 use crate::types::DetectionContext;
 
@@ -303,6 +303,15 @@ impl Detector for DictionaryDetector {
         // pure-letter words.
         let current_text = letters_only_lower(current_raw);
 
+        // …but a raw render that DOES carry stray punctuation is not
+        // the word the user typed, so its letters-only skeleton
+        // matching a dictionary entry is coincidence (`ma;ana` →
+        // `maana`, which the en-US FST happens to contain). Such a
+        // hit must never short-circuit a Keep — though it still wins
+        // by default when no alternate hits a dictionary either.
+        // Apostrophes / hyphens don't count as stray (`п'ять`).
+        let current_has_stray = non_word_char_count(current_raw) > 0;
+
         let letter_count = current_text.chars().count();
         if letter_count == 0 {
             return Verdict::NoOpinion;
@@ -351,7 +360,7 @@ impl Detector for DictionaryDetector {
         // Keep. Else if any alt layout's overlay claims it → Switch
         // (override the embedded lookup that would otherwise
         // declare the current layout the winner).
-        if self.is_in_overlay(ctx.current_layout, &current_text) {
+        if !current_has_stray && self.is_in_overlay(ctx.current_layout, &current_text) {
             return Verdict::Keep {
                 reason: format!(
                     "current `{current_text}` is a {} overlay {label} word",
@@ -383,7 +392,7 @@ impl Detector for DictionaryDetector {
         // switch on.
         let current_in_dict = lookup(ctx.current_layout, &current_text);
         let current_is_weak = !short && self.is_weak(ctx.current_layout, &current_text);
-        if current_in_dict && !current_is_weak {
+        if current_in_dict && !current_is_weak && !current_has_stray {
             return Verdict::Keep {
                 reason: format!(
                     "current `{current_text}` is a {} {label} word",
@@ -399,6 +408,13 @@ impl Detector for DictionaryDetector {
                          alt `{alt_text}` is a strong {layout} hit",
                         ctx.current_layout
                     )
+                } else if current_in_dict {
+                    format!(
+                        "current render `{current_raw}` carries stray punctuation — \
+                         skeleton `{current_text}` is only a coincidental {} hit; \
+                         alt `{alt_text}` is a {layout} {label} word",
+                        ctx.current_layout
+                    )
                 } else {
                     format!("`{alt_text}` is a {layout} {label} word")
                 };
@@ -410,14 +426,19 @@ impl Detector for DictionaryDetector {
             }
         }
 
-        // Current was a weak hit but no alt was in dict → keep
-        // (the weak word IS valid; we only override on a strong
-        // alt). Logged separately so the verdict-trail makes the
-        // weak-but-no-alt path obvious in the diagnostic logs.
+        // Current was a weak or stray-punctuation hit but no alt was
+        // in dict → keep (a weak word IS valid, and a stray-carrying
+        // token with no better explanation stays as typed). Logged
+        // separately so the verdict-trail makes this path obvious.
         if current_in_dict {
+            let qualifier = if current_is_weak {
+                "weak"
+            } else {
+                "coincidental"
+            };
             return Verdict::Keep {
                 reason: format!(
-                    "current `{current_text}` is a weak {} {label} word \
+                    "current `{current_text}` is a {qualifier} {} {label} hit \
                      (no alt-side dict hit to override it)",
                     ctx.current_layout
                 ),

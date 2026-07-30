@@ -4,6 +4,23 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Wrong-layout words containing a cross-layout letter now get
+  corrected.** Typing `mañana` or `español` with the US layout active
+  renders as `ma;ana` / `espa;ol` (`ñ` sits on the US `;` key) — and
+  both detectors used to freeze exactly this case: the plausibility
+  scorer ignored the `;` entirely (`espa;ol` scored a perfect en-US
+  fit and vetoed the switch), and the dictionary detector looked up
+  the letters-only skeleton, where over-inclusive bulk entries like
+  `maana` / `seor` produced a phantom "current is a real word" veto.
+  Interior punctuation (apostrophes and hyphens exempt) now crushes a
+  rendering's plausibility and demotes skeleton dictionary hits from
+  a veto to a tiebreaker, so the es–en pair the landing page demos
+  works end-to-end.
+
 ## [0.6.2] — PolterType runs on a Mac, and starts when you sign in
 
 PolterType runs on a Mac for the first time, and the "Start

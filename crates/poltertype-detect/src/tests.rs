@@ -879,3 +879,115 @@ fn surface_lower_folds_apostrophes_and_keeps_hyphens() {
     assert_eq!(surface_lower("а-а-а"), "а-а-а");
     assert_eq!(surface_lower("Don't;"), "don't");
 }
+
+// ---- Stray-punctuation (cross-layout artifact) regressions ----
+//
+// The es–en scenario the landing page demos: typing `mañana` with
+// en-US active renders as `ma;ana` (scancode 0x27 is `ñ` in es-ES,
+// `;` in en-US). Its letters-only skeleton `maana` happens to be an
+// embedded en-US entry, and `espa;ol` scored a perfect vowel/script
+// fit — each detector had its own way of freezing the correction.
+
+#[test]
+fn non_word_char_count_exempts_word_marks() {
+    assert_eq!(non_word_char_count("ma;ana"), 1);
+    assert_eq!(non_word_char_count("don't"), 0);
+    assert_eq!(non_word_char_count("п’ять"), 0);
+    assert_eq!(non_word_char_count("а-а-а"), 0);
+    assert_eq!(non_word_char_count("var2;"), 2);
+}
+
+#[test]
+fn dict_stray_punct_skeleton_hit_defers_to_alt() {
+    let en = LayoutId::from("en-US");
+    let es = LayoutId::from("es-ES");
+    let mut m = HashMap::new();
+    m.insert(
+        en.clone(),
+        dict_with_embedded(&["maana", "hello"], HashSet::new()),
+    );
+    m.insert(es.clone(), dict_with_embedded(&["mañana"], HashSet::new()));
+    let d = DictionaryDetector::new(m);
+    let cands = vec![(en.clone(), "ma;ana".into()), (es.clone(), "mañana".into())];
+    assert_switches_to(&d, &ctx(&en, &cands), &es);
+}
+
+#[test]
+fn dict_clean_skeleton_still_keeps() {
+    // Control: the same embedded entry typed WITHOUT stray
+    // punctuation is honoured exactly as before.
+    let en = LayoutId::from("en-US");
+    let es = LayoutId::from("es-ES");
+    let mut m = HashMap::new();
+    m.insert(en.clone(), dict_with_embedded(&["maana"], HashSet::new()));
+    m.insert(es.clone(), dict_with_embedded(&["mañana"], HashSet::new()));
+    let d = DictionaryDetector::new(m);
+    let cands = vec![(en.clone(), "maana".into()), (es.clone(), "maana".into())];
+    match d.judge(&ctx(&en, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep for clean `maana`, got {other:?}"),
+    }
+}
+
+#[test]
+fn dict_stray_punct_with_no_alt_hit_keeps() {
+    // A stray-carrying token no layout can explain stays as typed.
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let mut m = HashMap::new();
+    m.insert(en.clone(), dict_with_embedded(&["maana"], HashSet::new()));
+    m.insert(uk.clone(), dict_with_embedded(&["привіт"], HashSet::new()));
+    let d = DictionaryDetector::new(m);
+    let cands = vec![(en.clone(), "ma;ana".into()), (uk.clone(), "ьфжфтф".into())];
+    match d.judge(&ctx(&en, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep when no alt explains the token, got {other:?}"),
+    }
+}
+
+#[test]
+fn dict_stray_punct_skeleton_ignores_current_overlay() {
+    // Even a user-overlay claim on the skeleton must not keep a
+    // stray-carrying render: the overlay entry whitelists `maana`,
+    // it says nothing about `ma;ana`.
+    let en = LayoutId::from("en-US");
+    let es = LayoutId::from("es-ES");
+    let en_overlay: HashSet<String> = ["maana"].iter().map(|s| (*s).to_owned()).collect();
+    let mut m = HashMap::new();
+    m.insert(
+        en.clone(),
+        LayoutDictionary::from_overlay_only(en_overlay, HashSet::new(), HashSet::new()),
+    );
+    m.insert(es.clone(), dict_with_embedded(&["mañana"], HashSet::new()));
+    let d = DictionaryDetector::new(m);
+    let cands = vec![(en.clone(), "ma;ana".into()), (es.clone(), "mañana".into())];
+    assert_switches_to(&d, &ctx(&en, &cands), &es);
+}
+
+#[test]
+fn plausibility_stray_punct_kills_current_fit() {
+    let d = detector();
+    let en = LayoutId::from("en-US");
+    let clean = d.fit(&en, "espaol").unwrap();
+    let stray = d.fit(&en, "espa;ol").unwrap();
+    assert!(stray < clean);
+    assert!(
+        stray < d.keep_threshold,
+        "a token with `;` inside must not clear the keep veto (fit {stray})"
+    );
+}
+
+#[test]
+fn plausibility_no_keep_veto_for_stray_current() {
+    // Regression for the live `espa;ol` case: when no reachable
+    // alternate renders it better, the verdict must be NoOpinion —
+    // not a "plausibly fits" Keep veto.
+    let d = detector();
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "espa;ol".into()),
+        (uk.clone(), "уыфжщд".into()),
+    ];
+    assert_no_opinion(&d, &ctx(&en, &cands));
+}

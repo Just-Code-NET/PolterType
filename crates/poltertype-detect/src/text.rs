@@ -26,6 +26,25 @@ pub fn letters_only_lower(s: &str) -> String {
     out
 }
 
+/// Count of characters in `s` that cannot be part of a word in ANY
+/// layout: not alphabetic and not one of the marks real words carry
+/// inside them (the apostrophe variants and the hyphen — the same
+/// set [`surface_lower`] preserves; keep the two in sync).
+///
+/// The motivating case is the cross-layout artifact. Scancode 0x27
+/// renders as `;` under en-US but `ñ` under es-ES (and `ж` under
+/// uk-UA), so a user typing `mañana` with the wrong layout active
+/// produces the current-render `ma;ana`. Its letters-only skeleton
+/// `maana` happens to be an embedded-dictionary entry — and a real
+/// prose word never carries a `;` mid-token — so detectors use this
+/// count to tell "the user really typed this word" apart from "the
+/// letters between the punctuation coincidentally spell one".
+pub fn non_word_char_count(s: &str) -> usize {
+    s.chars()
+        .filter(|c| !c.is_alphabetic() && !matches!(c, '\'' | '’' | 'ʼ' | '-'))
+        .count()
+}
+
 /// Suggestions-side canonicalisation: lowercase, keep letters plus
 /// apostrophes and hyphens, fold the apostrophe variants (`’` U+2019,
 /// `ʼ` U+02BC) to `'`. Everything else is dropped.
