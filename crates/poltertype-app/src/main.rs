@@ -18,6 +18,7 @@
 mod icon_render;
 mod settings_ui;
 
+mod autostart;
 mod bridges;
 mod consts;
 mod detectors;
@@ -103,7 +104,28 @@ fn main() -> Result<()> {
     let _log_guard = init_tracing();
     info!(version = env!("CARGO_PKG_VERSION"), "{APP_NAME} starting");
 
-    let instance = SingleInstance::new(APP_ID).context("create single-instance lock")?;
+    // On macOS the `single-instance` crate treats the id as a file
+    // path and flocks it. A bare id lands in the process cwd — which
+    // is `/` (read-only system volume) when the app is launched via
+    // Finder / `open`, so startup died with "Read-only file system".
+    // Give it an absolute path under the per-user config dir instead.
+    // On Linux (abstract socket) and Windows (named mutex) the id is
+    // not a path, so keep it untouched there.
+    #[cfg(target_os = "macos")]
+    let lock_id: String = {
+        let dir = poltertype_core::settings::SettingsStore::project_dirs()
+            .map(|d| d.config_dir().to_path_buf())
+            .unwrap_or_else(|_| std::env::temp_dir());
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            warn!(?e, ?dir, "could not create config dir for instance lock");
+        }
+        dir.join(format!("{APP_ID}.lock"))
+            .to_string_lossy()
+            .into_owned()
+    };
+    #[cfg(not(target_os = "macos"))]
+    let lock_id: String = APP_ID.to_owned();
+    let instance = SingleInstance::new(&lock_id).context("create single-instance lock")?;
     if !instance.is_single() {
         warn!("another instance is already running, exiting");
         return Ok(());
@@ -118,6 +140,11 @@ fn main() -> Result<()> {
         }
     };
     info!(path = ?settings.path(), "settings loaded");
+
+    // Make the OS autostart entry match the setting (macOS
+    // LaunchAgent; no-op elsewhere for now). Runs on every startup so
+    // a config edited by hand takes effect too.
+    autostart::sync(settings.snapshot().general.autostart);
 
     // ─── Layout switcher (built first so we can query active OS
     //                     layouts before loading the DB) ────────────
@@ -341,7 +368,17 @@ fn main() -> Result<()> {
         .is_some_and(|l| l.backend_name() == "linux-wayland-evdev");
 
     // ─── Tao event loop + tray + global hotkeys ────────────────────
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    #[allow(unused_mut)]
+    let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
+    #[cfg(target_os = "macos")]
+    {
+        // Tray-only app: LSUIElement alone is not enough — tao
+        // explicitly applies ActivationPolicy::Regular (its default)
+        // at startup, which puts us in the Dock anyway. Accessory
+        // keeps us out of the Dock and the Cmd+Tab switcher.
+        use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
+        event_loop.set_activation_policy(ActivationPolicy::Accessory);
+    }
 
     let menu = Menu::new();
     // Onboarding alert entry — present only when keyboard hooks

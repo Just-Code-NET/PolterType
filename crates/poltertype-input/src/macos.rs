@@ -15,9 +15,9 @@
 //! `CGEventPost` with `CGEventKeyboardSetUnicodeString` — same
 //! layout-independent contract as Windows' `KEYEVENTF_UNICODE`.
 //!
-//! > **Status:** written from Apple's documented behaviour and
-//! > validated only via `cargo check` on macOS CI. Runtime tuning
-//! > will land as macOS contributors report issues.
+//! > **Status:** validated end-to-end on macOS 15 (Intel): the tap
+//! > receives events, corrections emit, and injected events are
+//! > recognised via the user-data tag.
 
 #![allow(unused_imports, dead_code)] // macOS-only.
 
@@ -30,7 +30,7 @@ use core_foundation::base::TCFType;
 use core_foundation::mach_port::CFMachPortRef;
 use core_foundation::runloop::{
     CFRunLoop, CFRunLoopAddSource, CFRunLoopRunInMode, CFRunLoopSource, CFRunLoopSourceRef,
-    kCFRunLoopCommonModes,
+    kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
 use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
@@ -38,7 +38,7 @@ use core_graphics::event::{
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use crossbeam_channel::Sender;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers};
 
@@ -52,9 +52,55 @@ use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modif
 const K_CG_KEYBOARD_EVENT_KEYCODE: u32 = 9;
 const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 
+/// Magic value stamped into `kCGEventSourceUserData` on every event
+/// WE post, so the listener can tag them `injected` and the engine
+/// never mistakes our own backspaces / retypes for user keystrokes.
+/// Without this the emitted events echo back through the tap as
+/// "real" input: the backspace burst poisons the word buffer right
+/// after a correction, and every second word gets skipped as tainted.
+const EMITTER_TAG: i64 = 0x504F4C54; // "POLT"
+
+// ─── Accessibility permission prompt ─────────────────────────────────
+//
+// `CGEventTapCreate` fails *silently* when the app lacks Accessibility
+// rights — no system dialog. The supported way to ask is
+// `AXIsProcessTrustedWithOptions({ kAXTrustedCheckOptionPrompt: true })`,
+// which drops the app into System Settings → Privacy & Security →
+// Accessibility and shows the "PolterType would like to control this
+// computer" alert. We call it when the tap fails to attach so a
+// first-launch user gets the prompt instead of a dead tray icon.
+
+use core_foundation::dictionary::CFDictionaryRef;
+use core_foundation::string::CFStringRef;
+
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
+    static kAXTrustedCheckOptionPrompt: CFStringRef;
+}
+
+/// Check Accessibility trust; prompt the user when not yet trusted.
+fn request_accessibility_prompt() {
+    use core_foundation::base::TCFType;
+    unsafe {
+        let key =
+            core_foundation::string::CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
+        let value = core_foundation::boolean::CFBoolean::true_value();
+        let options = core_foundation::dictionary::CFDictionary::from_CFType_pairs(&[(
+            key.as_CFType(),
+            value.as_CFType(),
+        )]);
+        let trusted = AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef());
+        debug!(trusted, "AXIsProcessTrustedWithOptions(prompt) result");
+    }
+}
+
 // ─── Listener ────────────────────────────────────────────────────────
 
 static EVENT_SINK: OnceLock<parking_lot::RwLock<Option<Sender<KeyEvent>>>> = OnceLock::new();
+
+static FIRST_EVENT_LOGGED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
     EVENT_SINK.get_or_init(|| parking_lot::RwLock::new(None))
@@ -124,13 +170,19 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                 let scancode = mac_keycode_to_sc1(vk as u16);
                 let flags = event.get_flags();
                 let injected = user_data != 0;
+                // Fold Caps Lock into the shift bit the way the X11
+                // backend does: caps-on + no Shift = uppercase, caps-on
+                // + held Shift = lowercase. The engine's all-caps and
+                // replay logic rely on this combined bit.
+                let shift = flags.contains(CGEventFlags::CGEventFlagShift)
+                    ^ flags.contains(CGEventFlags::CGEventFlagAlphaShift);
 
                 let ev_out = KeyEvent {
                     vk,
                     scancode,
                     direction,
                     modifiers: Modifiers {
-                        shift: flags.contains(CGEventFlags::CGEventFlagShift),
+                        shift,
                         control: flags.contains(CGEventFlags::CGEventFlagControl),
                         alt: flags.contains(CGEventFlags::CGEventFlagAlternate),
                         meta: flags.contains(CGEventFlags::CGEventFlagCommand),
@@ -140,6 +192,19 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                 };
                 if let Some(slot) = EVENT_SINK.get() {
                     if let Some(sink) = slot.read().as_ref() {
+                        if !FIRST_EVENT_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                            debug!("first macOS key event delivered to engine");
+                        }
+                        trace!(
+                            scancode = ev_out.scancode,
+                            ?direction,
+                            shift = ev_out.modifiers.shift,
+                            ctrl = ev_out.modifiers.control,
+                            alt = ev_out.modifiers.alt,
+                            meta = ev_out.modifiers.meta,
+                            injected = ev_out.injected,
+                            "mac key"
+                        );
                         if let Err(err) = sink.try_send(ev_out) {
                             debug!(?err, "dropping macOS key event");
                         }
@@ -159,6 +224,10 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     ) {
         Ok(t) => t,
         Err(()) => {
+            // Trigger the system Accessibility prompt so the user has
+            // a one-click path to System Settings, then report the
+            // failure as before.
+            request_accessibility_prompt();
             let _ = ready_tx.send(Err(
                 "CGEventTapCreate failed (likely missing Accessibility permission)".into(),
             ));
@@ -191,9 +260,13 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     let _ = ready_tx.send(Ok(()));
 
     loop {
-        // Safety: standard CFRunLoop call.
+        // Safety: standard CFRunLoop call. Must run the loop in a real
+        // mode (kCFRunLoopDefaultMode is in the common-mode set the
+        // tap source was added to) — passing kCFRunLoopCommonModes as
+        // the *run* mode is legal per the docs but on macOS 15 the tap
+        // source never fires that way, so the callback starves.
         unsafe {
-            let _ = CFRunLoopRunInMode(kCFRunLoopCommonModes, 60.0, 0);
+            let _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 60.0, 0);
         }
         if EVENT_SINK.get().map(|s| s.read().is_none()).unwrap_or(true) {
             break;
@@ -243,9 +316,11 @@ impl KeyEmitter for MacosEmitter {
         for _ in 0..n {
             let down = CGEvent::new_keyboard_event(src.clone(), KVK_DELETE, true)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event(down) failed".into()))?;
+            down.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             down.post(CGEventTapLocation::HID);
             let up = CGEvent::new_keyboard_event(src.clone(), KVK_DELETE, false)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event(up) failed".into()))?;
+            up.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             up.post(CGEventTapLocation::HID);
         }
         Ok(())
@@ -263,11 +338,13 @@ impl KeyEmitter for MacosEmitter {
             let down = CGEvent::new_keyboard_event(src.clone(), 0, true)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event failed".into()))?;
             down.set_string_from_utf16_unchecked(&utf16);
+            down.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             down.post(CGEventTapLocation::HID);
 
             let up = CGEvent::new_keyboard_event(src.clone(), 0, false)
                 .map_err(|()| InputError::Os("CGEvent::new_keyboard_event failed".into()))?;
             up.set_string_from_utf16_unchecked(&utf16);
+            up.set_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA, EMITTER_TAG);
             up.post(CGEventTapLocation::HID);
         }
         Ok(())
@@ -279,6 +356,15 @@ impl KeyEmitter for MacosEmitter {
 }
 
 // ─── Apple → Win SC Set-1 keycode mapping ────────────────────────────
+//
+// The engine's buffer classifier is written against Windows SC-1
+// scancodes (0x2A = LShift, 0x36 = RShift, 0x39 = Space, 0x0E =
+// Backspace, …). Apple virtual keycodes overlap that range with
+// DIFFERENT meanings — e.g. Apple 0x39 is Caps Lock but SC-1 0x39 is
+// Space, Apple 0x3C (RShift) lands in the classifier's F-row
+// "end and discard" range. Every key the classifier pattern-matches
+// must therefore be translated explicitly; an identity fallback is
+// only safe for keys outside all of the classifier's ranges.
 
 fn mac_keycode_to_sc1(kvk: u16) -> u32 {
     match kvk {
@@ -322,9 +408,11 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x1D => 0x0B, // 0
         // Boundaries / nav
         0x24 => 0x1C, // Return
+        0x4C => 0x1C, // Numpad Enter
         0x30 => 0x0F, // Tab
         0x31 => 0x39, // Space
         0x33 => 0x0E, // Delete (= Backspace)
+        0x75 => 0x53, // Forward Delete
         0x35 => 0x01, // Esc
         0x2B => 0x33, // Comma
         0x2F => 0x34, // Period
@@ -337,6 +425,49 @@ fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x32 => 0x29, // backtick
         0x18 => 0x0D, // =
         0x1B => 0x0C, // -
+        // Modifiers — mapped onto the SC-1 modifier slots the
+        // classifier recognises as "discard, stay inside the word".
+        // Note: macOS delivers pure modifier presses as `FlagsChanged`
+        // events, which the tap mask doesn't subscribe to yet, so
+        // these arms are dormant until it does — they exist for
+        // correctness and parity with the Windows/Linux streams,
+        // where modifiers do arrive. Without the mapping, Apple 0x3C
+        // (RShift) / 0x3B (LControl) would land in the classifier's
+        // F-row range and KILL any word typed with them, and Apple
+        // 0x39 (Caps Lock) would alias onto SC-1 Space.
+        0x38 => 0x2A, // LShift
+        0x3C => 0x36, // RShift
+        0x3B => 0x1D, // LControl
+        0x3E => 0x1D, // RControl
+        0x3A => 0x38, // LOption (Alt)
+        0x3D => 0x38, // ROption
+        0x37 => 0x5B, // LCommand (SC-1 LWin)
+        0x36 => 0x5C, // RCommand (SC-1 RWin)
+        0x39 => 0x3A, // Caps Lock
+        // Arrow cluster (SC-1 extended positions → nav, end the word).
+        0x7E => 0x48, // Up
+        0x7D => 0x50, // Down
+        0x7B => 0x4B, // Left
+        0x7C => 0x4D, // Right
+        0x73 => 0x47, // Home
+        0x77 => 0x4F, // End
+        0x74 => 0x49, // PageUp
+        0x79 => 0x51, // PageDown
+        // Function row (SC-1 F1..F10 land in the classifier's
+        // end-and-discard range; F11/F12 sit outside it, same as on
+        // Windows — parity, not an omission).
+        0x7A => 0x3B, // F1
+        0x78 => 0x3C, // F2
+        0x63 => 0x3D, // F3
+        0x76 => 0x3E, // F4
+        0x60 => 0x3F, // F5
+        0x61 => 0x40, // F6
+        0x62 => 0x41, // F7
+        0x64 => 0x42, // F8
+        0x65 => 0x43, // F9
+        0x6D => 0x44, // F10
+        0x67 => 0x57, // F11
+        0x6F => 0x58, // F12
         _ => kvk as u32,
     }
 }
