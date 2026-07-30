@@ -75,6 +75,9 @@ pub struct EvdevGate {
     /// Bumped by every `hold()`, so the device thread knows to give
     /// each device one fresh grab attempt and no more.
     epoch: AtomicU64,
+    /// The epoch whose emitter-proxy re-verification already ran —
+    /// see the top of [`Self::service`]'s hold path.
+    verified_epoch: AtomicU64,
     origin: Instant,
 }
 
@@ -100,6 +103,7 @@ impl EvdevGate {
             available: AtomicBool::new(false),
             deadline_ms: AtomicU64::new(0),
             epoch: AtomicU64::new(1),
+            verified_epoch: AtomicU64::new(0),
             origin: Instant::now(),
         }
     }
@@ -222,6 +226,41 @@ impl EvdevGate {
 
         if want {
             let epoch = self.epoch.load(Ordering::Acquire);
+            // Once per hold, before grabbing anything: re-verify that
+            // our own emitter is still unproxied. The startup probe
+            // races the remapper's asynchronous grab of a freshly
+            // created device, and losing that race is catastrophic —
+            // with keyd proxying our emitter, holding the remapper's
+            // virtual keyboard funnels every input path (the user's
+            // keys AND our own corrections) into this process, and the
+            // session's input dies until the watchdog blinks. That is
+            // not a theoretical hazard; it took a real session down on
+            // 2026-07-31. EBUSY here turns the gate off for good
+            // (until restart), exactly like the startup probe would
+            // have. No emitter in the list means it hasn't been picked
+            // up by a rescan yet — proceed on the startup verdict.
+            if self.verified_epoch.swap(epoch, Ordering::AcqRel) != epoch {
+                if let Some(own) = devices.iter_mut().find(|d| d.state().is_ours) {
+                    match own.grab() {
+                        Ok(()) => {
+                            let _ = own.ungrab();
+                        }
+                        Err(e) => {
+                            warn!(
+                                dev = %own.label(),
+                                ?e,
+                                "key gate off: an input remapper grabbed our emitter after \
+                                 startup — holding the keyboard now would funnel every \
+                                 input path into us; corrections proceed unheld"
+                            );
+                            self.available.store(false, Ordering::Release);
+                            self.want.store(false, Ordering::Release);
+                            self.held.store(false, Ordering::Release);
+                            return;
+                        }
+                    }
+                }
+            }
             let mut taken = 0usize;
             for od in devices.iter_mut() {
                 if od.state().grabbed {

@@ -126,7 +126,11 @@ fn accept_device(path: PathBuf, dev: Device, log_skips: bool) -> Option<OpenDevi
                 return None;
             }
             debug!(?path, name = %name, "evdev: opened keyboard");
-            let is_ours = name == EMITTER_DEVICE_NAME;
+            // Both signals: the name (also covers another instance's
+            // emitter) and the node identity recorded at creation
+            // (immune to name drift). Grabbing our own device funnels
+            // the whole session's input into this process.
+            let is_ours = name == EMITTER_DEVICE_NAME || own_nodes::is_own(&path);
             Some(OpenDevice {
                 path,
                 dev,

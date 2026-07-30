@@ -58,13 +58,29 @@ impl UinputEmitter {
         }
         // evdev 0.13 superseded `VirtualDeviceBuilder::new()` with
         // `VirtualDevice::builder()`.
-        let dev = VirtualDevice::builder()
+        let mut dev = VirtualDevice::builder()
             .map_err(|e| InputError::Os(format!("uinput build: {e}")))?
             .name(EMITTER_DEVICE_NAME)
             .with_keys(&keys)
             .map_err(|e| InputError::Os(format!("uinput with_keys: {e}")))?
             .build()
             .map_err(|e| InputError::Os(format!("uinput create: {e}")))?;
+        // Record the node(s) the kernel assigned, so the gate can
+        // exclude our own device by identity rather than trusting the
+        // name comparison alone — see `own_nodes` for why that
+        // matters.
+        match dev.enumerate_dev_nodes_blocking() {
+            Ok(nodes) => {
+                for node in nodes.flatten() {
+                    debug!(?node, "uinput emitter node recorded");
+                    own_nodes::record(node);
+                }
+            }
+            Err(e) => warn!(
+                ?e,
+                "could not enumerate our uinput node — device discovery falls back to name matching"
+            ),
+        }
         *g = Some(dev);
         Ok(())
     }

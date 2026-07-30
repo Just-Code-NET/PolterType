@@ -21,6 +21,18 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Linux: the key gate can no longer freeze the whole session's
+  input.** The gate's "is our emitter proxied by a remapper?" probe
+  ran once, at startup — racing keyd's own asynchronous grab of the
+  freshly created device. Winning that race armed the gate on a stack
+  where it must stand down, and the first correction then grabbed the
+  remapper's virtual keyboard: every input path — the user's keys and
+  our own corrections alike — funnelled into PolterType, and the
+  session's input died until a reboot. The gate now re-verifies the
+  emitter before **every** hold and shuts itself off for the rest of
+  the run the moment the emitter turns busy. The emitter also records
+  its device node at creation, so the never-grab-our-own-device
+  exclusion works by identity rather than name comparison.
 - **Wrong-layout words containing a cross-layout letter now get
   corrected.** Typing `mañana` or `español` with the US layout active
   renders as `ma;ana` / `espa;ol` (`ñ` sits on the US `;` key) — and

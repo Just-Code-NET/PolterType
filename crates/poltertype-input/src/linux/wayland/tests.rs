@@ -128,10 +128,47 @@ fn holds_only_the_keyboard_in_use() {
         devices[2].grabs, 0,
         "an idle keyboard is not worth the release cost"
     );
-    assert_eq!(
-        devices[3].grabs, 0,
-        "grabbing our own emitter would hold back the correction itself"
+    assert!(
+        !devices[3].gate.grabbed,
+        "our own emitter must never stay grabbed"
     );
+    assert_eq!(
+        devices[3].grabs, devices[3].ungrabs,
+        "the proxy re-verification must give the emitter straight back"
+    );
+}
+
+/// Regression for the 2026-07-31 session lockup: the startup probe
+/// races an input remapper's asynchronous grab of our freshly created
+/// emitter. If the remapper wins after the probe said "unproxied", a
+/// hold would funnel every input path into this process — so the
+/// per-hold re-verification must catch the EBUSY, refuse the hold and
+/// turn the gate off for the rest of the run.
+#[test]
+fn a_hold_is_refused_when_our_emitter_became_proxied() {
+    let gate = ready_gate();
+    let mut devices = [
+        FakeDevice::keyboard("active-keyboard"),
+        FakeDevice::keyboard("our-emitter").ours().busy(),
+    ];
+
+    gate.hold_for_test();
+    poll(&gate, &mut devices);
+
+    assert!(
+        !gate.is_held_for_test(),
+        "the hold must be refused outright"
+    );
+    assert_eq!(
+        devices[0].grabs, 0,
+        "no user keyboard may be grabbed once the emitter is proxied"
+    );
+    assert!(!gate.available(), "the gate must stay off until restart");
+
+    // …and a later hold must not even reach the devices.
+    gate.hold_for_test();
+    poll(&gate, &mut devices);
+    assert_eq!(devices[0].grabs, 0);
 }
 
 #[test]

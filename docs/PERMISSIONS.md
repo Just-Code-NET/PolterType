@@ -145,12 +145,18 @@ permission is needed — it uses the `/dev/input/event*` access
 the same design) holds every keyboard exclusively — *including
 PolterType's own virtual one* — and re-emits through a single virtual
 device. Grabbing that device would block PolterType's own corrections
-along with the user's typing, so at startup PolterType checks whether
-it can grab its own emitter and, when it cannot, quietly leaves the
-keyboard alone. The log line says so at `INFO`:
+along with the user's typing, so PolterType checks whether it can grab
+its own emitter — at startup, and again before **every** hold. The
+re-check matters: a remapper grabs a freshly created device
+*asynchronously*, so the startup probe alone can win the race, arm the
+gate, and let the first correction funnel the whole session's input
+into PolterType. If the emitter turns out proxied at hold time, the
+gate switches itself off for the rest of the run. The log line says so
+at `INFO` (startup) or `WARN` (hold time):
 
 ```
 key gate off: an input remapper holds our emitter …
+key gate off: an input remapper grabbed our emitter after startup …
 ```
 
 Corrections still work — they just fall back to detecting and repairing
