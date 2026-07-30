@@ -107,7 +107,10 @@ pub(crate) fn name_to_xkb_code(name: &str) -> String {
     let lower = name.to_lowercase();
     match lower.as_str() {
         s if s.contains("ukrain") => "ua".into(),
-        s if s.contains("english") || s.contains("us") => "us".into(),
+        // `us` must be an exact match, not a substring — "Russian"
+        // and "Belarusian" both contain the letters "us", and the
+        // broad check made every Russian keymap resolve to en-US.
+        s if s.contains("english") || s == "us" => "us".into(),
         s if s.contains("russian") => "ru".into(),
         s if s.contains("german") => "de".into(),
         s if s.contains("french") => "fr".into(),

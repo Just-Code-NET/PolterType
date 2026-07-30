@@ -26,6 +26,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
   the engine stopped recognising its own current layout — renders
   came back empty and every subsequent word got a phantom
   re-correction.
+- **Hyprland: the "Russian" keymap no longer resolves to `en-US`.**
+  The `us` shorthand in the same table matched as a substring, and
+  "R**us**sian" (as well as "Belar**us**ian") contains it — so a user
+  switching to the Russian layout had the engine convinced they were
+  typing English. Found by the new all-bundled-languages round-trip
+  test.
 
 ## [0.6.2] — PolterType runs on a Mac, and starts when you sign in
 

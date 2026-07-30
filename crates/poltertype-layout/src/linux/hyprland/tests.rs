@@ -43,6 +43,9 @@ fn pretty_keymap_names_resolve_for_all_bundled_languages() {
         ("French", "fr-FR"),
         ("Spanish", "es-ES"),
         ("Spanish (Latin American)", "es-ES"),
+        // "Belarusian" contains the letters "us" — it must fall
+        // through as unknown, not resolve to en-US.
+        ("Belarusian", "Belarusian"),
     ] {
         assert_eq!(
             keymap_to_layout(name),
