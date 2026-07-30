@@ -119,6 +119,10 @@ crates/
                                 in every build, and it is the only network code
   poltertype-popup/   library — suggestion tooltip: focus-free overlay
                                 (Wayland layer-shell / X11 override-redirect)
+  poltertype-autostart/ library — run at login: LaunchAgent (macOS),
+                      HKCU run key (Windows), XDG entry (Linux)
+  poltertype-shell/   library — per-OS app-shell quirks: instance-lock
+                      identity, Dock activation policy, keycap glyphs
   poltertype-tray/    library — per-OS tray quirks (Linux: keeps the GTK
                                 backend's deprecation warning off stderr)
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
@@ -188,13 +192,25 @@ function with a special case.
 * The OS hook callback never blocks — events go straight onto a
   `crossbeam-channel`; the engine processes them on a worker thread.
 * Platform code lives behind `cfg`-gated modules in `poltertype-input`,
-  `poltertype-layout`, `poltertype-update`, `poltertype-popup` and
-  `poltertype-tray`. No `#[cfg(target_os = "…")]` outside those five
-  crates — `poltertype-app` holds none at all, which is why a
-  one-function GTK quirk got its own crate instead of a `#[cfg]` in
-  `main.rs` (see `docs/DECISIONS.md`). The shape is one crate per
-  *capability* with per-OS modules inside it, behind a trait and a
-  factory — not one crate per platform.
+  `poltertype-layout`, `poltertype-update`, `poltertype-popup`,
+  `poltertype-tray`, `poltertype-autostart` and `poltertype-shell`.
+  The shape is one crate
+  per *capability* with per-OS modules inside it — behind a trait and
+  a factory where the caller holds a backend (`poltertype-layout`),
+  or a plain function where there is nothing to hold
+  (`poltertype-tray`, `poltertype-autostart`). Not one crate per
+  platform. How seriously we mean it: a one-function GTK quirk got its
+  own 64-line crate rather than put the first `#[cfg]` in `main.rs`
+  (see `docs/DECISIONS.md`, 2026-07-29).
+
+  `poltertype-app` holds **none**, and `poltertype-core` holds none
+  either — both are checked by grep, not by good intentions. If you
+  find yourself reaching for `#[cfg(target_os)]` in the binary, that
+  is the signal a capability crate is missing. Where the difference is
+  a *value* rather than an API, prefer a runtime signal over a
+  build-time one: the macOS pause-hotkey default and the Wayland
+  switch-last default are both chosen from the live backend name, so
+  one `config.toml` means the same thing wherever it is read.
 
 ## File organization (one kind of thing per file)
 

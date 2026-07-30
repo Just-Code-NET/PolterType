@@ -15,13 +15,29 @@ that's expected — release artifacts will be signed in a later phase.
 
 ## macOS
 
-The app needs **Accessibility** permission, granted once per machine:
+The app needs **two** permissions, each granted once per machine:
 
-> System Settings → Privacy & Security → Accessibility → enable
+> System Settings → Privacy & Security → **Accessibility** → enable
+> *PolterType*.
+>
+> System Settings → Privacy & Security → **Input Monitoring** → enable
 > *PolterType*.
 
 Why: `CGEventTapCreate(kCGSessionEventTap, …)` (used to listen) and
-`CGEventPost` (used to send corrections) both require this.
+`CGEventPost` (used to send corrections) require Accessibility;
+delivery of the key events themselves requires Input Monitoring.
+macOS prompts for both — Input Monitoring when the tap is created,
+Accessibility when the tap fails to attach without it. Granting only
+one leaves the app running with a tray icon and no corrections, which
+is why the tray alert below matters.
+
+**Autostart is a third, lighter capability.** With *"Start
+automatically when I sign in"* enabled, the app writes a per-user
+LaunchAgent to `~/Library/LaunchAgents/dev.opensource.poltertype.plist`
+and registers it with `launchctl`. macOS shows a one-time "login item
+added" notification. No elevation is involved and nothing is written
+outside the user's own home directory; unticking the setting deletes
+the file.
 
 > **What exists:** when the keyboard hooks fail to start — the usual
 > cause on macOS being exactly this permission — the tray shows a
@@ -31,9 +47,7 @@ Why: `CGEventTapCreate(kCGSessionEventTap, …)` (used to listen) and
 > **Still planned, not built:** a first-launch onboarding *window* that
 > walks the user through the toggle before anything fails, and a banner
 > for "layout switching unavailable". Today the user still has to act
-> on the alert rather than being led through the grant. The macOS
-> backend as a whole is CI-validated but has not been runtime-tuned on
-> hardware.
+> on the alert rather than being led through the grant.
 
 ## Linux
 

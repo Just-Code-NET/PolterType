@@ -59,6 +59,23 @@ copy that tree into the install location:
 | Linux AppImage | `<mount>/usr/bin/poltertype` | `<mount>/usr/share/poltertype/data/` |
 | dev (`cargo run`) | `target/{debug,release}/poltertype` | `target/dist/data/` |
 
+## What the app writes outside its own directories
+
+Everything above is data the app *reads*. Three things it *writes* sit
+outside both the data and config directories, so they are easy to miss
+when auditing what PolterType leaves on a machine:
+
+| What | Where | Written when |
+|---|---|---|
+| Autostart entry | macOS `~/Library/LaunchAgents/dev.opensource.poltertype.plist`<br>Windows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `dev.opensource.poltertype`<br>Linux `$XDG_CONFIG_HOME/autostart/dev.opensource.poltertype.desktop` | `[general].autostart` is true, refreshed at every launch; deleted when it is false |
+| Instance lock | macOS `<config-dir>/dev.opensource.poltertype.lock` | every launch — the `single-instance` crate `flock`s a real file on macOS, unlike the abstract socket (Linux) and named mutex (Windows) it uses elsewhere, so macOS is the only platform where a file appears |
+| Staged update | `<data_local_dir>/poltertype/updates/` | see "Staged updates" below |
+
+None of these need elevation and none live outside the user's own
+profile. The autostart entry is derived state, never a source of
+truth: `config.toml` owns the setting, and a hand-deleted entry comes
+back on the next launch.
+
 ## Resolution at runtime
 
 `poltertype_core::data_dir::resolve()` returns the active data directory by

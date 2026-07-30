@@ -1,6 +1,6 @@
 # AI subsystem
 
-> **Status (v0.6.1): designed, not wired.** The extension traits are
+> **Status (v0.6.2): designed, not wired.** The extension traits are
 > real and the built-in detectors use them. The `poltertype-ai` crate
 > exists, compiles, and holds *stubs* — and the binary does not
 > construct or call any of them. **No shipped build makes an

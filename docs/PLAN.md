@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-30 (v0.6.1).
+> Created: 2026-05-02. Last updated: 2026-07-30 (v0.6.2).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,8 +9,8 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.6.1; most recently the suggestion tooltip's anchoring, which
->   stopped following an idle mouse pointer across the screen) and §10
+>   0.6.2; most recently the macOS backend's first run on real
+>   hardware, and autostart finally doing something) and §10
 >   below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
@@ -108,7 +108,7 @@ integration).
 | `iced` 0.13+ | settings window UI |
 | `tray-icon` | system tray (Win/Mac/Linux) |
 | `global-hotkey` | global hotkeys |
-| `auto-launch` | run at login (Win/Mac/Linux) — **declared, never wired**: it has no consumer in any crate, and `[general].autostart` is read by nothing. See "Known gaps". |
+| ~~`auto-launch`~~ | run at login — **dropped in 0.6.2**. It sat in the manifest unused for the project's whole life while the Settings checkbox quietly did nothing. Replaced by `poltertype-autostart`, which drives each platform's own mechanism directly (LaunchAgent / run key / XDG entry) and needs no dependency at all. |
 | `single-instance` | forbid a second process |
 | `tao` *(optional)* | shared event loop for tray + hotkeys + iced |
 | `tokio` | async runtime, channels, timers |
@@ -334,9 +334,9 @@ it is the only schema listing in `docs/`:
 schema_version = 1
 
 [general]
-autostart = true           # PARSED BUT INERT — nothing registers a
-                           # login item on any platform yet. The GUI
-                           # checkbox only writes this key.
+autostart = true           # honoured on all three platforms since
+                           # 0.6.2 (LaunchAgent / HKCU run key / XDG
+                           # autostart entry)
 sound_on_correct = true
 show_notifications = false
 ui_language = "system"     # or "en", "uk"
@@ -363,7 +363,7 @@ disabled_apps    = []
 word_whitelist   = ["nginx", "kubectl", "github"]
 
 [hotkeys]
-pause_toggle        = "Ctrl+Shift+Space"
+pause_toggle        = "Ctrl+Shift+Space"   # macOS: Ctrl+Shift+P
 manual_switch_last  = "Ctrl+Shift+Backspace"   # Wayland: Ctrl+Shift+F9
 
 # Text-trigger expansions. Not exposed as a table above — repeated
@@ -783,14 +783,15 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.6.1 (2026-07-29).** Phases 0–8 are, in
+> **Status as of v0.6.2 (2026-07-30).** Phases 0–8 are, in
 > their core parts, complete and shipped across releases 0.1.0 →
-> 0.6.1 — Phase 8's auto-updater landed in 0.4.0, 0.5.0 added
+> 0.6.2 — Phase 8's auto-updater landed in 0.4.0, 0.5.0 added
 > the spelling-suggestions tooltip (surface FSTs, `poltertype-popup`,
 > AT-SPI caret anchoring — see `DECISIONS.md` 2026-07-24), 0.6.0
 > made corrections survive a user who keeps typing through them
-> (`EVIOCGRAB`, `DECISIONS.md` 2026-07-29), and 0.6.1 fixed where
-> that tooltip actually lands; below,
+> (`EVIOCGRAB`, `DECISIONS.md` 2026-07-29), 0.6.1 fixed where
+> that tooltip actually lands, and 0.6.2 was the first release run on
+> a real Mac — which is also where Phase 5 stopped being theory; below,
 > what remains open is marked. Items that are **not** done are deliberately left as
 > `[ ]` — that is the current work list. The wording of some items had
 > drifted behind the code (e.g. `HeuristicDetector` in Phase 3 is
@@ -850,15 +851,26 @@ separate `poltertype --settings` process.
 
 ### Phase 5 — macOS
 
-- [x] `CGEventTap` (listener) — written from Apple's documentation,
-      verified only on CI.
-- [x] `TISSelectInputSource` (layout switching).
+- [x] `CGEventTap` (listener) — runtime-tuned on macOS 15 (Intel) in
+      0.6.2 by an outside contributor. What CI could never catch: the
+      tap runloop has to run in `kCFRunLoopDefaultMode` (the source
+      never fires in `kCFRunLoopCommonModes` as the *run* mode), and
+      emitted events must be stamped via `kCGEventSourceUserData` or
+      they echo back as user input.
+- [x] `TISSelectInputSource` (layout switching) — every TIS call now
+      goes through the main dispatch queue; HIToolbox asserts it and
+      killed the process with SIGILL otherwise. See `DECISIONS.md`.
+- [x] **Run at login** — per-user LaunchAgent (`poltertype-autostart`).
 - [ ] **Accessibility onboarding** — there is no first-launch window.
+      The app does now trigger the system Accessibility prompt when
+      the tap fails to attach, which is a path out of a dead tray icon
+      but not the guided walkthrough.
 - [ ] **`NSWorkspace` focus tracking** — not implemented, so the
       `FocusTracker` on macOS is a no-op (see Phase 6 and §3.9).
-- [ ] **Runtime verification on real hardware.** The biggest open
-      item on macOS: none of the backends has ever been run on a real
-      machine.
+- [ ] **Keystroke hold-back.** The key gate is Linux/evdev only; on
+      macOS, as on Windows, a keystroke can still land inside a
+      correction.
+- [ ] **Apple Silicon.** Validation so far is Intel-only.
 
 ### Phase 6 — Linux
 

@@ -5,7 +5,7 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
-> **Status:** v0.6.1 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.6.2 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland/Sway and X11. On
 > Linux/Wayland a correction now holds your keystrokes back while it
@@ -13,10 +13,10 @@ poltergeist that haunts your keyboard.
 > the next word no longer scrambles the result — except behind an
 > input remapper such as keyd, where PolterType stands down and falls
 > back to detecting and repairing instead
-> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). The macOS backend is
-> written from Apple's API docs and validated on CI, but hasn't yet
-> been runtime-tuned by a hardware-equipped contributor. Installers
-> are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
+> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). macOS is validated on
+> hardware (macOS 15, Intel): listener, layout switching and
+> corrections all work; the keystroke hold-back is Linux-only there,
+> as on Windows. Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
 > full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
 
 ![PolterType settings window — Languages panel](docs/screenshots/settings-window.png)
@@ -36,8 +36,8 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
   date](#staying-up-to-date)) — it sends nothing about you, and one
   checkbox turns it off. The AI subsystem is off by default and needs
   a second explicit toggle to reach the network at all.
-- **Configurable** — per-language allowlist, per-app exceptions,
-  hotkeys, sound themes.
+- **Configurable** — autostart, per-language allowlist, per-app
+  exceptions, hotkeys, sound themes.
 - **Open source** — MIT licensed.
 
 ## Platforms
@@ -45,7 +45,7 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 | OS              | Status                                                                                                                                                                        |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 10 / 11 | working                                                                                                                                                                       |
-| macOS 11+       | best-effort — written from Apple's docs, CI-validated, not yet runtime-tuned on hardware; needs Accessibility permission                                                      |
+| macOS 11+       | working — validated on macOS 15 (Intel); needs Accessibility **and** Input Monitoring permission (the app prompts on first launch) |
 | Linux (Wayland) | working; run `scripts/setup-linux.sh` once (evdev + uinput access). Layout switching: Hyprland, KDE Plasma, GSettings (GNOME / Ubuntu Unity / Cinnamon / Budgie / Pantheon / MATE), IBus, Fcitx5. |
 | Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Layout switching via the DE backends above, falling back to XKB group locking on bare WMs (i3, openbox, …). |
 
@@ -62,7 +62,7 @@ polls — you never download that one by hand):
 | OS                                | File                                          | How to install                                                                                                                                                                                                      |
 | --------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 10 / 11                   | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**.                                                                 |
-| macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant Accessibility permission. |
+| macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant **Accessibility** and **Input Monitoring** — macOS prompts for both on first run. |
 | Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland.                                                                                        |
 
 > Installers are still **unsigned** — that's why Gatekeeper /
@@ -87,7 +87,7 @@ is two requests: a `GET` of a small JSON manifest, and — only when
 there's actually a new version — a `GET` of the installer itself. No
 account, no identifier, nothing about you and nothing about what you
 type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.6.1
+a User-Agent naming the running version (`PolterType/0.6.2
 (updater)`). The exact manifest URL is printed on the Settings
 window's **General** pane, so you never have to take our word for it.
 
@@ -146,6 +146,14 @@ the Settings window:
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
 | `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. |
+
+> **On macOS the pause default is `Ctrl+Shift+P`, not
+> `Ctrl+Shift+Space`.** `Ctrl+Space` and `Ctrl+Shift+Space` are macOS's
+> own "select the previous / next input source" shortcuts, so claiming
+> them globally would take your layout switching away — the very thing
+> PolterType is there to complement. The substitution applies only
+> while you are on the default; bind whatever you like and it is
+> honoured as written.
 
 > **On Wayland the force-switch default is `Ctrl+Shift+F9`, not
 > `Ctrl+Shift+Backspace`.** There we read keys from the evdev
@@ -309,12 +317,13 @@ Two ways to configure:
    - macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
    - Linux: `~/.config/poltertype/config.toml`
 
-One checkbox in **General** does not do what it says yet:
-**"Start automatically when I sign in"** is stored in `config.toml`
-(`[general].autostart`, and it defaults to `true`) but nothing acts
-on it — PolterType does not register itself as a login item on any
-platform. Add it to your desktop environment's startup entries by
-hand until that lands.
+**"Start automatically when I sign in"** (in **General**, on by
+default) registers PolterType with the OS: a LaunchAgent on macOS, a
+per-user run key on Windows, an XDG autostart entry on Linux. Unticking
+it removes the entry. `config.toml` is the source of truth — deleting
+the entry by hand only lasts until the next launch, so turn the setting
+off instead. macOS shows a one-time "login item added" notification the
+first time; that is the system doing its job.
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray
 takes you there. After editing the TOML, "Reload Settings" picks

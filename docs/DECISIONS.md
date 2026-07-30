@@ -6,6 +6,84 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-30 — Every macOS TIS call goes through the main dispatch queue
+
+`TISCopyCurrentKeyboardInputSource` and friends look like ordinary C
+functions and are documented as thread-safe nowhere in particular.
+Since macOS 14/15 the HIToolbox Text-Services layer asserts the main
+dispatch queue inside them
+(`TSMGetInputSourceProperty` → `isValidateInputSourceRef` →
+`islGetInputSourceListWithAdditions`). Our layout poller runs every
+250 ms on its own thread and the engine switches from a third; both
+killed the process outright with `SIGILL` / `EXC_BAD_INSTRUCTION`,
+seconds after launch.
+
+**All TIS calls now go through the main queue** — inline when the
+caller is already the main thread, `dispatch_sync_f` on
+`_dispatch_main_q` otherwise. We link the queue object directly
+because `dispatch_get_main_queue` is a header alias, not an exported
+symbol.
+
+*Alternative considered:* funnel layout access through a dedicated
+actor thread that happens to be main. Same effect, more machinery, and
+it would still have to be the main thread — the constraint is
+HIToolbox's, not ours.
+
+*Cost:* the layout poller now wakes the main thread four times a
+second. `TISCopyCurrentKeyboardInputSource` is cheap and the main
+thread is otherwise idle in its run loop, so this has not been
+measurable — but it is the reason to keep the poll interval honest.
+
+Found by an outside contributor running v0.5.0 on real hardware, which
+is also the whole argument for not shipping a backend that only CI has
+ever executed.
+
+---
+
+## 2026-07-30 — Autostart drives each OS mechanism directly, and never `bootout`s
+
+`auto-launch` had been in the manifest since the first commit and was
+wired to nothing: `[general].autostart` defaulted to `true`, the
+Settings checkbox wrote it, and no code ever read it. The app had
+never once started at login, on any platform, while README, the
+settings schema and the landing page all said it did.
+
+**Replaced with a `poltertype-autostart` crate** that writes each
+platform's own artefact — a LaunchAgent plist, an `HKCU` run-key
+value, an XDG `.desktop` entry. That is one crate with three small
+backends instead of a dependency, and it costs no per-OS crates at all
+(`launchctl`, `reg.exe` and a file write are the whole surface), so
+the crate is `#![forbid(unsafe_code)]` with no target-specific
+dependencies.
+
+**The part worth defending: no `bootout`, ever.** On macOS the obvious
+way to make a changed LaunchAgent take effect is `launchctl bootout`
+followed by `bootstrap`. But `bootout` terminates the job's running
+processes — and when launchd started us at login, *we are that job*.
+The first implementation did this on both paths:
+
+* on every startup, so a login-started instance killed itself and the
+  replacement then lost the single-instance lock race against its own
+  dying predecessor — leaving nothing running at all;
+* on disable, so unticking the checkbox terminated the app.
+
+Neither reproduces when the app is launched from Finder, because then
+the process is not a launchd job and there is nothing to kill. It
+would have shipped.
+
+So the enable path `bootstrap`s only when `launchctl print` says the
+label is unknown, and the disable path just deletes the plist —
+launchd reads it at login, and a label already loaded has `RunAtLoad`
+behind it and no `KeepAlive`, so it will never start anything again.
+
+*Accepted cost:* if the plist contents drift while the label is
+already loaded (an update moved the executable), launchd keeps the old
+spec until the next login. The file on disk is corrected immediately,
+so the next login is right. Trading one stale session against killing
+the user's running app is not a close call.
+
+---
+
 ## 2026-07-29 — A `poltertype-tray` crate, for one function
 
 Building the tray makes `libayatana-appindicator` print a deprecation
