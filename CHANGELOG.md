@@ -4,6 +4,82 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] — PolterType runs on a Mac, and starts when you sign in
+
+PolterType runs on a Mac for the first time, and the "Start
+automatically when I sign in" checkbox does something for the first
+time — on every platform.
+
+### Fixed — macOS
+
+The macOS backend shipped in v0.5.0 had only ever been compiled by CI.
+The fixes below come from an outside contributor running it on real
+hardware (macOS 15, Intel), where it turned out to crash on launch and
+never process a keystroke.
+
+- **The app wouldn't launch from Finder at all.** The single-instance
+  lock was created under the process working directory, which is the
+  read-only system volume for GUI launches; startup aborted with
+  "Read-only file system". The lock now lives in the per-user config
+  directory.
+- **SIGILL seconds after launch.** HIToolbox asserts the main dispatch
+  queue inside Text Input Services on modern macOS; calling TIS from
+  the layout-poller / engine threads killed the process. All TIS calls
+  are now routed through the main dispatch queue.
+- **The keyboard tap delivered nothing.** The tap thread ran its
+  CFRunLoop in `kCFRunLoopCommonModes` as the run mode; the tap source
+  never fired. It now runs in the default mode.
+- **Every second word was skipped.** Emitted backspaces / retyped text
+  echoed back through the event tap untagged and poisoned the word
+  buffer after each correction. All posted events are now stamped so
+  the listener recognises them as injected.
+- **Shift / Caps Lock state was invisible to the engine.**
+  `CGEventFlagAlphaShift` now folds into the shift bit, matching the
+  X11 backend; the keycode table gained full modifier / navigation /
+  F-row mappings so caret-moving keys end a word the way they do on
+  Windows and Linux.
+- **Russian / Ukrainian layouts weren't detected** on systems with the
+  PC ("Win") input-source variants — `RussianWin` / `UkrainianWin`
+  (and `ABC`, the modern US id) are now mapped, and layout switching
+  matches sources by their mapped BCP-47 id.
+- **The app icon no longer lingers in the Dock.** tao applies the
+  Regular activation policy by default, overriding `LSUIElement`; the
+  tray app now runs as an Accessory process.
+- **The pause hotkey no longer steals the system layout switcher.**
+  `Ctrl+Shift+Space` is macOS's own "select previous input source", so
+  the default there is now `Ctrl+Shift+P`. Applied only while you are
+  on the default; an explicit binding is honoured as written.
+
+### Added
+
+- **"Start automatically when I sign in" now does something.** The
+  setting has existed since the first release, defaulting to *on*,
+  while no code ever read it — the app had never started at login on
+  any platform. It now registers a per-user LaunchAgent on macOS, an
+  `HKCU` run-key value on Windows and an XDG autostart entry on Linux.
+  Unticking it removes the entry.
+- **The Accessibility permission prompt.** When the event tap can't
+  attach, macOS is now asked to show the system prompt instead of the
+  app failing silently into a dead tray icon. Note macOS also requires
+  **Input Monitoring** for key delivery; it prompts for that when the
+  tap is created.
+- Settings UI shows the platform's modifier glyphs (⌃⌥⇧⌘) on macOS.
+
+### Fixed
+
+- **A correction could be declined on a busy machine.** The intrusion
+  probe bounded itself by wall-clock while being driven by its own
+  sleeps, so under load the deadline expired before the run of silence
+  that authorises a repair could accumulate — and the engine left the
+  text alone when it should have fixed it. It now counts samples
+  instead, which is the same bound without the race. This also fixes
+  an intermittent CI failure on macOS.
+
+### Removed
+
+- `auto-launch`, which had been declared since the first commit and
+  used by nothing.
+
 ## [0.6.1] — the suggestion tooltip stops chasing your mouse
 
 ### Fixed — the suggestion tooltip lands where you are typing
