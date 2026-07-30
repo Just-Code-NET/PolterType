@@ -5,6 +5,12 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
+![Typing "ghbdsn" with the wrong layout active: PolterType switches the layout and retypes it as "привіт", the next word is typed correctly as-is, and "руддщ" snaps back to "hello"](docs/screenshots/demo.gif)
+
+*Live capture, unedited timing: the wrong-layout word is fixed the
+moment it ends, the layout switches with it — so the very next word
+comes out right — and it works in both directions.*
+
 > **Status:** v0.6.2 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland/Sway and X11. On
