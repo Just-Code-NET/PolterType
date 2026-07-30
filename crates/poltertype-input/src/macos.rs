@@ -15,9 +15,9 @@
 //! `CGEventPost` with `CGEventKeyboardSetUnicodeString` — same
 //! layout-independent contract as Windows' `KEYEVENTF_UNICODE`.
 //!
-//! > **Status:** written from Apple's documented behaviour and
-//! > validated only via `cargo check` on macOS CI. Runtime tuning
-//! > will land as macOS contributors report issues.
+//! > **Status:** validated end-to-end on macOS 15 (Intel): the tap
+//! > receives events, corrections emit, and injected events are
+//! > recognised via the user-data tag.
 
 #![allow(unused_imports, dead_code)] // macOS-only.
 
@@ -38,7 +38,7 @@ use core_graphics::event::{
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use crossbeam_channel::Sender;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers};
 
@@ -195,7 +195,7 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                         if !FIRST_EVENT_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
                             debug!("first macOS key event delivered to engine");
                         }
-                        debug!(
+                        trace!(
                             scancode = ev_out.scancode,
                             ?direction,
                             shift = ev_out.modifiers.shift,

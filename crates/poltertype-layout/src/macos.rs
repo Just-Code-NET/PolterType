@@ -7,8 +7,9 @@
 //! `"com.apple.keylayout.Ukrainian"`, …) which we map to BCP-47 with
 //! a small table.
 //!
-//! > **Status:** written from Apple's documented behaviour and
-//! > tested only via `cargo check` on macOS CI.
+//! > **Status:** validated on macOS 15 (Intel). Note the threading
+//! > requirement: every TIS call must run on the main dispatch queue
+//! > (HIToolbox asserts it since macOS 14/15) — see `run_on_main`.
 
 #![allow(unused_imports, dead_code)] // macOS-only; see DECISIONS for status.
 

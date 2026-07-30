@@ -339,7 +339,8 @@ pub fn display_key_token(tok: &str) -> String {
     }
 }
 
-/// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't/// be captured as the hotkey itself — the user is mid-combination.
+/// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't
+/// be captured as the hotkey itself — the user is mid-combination.
 /// We filter them in the keyboard subscription so the captured combo
 /// is always `<modifier(s)>+<non-modifier-key>`.
 pub fn is_modifier_key(key: &Key) -> bool {

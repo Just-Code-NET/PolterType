@@ -5,11 +5,13 @@
 //! where the checkbox becomes real.
 //!
 //! * **macOS** — a per-user LaunchAgent at
-//!   `~/Library/LaunchAgents/org.poltertype.app.plist`. We rewrite
-//!   it when the exe path changed (an update replaced / moved the
-//!   .app) and delete it when the toggle is off. Modern macOS shows
-//!   a one-time "login item added" notification for this; that is
-//!   the system working as intended.
+//!   `~/Library/LaunchAgents/<APP_ID>.plist`
+//!   (`dev.opensource.poltertype.plist`). We rewrite it when the exe
+//!   path changed (an update replaced / moved the .app), register it
+//!   with launchd immediately so coverage starts without a relogin,
+//!   and delete it when the toggle is off. Modern macOS shows a
+//!   one-time "login item added" notification for this; that is the
+//!   system working as intended.
 //! * **Windows / Linux** — still unimplemented (same as before):
 //!   the sync is a no-op there.
 
@@ -110,23 +112,28 @@ mod imp {
         };
         let body = plist_body(&exe);
 
-        // Idempotent: don't touch the file (and launchd) when the
-        // desired state is already on disk.
+        // Rewrite the file when its contents drifted (the exe path
+        // moved under an update, an older build wrote a different
+        // label, …). When it's already byte-identical we skip the
+        // write — but NOT the launchd registration below: a plist can
+        // be on disk yet unregistered (written by an older build, or
+        // the machine hasn't been relogged since), and answering only
+        // "is the file right" would leave the job dormant until next
+        // login.
         let current = std::fs::read_to_string(&path).unwrap_or_default();
-        if current == body {
-            return;
-        }
-        if let Some(dir) = path.parent() {
-            if let Err(e) = std::fs::create_dir_all(dir) {
-                warn!(?e, ?dir, "could not create LaunchAgents dir");
+        if current != body {
+            if let Some(dir) = path.parent() {
+                if let Err(e) = std::fs::create_dir_all(dir) {
+                    warn!(?e, ?dir, "could not create LaunchAgents dir");
+                    return;
+                }
+            }
+            if let Err(e) = std::fs::write(&path, &body) {
+                warn!(?e, ?path, "could not write LaunchAgent plist");
                 return;
             }
+            debug!(?path, "autostart enabled: LaunchAgent written");
         }
-        if let Err(e) = std::fs::write(&path, &body) {
-            warn!(?e, ?path, "could not write LaunchAgent plist");
-            return;
-        }
-        debug!(?path, "autostart enabled: LaunchAgent written");
 
         // Register right away so the user doesn't need a relogin to
         // get coverage from this session on. `bootstrap` on an
