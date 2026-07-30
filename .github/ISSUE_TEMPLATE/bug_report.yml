@@ -1,0 +1,73 @@
+name: Bug report
+description: Something doesn't work the way the README says it should
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: PolterType version
+      description: Shown on the About pane of the Settings window.
+      placeholder: "0.6.2"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and desktop environment
+      description: >
+        Include the compositor / display server on Linux — behaviour
+        differs between Wayland compositors and X11.
+      placeholder: "Windows 11 / macOS 15 (Intel) / Arch + Hyprland 0.55 / Ubuntu 24.04 GNOME Wayland / X11 i3"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - MSI (Windows)
+        - DMG (macOS)
+        - AppImage (Linux)
+        - Built from source
+        - Other (say below)
+    validations:
+      required: true
+  - type: input
+    id: layouts
+    attributes:
+      label: Keyboard layouts involved
+      placeholder: "en-US + uk-UA"
+    validations:
+      required: true
+  - type: input
+    id: input-stack
+    attributes:
+      label: Anything unusual in your input stack?
+      description: >
+        Input remappers and layout scripts change what PolterType can
+        do — this is often the whole story.
+      placeholder: "keyd / kanata / Karabiner-Elements / AutoHotkey / per-window layout script / none"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: >
+        Step by step if you can. "Typed X, expected Y, got Z" is the
+        perfect shape.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: >
+        Tray → "Open Logs Folder…". Release builds never log typed
+        text, so logs are safe to paste — but skim them anyway before
+        posting.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config.toml excerpt (optional)
+      description: Tray → "Edit config.toml…". Only the sections that matter.
+      render: toml

@@ -1,0 +1,48 @@
+name: New language / layout
+description: Request or contribute support for another keyboard layout
+labels: ["enhancement", "good first issue"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Languages live in **data, not code**: one TOML file describing
+        the layout plus a wordlist. No Rust required — see
+        [docs/ADDING_A_LANGUAGE.md](https://github.com/Just-Code-NET/PolterType/blob/main/docs/ADDING_A_LANGUAGE.md).
+        You can also use a language privately without a PR by dropping
+        the same files into your config directory.
+  - type: input
+    id: language
+    attributes:
+      label: Language and layout
+      description: BCP-47-style id plus the physical layout variant if it matters.
+      placeholder: "pl-PL (Polish programmers' layout)"
+    validations:
+      required: true
+  - type: input
+    id: pairs
+    attributes:
+      label: Which layout pair(s) would you use it with?
+      placeholder: "pl-PL + en-US"
+    validations:
+      required: true
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to contribute it yourself?
+      description: >
+        We'll gladly walk you through the TOML schema and the wordlist
+        format either way.
+      options:
+        - Yes — I'll open a PR with some guidance
+        - I can test, but someone else should write it
+        - Just requesting
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything special about this layout? (optional)
+      description: >
+        Dead keys, AltGr characters, multiple common variants, letters
+        that share keys with punctuation — whatever a non-speaker
+        wouldn't know.

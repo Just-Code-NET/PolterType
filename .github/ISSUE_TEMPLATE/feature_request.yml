@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose an improvement or a new capability
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: >
+        Describe the situation where you miss the feature, not the
+        implementation. "When I …, PolterType …, and I wish …"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: input
+    id: platforms
+    attributes:
+      label: Which platforms does this concern?
+      placeholder: "all / Windows / macOS / Linux Wayland / Linux X11"
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives you've considered (optional)
+      description: >
+        Including "another tool does it this way" — links welcome.
