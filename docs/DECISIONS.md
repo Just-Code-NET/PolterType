@@ -1476,3 +1476,56 @@ long-standing, test-pinned behaviour, and the dictionary Keep
 protects valid fragments there. Cost accepted: the first word typed
 after a click into an empty field misses its tooltip; every word
 after it is covered.
+
+## 2026-07-31 — Stray punctuation demotes a token's own-layout credentials
+
+The es–en pair the landing page demos never actually corrected:
+typing `mañana` under en-US renders `ma;ana` (ñ sits on the US `;`
+key), the dictionary detector looked up the letters-only skeleton
+`maana` — which the over-inclusive bulk en list happens to contain —
+and vetoed the switch, while the plausibility scorer ignored the `;`
+entirely and scored `espa;ol` a perfect 1.0 en-US fit. Decision: a
+character that cannot be part of a word in any layout (not alphabetic,
+not an apostrophe variant, not a hyphen — `poltertype-detect::text::
+non_word_char_count`) now (a) subtracts 0.4 per occurrence from a
+rendering's plausibility fit and (b) demotes a current-side dictionary
+hit from a Keep veto to a tiebreaker, the same shape the `weak` list
+already uses. The skeleton stripping itself stays — it is what lets
+the *alt* side recover `mañana` from the scancodes — only its power to
+veto on the current side is gone. Clean tokens are untouched: `maana`
+typed with no stray characters still keeps.
+
+## 2026-07-31 — Typed words are redacted from every log line and reason
+
+An audit found decision reasons ("current \`maana\` is a dictionary
+word") and the correction summary (`original=… corrected=…`, at INFO —
+the default level) writing typed words into the on-disk log of a
+release build, directly against the README's privacy promise. Decision:
+one chokepoint, `poltertype_types::logsafe::redact_word`, through
+which every word in a log line or detector reason must pass. It yields
+`<N chars>` always — except in a `debug_assertions` build where the
+developer exported `POLTERTYPE_UNSAFE_LOG_WORDS=1`, the escape hatch
+the self-test recipes need. Release builds redact at compile time; no
+configuration reveals typed text there. The alternative — redacting at
+the log call sites only — was rejected because reasons travel through
+events (`SwitcherEvent`) and every future consumer would inherit the
+leak.
+
+## 2026-07-31 — The key gate re-verifies its emitter before every hold
+
+The gate's remapper check ran once, at startup — and raced keyd's own
+asynchronous grab of the freshly created uinput device. Winning that
+race armed the gate on a stack where it must stand down; the first
+correction then grabbed keyd's virtual keyboard, funnelling the user's
+keys *and our own corrections* into this process, and the session's
+input died until a reboot (observed live, 2026-07-31). Decision: the
+probe result is treated as a hint, not a fact — `EvdevGate::service`
+re-runs the grab-our-own-emitter check once per hold epoch, before
+touching any device, and an `EBUSY` flips the gate off for the rest of
+the run (recovery on restart, matching the startup probe's contract).
+Defence in depth: the emitter records its `/dev/input/event*` node at
+creation (`own_nodes`) so the never-grab-our-own-device exclusion
+matches by kernel identity, not by name string. A periodic re-probe
+was rejected: grabbing our own emitter outside a hold would swallow
+in-flight suggestion emissions; at hold time nothing of ours is on the
+wire yet, so the check is free of side effects exactly there.
