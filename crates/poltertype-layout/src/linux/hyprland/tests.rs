@@ -1,4 +1,5 @@
 use super::*;
+use crate::LayoutId;
 
 /// Trimmed real `hyprctl devices` output from a Hyprland + keyd
 /// machine in the desynced state that broke en→uk corrections: the
@@ -25,6 +26,31 @@ const DESYNCED: &str = r#"Keyboards:
 			active keymap: English (US)
 			main: yes
 "#;
+
+/// Every bundled-wordlist language must survive the round trip from
+/// Hyprland's pretty keymap description to a BCP-47 id — a miss means
+/// the engine sees an unknown current layout the moment the user
+/// switches to it (empty renders, phantom re-corrections). Spanish
+/// was missing until the landing page's `espa;ol` demo was first
+/// exercised live.
+#[test]
+fn pretty_keymap_names_resolve_for_all_bundled_languages() {
+    for (name, id) in [
+        ("English (US)", "en-US"),
+        ("Ukrainian", "uk-UA"),
+        ("Russian", "ru-RU"),
+        ("German", "de-DE"),
+        ("French", "fr-FR"),
+        ("Spanish", "es-ES"),
+        ("Spanish (Latin American)", "es-ES"),
+    ] {
+        assert_eq!(
+            keymap_to_layout(name),
+            LayoutId::new(id.to_owned()),
+            "{name}"
+        );
+    }
+}
 
 #[test]
 fn normalizes_names_the_way_hyprland_prints_them() {

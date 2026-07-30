@@ -111,6 +111,12 @@ pub(crate) fn name_to_xkb_code(name: &str) -> String {
         s if s.contains("russian") => "ru".into(),
         s if s.contains("german") => "de".into(),
         s if s.contains("french") => "fr".into(),
+        // Every language we bundle a wordlist for must resolve here,
+        // or the moment the user switches to it the engine sees an
+        // unknown current layout (empty renders, phantom re-corrections
+        // of every word). Spanish was the one missing — found the day
+        // the landing page's `espa;ol` demo was first exercised live.
+        s if s.contains("spanish") => "es".into(),
         _ => name.to_owned(),
     }
 }

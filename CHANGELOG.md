@@ -20,6 +20,12 @@ and the project follows [Semantic Versioning](https://semver.org/).
   rendering's plausibility and demotes skeleton dictionary hits from
   a veto to a tiebreaker, so the es–en pair the landing page demos
   works end-to-end.
+- **Hyprland: the "Spanish" keymap now resolves to `es-ES`.** The
+  pretty-name table covered every bundled language except Spanish, so
+  the moment a correction switched the system to the Spanish layout
+  the engine stopped recognising its own current layout — renders
+  came back empty and every subsequent word got a phantom
+  re-correction.
 
 ## [0.6.2] — PolterType runs on a Mac, and starts when you sign in
 
