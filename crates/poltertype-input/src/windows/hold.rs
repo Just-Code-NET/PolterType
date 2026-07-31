@@ -83,6 +83,10 @@ impl HoldState {
         self.want.store(false, Ordering::Release);
     }
 
+    /// Only the tests ask this — the hook callback reads the decision,
+    /// not the flag. Gated so a Windows build does not carry it as
+    /// dead code.
+    #[cfg(test)]
     pub(crate) fn is_holding(&self) -> bool {
         self.want.load(Ordering::Acquire)
     }
