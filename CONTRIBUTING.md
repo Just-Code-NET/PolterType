@@ -4,6 +4,13 @@ Thanks for the interest! This document covers the practical bits;
 the architecture lives in [docs/PLAN.md](docs/PLAN.md) and
 [docs/DECISIONS.md](docs/DECISIONS.md).
 
+Two short documents worth knowing about before you start:
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) applies to the issue tracker,
+pull requests, Discussions and the wiki; and if you find a security
+problem, **[SECURITY.md](SECURITY.md) asks you not to open a public
+issue** — this app reads keystrokes, so a report about it reaching the
+wrong place has real consequences.
+
 ## Building locally
 
 ```bash

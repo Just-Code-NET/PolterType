@@ -170,11 +170,11 @@ their data; the short version:
 ## Reporting a problem
 
 A signed binary that misbehaves is worse than an unsigned one, because
-the signature is what earned the user's trust. Security reports go to
-the issue tracker at
-<https://github.com/Just-Code-NET/PolterType/issues>; if a report
-should not be public, say so in an issue without details and we will
-arrange a private channel.
+the signature is what earned the user's trust. **Security reports go
+through GitHub's private vulnerability reporting**, not the public
+issue tracker — see [`SECURITY.md`](../SECURITY.md) for the form, what
+is in scope, and what we can realistically promise about response
+times.
 
 ---
 
