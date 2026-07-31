@@ -25,6 +25,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
   a one-constant flip in a later release, and only then does anything
   user-facing get to say "signed updates".
 
+### Added
+
+- **aarch64 Linux builds.** `poltertype-<ver>-aarch64.AppImage` ships
+  alongside the x86_64 one, built natively on an ARM64 runner rather
+  than cross-compiled. Raspberry Pi 5, Asahi and ARM laptops/servers
+  had nothing to download and nothing for the in-app updater to offer
+  them; both now work. Deliberately the *only* architecture added —
+  every installer is a support surface, so armv7 and ARM Windows stay
+  out until there is hardware and demand behind them.
+
 ### Fixed
 
 - **macOS: a suggestion accepted with its chord still held no longer

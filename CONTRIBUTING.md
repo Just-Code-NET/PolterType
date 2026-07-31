@@ -254,7 +254,7 @@ Imperative mood, scope prefix when useful (`engine:`, `win:`, `ui:`,
 > the previous release. Nothing in CI will catch it for you.
 
 Releases are cut by pushing a `v*` tag. CI ([release.yml]) then
-builds three installers in parallel and attaches them to a draft
+builds four installers in parallel and attaches them to a draft
 GitHub Release, along with `latest.json` — the manifest the in-app
 updater polls, generated from the exact artifacts being uploaded so
 the checksums cannot drift out of step with the files:

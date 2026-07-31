@@ -3,7 +3,7 @@
 > Step-by-step checklist for bumping the version and shipping a
 > tagged release. Once you push a `v*` tag, the GitHub Actions
 > workflow at [`.github/workflows/release.yml`][release-yml]
-> builds the three platform installers in parallel and attaches
+> builds the four platform installers in parallel and attaches
 > them to a draft release.
 
 The whole flow takes ~15 minutes of local work plus ~15 minutes of
@@ -339,9 +339,11 @@ gh run watch                        # if you have gh CLI
 
 The workflow:
 
-1. Builds three installers in parallel — Windows `.msi` (WiX
+1. Builds four installers in parallel — Windows `.msi` (WiX
    3.x), macOS universal `.dmg` (Intel + Apple Silicon merged
-   with `lipo`), Linux `.AppImage` (x86_64, `linuxdeploy`).
+   with `lipo`), Linux `.AppImage` for x86_64 and aarch64
+   (`linuxdeploy`, each built natively on a runner of its own
+   architecture).
 2. Writes `latest.json` — the manifest the **in-app updater**
    polls (version, release-notes URL, and a URL + SHA-256 + size
    per platform). Generated from the exact artefacts being

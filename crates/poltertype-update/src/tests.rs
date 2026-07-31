@@ -287,7 +287,13 @@ fn an_unsigned_manifest_is_accepted_only_while_signing_is_optional() {
 fn platform_key_matches_a_key_the_release_workflow_publishes() {
     let key = platform_key();
     assert!(
-        ["windows-x86_64", "macos-universal", "linux-x86_64"].contains(&key.as_str()),
+        [
+            "windows-x86_64",
+            "macos-universal",
+            "linux-x86_64",
+            "linux-aarch64",
+        ]
+        .contains(&key.as_str()),
         "platform_key() produced `{key}`, which release.yml does not publish an artifact for"
     );
 }

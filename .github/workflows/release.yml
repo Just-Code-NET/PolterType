@@ -50,15 +50,37 @@ env:
 # once stable v3+ tags exist.
 
 jobs:
-  # ─── Linux: AppImage (x86_64) ────────────────────────────────────────
+  # ─── Linux: AppImage (x86_64 + aarch64) ──────────────────────────────
+  #
+  # A matrix here and not three jobs, unlike the OS split below: the
+  # steps are byte-for-byte the same, only the runner and the triple
+  # change. Both build natively — GitHub's `ubuntu-24.04-arm` runners
+  # are free for public repositories, and native beats cross-compiling
+  # for anything that links system libraries (GTK, X11, Wayland) and
+  # then has to be packaged by a tool that is itself an AppImage.
+  #
+  # aarch64 is the *only* extra artifact we take on. Every installer is
+  # a support surface — a build to keep green, a download to explain,
+  # a self-update path to get right — so armv7, ARM Windows and the
+  # rest stay out until someone turns up with the hardware and the
+  # demand. `poltertype-update::platform_key()` and the `latest.json`
+  # step below must always name exactly the set published here.
   appimage:
-    name: AppImage (x86_64)
-    runs-on: ubuntu-latest
+    name: AppImage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu
+          targets: ${{ matrix.arch }}-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
         with:
           cache-targets: false
@@ -74,7 +96,7 @@ jobs:
             file desktop-file-utils
 
       - name: Build release binary
-        run: cargo build --release --locked --target x86_64-unknown-linux-gnu -p poltertype-app
+        run: cargo build --release --locked --target ${{ matrix.arch }}-unknown-linux-gnu -p poltertype-app
 
       - name: Render placeholder icon
         # linuxdeploy wants a square PNG ≥ 256×256. We render at the
@@ -90,15 +112,15 @@ jobs:
       - name: Build AppImage
         env:
           VERSION: ${{ github.ref_name }}
-          BIN_PATH: target/x86_64-unknown-linux-gnu/release/poltertype
+          ARCH: ${{ matrix.arch }}
           ICON_PNG: target/dist/icon-256.png
           OUT_DIR: target/dist
         run: bash installers/linux/build-appimage.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: appimage-x86_64
-          path: target/dist/poltertype-*-x86_64.AppImage
+          name: appimage-${{ matrix.arch }}
+          path: target/dist/poltertype-*-${{ matrix.arch }}.AppImage
           if-no-files-found: error
 
   # ─── macOS: universal DMG ────────────────────────────────────────────
@@ -283,9 +305,10 @@ jobs:
           }
 
           {
-            entry "linux-x86_64"   "poltertype-*-x86_64.AppImage"
+            entry "linux-x86_64"    "poltertype-*-x86_64.AppImage"
+            entry "linux-aarch64"   "poltertype-*-aarch64.AppImage"
             entry "macos-universal" "poltertype-*-universal-apple-darwin.dmg"
-            entry "windows-x86_64" "poltertype-*-x86_64-pc-windows-msvc.msi"
+            entry "windows-x86_64"  "poltertype-*-x86_64-pc-windows-msvc.msi"
           } | jq -s \
                 --argjson schema 1 \
                 --arg version "${VERSION}" \
@@ -324,6 +347,7 @@ jobs:
         with:
           files: |
             dist/poltertype-*-x86_64.AppImage
+            dist/poltertype-*-aarch64.AppImage
             dist/poltertype-*-universal-apple-darwin.dmg
             dist/poltertype-*-x86_64-pc-windows-msvc.msi
             dist/latest.json
@@ -361,8 +385,10 @@ jobs:
               `xattr -dr com.apple.quarantine /Applications/poltertype.app`
               once. Then grant Accessibility permission in System
               Settings.
-            * **Linux** — download the `.AppImage`, `chmod +x` it, run.
-              On Wayland sessions, see `docs/PERMISSIONS.md` for the
-              evdev permission setup.
+            * **Linux** — download the `.AppImage` for your
+              architecture (`x86_64` for a normal PC, `aarch64` for a
+              Raspberry Pi 5, an Asahi Mac or an ARM server),
+              `chmod +x` it, run. On Wayland sessions, see
+              `docs/PERMISSIONS.md` for the evdev permission setup.
 
             See [CHANGELOG.md](CHANGELOG.md) for the full list of changes.

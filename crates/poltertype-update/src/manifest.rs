@@ -13,11 +13,11 @@ use crate::types::{Artifact, Manifest};
 ///
 /// These strings are the manifest's map keys — they must match what
 /// `.github/workflows/release.yml` writes. Deliberately coarse: we ship
-/// one AppImage (x86_64), one universal DMG, one MSI (x86_64), so the
-/// key space is exactly as wide as the release matrix and no wider.
-/// An architecture we don't publish for resolves to a key that simply
-/// isn't in the map, and the check ends with "no update for you"
-/// rather than a wrong download.
+/// two AppImages (x86_64, aarch64), one universal DMG and one MSI
+/// (x86_64), so the key space is exactly as wide as the release matrix
+/// and no wider. An architecture we don't publish for resolves to a key
+/// that simply isn't in the map, and the check ends with "no update for
+/// you" rather than a wrong download.
 pub fn platform_key() -> String {
     let os = if cfg!(target_os = "windows") {
         "windows"

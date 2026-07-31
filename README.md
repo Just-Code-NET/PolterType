@@ -62,7 +62,7 @@ permissions story.
 ## Install
 
 Builds are published as GitHub Releases —
-[**Releases page**](../../releases). Each release ships three
+[**Releases page**](../../releases). Each release ships four
 installers (plus `latest.json`, the manifest the in-app updater
 polls — you never download that one by hand):
 
@@ -71,6 +71,7 @@ polls — you never download that one by hand):
 | Windows 10 / 11                   | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**.                                                                 |
 | macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant **Accessibility** and **Input Monitoring** — macOS prompts for both on first run. |
 | Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland.                                                                                        |
+| Linux (aarch64)                   | `poltertype-<ver>-aarch64.AppImage`           | Same, for ARM64 — Raspberry Pi 5, Asahi, ARM laptops and servers. Built natively, not cross-compiled.                                                                                                               |
 
 > Installers are still **unsigned** — that's why Gatekeeper /
 > SmartScreen warn on first launch. Code signing comes in a later
@@ -126,8 +127,9 @@ Three caveats worth stating plainly:
   distro package, or you're running a `cargo build` binary, PolterType
   won't overwrite it — those files aren't ours. You'll get a
   notification pointing at the Releases page instead. The same applies
-  if you're not on x86_64 (or an Apple Silicon Mac): we don't publish
-  an artifact for you, so there's nothing to update to.
+  on an architecture we don't publish for — x86_64 and aarch64 Linux,
+  x86_64 Windows and universal macOS are the whole list — since there
+  is then nothing to update to.
 - **The macOS path is unproven.** The Windows and Linux self-update
   paths are exercised; the `.app`-bundle swap is written from Apple's
   docs and has never run on real hardware. Treat macOS self-updating
