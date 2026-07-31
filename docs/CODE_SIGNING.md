@@ -143,8 +143,9 @@ Step 5 cannot be automated away, and that is the design.
 
 ## Privacy
 
-Signing tells a reviewer, and any user who checks, what this software
-does with their data. The short version:
+The full policy lives at <https://poltertype.com/privacy>. Signing
+tells a reviewer, and any user who checks, what this software does with
+their data; the short version:
 
 - **Typed text is never logged, and not as a matter of policy.** Since
   v0.6.3 every word that could appear in a log line or a decision
