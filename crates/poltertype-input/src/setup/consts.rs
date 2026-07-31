@@ -3,6 +3,11 @@
 /// The permissions guide, pinned to `main` for the same reason the
 /// tray's link is: it has to describe the current setup script, not
 /// the release the user happens to be running.
+///
+/// Only the Linux and macOS probes hand this out — Windows grants
+/// nothing and its single step has no action, so the constant is dead
+/// code there rather than merely unused.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(super) const PERMISSIONS_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";
 

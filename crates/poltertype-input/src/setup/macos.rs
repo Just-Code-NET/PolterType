@@ -24,6 +24,13 @@ use super::types::{SetupReport, SetupStep};
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
+    /// The no-argument form: reports trust and never prompts. The
+    /// options form below can do the same with an empty dictionary,
+    /// but an *empty* `CFDictionary::from_CFType_pairs(&[])` has no
+    /// key or value type to infer and does not compile — and reaching
+    /// for turbofish to build a dictionary we do not want is worse
+    /// than calling the function Apple provides for exactly this.
+    fn AXIsProcessTrusted() -> bool;
     fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
     static kAXTrustedCheckOptionPrompt: CFStringRef;
 }
@@ -81,14 +88,10 @@ pub(super) fn probe() -> SetupReport {
 }
 
 fn accessibility_state() -> StepState {
-    // Safety: an empty options dictionary means "tell me, don't ask
-    // the user" — `kAXTrustedCheckOptionPrompt` absent is documented
-    // as no prompt.
-    let trusted = unsafe {
-        let empty: CFDictionary = CFDictionary::from_CFType_pairs(&[]);
-        AXIsProcessTrustedWithOptions(empty.as_concrete_TypeRef())
-    };
-    if trusted {
+    // Safety: a nullary C call that reads the trust database. No
+    // prompt — a guide that throws a system dialog every time the user
+    // presses *Check again* is a guide they close.
+    if unsafe { AXIsProcessTrusted() } {
         StepState::Done
     } else {
         StepState::Todo
