@@ -6,6 +6,62 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-31 — The release manifest is signed by a human, not by CI
+
+The updater verified each download's SHA-256 against `latest.json` and
+nothing verified `latest.json`. Since the checksum ships in the same
+GitHub release as the artifact, anyone who could publish a release
+could publish both — the checksum bought integrity against a broken
+transfer or a tampered CDN, and nothing against the attacker who
+actually matters.
+
+**`Manifest.signature` is now a real detached ed25519 signature**,
+verified the moment the manifest parses and before any URL in it is
+read. Three choices inside that are worth writing down.
+
+**The key never enters CI.** The obvious implementation is an Actions
+secret and a signing step in `release.yml`. It would also have been
+security theatre: the threat model is "someone can publish a GitHub
+release", and someone who can do that can read the repository's
+secrets. Signing therefore happens on the maintainer's machine,
+between the draft CI produces and the moment a human publishes it
+(`cargo xtask manifest sign`, `docs/RELEASING.md` §7). The cost is a
+manual step that can be forgotten; the mitigation is that the workflow
+summary and the release checklist both spell it out, and that a
+forgotten signature degrades to today's behaviour rather than breaking
+anything.
+
+**We sign a rendering, not the JSON.** Signing raw JSON makes the
+check hostage to formatting — re-serialise with different whitespace
+or key order and a valid signature stops verifying — and "canonical
+JSON" is a second specification to get wrong. So the signature covers
+a flat, newline-delimited rendering of the meaningful fields
+(`crates/poltertype-update/src/signature.rs`), artifacts ordered by
+key so a `HashMap`'s iteration order cannot leak in. Since `\n` is the
+only separator, a value containing one could describe two different
+manifests with the same bytes — both the signer and the verifier
+refuse such a manifest outright, which is the format's entire
+ambiguity surface. One function renders it and both ends call it:
+`xtask` depends on `poltertype-update` precisely so there is no second
+implementation to drift.
+
+*Alternative considered:* publish `latest.json.sig` as a second asset
+and sign the file bytes verbatim. Simpler to reason about, no
+canonicalisation at all — but a second network request on every update
+check, and a manifest whose signature can be dropped without the
+manifest looking any different.
+
+**Verification lands one release before enforcement.**
+`REQUIRE_SIGNATURE` is `false` in the release that introduces all of
+this. A present signature must verify; an absent one warns. Shipping
+it as `true` would strand every user whose updater resolves to the
+last unsigned manifest — including the one published before anyone
+had the tooling. It gets flipped once a signed manifest has been the
+published `latest.json` for a full cycle, and that flip, not this
+release, is when the README gets to say "signed".
+
+---
+
 ## 2026-07-31 — macOS subscribes to `FlagsChanged`, and clears flags on everything it posts
 
 Two macOS gaps that turned out to be one story.

@@ -110,6 +110,179 @@ fn a_signed_manifest_still_parses_in_an_unsigning_build() {
     assert_eq!(m.signature.as_deref(), Some("abc123"));
 }
 
+// ─── Manifest signature ───────────────────────────────────────────────
+
+/// A keypair the tests own. The shipped public key's private half
+/// lives on the maintainer's machine and must never be reachable from
+/// here, so everything except "is the shipped key well-formed" is
+/// exercised with this one.
+fn test_keypair() -> (ed25519_dalek::SigningKey, ed25519_dalek::VerifyingKey) {
+    let signing = ed25519_dalek::SigningKey::from_bytes(&[7u8; 32]);
+    let verifying = signing.verifying_key();
+    (signing, verifying)
+}
+
+fn sign(manifest: &mut Manifest, key: &ed25519_dalek::SigningKey) {
+    use base64::Engine;
+    use ed25519_dalek::Signer;
+    let payload = crate::signature::signing_payload(manifest).unwrap();
+    let sig = key.sign(&payload);
+    manifest.signature = Some(base64::engine::general_purpose::STANDARD.encode(sig.to_bytes()));
+}
+
+fn sample() -> Manifest {
+    serde_json::from_str(SAMPLE).unwrap()
+}
+
+/// The key we ship has to be a key. Nothing at runtime can tell us
+/// otherwise in a useful way — a broken one turns every update check
+/// into `TrustedKeyBroken` — so it is checked at build time here.
+#[test]
+fn the_public_key_built_into_this_binary_is_usable() {
+    crate::signature::trusted_key().expect("release-signing-key.pub must be a valid ed25519 key");
+}
+
+/// The exact bytes that get signed. Pinned deliberately: changing this
+/// rendering invalidates every signature ever made, so it must be a
+/// decision someone takes on purpose and not a side effect of tidying
+/// `signing_payload`. If this test fails, the format changed — bump
+/// the header string and plan a rollout, don't update the expectation.
+#[test]
+fn the_signed_payload_has_exactly_this_shape() {
+    let payload = crate::signature::signing_payload(&sample()).unwrap();
+    assert_eq!(
+        String::from_utf8(payload).unwrap(),
+        "poltertype-manifest-v1\n\
+         schema=1\n\
+         version=0.4.0\n\
+         notes_url=https://github.com/Just-Code-NET/PolterType/releases/tag/v0.4.0\n\
+         artifact=linux-x86_64\n\
+         url=https://github.com/Just-Code-NET/PolterType/releases/download/v0.4.0/poltertype-0.4.0-x86_64.AppImage\n\
+         sha256=9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08\n\
+         size=28311552\n"
+    );
+}
+
+/// `artifacts` is a `HashMap`, whose iteration order is randomised per
+/// process. If that order reached the payload, a manifest would verify
+/// or not depending on the run.
+#[test]
+fn artifact_order_cannot_change_the_payload() {
+    let mut a = sample();
+    a.artifacts.insert(
+        "windows-x86_64".to_owned(),
+        Artifact {
+            url: "https://example.com/a.msi".to_owned(),
+            sha256: "0".repeat(64),
+            size: 1,
+        },
+    );
+    a.artifacts.insert(
+        "macos-universal".to_owned(),
+        Artifact {
+            url: "https://example.com/a.dmg".to_owned(),
+            sha256: "1".repeat(64),
+            size: 2,
+        },
+    );
+
+    // Same content, inserted in the opposite order.
+    let mut b = sample();
+    let win = a.artifacts["windows-x86_64"].clone();
+    let mac = a.artifacts["macos-universal"].clone();
+    b.artifacts.insert("macos-universal".to_owned(), mac);
+    b.artifacts.insert("windows-x86_64".to_owned(), win);
+
+    assert_eq!(
+        crate::signature::signing_payload(&a).unwrap(),
+        crate::signature::signing_payload(&b).unwrap()
+    );
+}
+
+#[test]
+fn a_manifest_signed_with_the_right_key_verifies() {
+    let (signing, verifying) = test_keypair();
+    let mut m = sample();
+    sign(&mut m, &signing);
+    crate::signature::verify_with(&m, &verifying).expect("our own signature must verify");
+}
+
+/// The attack the signature exists to stop: someone who can publish a
+/// GitHub release swaps the download URL (and its matching checksum,
+/// which they can also compute) for one of their own.
+#[test]
+fn swapping_the_download_url_invalidates_the_signature() {
+    let (signing, verifying) = test_keypair();
+    let mut m = sample();
+    sign(&mut m, &signing);
+
+    let artifact = m.artifacts.get_mut("linux-x86_64").unwrap();
+    artifact.url = "https://evil.example/poltertype-0.4.0-x86_64.AppImage".to_owned();
+    artifact.sha256 = "f".repeat(64);
+
+    let err = crate::signature::verify_with(&m, &verifying)
+        .expect_err("a re-pointed artifact must not verify");
+    assert!(matches!(err, UpdateError::BadSignature(_)), "{err:?}");
+}
+
+#[test]
+fn a_signature_from_another_key_is_refused() {
+    let (_, verifying) = test_keypair();
+    let attacker = ed25519_dalek::SigningKey::from_bytes(&[9u8; 32]);
+    let mut m = sample();
+    sign(&mut m, &attacker);
+
+    let err = crate::signature::verify_with(&m, &verifying)
+        .expect_err("a stranger's signature must not verify");
+    assert!(matches!(err, UpdateError::BadSignature(_)), "{err:?}");
+}
+
+#[test]
+fn a_signature_that_is_not_even_base64_is_an_error_not_a_panic() {
+    let (_, verifying) = test_keypair();
+    for junk in ["", "not base64!!", "YWJj"] {
+        let mut m = sample();
+        m.signature = Some(junk.to_owned());
+        let err = crate::signature::verify_with(&m, &verifying).expect_err("must reject `{junk}`");
+        assert!(matches!(err, UpdateError::BadSignature(_)), "{err:?}");
+    }
+}
+
+/// `\n` is the payload's only separator, so a value containing one
+/// could describe two different manifests with the same bytes. Both
+/// sides refuse rather than sign or accept something ambiguous.
+#[test]
+fn a_line_break_in_a_field_is_refused_instead_of_signed() {
+    let mut m = sample();
+    m.version = "0.4.0\nversion=9.9.9".to_owned();
+    let err = crate::signature::signing_payload(&m).expect_err("must refuse an ambiguous payload");
+    assert!(
+        matches!(err, UpdateError::UnsignablePayload(f) if f == "version"),
+        "wrong field blamed"
+    );
+
+    let mut m = sample();
+    m.artifacts.get_mut("linux-x86_64").unwrap().url = "https://ok/\nsize=1".to_owned();
+    let err = crate::signature::signing_payload(&m).expect_err("must refuse an ambiguous payload");
+    assert!(matches!(err, UpdateError::UnsignablePayload(f) if f == "url"));
+}
+
+/// The rollout hinge. While `REQUIRE_SIGNATURE` is false an unsigned
+/// manifest still works — every user on an older release depends on
+/// that — but a *wrong* signature is refused from day one.
+#[test]
+fn an_unsigned_manifest_is_accepted_only_while_signing_is_optional() {
+    let (_, verifying) = test_keypair();
+    let m = sample();
+    assert!(m.signature.is_none());
+    let result = crate::signature::verify_with(&m, &verifying);
+    if crate::consts::REQUIRE_SIGNATURE {
+        assert!(matches!(result, Err(UpdateError::UnsignedManifest)));
+    } else {
+        assert!(result.is_ok(), "{result:?}");
+    }
+}
+
 #[test]
 fn platform_key_matches_a_key_the_release_workflow_publishes() {
     let key = platform_key();

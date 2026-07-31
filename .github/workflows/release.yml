@@ -244,6 +244,15 @@ jobs:
       # Keep the shape in step with `poltertype-update`'s `Manifest`
       # struct and its `platform_key()`: the three keys below are
       # exactly what that function can produce.
+      #
+      # What this step does NOT do is sign the manifest. The updater
+      # verifies an ed25519 signature over it, and the whole point of
+      # that signature is to mean something a compromised GitHub
+      # account cannot forge — so the key is not an Actions secret and
+      # never enters this runner. Signing is a manual step between this
+      # draft and the moment a human publishes it; the job summary
+      # below spells out the two commands, and `docs/RELEASING.md` has
+      # the full ritual.
       - name: Write latest.json
         env:
           TAG: ${{ github.ref_name }}
@@ -286,6 +295,29 @@ jobs:
 
           echo "── dist/latest.json ──"
           cat dist/latest.json
+
+      # The draft is not shippable yet and the reason is easy to forget
+      # a month later, so it goes where the person who just cut the tag
+      # is already looking.
+      - name: Remind the maintainer to sign
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          {
+            echo "## Before publishing \`${TAG}\`"
+            echo
+            echo 'The manifest attached to this draft is **unsigned**. Sign it with the'
+            echo 'release key (which lives on your machine, not here):'
+            echo
+            echo '```bash'
+            echo "gh release download ${TAG} --pattern latest.json --clobber"
+            echo 'cargo xtask manifest sign latest.json --key ~/.config/poltertype-signing/release.key'
+            echo "gh release upload ${TAG} latest.json --clobber"
+            echo '```'
+            echo
+            echo '`sign` verifies its own output against the public key compiled into the'
+            echo 'app, so a mismatch fails there rather than on a user machine.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create release
         uses: softprops/action-gh-release@v2

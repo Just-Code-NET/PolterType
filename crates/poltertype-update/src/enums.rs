@@ -19,6 +19,26 @@ pub enum UpdateError {
     UnsupportedSchema { found: u32, supported: u32 },
     #[error("manifest has no artifact for this platform ({0})")]
     NoArtifactForPlatform(String),
+    /// The manifest is signed, but not by us — or not over these
+    /// bytes. Indistinguishable from tampering, and treated as such:
+    /// the check stops before any URL in the manifest is read.
+    #[error("manifest signature does not verify: {0}")]
+    BadSignature(String),
+    /// No `signature` field, in a build that requires one. See
+    /// `consts::REQUIRE_SIGNATURE` for the rollout this belongs to.
+    #[error("release manifest is unsigned and this build requires a signature")]
+    UnsignedManifest,
+    /// A field contains a newline, so the signed payload it renders to
+    /// would be ambiguous — two different manifests could produce the
+    /// same bytes. Refusing is the only safe answer; see
+    /// `signature.rs`.
+    #[error("manifest field `{0}` contains a line break and cannot be signed or verified")]
+    UnsignablePayload(String),
+    /// The public key compiled into this binary is not a usable
+    /// ed25519 key. Only reachable if `release-signing-key.pub` was
+    /// corrupted in the build, never by anything a server said.
+    #[error("the signing key built into this binary is unusable: {0}")]
+    TrustedKeyBroken(String),
     #[error("manifest version `{0}` is not valid semver: {1}")]
     BadVersion(String, semver::Error),
     /// The bytes we got are not the bytes the release promised. Either

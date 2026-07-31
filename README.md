@@ -112,11 +112,16 @@ updater is a normal (non-optional) part of the default build.
 
 Three caveats worth stating plainly:
 
-- **The download is checksum-verified, not signed.** The checksum
-  comes from the same GitHub release as the installer, so it catches a
-  corrupted download or a tampered CDN — but not a compromised GitHub
-  account. Signing the manifest is planned (see
-  [docs/DECISIONS.md](docs/DECISIONS.md)).
+- **Signature checking is on, but not yet required.** Every download is
+  verified against the SHA-256 in the release manifest, which catches a
+  corrupted transfer or a tampered CDN — but not a compromised GitHub
+  account, since the checksum lives in the same release as the
+  installer. The manifest is now signed with an ed25519 key that is
+  *not* in CI, and the app verifies it against a public key compiled
+  into the binary. Until every published manifest has been signed for a
+  full release cycle, an *absent* signature is still accepted (a
+  **wrong** one never is), so don't read this as "signed updates" yet —
+  see [docs/DECISIONS.md](docs/DECISIONS.md) for the rollout.
 - **Only our own installers self-update.** If you installed from a
   distro package, or you're running a `cargo build` binary, PolterType
   won't overwrite it — those files aren't ours. You'll get a

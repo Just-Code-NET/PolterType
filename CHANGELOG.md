@@ -6,6 +6,25 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — 0.6.4
 
+### Security
+
+- **The release manifest is signed, and the updater checks it.** Until
+  now the only thing standing between a user and a hostile update was
+  a SHA-256 that shipped in the same GitHub release as the installer —
+  so whoever could publish one could publish both. `latest.json` now
+  carries a detached ed25519 signature, verified against a public key
+  compiled into the binary, the moment the manifest is parsed and
+  before any URL in it is read. The private key is **not** a CI secret
+  and never touches a runner: signing is a manual step the maintainer
+  performs on the draft release (`cargo xtask manifest sign`), which is
+  the only version of this that a compromised GitHub account cannot
+  forge.
+  **Not yet mandatory.** A *wrong* signature is refused from this
+  release on, but a *missing* one is still accepted — otherwise every
+  user would be stranded on the last unsigned manifest. Enforcement is
+  a one-constant flip in a later release, and only then does anything
+  user-facing get to say "signed updates".
+
 ### Fixed
 
 - **macOS: a suggestion accepted with its chord still held no longer

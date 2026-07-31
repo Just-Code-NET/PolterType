@@ -354,9 +354,64 @@ The workflow:
 4. Stops there — you publish the release manually after sanity-
    checking the artefacts.
 
+### Sign the manifest — MANDATORY (~1 min)
+
+The manifest CI attached is **unsigned**. The updater checks an
+ed25519 signature over it against a public key compiled into the
+app; that signature is what a compromised GitHub account cannot
+forge, which is only true because the private key is not an
+Actions secret and never touches a runner. So this step is
+yours, and it happens on the draft, before publishing:
+
+```bash
+cd /tmp
+gh release download v0.2.1 --pattern latest.json --clobber
+cargo xtask manifest sign latest.json --key ~/.config/poltertype-signing/release.key
+gh release upload v0.2.1 latest.json --clobber
+```
+
+`sign` re-reads what it wrote and verifies it against the public
+key the app ships, so a mismatched key fails here rather than on
+a user's machine. To look before you sign,
+`cargo xtask manifest payload latest.json` prints the exact bytes
+the signature covers, and `cargo xtask manifest verify
+latest.json` re-checks an already-signed file.
+
+The workflow run's summary page carries these same commands, so
+you don't have to remember they exist.
+
+**Key custody.** The private key is a 32-byte seed, base64, in
+`~/.config/poltertype-signing/release.key` (mode 0600) — or
+wherever you point `--key`, or in `$POLTERTYPE_SIGNING_KEY` if you
+keep it in a password manager instead of on disk. It is the one
+secret in this project with no recovery path: losing it means
+shipping a release with a new public key baked in and asking
+users to accept an unsigned interim manifest, and leaking it
+means an attacker can sign updates. Back it up somewhere that is
+neither this repository nor GitHub.
+
+`cargo xtask manifest keygen` creates a fresh keypair (and
+refuses to overwrite an existing one). Rotating means: keygen →
+put the new public key in
+`crates/poltertype-update/release-signing-key.pub` → ship a
+release built with it → only then sign with the new private key.
+Signing before that release is out means every existing install
+sees a signature it cannot check.
+
+> **Signatures are not yet mandatory.**
+> `poltertype-update`'s `REQUIRE_SIGNATURE` is `false`, so an
+> unsigned manifest still works — that is deliberate, since users
+> on older builds would otherwise be stranded. It is also why
+> forgetting to sign fails silently. Flip the constant to `true`
+> only once a signed manifest has been the published `latest.json`
+> for a full release cycle, and note the flip in the changelog:
+> from then on, a forgotten signature is an outage for everyone's
+> updater.
+
 When the run completes:
 
 * Open the draft on the [Releases page][releases].
+* Sign and re-upload `latest.json` (above).
 * Edit the body if you want to add release notes (the auto-
   generated body is just the checksums).
 * Hit **Publish release**.

@@ -74,6 +74,9 @@ pub(crate) fn fetch() -> Result<Manifest, UpdateError> {
             supported: SUPPORTED_SCHEMA,
         });
     }
+    // Before anything reads a URL out of this: a manifest we cannot
+    // authenticate decides nothing here.
+    crate::signature::verify(&manifest)?;
     debug!(
         version = %manifest.version,
         schema = manifest.schema,
