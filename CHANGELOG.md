@@ -4,7 +4,18 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.7.0
+## [0.7.0] — updates get signed, ARM64 Linux gets a build, and the setup guide starts checking your machine
+
+> **macOS users, before you update.** This release changes the macOS
+> input path: modifier presses now reach the engine (they never did),
+> and a correction releases the modifiers you are holding before it
+> types. Together they fix a correction fired under a held ⌘ going out
+> as ⌘⌫ — "delete to start of line". The code is reviewed, unit-tested
+> where the logic is portable, and compiled by CI, but **it has not
+> been run on a Mac by anyone**. If typing looks wrong afterwards,
+> please say so in
+> [#3](https://github.com/Just-Code-NET/PolterType/issues/3) — that
+> issue is how this gets confirmed.
 
 ### Security
 
