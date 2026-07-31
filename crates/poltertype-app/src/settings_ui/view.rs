@@ -22,6 +22,7 @@ use super::theme::{self, FONT_BOLD, GhostMark};
 impl SettingsApp {
     pub(super) fn view(&self) -> Element<'_, Message> {
         let body = match self.pane {
+            Pane::Setup => self.view_setup(),
             Pane::Languages => self.view_languages(),
             Pane::Hotkeys => self.view_hotkeys(),
             Pane::Commands => self.view_commands(),
@@ -114,6 +115,10 @@ impl SettingsApp {
                     bottom: 14.0,
                     left: 2.0,
                 }))
+                .push(item(
+                    setup_nav_label(self.setup.needs_attention()),
+                    Pane::Setup,
+                ))
                 .push(item("Languages", Pane::Languages))
                 .push(item("Hotkeys", Pane::Hotkeys))
                 .push(item("Commands", Pane::Commands))
@@ -1228,7 +1233,7 @@ impl SettingsApp {
 
 /// Pane title + one-paragraph explainer, replacing the old pattern of
 /// a bare `Text::new(title).size(24)` followed by unstyled body text.
-fn pane_header(
+pub(super) fn pane_header(
     b: &'static theme::BrandPalette,
     title: &'static str,
     subtitle: String,
@@ -1242,7 +1247,7 @@ fn pane_header(
 
 /// Surface card with a hairline border — the pane's main grouping
 /// device, mirroring the landing page's feature cards.
-fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
+pub(super) fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
     Container::new(content)
         .style(theme::card)
         .padding(16)
@@ -1251,12 +1256,31 @@ fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
 }
 
 /// Bold in-card section heading ("Behaviour", "Folders", …).
-fn section_title(b: &'static theme::BrandPalette, text: &'static str) -> Element<'static, Message> {
+pub(super) fn section_title(
+    b: &'static theme::BrandPalette,
+    text: &'static str,
+) -> Element<'static, Message> {
     Text::new(text).size(14).font(FONT_BOLD).color(b.ink).into()
 }
 
+/// Sidebar label for the Setup pane. Carries the warning glyph only
+/// while something is actually unresolved — a permanent ⚠ in the nav
+/// is a warning nobody reads by the second day.
+fn setup_nav_label(needs_attention: bool) -> &'static str {
+    // ASCII on purpose: the bundled font has no ⚠ and draws a tofu
+    // box, which reads as a rendering bug rather than as a warning.
+    if needs_attention {
+        "Setup  (!)"
+    } else {
+        "Setup"
+    }
+}
+
 /// Muted footnote at the bottom of a pane.
-fn tip(b: &'static theme::BrandPalette, text: impl Into<String>) -> Element<'static, Message> {
+pub(super) fn tip(
+    b: &'static theme::BrandPalette,
+    text: impl Into<String>,
+) -> Element<'static, Message> {
     Text::new(text.into()).size(11).color(b.muted).into()
 }
 
@@ -1318,7 +1342,10 @@ fn folder_button(label: &'static str, msg: Message) -> Element<'static, Message>
 
 /// Per-pane status banner text: ecto green for OK, garble pink for
 /// errors — the site's fixed/garbled word colours.
-fn status_line(b: &'static theme::BrandPalette, banner: &SaveBanner) -> Element<'static, Message> {
+pub(super) fn status_line(
+    b: &'static theme::BrandPalette,
+    banner: &SaveBanner,
+) -> Element<'static, Message> {
     Text::new(banner.text.clone())
         .size(11)
         .color(if banner.is_error { b.garble } else { b.ecto })

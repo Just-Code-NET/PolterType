@@ -16,6 +16,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod focus;
+pub mod setup;
 
 #[cfg(target_os = "linux")]
 mod linux;

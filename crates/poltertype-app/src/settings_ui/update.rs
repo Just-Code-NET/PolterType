@@ -347,6 +347,63 @@ impl SettingsApp {
                 let _ = opener::open(url);
             }
 
+            // ── Setup pane ─────────────────────────────────────────
+            Message::SetupRecheck => {
+                let before = self.setup.clone();
+                self.setup = poltertype_input::setup::probe_setup();
+                // Say something either way. A button that silently
+                // redraws the same screen reads as broken, and "still
+                // not granted" is the answer a user in the middle of
+                // fixing permissions most needs to hear.
+                self.setup_status = Some(if self.setup == before {
+                    SaveBanner {
+                        text: if self.setup.needs_attention() {
+                            "Checked — nothing has changed yet.".to_owned()
+                        } else {
+                            "Checked — everything is in place.".to_owned()
+                        },
+                        is_error: false,
+                    }
+                } else {
+                    SaveBanner {
+                        text: "Checked — something changed. Restart PolterType to pick it up."
+                            .to_owned(),
+                        is_error: false,
+                    }
+                });
+            }
+            Message::SetupOpen(url) => {
+                // Covers http(s) documentation links and macOS
+                // `x-apple.systempreferences:` deep links alike —
+                // `opener` hands both to the OS handler.
+                if let Err(e) = opener::open(&url) {
+                    warn!(?e, %url, "could not open setup link");
+                    self.setup_status = Some(SaveBanner {
+                        text: format!("Couldn't open {url}"),
+                        is_error: true,
+                    });
+                }
+            }
+            Message::SetupCopy(command) => {
+                self.setup_status = Some(SaveBanner {
+                    text: format!("Copied: {command}"),
+                    is_error: false,
+                });
+                return iced::clipboard::write(command);
+            }
+            Message::SetupRequestPermission(permission) => {
+                // The OS shows its own dialog; ours never imitates
+                // one. Accessibility's prompt is asynchronous, so the
+                // return value is not an answer — re-probe instead of
+                // believing it.
+                poltertype_input::setup::request_permission(permission);
+                self.setup = poltertype_input::setup::probe_setup();
+                self.setup_status = Some(SaveBanner {
+                    text: "Asked the system. Approve it there, then press Check again.".to_owned(),
+                    is_error: false,
+                });
+            }
+
             Message::WindowCloseRequested(id) => {
                 // Last chance to flush any unsaved wordlist edit
                 // before the window goes away. Failures are logged

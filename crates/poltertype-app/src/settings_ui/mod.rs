@@ -79,6 +79,7 @@ mod system_theme;
 mod theme;
 mod update;
 mod view;
+mod view_setup;
 
 use std::sync::Arc;
 
@@ -93,7 +94,13 @@ use state::*;
 
 /// Entry point: load settings + OS layouts, run iced loop, save on
 /// "Save" click. Returns when the user closes the window.
-pub fn run() -> Result<()> {
+///
+/// `open_setup` starts the window on the **Setup** pane instead of
+/// Languages. The tray passes it when the keyboard hooks failed to
+/// start: at that moment every other pane is furniture, and making the
+/// user find the right one is exactly the friction this pane exists to
+/// remove.
+pub fn run(open_setup: bool) -> Result<()> {
     let store = SettingsStore::load_or_default().context("load settings for UI")?;
     let initial_settings = store.snapshot();
     let store = Arc::new(store);
@@ -102,20 +109,31 @@ pub fn run() -> Result<()> {
     // present the user with an empty set and a hint, rather than
     // refusing to open the window. They can still edit other panes
     // and save.
-    let os_layouts: Vec<LayoutId> = match create_switcher() {
-        Ok(switcher) => switcher.list_active().unwrap_or_else(|e| {
-            warn!(
-                ?e,
-                "could not list active OS layouts; Languages pane will be empty"
-            );
-            Vec::new()
-        }),
+    //
+    // The same probe answers a second question the Setup pane asks:
+    // whether a layout switcher exists at all. Hooks working and
+    // switching missing is its own failure — corrections then rewrite
+    // the word into the layout that was already wrong — and it
+    // deserves to be said out loud rather than inferred from an app
+    // that behaves oddly.
+    let (os_layouts, layout_backend): (Vec<LayoutId>, Option<String>) = match create_switcher() {
+        Ok(switcher) => {
+            let backend = switcher.backend_name().to_owned();
+            let layouts = switcher.list_active().unwrap_or_else(|e| {
+                warn!(
+                    ?e,
+                    "could not list active OS layouts; Languages pane will be empty"
+                );
+                Vec::new()
+            });
+            (layouts, Some(backend))
+        }
         Err(e) => {
             warn!(
                 ?e,
                 "no layout switcher backend; Languages pane will be empty"
             );
-            Vec::new()
+            (Vec::new(), None)
         }
     };
 
@@ -150,7 +168,18 @@ pub fn run() -> Result<()> {
     let store_for_init = Arc::clone(&store);
     app.run_with(move || {
         (
-            SettingsApp::new(initial_settings, os_layouts, path, store_for_init),
+            SettingsApp::new(
+                initial_settings,
+                os_layouts,
+                path,
+                store_for_init,
+                if open_setup {
+                    enums::Pane::Setup
+                } else {
+                    enums::Pane::Languages
+                },
+                layout_backend,
+            ),
             Task::none(),
         )
     })

@@ -83,7 +83,12 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     if let Some(arg) = args.next() {
         match arg.as_str() {
-            "--settings" | "-s" | "settings" => return settings_ui::run(),
+            "--settings" | "-s" | "settings" => return settings_ui::run(false),
+            // Same window, opened on the Setup pane. The tray uses
+            // this when the keyboard hooks failed to start, so the
+            // user lands on the one screen that can help instead of
+            // hunting for it.
+            "--setup" => return settings_ui::run(true),
             "--version" | "-V" => {
                 println!("{APP_NAME} {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
@@ -368,10 +373,11 @@ fn main() -> Result<()> {
     // Onboarding alert entry — present only when keyboard hooks
     // failed to start (Wayland without the `input` group, X11 connect
     // refused, macOS without Accessibility). Clicking opens the
-    // setup guide (docs/PERMISSIONS.md) in the browser.
+    // Settings window on its Setup pane, which probes this machine and
+    // says what is actually missing.
     let item_setup = input_alert
         .as_ref()
-        .map(|_| MenuItem::new("⚠ Keyboard hooks unavailable — Setup Guide…", true, None));
+        .map(|_| MenuItem::new("⚠ Keyboard hooks unavailable — Setup…", true, None));
     if let Some(item) = item_setup.as_ref() {
         menu.append_items(&[item, &PredefinedMenuItem::separator()])
             .context("populate tray alert entry")?;
@@ -473,7 +479,7 @@ fn main() -> Result<()> {
         spawn_error_notification(format!(
             "Keyboard hooks are unavailable — automatic layout switching is off.\n\
              {reason}\n\
-             Tray menu → \"Setup Guide\" explains the fix."
+             Tray menu → \"Setup…\" shows what is missing and how to fix it."
         ));
     }
 
@@ -728,14 +734,22 @@ fn main() -> Result<()> {
                 } else if id == pause_id {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
                 } else if Some(&id) == setup_id.as_ref() {
-                    // Pinned to `main`: the guide must reflect the
-                    // latest setup script, not the binary that failed.
-                    if let Err(e) = opener::open_browser(SETUP_GUIDE_URL) {
-                        warn!(?e, "could not open the setup guide");
-                        spawn_error_notification(format!(
-                            "Could not open the setup guide.\nSee {SETUP_GUIDE_URL}"
-                        ));
-                    }
+                    // The Settings window on its Setup pane, not a
+                    // browser tab. The pane says what is missing *on
+                    // this machine* and re-checks after the user has
+                    // fixed it; a markdown file can do neither. It
+                    // still links out to the same guide for anything
+                    // it cannot say in two sentences.
+                    spawn_setup_ui(SettingsCloseDeps {
+                        settings: Arc::clone(&settings_for_loop),
+                        layouts: Arc::clone(&layouts),
+                        data_dir: data_dir.clone(),
+                        user_wordlist_dir: user_wordlist_dir.clone(),
+                        dict_reload_handle: dict_reload_handle.handle(),
+                        profile_dict_cache: Arc::clone(&profile_dict_cache),
+                        profile_force_reapply: Arc::clone(&profile_force_reapply),
+                        reload_tx: cmd_tx_for_loop.clone(),
+                    });
                 }
             }
             Event::UserEvent(UserEvent::Hotkey(id)) => {
@@ -841,6 +855,7 @@ fn print_help() {
         USAGE:\n  \
             poltertype              start the tray app\n  \
             poltertype --settings   open the settings window\n  \
+            poltertype --setup      open the settings window on the Setup pane\n  \
             poltertype --version    print version and exit\n  \
             poltertype --help       show this help",
         ver = env!("CARGO_PKG_VERSION"),

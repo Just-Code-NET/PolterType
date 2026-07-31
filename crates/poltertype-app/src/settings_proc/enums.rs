@@ -23,3 +23,23 @@ pub(super) enum OwnExe {
     /// for the log line.
     Gone(PathBuf),
 }
+
+/// Which pane the Settings child process should open on.
+///
+/// A CLI flag rather than an IPC message because the two processes
+/// share nothing at runtime by design — the child reads `config.toml`
+/// and exits. One extra argv entry is the entire protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SettingsEntry {
+    Normal,
+    Setup,
+}
+
+impl SettingsEntry {
+    pub(super) fn flag(self) -> &'static str {
+        match self {
+            SettingsEntry::Normal => "--settings",
+            SettingsEntry::Setup => "--setup",
+        }
+    }
+}

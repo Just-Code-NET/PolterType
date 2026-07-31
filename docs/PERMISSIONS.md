@@ -39,15 +39,23 @@ added" notification. No elevation is involved and nothing is written
 outside the user's own home directory; unticking the setting deletes
 the file.
 
-> **What exists:** when the keyboard hooks fail to start — the usual
-> cause on macOS being exactly this permission — the tray shows a
-> **⚠ Keyboard hooks unavailable — Setup Guide…** entry (which opens
-> this document), a tooltip warning, and a one-shot notification.
+> **What exists (0.6.4).** When the keyboard hooks fail to start — the
+> usual cause on macOS being exactly this permission — the tray shows a
+> **⚠ Keyboard hooks unavailable — Setup…** entry, a tooltip warning,
+> and a one-shot notification. The entry opens the Settings window on
+> its **Setup** pane (also reachable as `poltertype --setup`), which
+> probes *this* machine: on macOS it reports Accessibility and Input
+> Monitoring separately, offers to raise each system prompt, and deep-
+> links into the matching System Settings pane; on Wayland it reports
+> read access and uinput access separately, and distinguishes "not set
+> up" from "set up, but this login session predates it". **Check
+> again** re-probes. The pane also carries the "layout switching
+> unavailable" banner when no switcher backend could be built.
 >
-> **Still planned, not built:** a first-launch onboarding *window* that
-> walks the user through the toggle before anything fails, and a banner
-> for "layout switching unavailable". Today the user still has to act
-> on the alert rather than being led through the grant.
+> **Still planned, not built:** the screenshots / GIFs of the macOS
+> toggles, and showing any of this *before* something fails rather than
+> after. The pane is also, like the rest of the macOS backend,
+> compiled by CI and never yet run on a Mac.
 
 ## Linux
 
@@ -214,8 +222,8 @@ the app sits in the tray unable to switch anything — a layout switcher
 is a hard requirement, not a nice-to-have.
 
 (The separate case — keyboard *hooks* failing while layout switching
-works — does keep the app running, and surfaces the ⚠ Setup Guide tray
-entry described under macOS above.)
+works — does keep the app running, and surfaces the ⚠ Setup tray entry
+described under macOS above, which opens the Setup pane.)
 
 ## Network
 

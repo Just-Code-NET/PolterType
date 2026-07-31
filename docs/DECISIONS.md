@@ -6,6 +6,56 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-31 — The setup walkthrough probes, and refuses to act on the user's behalf
+
+Replacing "here is a link to PERMISSIONS.md" with a screen that knows
+what this machine is missing. Four choices worth defending.
+
+**The probe lives in `poltertype-input`, the rendering in the app.**
+"Is the user in the `input` group" is platform code, and platform code
+lives in the seven crates that are allowed to hold `#[cfg(target_os)]`.
+The Settings window is handed a `SetupReport` — a list of steps with a
+state and at most one action — and knows nothing about udev rules. It
+also means the per-OS logic has tests without a GUI in the loop.
+
+**Nothing on the pane runs anything privileged.** The Linux fix needs
+`sudo`, and the obvious "Run setup" button would mean an app quietly
+acquiring root on a machine where it already reads every keystroke.
+That is trust we would not get back. The button copies the command
+instead; the user reads it and runs it in their own terminal.
+Similarly, macOS permission prompts are always the *system's* dialog
+(`AXIsProcessTrustedWithOptions`, `IOHIDRequestAccess`) — we never
+draw something that looks like one.
+
+**Four states, not two.** `Done` / `Todo` would have been enough to
+render a tick and a cross, and would have given the wrong advice in
+the case that actually costs people an evening: `usermod -aG input`
+writes the group database and cannot touch the credentials of a
+session that already exists. Everything looks configured, nothing
+works, and "re-run the setup script" — the only advice a two-state
+model can give — changes nothing. `NeedsRelogin` exists to say *log
+out* instead. The fourth, `Unknown`, is for what we genuinely cannot
+determine (no `/dev/input` entries at all, an `IOHIDCheckAccess` that
+returns "undecided"): a setup guide that invents a problem loses the
+reader, and one that asserts a fix it has not verified is worse.
+
+**Read and write are separate rows.** They are separate permissions
+and they fail separately, and the half-granted case — evdev readable,
+uinput not — is the confusing one: detection works, corrections never
+land, and the app looks like it is deciding wrongly rather than being
+unable to act.
+
+*Not built:* the screenshots and GIFs of the macOS toggles that issue
+#10 asked for. They would be the most useful part of that pane for a
+first-time Mac user and they cannot be produced from a machine without
+a Mac. The deep links into the exact System Settings panes are the
+half we could do honestly.
+
+*Untested on hardware.* Verified on Wayland/evdev here, including the
+unresolved states. The macOS half compiles in CI and has never run.
+
+---
+
 ## 2026-07-31 — The tooltip already worked on KDE; only the documentation said otherwise
 
 Issue #6 asked for a plan to bring the suggestion tooltip to GNOME and

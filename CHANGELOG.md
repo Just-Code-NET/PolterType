@@ -27,6 +27,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Setup pane that checks this machine instead of linking to a
+  document.** When the keyboard hooks fail to start, the tray alert now
+  opens the Settings window on a new **Setup** pane rather than a
+  markdown file in a browser. It probes the running system and says
+  what is actually missing, per OS: on Wayland, whether key events can
+  be read and whether corrections can be typed, as two separate
+  answers, because they are two separate permissions and the half-
+  granted case (detection works, nothing gets fixed) is the confusing
+  one. On macOS, Accessibility and Input Monitoring separately, with
+  buttons that ask the system for each and deep links into the right
+  System Settings pane. On X11 and Windows it says there is nothing to
+  grant — most people arrive expecting the worst. *Check again*
+  re-probes, and answers even when nothing changed.
+  It also catches the trap that wastes an evening: `usermod -aG input`
+  updates the group database and cannot touch a login session that
+  already exists, so everything looks configured and nothing works.
+  That state gets its own answer — log out, don't re-run the script.
+  Nothing on the pane changes the system. The Linux script needs
+  `sudo`, so the button copies the command for the user to read and run
+  themselves.
+- **An honest banner when layout switching is unavailable.** Hooks
+  working and no switcher backend is its own failure: PolterType spots
+  the wrong-layout word and rewrites it into the same wrong layout, so
+  it looks like the correction is broken rather than missing.
 - **The suggestion tooltip anchors to the caret on GNOME and KDE
   Wayland.** Those sessions have no compositor-agnostic active-window
   query, so the focus tracker was a plain no-op there and the tooltip
