@@ -1,0 +1,85 @@
+# Maintainer: PolterType contributors <https://github.com/Just-Code-NET/PolterType>
+#
+# Builds from the release tarball. The wordlists are in the repository,
+# so `cargo build` needs nothing from the network beyond crates.io.
+#
+# See ../README.md for how this file gets published and updated.
+
+pkgname=poltertype
+pkgver=0.6.3
+pkgrel=1
+pkgdesc="Detects text typed in the wrong keyboard layout, switches the layout and fixes the word"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Just-Code-NET/PolterType"
+license=('MIT')
+depends=(
+  'gcc-libs'
+  'glibc'
+  'dbus'
+  'systemd-libs'
+  'libxkbcommon'
+  'libxkbcommon-x11'
+  'wayland'
+  'libx11'
+  'libxi'
+  'libxtst'
+  'gtk3'
+  'libayatana-appindicator'
+  'alsa-lib'
+)
+makedepends=('cargo' 'pkgconf')
+install="${pkgname}.install"
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "PolterType-${pkgver}"
+  # `--locked` here and in build(): the repository ships a Cargo.lock
+  # and a package must build the versions upstream tested, not
+  # whatever resolved today.
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "PolterType-${pkgver}"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release --all-features -p poltertype-app
+}
+
+check() {
+  cd "PolterType-${pkgver}"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --release --workspace
+}
+
+package() {
+  cd "PolterType-${pkgver}"
+
+  install -Dm0755 "target/release/${pkgname}" "${pkgdir}/usr/bin/${pkgname}"
+
+  # The layout mappings and FST wordlists, written by
+  # poltertype-core's build script. `/usr/share/poltertype/data` is
+  # resolution rule 4 for a binary in `/usr/bin` — see
+  # `crates/poltertype-core/src/data_dir/mod.rs`; keep the two in step
+  # or the app starts and knows no languages.
+  install -dm0755 "${pkgdir}/usr/share/${pkgname}/data"
+  cp -r target/dist/data/. "${pkgdir}/usr/share/${pkgname}/data/"
+
+  install -Dm0644 installers/linux/poltertype.desktop \
+    "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+
+  # The udev rule the package can install on the user's behalf. It is
+  # inert until someone is in the `input` group, which the package
+  # deliberately does NOT do — see the .install file.
+  install -Dm0644 packaging/aur/99-poltertype.rules \
+    "${pkgdir}/usr/lib/udev/rules.d/99-poltertype.rules"
+  install -Dm0644 packaging/aur/uinput.conf \
+    "${pkgdir}/usr/lib/modules-load.d/poltertype-uinput.conf"
+
+  install -Dm0644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm0644 docs/PERMISSIONS.md \
+    "${pkgdir}/usr/share/doc/${pkgname}/PERMISSIONS.md"
+  install -Dm0644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

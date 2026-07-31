@@ -1,0 +1,42 @@
+# Printed once on install, and again on the upgrade that first ships
+# this text. Deliberately short: a wall of text after `pacman -S` is a
+# wall of text nobody reads.
+
+_notice() {
+    cat <<'EOF'
+
+==> PolterType: one manual step on Wayland
+
+    The udev rule is installed. What the package will NOT do for you
+    is add your user to the `input` group — that is a change to your
+    account, and a package has no business making it silently:
+
+        sudo usermod -aG input "$USER"
+
+    Then LOG OUT and back in. A session keeps the group membership it
+    was created with, so until you do, everything looks configured and
+    nothing works. PolterType's Settings window has a Setup pane that
+    tells you exactly which of the two states you are in.
+
+    On X11 none of this applies — nothing to grant, nothing to do.
+
+==> Updates come from the AUR
+
+    PolterType's built-in updater deliberately refuses to overwrite a
+    file pacman owns. It will point you at the releases page instead;
+    that is correct, not a bug. Update with your AUR helper.
+
+EOF
+}
+
+post_install() {
+    _notice
+}
+
+post_upgrade() {
+    # Only on a fresh reading of the notice — an upgrade that changes
+    # nothing about setup should not re-lecture.
+    if [ -z "$2" ]; then
+        _notice
+    fi
+}

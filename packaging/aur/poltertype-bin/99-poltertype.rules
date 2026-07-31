@@ -1,0 +1,13 @@
+# Installed by the poltertype package.
+#
+# Grants the `input` group:
+#   - read access to keyboard event devices, so PolterType can see
+#     what you type on Wayland (which offers no other way);
+#   - read+write access to /dev/uinput, so the corrector can backspace
+#     the wrong-layout word and re-type it.
+#
+# Inert until your user is actually in that group — the package does
+# not add you to it. See /usr/share/doc/poltertype/PERMISSIONS.md.
+KERNEL=="event*", SUBSYSTEM=="input", GROUP="input", MODE="0640"
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", \
+    OPTIONS+="static_node=uinput"

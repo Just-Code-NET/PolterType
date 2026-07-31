@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+#
+# Installer manifest for microsoft/winget-pkgs. See ../README.md for how
+# this gets submitted and kept current — `wingetcreate update` will
+# rewrite InstallerUrl / InstallerSha256 / PackageVersion for you, and
+# that is the supported way to bump it.
+
+PackageIdentifier: JustCode.PolterType
+PackageVersion: 0.6.3
+MinimumOSVersion: 10.0.0.0
+InstallerType: wix
+# Per-user by design (installers/wix/main.wxs), which is what lets the
+# install run without elevation and without a UAC prompt. If this ever
+# becomes a per-machine MSI, Scope must change with it or winget will
+# promise something the installer does not do.
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+# The self-updater and winget do not fight: the updater only ever
+# replaces installs it recognises as its own, and an MSI-over-MSI
+# upgrade keeps the per-user layout. Nothing special is needed here.
+ReleaseDate: 2026-07-13
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Just-Code-NET/PolterType/releases/download/v0.6.3/poltertype-0.6.3-x86_64-pc-windows-msvc.msi
+    InstallerSha256: 388AA09DFB299542E88B56700C78897E4D8FEBFD0E49C2E08E4641A5871D2454
+ManifestType: installer
+ManifestVersion: 1.6.0

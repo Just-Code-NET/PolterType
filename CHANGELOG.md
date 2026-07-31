@@ -63,6 +63,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Documented
 
+- **Packaging manifests for AUR, winget and Homebrew**, staged in
+  `packaging/` with the publish step for each written down. Nothing is
+  live yet — and the README install table stays silent until each one
+  is. `packaging/bump.sh <version>` re-points all three at a published
+  release by hashing the bytes GitHub actually serves. Two decisions
+  worth knowing: the AUR packages install the udev rule but will not
+  add anyone to the `input` group (that is the user's account, not
+  ours), and the Homebrew cask does **not** strip macOS quarantine —
+  removing that check silently for an unsigned app that reads every
+  keystroke is not a convenience we get to hand out.
 - **The tooltip was never broken on KDE.** KWin has implemented
   `zwlr_layer_shell_v1` for years; verified against KWin 6.7.3, where
   the surface configures and maps exactly as on Hyprland. GNOME
