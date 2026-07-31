@@ -66,6 +66,7 @@ file or convince yourself it genuinely didn't change.
 | `CLAUDE.md` | the `## Known gaps (as of vX.Y.Z)` heading — re-stamp it and re-verify every bullet; a gap that closed must come out |
 | `docs/PLAN.md` | the `Last updated:` line, the phase checkboxes, and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there) |
 | `docs/DECISIONS.md` | you made a call worth defending later — append an entry; don't rewrite history |
+| `docs/CODE_SIGNING.md` | a signing key is added, rotated or retired, or a platform's signing status changes — it is a **published** policy and a stale one misleads users, not just us |
 | `docs/DATA_LAYOUT.md` | the app writes a new file or directory on the user's disk |
 | `docs/PERMISSIONS.md` | the app takes a new OS capability — **including network** |
 | `docs/AI.md` | the AI subsystem's wiring status changes |

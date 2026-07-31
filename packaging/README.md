@@ -71,6 +71,31 @@ Two rules keep that honest:
   user, costs us a review. The same package maintained by us costs us
   every release, forever.
 
+## Signing, per platform — they are not the same thing
+
+Worth stating plainly, because "we should sign our releases" means
+three unrelated pieces of work:
+
+- **Windows and macOS have a gatekeeper and a certificate authority.**
+  An unsigned installer produces a scary dialog, and the fix is a
+  certificate someone issues you — free from
+  [SignPath Foundation](https://signpath.org/) for Windows OSS, $99/year
+  from Apple for macOS with no open-source exemption.
+- **Linux has neither.** There is no CA in this story and nothing to
+  buy. No distribution shows a warning for an unsigned AppImage,
+  because the trust model is the *repository*, not the binary. What
+  Linux does require is a **GPG key on the repository** the moment we
+  host one — `apt` and `dnf` refuse or warn otherwise — and that key is
+  one we generate, for free, forever. The cost is custody, not money.
+  Until repositories exist, the ed25519 signature over `latest.json`
+  (live since v0.7.0) is what protects the path that actually matters:
+  updates.
+- **The stores sign for you.** Flathub and the Snap Store sign what
+  they publish with their own infrastructure; nothing for us to hold.
+
+Full custody rules, and what changes on the day macOS builds are
+notarised, are in [`docs/CODE_SIGNING.md`](../docs/CODE_SIGNING.md).
+
 ## Bumping to a new release
 
 ```bash
