@@ -135,24 +135,29 @@ The intended shape is declarative: detectors and rewriters described
 in the user's `config.toml`, with `[ai]` carrying only the master
 switches.
 
-> **None of the `[[ai.detectors]]` / `[[ai.rewriters]]` schema below
-> exists yet.** The settings struct today is exactly
-> `AiSettings { enabled, allow_remote }`. Because settings parse with
-> `#[serde(default)]` and no `deny_unknown_fields`, blocks like these
-> are *silently ignored* rather than rejected — do not write them into
-> a config expecting an effect.
+> **`[[ai.plugins]]` is real since 0.8.0; `[[ai.rewriters]]` is not.**
+> The settings struct is
+> `AiSettings { enabled, allow_remote, plugins }`, and each plug-in
+> entry is constructed into a `Detector` and appended to the pipeline.
+> What it will not do yet is *decide* anything — both backends are
+> stubs returning no opinion.
+>
+> Rewriters remain unimplemented: there is no rewriter stage in
+> `poltertype-core`, so an `[[ai.rewriters]]` block is *silently
+> ignored* (settings parse with `#[serde(default)]` and no
+> `deny_unknown_fields`). Do not write one expecting an effect.
 
 ```toml
 [ai]
 enabled = false
 allow_remote = false
 
-[[ai.detectors]]
+[[ai.plugins]]
 type = "local-onnx"
 id   = "fasttext-lid-176"
 model_path = "models/lid.176.onnx"
 
-[[ai.detectors]]
+[[ai.plugins]]
 type = "remote-llm"
 id   = "anthropic-haiku"
 provider = "anthropic"

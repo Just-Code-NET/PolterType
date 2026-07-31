@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-31 (v0.7.0).
+> Created: 2026-05-02. Last updated: 2026-07-31 (v0.8.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -409,11 +409,18 @@ enabled              = true
 check_interval_hours = 24   # floor of 1 is enforced in code; 0 means hourly, NOT off
 
 [ai]
-enabled     = false
-allow_remote = false
-# Parsed but inert — nothing reads these yet (docs/AI.md).
-# The list of enabled AI detectors and their configs:
-# see §3.8 for an example
+enabled      = false
+allow_remote = false   # a second switch: even enabled, no network without it
+
+# Read since 0.8.0: each entry becomes a Detector appended to the
+# pipeline. Both shipped backends are still stubs that return no
+# opinion (docs/AI.md), so this changes no decision yet.
+[[ai.plugins]]
+type        = "remote-llm"
+id          = "claude"
+provider    = "anthropic"
+model       = "claude-sonnet-4"
+api_key_ref = "keyring:anthropic"   # never the key itself — refused if it is
 ```
 
 API keys are **not stored** in `config.toml` — only a reference to an
@@ -507,10 +514,13 @@ mirroring text correction. Disabled by default.
 ```toml
 [ai]
 enabled = true
-default_pipeline = ["heuristic", "dictionary", "local-onnx"]
 allow_remote = false   # a separate checkbox: "allow AI network calls"
 
-[[ai.detectors]]
+# NOTE: `[[ai.plugins]]`, not `[[ai.detectors]]` — the implemented name.
+# `default_pipeline` was in the original design and does not exist:
+# plug-ins are appended to the built-in detectors, never reordered
+# against them.
+[[ai.plugins]]
 type = "local-onnx"
 id   = "fasttext-lid-176"
 model_path = "models/lid.176.onnx"
@@ -518,7 +528,7 @@ threads = 1
 weight = 1.0
 min_text_length = 4
 
-[[ai.detectors]]
+[[ai.plugins]]
 type = "remote-llm"
 id   = "anthropic-haiku"
 provider = "anthropic"
@@ -916,24 +926,28 @@ separate `poltertype --settings` process.
 
 ### Phase 7 — AI skeleton
 
-The skeleton exists and **is wired to the engine since 0.8.0**
-(`[[ai.plugins]]` → detectors), but both backends are still stubs that
-return no opinion — not a
-single line of `poltertype-app` / `poltertype-core` imports
-`poltertype-ai`. Details in `docs/AI.md`.
+The skeleton exists and **is wired to the engine since 0.8.0**:
+`poltertype-app` reads `[[ai.plugins]]`, builds detectors through
+`poltertype_ai::build_detectors` and appends them to the pipeline.
+What it still has no use for is a **backend** — both shipped ones are
+stubs that return no opinion, so enabling the feature changes no
+decision and opens no socket. The seam is real and empty. Details in
+`docs/AI.md`.
 
 - [x] The `poltertype-ai` crate behind `feature = "ai"` (disabled by
       default).
 - [x] The `Detector` + `WordRewriter` traits declared in
       `poltertype-detect`.
 - [x] `docs/AI.md`.
-- [ ] **Traits integrated into the pipeline** — no. The detector list
-      is hardcoded in `poltertype-app::main`; the `[[ai.detectors]]`
-      settings schema does not exist, and no code reads the
-      `[ai].enabled` / `allow_remote` keys.
-- [ ] A reference `LocalOnnxDetector` with `lid.176` — a stub.
-- [ ] A reference `RemoteLlmDetector` (Anthropic API) — a stub; no
-      build makes network calls.
+- [x] **Traits integrated into the pipeline** — 0.8.0. `[[ai.plugins]]`
+      entries become detectors and are *appended* to the built-in list;
+      `[ai].enabled` and `allow_remote` are both read. A bad entry is
+      skipped with its id logged rather than costing the others, and an
+      `api_key_ref` that is not a `keyring:` reference is refused.
+- [ ] A reference `LocalOnnxDetector` with `lid.176` — still a stub:
+      it validates the model path and then loads nothing.
+- [ ] A reference `RemoteLlmDetector` (Anthropic API) — still a stub;
+      no build makes network calls.
 
 ### Phase 8 — Polish, release ✅ (partially)
 

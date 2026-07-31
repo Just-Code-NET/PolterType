@@ -12,7 +12,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.7.0 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.8.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland). On Linux/Wayland a
@@ -21,11 +21,15 @@ tarde` lands correctly as typed.*
 > longer scrambles the result — except behind an input remapper such
 > as keyd, where PolterType stands down and falls back to detecting
 > and repairing instead
-> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). **macOS: read this
+> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). The same hold-back
+> exists on Windows since 0.8.0 but is **off by default**
+> (`POLTERTYPE_HOLD_KEYS=1`) because nobody has run it on real
+> hardware. **macOS: read this
 > before updating.** 0.6.2 was validated on real hardware (macOS 15,
-> Intel), but 0.7.0 changes the macOS input path — modifier events now
+> Intel), but 0.7.0 changed the macOS input path — modifier events now
 > reach the engine, and corrections release held modifiers before
-> typing — and those changes have not been run on a Mac by anyone.
+> typing — and those changes have still not been run on a Mac by
+> anyone.
 > They are the fix for a correction under a held ⌘ going out as ⌘⌫;
 > if something looks wrong on your Mac, please say so in
 > [#3](https://github.com/Just-Code-NET/PolterType/issues/3). The
@@ -111,7 +115,7 @@ is two requests: a `GET` of a small JSON manifest, and — only when
 there's actually a new version — a `GET` of the installer itself. No
 account, no identifier, nothing about you and nothing about what you
 type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.7.0
+a User-Agent naming the running version (`PolterType/0.8.0
 (updater)`). The exact manifest URL is printed on the Settings
 window's **General** pane, so you never have to take our word for it.
 
