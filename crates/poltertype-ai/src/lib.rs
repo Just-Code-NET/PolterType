@@ -23,7 +23,11 @@
 //!   `config.toml`.
 
 #![forbid(unsafe_code)]
+// Same test-only allowance the other crates carry: a test that cannot
+// panic cannot assert. See `poltertype-update/src/lib.rs`.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+pub mod factory;
 pub mod local;
 pub mod remote;
 pub mod rewriters;
@@ -33,5 +37,6 @@ mod keys;
 mod types;
 
 pub use enums::*;
+pub use factory::build_detectors;
 pub use keys::*;
 pub use types::*;

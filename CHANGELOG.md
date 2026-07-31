@@ -50,6 +50,29 @@ and the project follows [Semantic Versioning](https://semver.org/).
   process gives the keyboard back without our help — the failure mode
   that made the evdev gate dangerous does not exist here.
 
+- **The AI subsystem is connected to the engine.** `poltertype-ai` has
+  compiled since v0.1 with nothing ever constructing it, and
+  `[ai].enabled` was a setting no code read. Now `[[ai.plugins]]`
+  entries in `config.toml` are turned into detectors and appended to
+  the pipeline — appended, never substituted, so an AI voice is added
+  to the decision and the offline detectors keep working exactly as
+  before.
+
+  **What this does not do is make PolterType smarter yet.** Both
+  shipped backends are still stubs that return no opinion: the local
+  one loads no model, the remote one makes no request, and **no build
+  makes a network call**. What changed is that the seam is real — a
+  model can now be dropped in without touching the app.
+
+  The gates, in order: the `ai` cargo feature, then `[ai].enabled`,
+  then the entry building at all, and for remote plug-ins
+  `[ai].allow_remote` on top — checked per judgement, so switching it
+  on needs no config edit. An entry that cannot be built is logged with
+  its id and skipped; the others still load. An `api_key_ref` that is
+  not a `keyring:` reference is refused outright, because a key in
+  `config.toml` is a key in backups, dotfile repos and pasted bug
+  reports.
+
 ### Fixed
 
 - **Windows: our own synthetic keystrokes are now identified by a

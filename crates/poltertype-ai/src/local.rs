@@ -22,6 +22,15 @@ impl LocalOnnxDetector {
         if !model_path.exists() {
             return Err(AiError::ModelMissing(model_path));
         }
+        // Said once, at construction. `judge` runs on the correction
+        // path — a warning per word would drown the log and slow the
+        // one code path that must stay quick.
+        warn!(
+            %id,
+            ?model_path,
+            "local ONNX detector is a stub: it loads no model and returns no opinion. \
+             The plug-in is wired and will start voting the day inference lands."
+        );
         Ok(Self { id, model_path })
     }
 }
@@ -35,7 +44,6 @@ impl Detector for LocalOnnxDetector {
     }
 
     fn judge(&self, _ctx: &DetectionContext<'_>) -> Verdict {
-        warn!(id = %self.id, "local ONNX detector is a stub; returning NoOpinion");
         Verdict::NoOpinion
     }
 }

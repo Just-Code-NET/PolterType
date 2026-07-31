@@ -294,7 +294,7 @@ Implementations:
 | `WordPlausibilityDetector` (planned as `HeuristicDetector`) | fast rules: does the word look plausible for the current layout (letters, vowel ratio, consonant clusters). | ✅ in 0.1 |
 | `DictionaryDetector` | an FST dictionary over Hunspell-expanded lists. `lingua-rs` and n-grams were **not used** — dropped in favour of FST. | ✅ in 0.1 |
 | `ContextDetector` | takes the previous N words into account (Markov model). | ❌ missing (was planned for v0.2 — not done) |
-| `LocalOnnxDetector` | an ONNX model, offline. | 🚧 stub in `poltertype-ai`, not wired to the engine |
+| `LocalOnnxDetector` | an ONNX model, offline. | 🚧 constructed from `[[ai.plugins]]` since 0.8.0, but still a stub that returns no opinion |
 | `RemoteLlmDetector` | API calls to OpenAI/Anthropic/local Ollama. Explicit opt-in only. | 🚧 stub; no build makes an **AI** network call (the updater is separate — see §6) |
 
 Pipeline policy (example):
@@ -541,7 +541,7 @@ require_confirmation = true
 #### D. Privacy guarantees
 
 > As of v0.2.0 the guarantee is stronger than designed: **there simply
-> is no network code**. The subsystem is not wired to the engine, so
+> is no network code**. Both backends are stubs that make no request, so
 > everything below is a requirement for the future implementation, not
 > a description of current behaviour. The tray-tooltip indicator and
 > the call counter **do not exist** — the tooltip shows only the name,
@@ -642,7 +642,7 @@ poltertype/                      # (the Claude config is not here — it's
 │   ├── poltertype-update/       # GitHub-Releases updater (v0.4.0+); the
 │   │   │                        # only network code in a default build
 │   │   └── src/{check.rs, manifest.rs, download.rs, staging.rs, version.rs, apply/}
-│   ├── poltertype-ai/           # OPTIONAL (feature `ai`); stubs, not wired
+│   ├── poltertype-ai/           # OPTIONAL (feature `ai`); wired, backends still stubs
 │   │   └── src/{local.rs, remote/, rewriters.rs, keys.rs}
 │   └── poltertype-types/        # shared types (LayoutId, KeyEvent, ...)
 ├── data/                        # source of truth, consumed by build.rs
@@ -916,7 +916,9 @@ separate `poltertype --settings` process.
 
 ### Phase 7 — AI skeleton
 
-The skeleton exists, **but it is not wired to the engine** — not a
+The skeleton exists and **is wired to the engine since 0.8.0**
+(`[[ai.plugins]]` → detectors), but both backends are still stubs that
+return no opinion — not a
 single line of `poltertype-app` / `poltertype-core` imports
 `poltertype-ai`. Details in `docs/AI.md`.
 
@@ -991,6 +993,6 @@ single line of `poltertype-app` / `poltertype-core` imports
       persist.
 - [x] The AI subsystem is present in the code as a disabled
       `feature = "ai"` with documentation — but, contrary to the
-      original wording, it is **not wired into the pipeline** (see
+      original wording, its backends are still **stubs** (see
       Phase 7).
 - [x] Screenshots in the README — added 2026-07-13.

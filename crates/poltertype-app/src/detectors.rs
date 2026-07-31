@@ -294,3 +294,70 @@ pub(crate) fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
     );
     n
 }
+
+// ─── AI plug-ins ──────────────────────────────────────────────────────
+
+/// Detectors declared under `[[ai.plugins]]`, or nothing at all.
+///
+/// This is the seam that made `[ai].enabled` mean something: before it,
+/// the setting parsed and no code read it, and `poltertype-ai` compiled
+/// without a single caller. Three gates stand between a config file and
+/// a detector actually voting, and all three must be open:
+///
+/// 1. the binary was built with `--features ai` (otherwise this
+///    function is the `#[cfg]`-ed-out version below and returns
+///    nothing at all);
+/// 2. `[ai].enabled = true`;
+/// 3. the individual entry builds — see
+///    `poltertype_ai::build_detectors`, which skips a bad one rather
+///    than losing the others.
+///
+/// Remote plug-ins carry a fourth: `[ai].allow_remote`, checked per
+/// judgement inside the detector so that flipping it needs no config
+/// edit.
+///
+/// The result is *appended* to the built-in detectors, never
+/// substituted for them: an AI voice is added to the decision, and the
+/// offline pipeline keeps working exactly as before if it says nothing.
+#[cfg(feature = "ai")]
+pub(crate) fn build_ai_detectors(
+    ai: &poltertype_core::settings::AiSettings,
+) -> Vec<Box<dyn poltertype_detect::Detector>> {
+    if !ai.enabled {
+        // Say nothing when the whole subsystem is off — this is the
+        // default, and a line about a disabled feature in every log is
+        // noise for every user who never asked for it.
+        return Vec::new();
+    }
+    if ai.plugins.is_empty() {
+        info!("[ai].enabled = true but no [[ai.plugins]] are configured; nothing to load");
+        return Vec::new();
+    }
+    let built = poltertype_ai::build_detectors(&ai.plugins, ai.allow_remote);
+    info!(
+        configured = ai.plugins.len(),
+        loaded = built.len(),
+        allow_remote = ai.allow_remote,
+        "AI detectors ready"
+    );
+    built
+}
+
+/// Without the `ai` feature the crate is not even linked, so there is
+/// nothing to build. The settings still parse — a config file must not
+/// stop being readable because of how the binary was compiled.
+#[cfg(not(feature = "ai"))]
+pub(crate) fn build_ai_detectors(
+    ai: &poltertype_core::settings::AiSettings,
+) -> Vec<Box<dyn poltertype_detect::Detector>> {
+    if ai.enabled {
+        warn!(
+            "[ai].enabled = true, but this build has no AI subsystem compiled in \
+             (build with `--features ai`). Continuing without it."
+        );
+    }
+    Vec::new()
+}
+
+#[cfg(test)]
+mod tests;

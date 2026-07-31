@@ -344,4 +344,10 @@ pub struct AiSettings {
     /// Even when `enabled = true`, network calls remain blocked until
     /// this is also `true`. Two-toggle design, by design.
     pub allow_remote: bool,
+    /// Detectors to construct when `enabled`. Parsed even in a build
+    /// without the `ai` feature — a config file must not stop being
+    /// readable because of how the binary was compiled — and simply
+    /// ignored there.
+    #[serde(default)]
+    pub plugins: Vec<poltertype_types::AiPluginConfig>,
 }

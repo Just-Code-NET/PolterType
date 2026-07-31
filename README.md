@@ -161,10 +161,11 @@ Three caveats worth stating plainly:
   plus `ed25519-dalek` to check the release manifest's signature
   (verification only; the app holds no secret).
 - Optional AI subsystem (`feature = "ai"`) — local ONNX or remote LLM
-  detectors / word rewriters. Off by default, and **not wired to the
-  engine yet**: the crate ships stubs that nothing constructs, so no
-  build makes an AI-related network call regardless of the flags.
-  (The updater is separate, and does go to the network — see above.)
+  detectors / word rewriters. Off by default. Since v0.8.0 configured
+  plug-ins are actually constructed and join the pipeline, but **both
+  shipped backends are stubs that return no opinion**, so no build
+  makes an AI-related network call regardless of the flags. (The
+  updater is separate, and does go to the network — see above.)
   See [docs/AI.md](docs/AI.md).
 
 See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
@@ -388,10 +389,11 @@ cargo run -p poltertype-app
 # Release
 cargo build --release -p poltertype-app
 
-# With the AI subsystem compiled in. Note it is not wired to the
-# engine yet — the crate ships stubs that nothing constructs, so this
-# flag adds no AI behaviour and opens no AI network call. (It does not
-# affect the updater, which is in every build.) See docs/AI.md.
+# With the AI subsystem compiled in. Configured plug-ins are wired to
+# the engine since v0.8.0, but both backends are still stubs returning
+# no opinion — so this flag opens no AI network call and changes no
+# decision. (It does not affect the updater, which is in every build.)
+# See docs/AI.md.
 cargo build --release -p poltertype-app --features ai
 ```
 

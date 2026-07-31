@@ -258,7 +258,7 @@ See [DECISIONS.md](DECISIONS.md) for the trust model and its limits.
 
 The AI subsystem (`docs/AI.md`) is a *second*, independent gate: off by
 default, feature-gated at compile time, and remote access needs a
-further explicit opt-in. It is not wired to the engine today and makes
+further explicit opt-in. Its two backends are stubs today and it makes
 no network calls at all.
 
 **macOS note:** the updater strips `com.apple.quarantine` from the

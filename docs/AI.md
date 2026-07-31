@@ -1,10 +1,17 @@
 # AI subsystem
 
-> **Status (v0.6.2): designed, not wired.** The extension traits are
-> real and the built-in detectors use them. The `poltertype-ai` crate
-> exists, compiles, and holds *stubs* — and the binary does not
-> construct or call any of them. **No shipped build makes an
-> AI-related network call, with or without the feature flags.**
+> **Status (v0.8.0): wired, no backend yet.** The extension traits are
+> real, the built-in detectors use them, and since 0.8.0 the app
+> *does* construct AI detectors — `[[ai.plugins]]` entries become
+> `Detector`s and join the pipeline. What they are not is useful: both
+> shipped backends are **stubs that return `NoOpinion`**. The local one
+> loads no ONNX model; the remote one makes no request. **No shipped
+> build makes an AI-related network call, with or without the feature
+> flags.**
+>
+> So the honest sentence is "the seam is real and empty": a model can
+> be dropped in without touching the app, and until one is, enabling
+> the feature changes no decision.
 >
 > Read that claim narrowly. Since v0.4.0 the app *does* make one
 > network call, in every build, on by default: the updater's check

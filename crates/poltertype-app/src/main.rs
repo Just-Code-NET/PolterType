@@ -252,10 +252,14 @@ fn main() -> Result<()> {
     // another handle clone — per-app profile swaps and settings
     // reloads reach suggestions without any extra plumbing.
     let suggester = build_suggester(&layouts, dictionary.handle());
-    let detectors: Vec<Box<dyn Detector>> = vec![
+    let mut detectors: Vec<Box<dyn Detector>> = vec![
         Box::new(dictionary),
         Box::new(build_plausibility_detector(&layouts)),
     ];
+    // Appended, never substituted: the offline pipeline above decides
+    // on its own and an AI plug-in only adds a voice. See
+    // `detectors::build_ai_detectors` for the gates it has to pass.
+    detectors.extend(build_ai_detectors(&settings.snapshot().ai));
 
     // ── Wordlist profile cache + focus watcher ───────────────────────
     //

@@ -163,9 +163,9 @@ their data; the short version:
   no identifier; GitHub sees an IP and a User-Agent naming the version,
   as it would for any download. `[updates].enabled = false` switches it
   off entirely.
-- **The optional AI subsystem is off by default and not wired to the
-  engine at all** (`docs/AI.md`); remote AI would additionally require
-  `ai.allow_remote = true`.
+- **The optional AI subsystem is off by default, and its backends are
+  stubs that make no request** (`docs/AI.md`); remote AI would
+  additionally require `ai.allow_remote = true`.
 
 ## Reporting a problem
 

@@ -318,3 +318,81 @@ fn retiring_the_skip_list_is_idempotent() {
     assert!(!retire_default_skip_list(&mut s));
     assert!(!retire_default_skip_list(&mut Settings::default()));
 }
+
+// ─── AI plug-ins ──────────────────────────────────────────────────────
+
+/// The `[[ai.plugins]]` table has to survive the trip from a config
+/// file to the struct the AI factory reads. Before 0.8.0 there was no
+/// such table at all and `[ai]` was two booleans nothing consulted.
+#[test]
+fn ai_plugins_parse_from_config() {
+    let raw = r#"
+schema_version = 1
+
+[ai]
+enabled = true
+allow_remote = false
+
+[[ai.plugins]]
+type = "remote-llm"
+id = "claude"
+provider = "anthropic"
+model = "claude-sonnet-4"
+api_key_ref = "keyring:anthropic"
+
+[[ai.plugins]]
+type = "local-onnx"
+id = "lid176"
+model_path = "/models/lid.176.onnx"
+"#;
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert!(s.ai.enabled);
+    assert!(!s.ai.allow_remote);
+    assert_eq!(s.ai.plugins.len(), 2);
+    assert_eq!(s.ai.plugins[0].id, "claude");
+    assert_eq!(
+        s.ai.plugins[0].api_key_ref.as_deref(),
+        Some("keyring:anthropic")
+    );
+    assert_eq!(s.ai.plugins[1].r#type, "local-onnx");
+    assert!(s.ai.plugins[1].model_path.is_some());
+}
+
+/// The schema lives in `poltertype-types`, not in the optional
+/// `poltertype-ai` crate, precisely so that a build *without* the `ai`
+/// feature still reads a config file that configures it. A user who
+/// switches between builds must not find their config rejected.
+#[test]
+fn a_config_with_ai_plugins_parses_in_a_build_without_the_ai_feature() {
+    // This test crate never enables `ai`; parsing here IS the
+    // assertion.
+    let raw = r#"
+schema_version = 1
+[[ai.plugins]]
+type = "remote-llm"
+id = "x"
+"#;
+    let s: Settings = toml::from_str(raw).expect("must parse without the ai feature");
+    assert_eq!(s.ai.plugins.len(), 1);
+}
+
+/// An entry naming a plug-in kind this build has never heard of must
+/// reach the factory as data, not blow up the whole settings file on
+/// the way. `type` is a plain string for exactly this reason.
+#[test]
+fn an_unknown_plugin_type_still_parses_and_is_left_to_the_factory() {
+    let raw = r#"
+schema_version = 1
+[[ai.plugins]]
+type = "some-future-backend"
+id = "tomorrow"
+"#;
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert_eq!(s.ai.plugins[0].r#type, "some-future-backend");
+}
+
+#[test]
+fn no_ai_section_means_no_plugins() {
+    let s: Settings = toml::from_str("schema_version = 1").expect("parse");
+    assert!(s.ai.plugins.is_empty());
+}

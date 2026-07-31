@@ -14,4 +14,9 @@ pub enum AiError {
     Remote(#[from] reqwest::Error),
     #[error("remote LLM disabled: {0}")]
     RemoteDisabled(String),
+    /// The `[[ai.plugins]]` entry does not describe a buildable
+    /// plug-in. Always names the entry's `id` at the call site, so a
+    /// user with three plug-ins learns which one is wrong.
+    #[error("invalid plug-in config: {0}")]
+    Config(String),
 }

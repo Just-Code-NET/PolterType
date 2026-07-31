@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod ai_plugin;
 mod consts;
 mod enums;
 pub mod logsafe;
@@ -16,3 +17,4 @@ pub use types::*;
 
 #[cfg(test)]
 mod tests;
+pub use ai_plugin::AiPluginConfig;
