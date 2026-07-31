@@ -15,7 +15,11 @@ pub fn create_key_gate() -> KeyGate {
     {
         linux::create_key_gate()
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        KeyGate::windows(std::sync::Arc::new(windows::WindowsGate::new()))
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         KeyGate::disabled()
     }
@@ -27,7 +31,13 @@ pub fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputEr
     let _ = gate;
     #[cfg(windows)]
     {
-        Ok(Box::new(windows::WindowsListener::new()))
+        // The hook callback needs the gate to decide what to swallow;
+        // without it the listener observes and never blocks, which is
+        // the behaviour before this existed.
+        Ok(Box::new(match gate.windows_inner() {
+            Some(g) => windows::WindowsListener::with_gate(std::sync::Arc::clone(g)),
+            None => windows::WindowsListener::new(),
+        }))
     }
     #[cfg(target_os = "macos")]
     {

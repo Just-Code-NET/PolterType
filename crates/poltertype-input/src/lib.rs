@@ -25,7 +25,10 @@ mod linux;
 // part no Mac-less contributor can otherwise check. See `macos/mod.rs`.
 #[cfg(any(target_os = "macos", test))]
 mod macos;
-#[cfg(windows)]
+// Compiled under `cfg(test)` on every host, not just Windows: the key
+// gate's swallow decision carries no Win32 dependency and is the part
+// no Windows-less contributor can otherwise check. See `windows/mod.rs`.
+#[cfg(any(windows, test))]
 mod windows;
 
 mod enums;

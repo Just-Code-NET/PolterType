@@ -149,6 +149,18 @@ keystrokes out itself, in order, once the correction is down. No extra
 permission is needed — it uses the `/dev/input/event*` access
 `setup-linux.sh` already grants.
 
+> **On Windows this exists but is switched off.** The low-level
+> keyboard hook can swallow events, and since 0.8.0 it does — for the
+> length of a correction, with the same replay-behind contract. It
+> needs no permission at all there. It is opt-in
+> (`POLTERTYPE_HOLD_KEYS=1`) because it has never run on real hardware:
+> a feature that can leave you unable to type is not one to enable for
+> people who did not ask. If you switch it on, please report what
+> happened either way —
+> [issue #7](https://github.com/Just-Code-NET/PolterType/issues/7).
+> **On macOS there is no implementation**, so a keystroke can still
+> land inside a correction there.
+
 **It stands down behind an input remapper.** keyd (and anything with
 the same design) holds every keyboard exclusively — *including
 PolterType's own virtual one* — and re-emits through a single virtual

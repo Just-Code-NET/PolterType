@@ -23,6 +23,43 @@ and the project follows [Semantic Versioning](https://semver.org/).
   that: **the two have to be edited together**, and nothing checks
   that they still match.
 
+## [Unreleased] — 0.8.0
+
+### Added
+
+- **Windows can hold your keystrokes back during a correction — opt-in,
+  and unverified.** Until now only Linux/evdev could stop a keystroke
+  landing inside a correction; on Windows a fast typist could still get
+  a mangled word right after one. The low-level hook now swallows the
+  user's keys for the length of a correction burst and the engine
+  replays them behind it, the same contract the evdev gate has.
+
+  **Off by default.** Set `POLTERTYPE_HOLD_KEYS=1` to switch it on.
+  A feature that can leave someone unable to type does not get enabled
+  for strangers by someone who has never run it — and nobody has run
+  this on Windows. If you try it, [#7] is where to say what happened.
+
+  Three things make it safe to try. Our own synthesised keys are
+  recognised by a marker stamped into `dwExtraInfo` and are never
+  swallowed, so a correction cannot block itself — and, unlike the
+  `LLKHF_INJECTED` flag, that marker distinguishes *our* events from any
+  other automation tool's. Every hold carries a deadline that the next
+  keystroke enforces, so a caller that dies mid-correction costs one
+  keystroke of latency rather than a dead keyboard. And Windows itself
+  removes a hook whose callback stops answering, which means a hung
+  process gives the keyboard back without our help — the failure mode
+  that made the evdev gate dangerous does not exist here.
+
+### Fixed
+
+- **Windows: our own synthetic keystrokes are now identified by a
+  marker, not by a flag that means "somebody injected this".** The
+  emitter stamps `dwExtraInfo`; the listener reads it back. The old
+  `LLKHF_INJECTED` check stays as a fallback, so nothing about existing
+  echo-filtering changes.
+
+[#7]: https://github.com/Just-Code-NET/PolterType/issues/7
+
 ## [0.7.0] — updates get signed, ARM64 Linux gets a build, and the setup guide starts checking your machine
 
 > **macOS users, before you update.** This release changes the macOS
