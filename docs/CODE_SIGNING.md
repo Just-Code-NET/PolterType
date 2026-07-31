@@ -31,6 +31,11 @@ SignPath asks for Author, Reviewer and Approver to be assigned. Being
 honest about a small project matters more than inventing a hierarchy:
 
 **PolterType currently has one maintainer, who holds all three roles.**
+Concretely, and checkably: exactly one GitHub account has write access
+to the repository and the ability to publish a release. Other accounts
+in the `Just-Code-NET` organisation hold read access and cannot push,
+tag, or publish.
+
 That is a real limitation, not an oversight, and it is the reason the
 controls below lean on *mechanism* rather than on separation of duties:
 
