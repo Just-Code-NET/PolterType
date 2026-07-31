@@ -6,6 +6,140 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-31 — The tooltip already worked on KDE; only the documentation said otherwise
+
+Issue #6 asked for a plan to bring the suggestion tooltip to GNOME and
+KDE Wayland, where it was documented as a no-op. Before designing
+anything, we ran the actual backend against an actual KWin.
+
+**KDE was never broken.** KWin has implemented `zwlr_layer_shell_v1`
+for years and hands it to third-party clients. Against a nested
+`kwin_wayland` 6.7.3 the popup crate selects
+`linux-wayland-layer-shell` and logs `popup surface mapped` — the
+surface is created, configured by KWin and mapped, exactly as on
+Hyprland. No code was needed. The claim that it didn't work appeared
+in five places (`poltertype-popup`'s crate docs, its factory, the
+Wayland backend's module docs, the `NoLayerShell` error *message*, and
+`CLAUDE.md`'s known-gaps list) and had been wrong since it was
+written.
+
+The lesson is not "KDE works". It is that **the backend is a probe and
+the documentation was a lookup table.** `create_popup` tries
+layer-shell, then X11, then noop, and never asks what desktop it is
+on; the prose asserted a mapping from desktop names to outcomes that
+nothing in the code computed. A probe stays right when the world
+changes underneath it. A hand-maintained list of desktop names is
+wrong the moment one of them ships a protocol, and nothing fails to
+tell you.
+
+**GNOME is not a no-op either.** Mutter genuinely has no layer-shell
+(GNOME/mutter#973, open since 2019 and not implemented). But the
+factory's second probe is `DISPLAY`, which on a GNOME Wayland session
+points at XWayland — and an override-redirect X11 window maps and
+displays there. Verified in the shape that matters: forcing the
+Wayland probe to fail in a live Wayland session selects
+`linux-x11-override-redirect` and logs `popup window mapped`. So the
+honest gap is not "GNOME and KDE"; it is "a Wayland session with
+neither layer-shell nor XWayland", which is rare and getting rarer.
+
+**What actually was missing on both, and is now fixed: the anchor.**
+`create_linux_focus_tracker` returned `NoopFocusTracker` on anything
+that is not Hyprland or X11, so the tooltip had no window rect *and*
+no caret and fell back to screen-bottom-centre. The window rect is
+genuinely unavailable there. The **caret is not**: the AT-SPI watcher
+talks to the session bus and does not care which compositor is
+running. It was simply never constructed, because it was built inside
+the two branches that also had a window query. A `CaretOnlyFocusTracker`
+now takes that path — `focused_exe()` stays `None`, so nothing keyed
+off the focused app starts guessing, while `caret_hint()` gives
+GNOME and KDE the *best* anchor in the chain rather than the worst.
+
+*Not attempted:* a GNOME Shell extension talking to the app over
+D-Bus. It would buy the window rect (a worse anchor than the caret we
+now have) at the cost of a second distribution channel, a review
+process, and a component that breaks on every GNOME release. Should
+Mutter ever implement layer-shell, the existing probe picks it up with
+no code change.
+
+---
+
+## 2026-07-31 — No Flatpak: `uinput` is not grantable, and the holes that would fake it are the ones Flathub rejects
+
+Asked and answered before anyone spends a weekend on it. The question
+was not "can we build a Flatpak" — anything can be built — but "can
+PolterType work inside the sandbox without punching holes so wide the
+listing gets rejected, or so wide that the sandbox stops meaning
+anything." **No, on both counts.** AppImage plus native packages is
+the honest Linux story.
+
+**What we need from the host.**
+
+| Need | Where | Sandbox status |
+|---|---|---|
+| Read `/dev/input/event*` | evdev listener | `--device=input` (flatpak ≥ 1.15.6) |
+| Write `/dev/uinput` | the emitter — *every correction* | **not grantable except via `--device=all`** |
+| Grab the keyboard (`EVIOCGRAB`) | the key gate | same, and only via `--device=all` |
+| `hyprctl` / Hyprland IPC socket | layout switching on wlroots | host binary + `$XDG_RUNTIME_DIR/hypr` socket |
+| `gsettings` | GNOME layout switching | host binary + dconf |
+| `qdbus` / `qdbus6` | KDE layout switching | host binary + session bus name |
+| `ibus`, `fcitx5-remote` | IME layout switching | host binaries |
+| AT-SPI bus | caret position for the tooltip | `--talk-name=org.a11y.Bus` |
+| `~/.config/autostart/*.desktop` | run at login | portal exists — the one clean case |
+
+**The blocker is `uinput`, and it is a hard one.** `device=input` was
+introduced for game controllers and *deliberately does not include
+`/dev/uinput`*: the original patch carried `/dev/uinput` and
+`/dev/hidraw*` and that part was removed before it landed
+([Flathub discourse][fh-input]). So the only permission that gets us a
+virtual keyboard is `--device=all`, which is the whole device tree —
+webcam, disks, everything. Flathub's own requirement is that "static
+permissions must be kept to an absolute minimum" and that a portal, if
+one exists, is mandatory rather than optional
+([Flathub requirements][fh-req]); there is no portal for creating a
+virtual input device. Without `uinput` PolterType cannot type, which
+is the entire product.
+
+**The precedent points the same way.** input-remapper's Flathub
+request was closed as technically infeasible, on exactly this
+reasoning — the sandbox is above the layer this class of app has to
+operate at ([Flathub discourse][fh-remap]). We are in that class.
+
+**Even granting everything, the DE integration would still be
+broken.** Layout switching shells out to `hyprctl`, `gsettings`,
+`qdbus`, `ibus` and `fcitx5-remote` — host binaries that do not exist
+inside the runtime. `flatpak-spawn --host` would work and is exactly
+"disabling or bypassing security mechanisms" in Flathub's words. A
+Flatpak that needed `--device=all` *and* host command execution is not
+a sandboxed app; it is an AppImage with extra steps and a misleading
+padlock.
+
+**What a Flatpak would genuinely improve** is autostart:
+`org.freedesktop.portal.Background` is a cleaner mechanism than the
+XDG `.desktop` file `poltertype-autostart` writes today. One clean win
+against a load-bearing blocker is not a trade.
+
+**Verified, not assumed:** the self-updater already stands down inside
+a Flatpak, and by the right mechanism. `apply/linux.rs` requires
+`$APPIMAGE` to be set and non-empty — an allowlist, not a denylist of
+`$FLATPAK_ID` and friends — so any install that is not our own
+AppImage refuses and the user is pointed at the Releases page. Nothing
+to change there whatever we decide. (It still *downloads* before
+discovering it cannot install, which is a small waste for every
+packaged user and worth fixing on its own merits, independently of
+this decision.)
+
+**Revisit if** a portal for virtual input devices appears (a
+`org.freedesktop.portal.InputCapture`-shaped API that covers *emitting*
+rather than only capturing), or if `device=input` grows `/dev/uinput`
+back. Both would have to land *and* be widely deployed before the
+listing would be worth the maintenance.
+
+[fh-req]: https://docs.flathub.org/docs/for-app-authors/requirements
+[fh-input]: https://discourse.flathub.org/t/support-for-device-input/6645
+[fh-remap]: https://discourse.flathub.org/t/input-remapper-flatpak-request/3814
+
+---
+
 ## 2026-07-31 — The release manifest is signed by a human, not by CI
 
 The updater verified each download's SHA-256 against `latest.json` and

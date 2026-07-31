@@ -27,6 +27,36 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The suggestion tooltip anchors to the caret on GNOME and KDE
+  Wayland.** Those sessions have no compositor-agnostic active-window
+  query, so the focus tracker was a plain no-op there and the tooltip
+  fell back to the bottom of the screen. But AT-SPI is a session-bus
+  service and answers on any compositor — the caret watcher had simply
+  never been built on that path. It is now: `focused_exe()` still
+  returns `None` (nothing keyed off the focused app starts guessing),
+  while the tooltip gets the *best* anchor in the chain instead of the
+  worst.
+
+### Documented
+
+- **The tooltip was never broken on KDE.** KWin has implemented
+  `zwlr_layer_shell_v1` for years; verified against KWin 6.7.3, where
+  the surface configures and maps exactly as on Hyprland. GNOME
+  Wayland is not a no-op either — Mutter has no layer-shell, but the
+  X11 override-redirect fallback maps through XWayland. Five places
+  claimed otherwise, including the error message users would see. The
+  backend has always *probed* rather than matched desktop names; the
+  prose was a hand-maintained list that went stale silently. The real
+  remaining gap is a Wayland session with neither layer-shell nor
+  XWayland, plus macOS and Windows.
+- **No Flatpak, decided with evidence rather than left open.** The
+  emitter writes to `/dev/uinput`, which no Flatpak permission grants
+  short of `--device=all` — `device=input` deliberately excludes it —
+  and there is no portal. Layout switching additionally needs host
+  binaries a sandbox does not have. Reasoning, sources and the
+  conditions for revisiting are in `docs/DECISIONS.md`; the README
+  says so plainly so nobody has to ask twice.
+
 - **aarch64 Linux builds.** `poltertype-<ver>-aarch64.AppImage` ships
   alongside the x86_64 one, built natively on an ARM64 runner rather
   than cross-compiled. Raspberry Pi 5, Asahi and ARM laptops/servers

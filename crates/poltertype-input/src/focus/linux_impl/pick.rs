@@ -9,6 +9,7 @@ use crate::linux::{SessionKind, session_kind};
 
 use super::atspi_caret::AtspiCaretWatcher;
 use super::cache::CachedFocusTracker;
+use super::caret_only::CaretOnlyFocusTracker;
 use super::consts::FOCUS_CACHE_TTL;
 use super::hyprland::HyprlandFocusTracker;
 use super::hyprland_ipc::hyprland_available;
@@ -17,8 +18,17 @@ use super::x11::X11FocusTracker;
 /// Pick the focus backend for this session. Hyprland is probed first
 /// (its IPC works regardless of what `XDG_SESSION_TYPE` says), then
 /// plain X11 sessions get EWMH. Everything else — GNOME / KDE on
-/// Wayland — stays on the noop tracker: there is no compositor-
-/// agnostic active-window query there, by design.
+/// Wayland — has no compositor-agnostic active-window query, by
+/// design, so `focused_exe()` stays `None` there.
+///
+/// It does **not** follow that those sessions get nothing. AT-SPI is a
+/// session-bus service and does not care which compositor is running,
+/// so the caret watcher answers on GNOME and KDE exactly as it does on
+/// Hyprland — and the caret is the tooltip's *best* anchor, better
+/// than the window geometry the other backends can offer. Building it
+/// on its own is what stops the tooltip being pinned to the bottom of
+/// the screen on the two largest desktops. No TTL cache: the caret
+/// watcher is event-driven and already cheap to read.
 ///
 /// Note the X11 backend is deliberately NOT used on non-Hyprland
 /// Wayland even when `DISPLAY` points at XWayland: XWayland only sees
@@ -38,7 +48,10 @@ pub(crate) fn create_linux_focus_tracker() -> Arc<dyn FocusTracker> {
             FOCUS_CACHE_TTL,
         ));
     }
-    Arc::new(NoopFocusTracker)
+    match caret_watcher() {
+        Some(caret) => Arc::new(CaretOnlyFocusTracker::new(caret)),
+        None => Arc::new(NoopFocusTracker),
+    }
 }
 
 /// One AT-SPI caret watcher per tracker — created only for a branch

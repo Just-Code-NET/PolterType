@@ -77,6 +77,15 @@ polls — you never download that one by hand):
 > SmartScreen warn on first launch. Code signing comes in a later
 > phase.
 
+> **No Flatpak, and there won't be one.** PolterType types by writing
+> to `/dev/uinput`, which no Flatpak permission grants short of
+> `--device=all` — the whole device tree — and there is no portal for
+> it. Layout switching also needs host binaries (`hyprctl`,
+> `gsettings`, `qdbus`, `ibus`) that a sandbox does not have. The
+> reasoning, sources and the conditions under which we'd revisit are
+> in [docs/DECISIONS.md](docs/DECISIONS.md) (2026-07-31). Use the
+> AppImage, or a native package.
+
 Building from source is documented in
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -197,10 +206,12 @@ good. The tooltip never steals keyboard focus and disappears after
 30 seconds or the moment you type past it. Tune or disable it on the
 **Suggestions** pane (`[suggestions]` in `config.toml`).
 
-> The tooltip currently renders on **Hyprland/Sway (Wayland
-> layer-shell) and X11**. GNOME/KDE Wayland, macOS and Windows don't
-> have an overlay backend yet; there the feature stays engine-side
-> only.
+> The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
+> Sway and KDE Plasma, and an override-redirect window on X11 — which
+> also covers GNOME Wayland, since Mutter has no layer-shell but does
+> run XWayland. **macOS and Windows** have no overlay backend yet;
+> there the feature stays engine-side only, so suggestions exist but
+> nothing draws them.
 >
 > Where it lands depends on what the focused app will tell us. Apps
 > with a live accessibility bridge report the caret, and the tooltip
