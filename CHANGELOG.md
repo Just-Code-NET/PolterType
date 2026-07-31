@@ -4,26 +4,7 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.7.1
-
-### Changed
-
-- **The installed app finally wears its own face.** The icon the
-  installers shipped was a stand-in from before the rename — the
-  letters `kb` on an indigo square — so every Start menu, Dock and
-  application launcher has been showing a logo for a product that no
-  longer exists. It is now the PolterType mark: the ghost on its
-  keycap, the same one the site and its favicon use. Nothing else
-  changed; the tray icon still shows the live layout code (`EN`, `UK`,
-  …), which is information, not branding.
-  The mark stays procedural — `cargo xtask assets icon-png` draws it
-  from the geometry in `xtask/src/assets/`, transcribed from
-  `favicon.svg` and rendered at whatever size the installer asks for,
-  so the repo still carries no binary asset. The catch that comes with
-  that: **the two have to be edited together**, and nothing checks
-  that they still match.
-
-## [Unreleased] — 0.8.0
+## [0.8.0] — Windows learns to hold your keys, the AI seam comes alive, and the app gets its own face
 
 ### Added
 
@@ -72,6 +53,23 @@ and the project follows [Semantic Versioning](https://semver.org/).
   not a `keyring:` reference is refused outright, because a key in
   `config.toml` is a key in backups, dotfile repos and pasted bug
   reports.
+
+### Changed
+
+- **The installed app finally wears its own face.** The icon the
+  installers shipped was a stand-in from before the rename — the
+  letters `kb` on an indigo square — so every Start menu, Dock and
+  application launcher has been showing a logo for a product that no
+  longer exists. It is now the PolterType mark: the ghost on its
+  keycap, the same one the site and its favicon use. Nothing else
+  changed; the tray icon still shows the live layout code (`EN`, `UK`,
+  …), which is information, not branding.
+  The mark stays procedural — `cargo xtask assets icon-png` draws it
+  from the geometry in `xtask/src/assets/`, transcribed from
+  `favicon.svg` and rendered at whatever size the installer asks for,
+  so the repo still carries no binary asset. The catch that comes with
+  that: **the two have to be edited together**, and nothing checks
+  that they still match.
 
 ### Fixed
 
