@@ -1,8 +1,12 @@
 //! Wayland backend: a `wlr-layer-shell` overlay surface with
 //! `keyboard_interactivity = None`, so the popup can never steal the
 //! keys it exists to fix. Works on wlroots compositors (Hyprland,
-//! Sway); GNOME/KDE expose no layer-shell to third parties — detected
-//! at connect time so the factory can fall through to X11/noop.
+//! Sway) **and on KWin** — KDE has implemented `zwlr_layer_shell_v1`
+//! for years and hands it to third-party clients; verified against
+//! KWin 6.7.3 (2026-07-31), where the surface configures and maps
+//! exactly as it does on Hyprland. Mutter is the holdout
+//! (GNOME/mutter#973, open since 2019), and its absence is detected at
+//! connect time so the factory can fall through to X11/noop.
 //!
 //! All Wayland state lives on one dedicated thread; the public handle
 //! only pushes commands into a channel. The thread parks on the
@@ -60,7 +64,7 @@ pub enum WaylandPopupError {
     Connect(#[from] ConnectError),
     #[error("wayland globals: {0}")]
     Globals(#[from] GlobalError),
-    #[error("compositor exposes no zwlr_layer_shell_v1 (GNOME/KDE)")]
+    #[error("compositor exposes no zwlr_layer_shell_v1 (GNOME/Mutter)")]
     NoLayerShell,
     #[error("spawn popup thread: {0}")]
     Spawn(std::io::Error),

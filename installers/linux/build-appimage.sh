@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# Build a PolterType AppImage (x86_64).
+# Build a PolterType AppImage (x86_64 or aarch64).
 #
 # Inputs (env vars):
 #   VERSION    — release version (any leading "v" is stripped).
+#   ARCH       — x86_64 (default) or aarch64. This is the AppImage
+#                naming convention, which happens to match both the
+#                Rust target triple prefix and linuxdeploy's own asset
+#                names, so one variable drives all three. There is no
+#                cross-compilation here: the release workflow runs this
+#                natively on a runner of the matching architecture.
 #   BIN_PATH   — path to the already-built poltertype binary
-#                (default: target/x86_64-unknown-linux-gnu/release/poltertype).
+#                (default: target/<ARCH>-unknown-linux-gnu/release/poltertype).
 #   DATA_DIR   — path to the prepared `data/` tree from
 #                `crates/poltertype-core/build.rs` (default: target/dist/data).
 #   ICON_PNG   — path to a square PNG icon ≥ 256×256
@@ -37,12 +43,23 @@ set -euo pipefail
 
 VERSION="${VERSION:-0.0.0}"
 VERSION="${VERSION#v}"
-BIN_PATH="${BIN_PATH:-target/x86_64-unknown-linux-gnu/release/poltertype}"
+APP_NAME="poltertype"
+ARCH="${ARCH:-x86_64}"
+
+# Refuse an arch we have no linuxdeploy asset for rather than fetching a
+# 404 and failing three steps later with a confusing message.
+case "${ARCH}" in
+    x86_64 | aarch64) ;;
+    *)
+        echo "Unsupported ARCH '${ARCH}' (expected x86_64 or aarch64)." >&2
+        exit 1
+        ;;
+esac
+
+BIN_PATH="${BIN_PATH:-target/${ARCH}-unknown-linux-gnu/release/poltertype}"
 DATA_DIR="${DATA_DIR:-target/dist/data}"
 ICON_PNG="${ICON_PNG:?ICON_PNG is required (PNG ≥ 256×256)}"
 OUT_DIR="${OUT_DIR:-target/dist}"
-APP_NAME="poltertype"
-ARCH="x86_64"
 
 if [[ ! -x "${BIN_PATH}" ]]; then
     echo "Binary not found / not executable: ${BIN_PATH}" >&2

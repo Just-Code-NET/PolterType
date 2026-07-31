@@ -15,9 +15,12 @@
 //! can't read.
 //!
 //! GNOME / KDE on Wayland have no compositor-agnostic "active window"
-//! query (by design — the same story as global input); they keep the
-//! noop tracker until a per-DE backend (KWin script / GNOME shell
-//! extension) exists.
+//! query (by design — the same story as global input), so
+//! `focused_exe()` and window geometry stay `None` there until a
+//! per-DE backend (KWin script / GNOME shell extension) exists. They
+//! do get [`caret_only`], because AT-SPI is a session-bus service and
+//! answers regardless of compositor — and the caret is a *better*
+//! tooltip anchor than the window rect, not a lesser one.
 //!
 //! Every real query is a socket or X11 round-trip, and `focused_exe()`
 //! sits on the engine's word-boundary path plus the 250 ms wordlist-
@@ -31,6 +34,7 @@
 
 mod atspi_caret;
 mod cache;
+mod caret_only;
 mod consts;
 mod hyprland;
 mod hyprland_ipc;

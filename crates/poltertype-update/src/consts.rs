@@ -52,3 +52,40 @@ pub(crate) const MAX_INSTALL_ATTEMPTS: u32 = 3;
 /// an *older* app seeing a bumped number declines the update rather
 /// than guessing at fields it has never heard of.
 pub(crate) const SUPPORTED_SCHEMA: u32 = 1;
+
+/// Ed25519 public key the release manifest is checked against, base64
+/// of the raw 32 bytes.
+///
+/// Compiled in, not fetched: a key the updater downloads is a key an
+/// attacker can replace. Rotating it therefore means shipping a
+/// release — which is the point, since the release binary is the thing
+/// the user already decided to trust. The private half lives on the
+/// maintainer's machine and never enters CI; see `docs/RELEASING.md`.
+pub(crate) const TRUSTED_PUBLIC_KEY: &str = include_str!("../release-signing-key.pub");
+
+/// First line of the signed payload. Domain-separates our signatures:
+/// a signature made over some other document with this key can never
+/// be replayed as a manifest signature.
+pub(crate) const PAYLOAD_HEADER: &str = "poltertype-manifest-v1";
+
+/// Whether a manifest without a signature is refused.
+///
+/// **The staged rollout, in two releases.** Signing and verifying land
+/// together, but they cannot become mandatory in the same release: a
+/// user running 0.6.4 would be checking a manifest published before
+/// anyone signed one. So:
+///
+/// 1. **`false` (now).** A signature that is *present* must verify — a
+///    wrong one is refused, loudly. A missing one is accepted with a
+///    warning. This is the release in which signed manifests start
+///    being published.
+/// 2. **`true` (a later release).** Flip this the moment the manifest
+///    that `releases/latest/download/latest.json` resolves to is
+///    signed, and has been for a full release cycle. From then on an
+///    unsigned manifest is an error, and an attacker who can publish a
+///    GitHub release can no longer publish an update.
+///
+/// Flipping it early strands every user on a "cannot update" error
+/// until the next release is published *and* signed. Flipping it never
+/// means the signature is decorative.
+pub(crate) const REQUIRE_SIGNATURE: bool = false;

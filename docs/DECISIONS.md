@@ -6,6 +6,313 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-31 — The setup walkthrough probes, and refuses to act on the user's behalf
+
+Replacing "here is a link to PERMISSIONS.md" with a screen that knows
+what this machine is missing. Four choices worth defending.
+
+**The probe lives in `poltertype-input`, the rendering in the app.**
+"Is the user in the `input` group" is platform code, and platform code
+lives in the seven crates that are allowed to hold `#[cfg(target_os)]`.
+The Settings window is handed a `SetupReport` — a list of steps with a
+state and at most one action — and knows nothing about udev rules. It
+also means the per-OS logic has tests without a GUI in the loop.
+
+**Nothing on the pane runs anything privileged.** The Linux fix needs
+`sudo`, and the obvious "Run setup" button would mean an app quietly
+acquiring root on a machine where it already reads every keystroke.
+That is trust we would not get back. The button copies the command
+instead; the user reads it and runs it in their own terminal.
+Similarly, macOS permission prompts are always the *system's* dialog
+(`AXIsProcessTrustedWithOptions`, `IOHIDRequestAccess`) — we never
+draw something that looks like one.
+
+**Four states, not two.** `Done` / `Todo` would have been enough to
+render a tick and a cross, and would have given the wrong advice in
+the case that actually costs people an evening: `usermod -aG input`
+writes the group database and cannot touch the credentials of a
+session that already exists. Everything looks configured, nothing
+works, and "re-run the setup script" — the only advice a two-state
+model can give — changes nothing. `NeedsRelogin` exists to say *log
+out* instead. The fourth, `Unknown`, is for what we genuinely cannot
+determine (no `/dev/input` entries at all, an `IOHIDCheckAccess` that
+returns "undecided"): a setup guide that invents a problem loses the
+reader, and one that asserts a fix it has not verified is worse.
+
+**Read and write are separate rows.** They are separate permissions
+and they fail separately, and the half-granted case — evdev readable,
+uinput not — is the confusing one: detection works, corrections never
+land, and the app looks like it is deciding wrongly rather than being
+unable to act.
+
+*Not built:* the screenshots and GIFs of the macOS toggles that issue
+#10 asked for. They would be the most useful part of that pane for a
+first-time Mac user and they cannot be produced from a machine without
+a Mac. The deep links into the exact System Settings panes are the
+half we could do honestly.
+
+*Untested on hardware.* Verified on Wayland/evdev here, including the
+unresolved states. The macOS half compiles in CI and has never run.
+
+---
+
+## 2026-07-31 — The tooltip already worked on KDE; only the documentation said otherwise
+
+Issue #6 asked for a plan to bring the suggestion tooltip to GNOME and
+KDE Wayland, where it was documented as a no-op. Before designing
+anything, we ran the actual backend against an actual KWin.
+
+**KDE was never broken.** KWin has implemented `zwlr_layer_shell_v1`
+for years and hands it to third-party clients. Against a nested
+`kwin_wayland` 6.7.3 the popup crate selects
+`linux-wayland-layer-shell` and logs `popup surface mapped` — the
+surface is created, configured by KWin and mapped, exactly as on
+Hyprland. No code was needed. The claim that it didn't work appeared
+in five places (`poltertype-popup`'s crate docs, its factory, the
+Wayland backend's module docs, the `NoLayerShell` error *message*, and
+`CLAUDE.md`'s known-gaps list) and had been wrong since it was
+written.
+
+The lesson is not "KDE works". It is that **the backend is a probe and
+the documentation was a lookup table.** `create_popup` tries
+layer-shell, then X11, then noop, and never asks what desktop it is
+on; the prose asserted a mapping from desktop names to outcomes that
+nothing in the code computed. A probe stays right when the world
+changes underneath it. A hand-maintained list of desktop names is
+wrong the moment one of them ships a protocol, and nothing fails to
+tell you.
+
+**GNOME is not a no-op either.** Mutter genuinely has no layer-shell
+(GNOME/mutter#973, open since 2019 and not implemented). But the
+factory's second probe is `DISPLAY`, which on a GNOME Wayland session
+points at XWayland — and an override-redirect X11 window maps and
+displays there. Verified in the shape that matters: forcing the
+Wayland probe to fail in a live Wayland session selects
+`linux-x11-override-redirect` and logs `popup window mapped`. So the
+honest gap is not "GNOME and KDE"; it is "a Wayland session with
+neither layer-shell nor XWayland", which is rare and getting rarer.
+
+**What actually was missing on both, and is now fixed: the anchor.**
+`create_linux_focus_tracker` returned `NoopFocusTracker` on anything
+that is not Hyprland or X11, so the tooltip had no window rect *and*
+no caret and fell back to screen-bottom-centre. The window rect is
+genuinely unavailable there. The **caret is not**: the AT-SPI watcher
+talks to the session bus and does not care which compositor is
+running. It was simply never constructed, because it was built inside
+the two branches that also had a window query. A `CaretOnlyFocusTracker`
+now takes that path — `focused_exe()` stays `None`, so nothing keyed
+off the focused app starts guessing, while `caret_hint()` gives
+GNOME and KDE the *best* anchor in the chain rather than the worst.
+
+*Not attempted:* a GNOME Shell extension talking to the app over
+D-Bus. It would buy the window rect (a worse anchor than the caret we
+now have) at the cost of a second distribution channel, a review
+process, and a component that breaks on every GNOME release. Should
+Mutter ever implement layer-shell, the existing probe picks it up with
+no code change.
+
+---
+
+## 2026-07-31 — No Flatpak: `uinput` is not grantable, and the holes that would fake it are the ones Flathub rejects
+
+Asked and answered before anyone spends a weekend on it. The question
+was not "can we build a Flatpak" — anything can be built — but "can
+PolterType work inside the sandbox without punching holes so wide the
+listing gets rejected, or so wide that the sandbox stops meaning
+anything." **No, on both counts.** AppImage plus native packages is
+the honest Linux story.
+
+**What we need from the host.**
+
+| Need | Where | Sandbox status |
+|---|---|---|
+| Read `/dev/input/event*` | evdev listener | `--device=input` (flatpak ≥ 1.15.6) |
+| Write `/dev/uinput` | the emitter — *every correction* | **not grantable except via `--device=all`** |
+| Grab the keyboard (`EVIOCGRAB`) | the key gate | same, and only via `--device=all` |
+| `hyprctl` / Hyprland IPC socket | layout switching on wlroots | host binary + `$XDG_RUNTIME_DIR/hypr` socket |
+| `gsettings` | GNOME layout switching | host binary + dconf |
+| `qdbus` / `qdbus6` | KDE layout switching | host binary + session bus name |
+| `ibus`, `fcitx5-remote` | IME layout switching | host binaries |
+| AT-SPI bus | caret position for the tooltip | `--talk-name=org.a11y.Bus` |
+| `~/.config/autostart/*.desktop` | run at login | portal exists — the one clean case |
+
+**The blocker is `uinput`, and it is a hard one.** `device=input` was
+introduced for game controllers and *deliberately does not include
+`/dev/uinput`*: the original patch carried `/dev/uinput` and
+`/dev/hidraw*` and that part was removed before it landed
+([Flathub discourse][fh-input]). So the only permission that gets us a
+virtual keyboard is `--device=all`, which is the whole device tree —
+webcam, disks, everything. Flathub's own requirement is that "static
+permissions must be kept to an absolute minimum" and that a portal, if
+one exists, is mandatory rather than optional
+([Flathub requirements][fh-req]); there is no portal for creating a
+virtual input device. Without `uinput` PolterType cannot type, which
+is the entire product.
+
+**The precedent points the same way.** input-remapper's Flathub
+request was closed as technically infeasible, on exactly this
+reasoning — the sandbox is above the layer this class of app has to
+operate at ([Flathub discourse][fh-remap]). We are in that class.
+
+**Even granting everything, the DE integration would still be
+broken.** Layout switching shells out to `hyprctl`, `gsettings`,
+`qdbus`, `ibus` and `fcitx5-remote` — host binaries that do not exist
+inside the runtime. `flatpak-spawn --host` would work and is exactly
+"disabling or bypassing security mechanisms" in Flathub's words. A
+Flatpak that needed `--device=all` *and* host command execution is not
+a sandboxed app; it is an AppImage with extra steps and a misleading
+padlock.
+
+**What a Flatpak would genuinely improve** is autostart:
+`org.freedesktop.portal.Background` is a cleaner mechanism than the
+XDG `.desktop` file `poltertype-autostart` writes today. One clean win
+against a load-bearing blocker is not a trade.
+
+**Verified, not assumed:** the self-updater already stands down inside
+a Flatpak, and by the right mechanism. `apply/linux.rs` requires
+`$APPIMAGE` to be set and non-empty — an allowlist, not a denylist of
+`$FLATPAK_ID` and friends — so any install that is not our own
+AppImage refuses and the user is pointed at the Releases page. Nothing
+to change there whatever we decide. (It still *downloads* before
+discovering it cannot install, which is a small waste for every
+packaged user and worth fixing on its own merits, independently of
+this decision.)
+
+**Revisit if** a portal for virtual input devices appears (a
+`org.freedesktop.portal.InputCapture`-shaped API that covers *emitting*
+rather than only capturing), or if `device=input` grows `/dev/uinput`
+back. Both would have to land *and* be widely deployed before the
+listing would be worth the maintenance.
+
+[fh-req]: https://docs.flathub.org/docs/for-app-authors/requirements
+[fh-input]: https://discourse.flathub.org/t/support-for-device-input/6645
+[fh-remap]: https://discourse.flathub.org/t/input-remapper-flatpak-request/3814
+
+---
+
+## 2026-07-31 — The release manifest is signed by a human, not by CI
+
+The updater verified each download's SHA-256 against `latest.json` and
+nothing verified `latest.json`. Since the checksum ships in the same
+GitHub release as the artifact, anyone who could publish a release
+could publish both — the checksum bought integrity against a broken
+transfer or a tampered CDN, and nothing against the attacker who
+actually matters.
+
+**`Manifest.signature` is now a real detached ed25519 signature**,
+verified the moment the manifest parses and before any URL in it is
+read. Three choices inside that are worth writing down.
+
+**The key never enters CI.** The obvious implementation is an Actions
+secret and a signing step in `release.yml`. It would also have been
+security theatre: the threat model is "someone can publish a GitHub
+release", and someone who can do that can read the repository's
+secrets. Signing therefore happens on the maintainer's machine,
+between the draft CI produces and the moment a human publishes it
+(`cargo xtask manifest sign`, `docs/RELEASING.md` §7). The cost is a
+manual step that can be forgotten; the mitigation is that the workflow
+summary and the release checklist both spell it out, and that a
+forgotten signature degrades to today's behaviour rather than breaking
+anything.
+
+**We sign a rendering, not the JSON.** Signing raw JSON makes the
+check hostage to formatting — re-serialise with different whitespace
+or key order and a valid signature stops verifying — and "canonical
+JSON" is a second specification to get wrong. So the signature covers
+a flat, newline-delimited rendering of the meaningful fields
+(`crates/poltertype-update/src/signature.rs`), artifacts ordered by
+key so a `HashMap`'s iteration order cannot leak in. Since `\n` is the
+only separator, a value containing one could describe two different
+manifests with the same bytes — both the signer and the verifier
+refuse such a manifest outright, which is the format's entire
+ambiguity surface. One function renders it and both ends call it:
+`xtask` depends on `poltertype-update` precisely so there is no second
+implementation to drift.
+
+*Alternative considered:* publish `latest.json.sig` as a second asset
+and sign the file bytes verbatim. Simpler to reason about, no
+canonicalisation at all — but a second network request on every update
+check, and a manifest whose signature can be dropped without the
+manifest looking any different.
+
+**Verification lands one release before enforcement.**
+`REQUIRE_SIGNATURE` is `false` in the release that introduces all of
+this. A present signature must verify; an absent one warns. Shipping
+it as `true` would strand every user whose updater resolves to the
+last unsigned manifest — including the one published before anyone
+had the tooling. It gets flipped once a signed manifest has been the
+published `latest.json` for a full cycle, and that flip, not this
+release, is when the README gets to say "signed".
+
+---
+
+## 2026-07-31 — macOS subscribes to `FlagsChanged`, and clears flags on everything it posts
+
+Two macOS gaps that turned out to be one story.
+
+**The dead arms (issue #4).** The event tap subscribed to `KeyDown` and
+`KeyUp` only. macOS never sends those for a modifier — a Shift press is
+a `kCGEventFlagsChanged` event (type 12) — so the Apple-modifier arms
+of the keycode table could never be reached, and modifier *state* came
+only from folding the flags carried by ordinary key events. The choice
+was to subscribe (Option A) or delete the arms and document
+flags-folding as the single source of truth (Option B).
+
+**Chose Option A.** Folding is accurate the instant a character key
+arrives and stale at every other moment: let go of Ctrl and nothing
+tells us until the next keystroke. `held_modifiers` is read at the
+*start* of a correction — often triggered by a chord, i.e. precisely
+when no ordinary key is flowing — so the stale window is the window
+that matters. Subscribing also puts macOS on the same footing as the
+Windows and X11 backends, which do get discrete modifier edges, and
+costs one extra event per modifier edge through a callback that only
+translates and `try_send`s.
+
+The subscription makes the keycode table's modifier arms live, which is
+a behaviour change in the engine's word buffer: Apple 0x3C (RShift)
+would otherwise land on SC-1 0x3C, inside the classifier's
+`0x3B..=0x53` "navigation — end the word and discard it" range. The
+arms were already written for exactly this, and now there are tests.
+`kVK_Function` (0x3F) is the one that was *not* covered: it rides the
+same `FlagsChanged` stream, has no SC Set-1 equivalent, and the
+identity fallback would put it at SC-1 0x3F — inside that same range,
+so holding Fn to reach an arrow key would have silently eaten the word
+in progress. Untracked modifier keycodes are dropped in the listener
+instead.
+
+**The missing release (issue #5).** `KeyEmitter::release_modifiers`
+had a default no-op that macOS inherited, so accepting a suggestion
+with `Ctrl+Shift+<digit>` while still holding the chord retyped the
+word under those modifiers.
+
+The macOS fix is in two independent halves, both of which we want:
+
+1. **`release_modifiers` posts `FlagsChanged` events.** There is no
+   key-up for a modifier on macOS; the release *is* a flags-changed
+   event whose flags describe what remains down. We post one per held
+   modifier, each carrying the picture after that key is up. Caps Lock
+   is excluded on purpose — it is a latch, and clearing it would turn
+   the user's Caps light off behind their back.
+2. **Every event we post has its flags cleared.** An event built from a
+   `HIDSystemState` source inherits the *live hardware* modifier flags,
+   so with the chord still held our backspaces would post as ⌘⌫ —
+   "delete to start of line" — and wreck far more than the word. This
+   half needs nothing to have worked at the OS level and covers the
+   case where the engine did not think anything was held.
+
+**Windows had the same no-op** and the same bug; it now sends key-ups
+for both sides of each held modifier via `SendInput`. Issue #5 assumed
+this already worked there.
+
+*Untested on hardware.* The tables and the direction rules moved into
+`macos/codes.rs`, which carries no Apple dependency and therefore
+compiles — and runs its tests — on Linux and Windows CI. The FFI
+either side of it is compiled by CI's `macos-latest` job and executed
+by nobody yet; the tap change in particular wants a real Mac before
+0.6.4 ships.
+
+---
+
 ## 2026-07-30 — Every macOS TIS call goes through the main dispatch queue
 
 `TISCopyCurrentKeyboardInputSource` and friends look like ordinary C

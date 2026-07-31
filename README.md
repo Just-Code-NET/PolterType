@@ -62,7 +62,7 @@ permissions story.
 ## Install
 
 Builds are published as GitHub Releases —
-[**Releases page**](../../releases). Each release ships three
+[**Releases page**](../../releases). Each release ships four
 installers (plus `latest.json`, the manifest the in-app updater
 polls — you never download that one by hand):
 
@@ -71,10 +71,20 @@ polls — you never download that one by hand):
 | Windows 10 / 11                   | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt. SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**.                                                                 |
 | macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** (or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`). Then grant **Accessibility** and **Input Monitoring** — macOS prompts for both on first run. |
 | Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland.                                                                                        |
+| Linux (aarch64)                   | `poltertype-<ver>-aarch64.AppImage`           | Same, for ARM64 — Raspberry Pi 5, Asahi, ARM laptops and servers. Built natively, not cross-compiled.                                                                                                               |
 
 > Installers are still **unsigned** — that's why Gatekeeper /
 > SmartScreen warn on first launch. Code signing comes in a later
 > phase.
+
+> **No Flatpak, and there won't be one.** PolterType types by writing
+> to `/dev/uinput`, which no Flatpak permission grants short of
+> `--device=all` — the whole device tree — and there is no portal for
+> it. Layout switching also needs host binaries (`hyprctl`,
+> `gsettings`, `qdbus`, `ibus`) that a sandbox does not have. The
+> reasoning, sources and the conditions under which we'd revisit are
+> in [docs/DECISIONS.md](docs/DECISIONS.md) (2026-07-31). Use the
+> AppImage, or a native package.
 
 Building from source is documented in
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -112,17 +122,23 @@ updater is a normal (non-optional) part of the default build.
 
 Three caveats worth stating plainly:
 
-- **The download is checksum-verified, not signed.** The checksum
-  comes from the same GitHub release as the installer, so it catches a
-  corrupted download or a tampered CDN — but not a compromised GitHub
-  account. Signing the manifest is planned (see
-  [docs/DECISIONS.md](docs/DECISIONS.md)).
+- **Signature checking is on, but not yet required.** Every download is
+  verified against the SHA-256 in the release manifest, which catches a
+  corrupted transfer or a tampered CDN — but not a compromised GitHub
+  account, since the checksum lives in the same release as the
+  installer. The manifest is now signed with an ed25519 key that is
+  *not* in CI, and the app verifies it against a public key compiled
+  into the binary. Until every published manifest has been signed for a
+  full release cycle, an *absent* signature is still accepted (a
+  **wrong** one never is), so don't read this as "signed updates" yet —
+  see [docs/DECISIONS.md](docs/DECISIONS.md) for the rollout.
 - **Only our own installers self-update.** If you installed from a
   distro package, or you're running a `cargo build` binary, PolterType
   won't overwrite it — those files aren't ours. You'll get a
   notification pointing at the Releases page instead. The same applies
-  if you're not on x86_64 (or an Apple Silicon Mac): we don't publish
-  an artifact for you, so there's nothing to update to.
+  on an architecture we don't publish for — x86_64 and aarch64 Linux,
+  x86_64 Windows and universal macOS are the whole list — since there
+  is then nothing to update to.
 - **The macOS path is unproven.** The Windows and Linux self-update
   paths are exercised; the `.app`-bundle swap is written from Apple's
   docs and has never run on real hardware. Treat macOS self-updating
@@ -190,10 +206,12 @@ good. The tooltip never steals keyboard focus and disappears after
 30 seconds or the moment you type past it. Tune or disable it on the
 **Suggestions** pane (`[suggestions]` in `config.toml`).
 
-> The tooltip currently renders on **Hyprland/Sway (Wayland
-> layer-shell) and X11**. GNOME/KDE Wayland, macOS and Windows don't
-> have an overlay backend yet; there the feature stays engine-side
-> only.
+> The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
+> Sway and KDE Plasma, and an override-redirect window on X11 — which
+> also covers GNOME Wayland, since Mutter has no layer-shell but does
+> run XWayland. **macOS and Windows** have no overlay backend yet;
+> there the feature stays engine-side only, so suggestions exist but
+> nothing draws them.
 >
 > Where it lands depends on what the focused app will tell us. Apps
 > with a live accessibility bridge report the caret, and the tooltip

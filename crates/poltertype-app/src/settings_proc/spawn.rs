@@ -42,11 +42,22 @@ use crate::types::*;
 /// rather than only a log line: the click produced no window, and a
 /// tray app has nowhere else to put an error.
 pub(crate) fn spawn_settings_ui(deps: SettingsCloseDeps) {
+    spawn_settings_ui_on(deps, SettingsEntry::Normal)
+}
+
+/// Same, but opening on the Setup pane — what the tray's "keyboard
+/// hooks unavailable" alert now does instead of throwing the user at a
+/// markdown file in a browser.
+pub(crate) fn spawn_setup_ui(deps: SettingsCloseDeps) {
+    spawn_settings_ui_on(deps, SettingsEntry::Setup)
+}
+
+fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
     let Some(exe) = settings_ui_exe() else {
         return;
     };
-    info!(?exe, "launching settings UI");
-    let child = match std::process::Command::new(&exe).arg("--settings").spawn() {
+    info!(?exe, ?entry, "launching settings UI");
+    let child = match std::process::Command::new(&exe).arg(entry.flag()).spawn() {
         Ok(c) => c,
         Err(e) => {
             warn!(?e, ?exe, "settings UI subprocess failed to start");

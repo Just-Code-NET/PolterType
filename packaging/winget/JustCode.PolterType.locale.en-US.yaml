@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+
+PackageIdentifier: JustCode.PolterType
+PackageVersion: 0.6.3
+PackageLocale: en-US
+Publisher: Just Code
+PublisherUrl: https://github.com/Just-Code-NET
+PublisherSupportUrl: https://github.com/Just-Code-NET/PolterType/issues
+PackageName: PolterType
+PackageUrl: https://poltertype.com
+License: MIT
+LicenseUrl: https://github.com/Just-Code-NET/PolterType/blob/main/LICENSE
+Copyright: Copyright (c) PolterType contributors
+ShortDescription: Detects text typed in the wrong keyboard layout, switches the layout and fixes the word.
+Description: |-
+  PolterType is a tray-only desktop app for people who type in more than
+  one language. When a word comes out as ghbdtn instead of привет, it
+  notices, switches the keyboard layout, and retypes the word — without
+  you reaching for the mouse.
+
+  It runs entirely on your machine. Typed text is never logged and never
+  leaves the computer; the only network request the app makes is the
+  update check, which sends nothing about you and can be switched off.
+
+  Note: the installer is not code-signed yet, so SmartScreen may warn on
+  first run.
+Moniker: poltertype
+Tags:
+  - keyboard
+  - layout
+  - language
+  - input
+  - productivity
+  - typing
+ReleaseNotesUrl: https://github.com/Just-Code-NET/PolterType/releases/latest
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

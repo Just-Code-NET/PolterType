@@ -7,6 +7,10 @@ use poltertype_layout::LayoutId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
+    /// Permission walkthrough. First in the list and first on open
+    /// when the tray launches us because the keyboard hooks failed —
+    /// at that moment nothing else in this window matters.
+    Setup,
     Languages,
     Hotkeys,
     Commands,
@@ -232,6 +236,23 @@ pub enum Message {
     OpenLayoutsDir,
     /// Open `url` in the default browser — the About pane's links.
     OpenUrl(&'static str),
+
+    // ── Setup pane ─────────────────────────────────────────────────
+    /// Re-run the permission probe. The pane's whole reason to exist
+    /// is that the user goes away, changes something, and comes back:
+    /// every answer it shows is a fresh reading, never a cached one.
+    SetupRecheck,
+    /// Open a URL the probe supplied — a documentation page, or a
+    /// macOS `x-apple.systempreferences:` deep link. Owned `String`
+    /// rather than `&'static str` because the probe builds these.
+    SetupOpen(String),
+    /// Copy a shell command to the clipboard. We never run it: the
+    /// Linux setup script needs `sudo`, and the user reading it first
+    /// is the point.
+    SetupCopy(String),
+    /// Ask the OS for a permission — macOS only, and always the
+    /// system's own dialog.
+    SetupRequestPermission(poltertype_input::setup::Permission),
 
     /// User clicked the window close button (or otherwise asked
     /// the OS to close the window). We intercept this to auto-save

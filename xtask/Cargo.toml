@@ -15,6 +15,18 @@ workspace = true
 anyhow = { workspace = true }
 ureq   = { version = "2", features = ["tls"] }
 
+# `manifest sign` — the other half of the updater's signature check.
+# `poltertype-update` is here for `Manifest` and `signing_payload`: the
+# app and this tool must render the signed bytes with the same code, or
+# a signature that verifies locally fails for every user. Unlike the
+# app, this end needs the signing half of ed25519, so the default
+# features (which include `zeroize` for the secret) stay on.
+poltertype-update = { workspace = true }
+ed25519-dalek     = { version = "3" }
+base64            = { workspace = true }
+serde_json        = { workspace = true }
+getrandom         = "0.2"
+
 # Used by the `assets icon-png` subcommand to generate the placeholder
 # 1024×1024 source PNG that release CI then converts to per-platform
 # icon formats (.ico, .icns) — keeps the repo binary-asset-free while

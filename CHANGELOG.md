@@ -4,6 +4,133 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.6.4
+
+### Security
+
+- **The release manifest is signed, and the updater checks it.** Until
+  now the only thing standing between a user and a hostile update was
+  a SHA-256 that shipped in the same GitHub release as the installer —
+  so whoever could publish one could publish both. `latest.json` now
+  carries a detached ed25519 signature, verified against a public key
+  compiled into the binary, the moment the manifest is parsed and
+  before any URL in it is read. The private key is **not** a CI secret
+  and never touches a runner: signing is a manual step the maintainer
+  performs on the draft release (`cargo xtask manifest sign`), which is
+  the only version of this that a compromised GitHub account cannot
+  forge.
+  **Not yet mandatory.** A *wrong* signature is refused from this
+  release on, but a *missing* one is still accepted — otherwise every
+  user would be stranded on the last unsigned manifest. Enforcement is
+  a one-constant flip in a later release, and only then does anything
+  user-facing get to say "signed updates".
+
+### Added
+
+- **A Setup pane that checks this machine instead of linking to a
+  document.** When the keyboard hooks fail to start, the tray alert now
+  opens the Settings window on a new **Setup** pane rather than a
+  markdown file in a browser. It probes the running system and says
+  what is actually missing, per OS: on Wayland, whether key events can
+  be read and whether corrections can be typed, as two separate
+  answers, because they are two separate permissions and the half-
+  granted case (detection works, nothing gets fixed) is the confusing
+  one. On macOS, Accessibility and Input Monitoring separately, with
+  buttons that ask the system for each and deep links into the right
+  System Settings pane. On X11 and Windows it says there is nothing to
+  grant — most people arrive expecting the worst. *Check again*
+  re-probes, and answers even when nothing changed.
+  It also catches the trap that wastes an evening: `usermod -aG input`
+  updates the group database and cannot touch a login session that
+  already exists, so everything looks configured and nothing works.
+  That state gets its own answer — log out, don't re-run the script.
+  Nothing on the pane changes the system. The Linux script needs
+  `sudo`, so the button copies the command for the user to read and run
+  themselves.
+- **An honest banner when layout switching is unavailable.** Hooks
+  working and no switcher backend is its own failure: PolterType spots
+  the wrong-layout word and rewrites it into the same wrong layout, so
+  it looks like the correction is broken rather than missing.
+- **The suggestion tooltip anchors to the caret on GNOME and KDE
+  Wayland.** Those sessions have no compositor-agnostic active-window
+  query, so the focus tracker was a plain no-op there and the tooltip
+  fell back to the bottom of the screen. But AT-SPI is a session-bus
+  service and answers on any compositor — the caret watcher had simply
+  never been built on that path. It is now: `focused_exe()` still
+  returns `None` (nothing keyed off the focused app starts guessing),
+  while the tooltip gets the *best* anchor in the chain instead of the
+  worst.
+
+### Documented
+
+- **Packaging manifests for AUR, winget and Homebrew**, staged in
+  `packaging/` with the publish step for each written down. Nothing is
+  live yet — and the README install table stays silent until each one
+  is. `packaging/bump.sh <version>` re-points all three at a published
+  release by hashing the bytes GitHub actually serves. Two decisions
+  worth knowing: the AUR packages install the udev rule but will not
+  add anyone to the `input` group (that is the user's account, not
+  ours), and the Homebrew cask does **not** strip macOS quarantine —
+  removing that check silently for an unsigned app that reads every
+  keystroke is not a convenience we get to hand out.
+- **The tooltip was never broken on KDE.** KWin has implemented
+  `zwlr_layer_shell_v1` for years; verified against KWin 6.7.3, where
+  the surface configures and maps exactly as on Hyprland. GNOME
+  Wayland is not a no-op either — Mutter has no layer-shell, but the
+  X11 override-redirect fallback maps through XWayland. Five places
+  claimed otherwise, including the error message users would see. The
+  backend has always *probed* rather than matched desktop names; the
+  prose was a hand-maintained list that went stale silently. The real
+  remaining gap is a Wayland session with neither layer-shell nor
+  XWayland, plus macOS and Windows.
+- **No Flatpak, decided with evidence rather than left open.** The
+  emitter writes to `/dev/uinput`, which no Flatpak permission grants
+  short of `--device=all` — `device=input` deliberately excludes it —
+  and there is no portal. Layout switching additionally needs host
+  binaries a sandbox does not have. Reasoning, sources and the
+  conditions for revisiting are in `docs/DECISIONS.md`; the README
+  says so plainly so nobody has to ask twice.
+
+- **aarch64 Linux builds.** `poltertype-<ver>-aarch64.AppImage` ships
+  alongside the x86_64 one, built natively on an ARM64 runner rather
+  than cross-compiled. Raspberry Pi 5, Asahi and ARM laptops/servers
+  had nothing to download and nothing for the in-app updater to offer
+  them; both now work. Deliberately the *only* architecture added —
+  every installer is a support surface, so armv7 and ARM Windows stay
+  out until there is hardware and demand behind them.
+
+### Fixed
+
+- **macOS: a suggestion accepted with its chord still held no longer
+  retypes the word under those modifiers.** `release_modifiers` was a
+  default no-op on macOS, and — worse — every event we posted inherited
+  the *live hardware* modifier flags from its `HIDSystemState` source,
+  so with ⌘ down our backspaces went out as ⌘⌫ ("delete to start of
+  line"). The emitter now clears the flags on everything it posts and
+  sends a `FlagsChanged` release for each modifier the engine believes
+  is down. Caps Lock is deliberately left alone — it is a latch, not a
+  held key.
+- **Windows: the same no-op, the same bug.** `release_modifiers` now
+  sends key-ups for both sides of each held modifier.
+- **macOS: modifier presses reach the engine at all.** The event tap
+  subscribed to `KeyDown`/`KeyUp` only, but macOS reports a modifier
+  moving as `FlagsChanged` — so the modifier arms of the keycode table
+  had been unreachable since they were written, and the engine only
+  learned what was held when an ordinary key arrived. It now sees the
+  same discrete modifier stream as the Windows and Linux backends,
+  which is what makes the fix above fire at the right moment. Keys with
+  no SC Set-1 equivalent (Fn, media) are dropped rather than falling
+  through the identity mapping into the word buffer's "navigation — end
+  the word" range.
+
+### Internal
+
+- The macOS backend is a directory rather than one file, and the part
+  most likely to be wrong — the Apple→SC Set-1 keycode table and the
+  `FlagsChanged` direction rules — carries no Apple dependency, so its
+  tests run on Linux and Windows CI too. Everything Mac-only stays
+  compile-checked by CI's `macos-latest` job.
+
 ## [0.6.3] — the key gate grows a safety catch, corrections learn ñ, and the logs forget your words
 
 ### Security

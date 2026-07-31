@@ -15,8 +15,8 @@ use tracing::{debug, error, info, warn};
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT,
-    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_BACK, VK_CONTROL, VK_LMENU,
-    VK_LWIN, VK_MENU, VK_RMENU, VK_RWIN, VK_SHIFT,
+    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_BACK, VK_CONTROL, VK_LCONTROL,
+    VK_LMENU, VK_LSHIFT, VK_LWIN, VK_MENU, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG,
@@ -255,6 +255,35 @@ impl KeyEmitter for WindowsEmitter {
                 events.push(make_unicode_input(unit, false));
                 events.push(make_unicode_input(unit, true));
             }
+        }
+        send_inputs(&events)
+    }
+
+    fn release_modifiers(&self, held: Modifiers) -> Result<(), InputError> {
+        // Both sides of each: `read_modifiers` reports "shift is down",
+        // not which shift, and `SendInput` of a key-up for a key that
+        // is already up is a no-op.
+        //
+        // This clears the *logical* modifier state applications read
+        // from the message queue, which is what decides whether our
+        // replay arrives as text or as a burst of shortcuts. The user's
+        // physical key stays down; their own release lands on an
+        // already-up key and is ignored, and we deliberately do not
+        // press the modifiers back — re-pressing one they have
+        // meanwhile let go of would leave it stuck down.
+        let mut events: Vec<INPUT> = Vec::new();
+        for (down, keys) in [
+            (held.control, [VK_LCONTROL, VK_RCONTROL].as_slice()),
+            (held.shift, [VK_LSHIFT, VK_RSHIFT].as_slice()),
+            (held.alt, [VK_LMENU, VK_RMENU].as_slice()),
+            (held.meta, [VK_LWIN, VK_RWIN].as_slice()),
+        ] {
+            if down {
+                events.extend(keys.iter().map(|&vk| make_vk_input(vk, true)));
+            }
+        }
+        if events.is_empty() {
+            return Ok(());
         }
         send_inputs(&events)
     }

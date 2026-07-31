@@ -16,10 +16,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 pub mod focus;
+pub mod setup;
 
 #[cfg(target_os = "linux")]
 mod linux;
-#[cfg(target_os = "macos")]
+// Compiled under `cfg(test)` on every host, not just macOS: the
+// keycode tables inside carry no Apple dependency and are exactly the
+// part no Mac-less contributor can otherwise check. See `macos/mod.rs`.
+#[cfg(any(target_os = "macos", test))]
 mod macos;
 #[cfg(windows)]
 mod windows;

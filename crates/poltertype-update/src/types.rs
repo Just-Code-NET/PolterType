@@ -35,9 +35,9 @@ pub struct Manifest {
     /// browser.
     pub notes_url: String,
     /// Keyed by [`crate::platform_key`]: `windows-x86_64`,
-    /// `macos-universal`, `linux-x86_64`. A platform missing from the
-    /// map simply gets no update — that is how we ship a release that
-    /// deliberately skips an OS.
+    /// `macos-universal`, `linux-x86_64`, `linux-aarch64`. A platform
+    /// missing from the map simply gets no update — that is how we ship
+    /// a release that deliberately skips an OS.
     pub artifacts: HashMap<String, Artifact>,
     /// Reserved for a detached ed25519 signature over the manifest
     /// bytes. Absent today: the current trust model is HTTPS plus the

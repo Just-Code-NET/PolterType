@@ -119,6 +119,14 @@ opener = "0.7"
 ureq   = { version = "2", features = ["tls", "json"] }
 sha2   = "0.10"
 semver = "1"
+# Manifest signing. Verification only in the app — no key generation,
+# no signing, so `default-features = false` drops `zeroize` (nothing
+# secret is ever in the app's memory) and the precomputed tables. The
+# signing half lives in `xtask`, which turns those features back on.
+# `base64` is already in the tree via ureq/rustls; it decodes the
+# 32-byte key and the 64-byte signature.
+ed25519-dalek = { version = "3", default-features = false }
+base64        = "0.22"
 
 # GUI for the Settings window. `tiny-skia` is iced's pure-CPU
 # renderer (no wgpu / GPU stack) — keeps the binary small and the

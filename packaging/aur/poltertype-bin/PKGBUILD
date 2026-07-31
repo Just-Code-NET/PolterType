@@ -1,0 +1,81 @@
+# Maintainer: PolterType contributors <https://github.com/Just-Code-NET/PolterType>
+#
+# Repacks the release AppImage for people who would rather not install
+# a Rust toolchain to get a tray app. Same binary CI built and the
+# release manifest is signed over; extracted, not run in place, so
+# there is no FUSE requirement and the desktop entry is a normal one.
+#
+# See ../README.md for how this file gets published and updated.
+
+pkgname=poltertype-bin
+_pkgname=poltertype
+pkgver=0.6.3
+pkgrel=1
+pkgdesc="Detects text typed in the wrong keyboard layout, switches the layout and fixes the word (binary release)"
+arch=('x86_64')
+url="https://github.com/Just-Code-NET/PolterType"
+license=('MIT')
+provides=("${_pkgname}=${pkgver}")
+conflicts=("${_pkgname}")
+depends=(
+  'gcc-libs'
+  'glibc'
+  'dbus'
+  'systemd-libs'
+  'libxkbcommon'
+  'libxkbcommon-x11'
+  'wayland'
+  'libx11'
+  'libxi'
+  'libxtst'
+  'gtk3'
+  'libayatana-appindicator'
+  'alsa-lib'
+)
+install="${_pkgname}.install"
+# The udev rule and the modules-load entry are local files rather than
+# a path into the source tree: an AUR package is its own git
+# repository and can reach nothing outside itself. They are byte-identical
+# to ../poltertype/ — change one, change both.
+source=(
+  "${_pkgname}-${pkgver}-x86_64.AppImage::${url}/releases/download/v${pkgver}/${_pkgname}-${pkgver}-x86_64.AppImage"
+  '99-poltertype.rules'
+  'uinput.conf'
+)
+sha256sums=(
+  'a2fc069a139487a4376a4037919af49c0e997daf68936b2bc65da678119b9027'
+  'SKIP'
+  'SKIP'
+)
+noextract=("${_pkgname}-${pkgver}-x86_64.AppImage")
+
+prepare() {
+  chmod +x "${_pkgname}-${pkgver}-x86_64.AppImage"
+  # `--appimage-extract` unpacks without mounting anything, so this
+  # works in a clean chroot where FUSE is not available — which is
+  # exactly where AUR packages are supposed to build.
+  "./${_pkgname}-${pkgver}-x86_64.AppImage" --appimage-extract >/dev/null
+}
+
+package() {
+  cd "${srcdir}/squashfs-root"
+
+  install -Dm0755 "usr/bin/${_pkgname}" "${pkgdir}/usr/bin/${_pkgname}"
+
+  # linuxdeploy bundles the libraries it decided were not safe to rely
+  # on. We drop them: every one is a real Arch package in depends(),
+  # and a bundled copy shadowing the system's is how a working app
+  # breaks three updates later.
+  install -dm0755 "${pkgdir}/usr/share/${_pkgname}/data"
+  cp -r "usr/share/${_pkgname}/data/." "${pkgdir}/usr/share/${_pkgname}/data/"
+
+  install -Dm0644 "usr/share/applications/${_pkgname}.desktop" \
+    "${pkgdir}/usr/share/applications/${_pkgname}.desktop"
+  install -Dm0644 "usr/share/icons/hicolor/256x256/apps/${_pkgname}.png" \
+    "${pkgdir}/usr/share/icons/hicolor/256x256/apps/${_pkgname}.png"
+
+  install -Dm0644 "${srcdir}/99-poltertype.rules" \
+    "${pkgdir}/usr/lib/udev/rules.d/99-poltertype.rules"
+  install -Dm0644 "${srcdir}/uinput.conf" \
+    "${pkgdir}/usr/lib/modules-load.d/poltertype-uinput.conf"
+}

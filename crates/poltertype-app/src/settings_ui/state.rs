@@ -39,6 +39,20 @@ pub struct SettingsApp {
     /// The keyboard subscription consults this to know whether to
     /// route key events to `HotkeyCaptured` or ignore them.
     pub(super) capturing: Option<HotkeyKind>,
+    /// Live answer from the permission probe, re-read on every
+    /// *Check again* click. Held rather than probed inside `view`
+    /// because `view` runs on every frame and this touches the
+    /// filesystem — and because a value that changes under the user
+    /// mid-render is how a "did my click work?" question becomes
+    /// unanswerable.
+    pub(super) setup: poltertype_input::setup::SetupReport,
+    /// Name of the layout-switcher backend, or `None` when no backend
+    /// could be built. The honest banner for the case the hooks are
+    /// fine and switching is not.
+    pub(super) layout_backend: Option<String>,
+    /// Feedback for the Setup pane's own buttons ("Copied.", "Nothing
+    /// changed yet."), kept apart from the global save banner.
+    pub(super) setup_status: Option<SaveBanner>,
     /// Free-form text in the "add a new disabled app" input on the
     /// Exceptions pane. Empty by default; cleared on Add.
     pub(super) exception_draft: String,
@@ -107,6 +121,8 @@ impl SettingsApp {
         os_layouts: Vec<LayoutId>,
         config_path: PathBuf,
         store: Arc<SettingsStore>,
+        initial_pane: Pane,
+        layout_backend: Option<String>,
     ) -> Self {
         // Pre-populate the Wordlists pane with the first OS-active
         // layout so the user can start typing the moment they land
@@ -127,7 +143,10 @@ impl SettingsApp {
             os_layouts,
             config_path,
             store,
-            pane: Pane::Languages,
+            pane: initial_pane,
+            setup: poltertype_input::setup::probe_setup(),
+            layout_backend,
+            setup_status: None,
             system_prefers_dark: super::system_theme::system_prefers_dark(),
             bg_jitter: std::cell::Cell::new(0),
             save_banner: None,

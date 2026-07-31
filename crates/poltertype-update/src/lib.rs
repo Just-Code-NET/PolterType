@@ -31,10 +31,19 @@
 //! The SHA-256 comes from the same release as the artifact, so it
 //! catches truncated downloads and a tampered *asset* CDN, but it does
 //! **not** defend against a compromised GitHub account: whoever can
-//! publish a release can publish a matching checksum. [`types::Manifest`]
-//! therefore carries an optional `signature` field, reserved for a
-//! detached ed25519 signature over the manifest bytes, so that defence
-//! can be added without a schema break. See `docs/DECISIONS.md`.
+//! publish a release can publish a matching checksum. That is what the
+//! manifest's `signature` field is for — a detached ed25519 signature
+//! made on the maintainer's machine, with a key CI never sees, checked
+//! against a public key compiled into this binary ([`signature`]).
+//! It is verified the moment the manifest is parsed, before any URL in
+//! it is read.
+//!
+//! Signatures are **not yet mandatory**: `consts::REQUIRE_SIGNATURE`
+//! gates that, and flipping it is a deliberate second step once signed
+//! releases are the ones users' updaters resolve to. Until then a
+//! present signature must verify and a missing one only warns — so do
+//! not describe the updater as "signed" anywhere user-facing until the
+//! flip has happened. See `docs/DECISIONS.md`.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
@@ -45,6 +54,7 @@ mod consts;
 mod download;
 mod enums;
 mod manifest;
+mod signature;
 mod staging;
 mod types;
 mod version;
@@ -54,6 +64,7 @@ pub use check::{check_and_stage, current_version};
 pub use consts::MANIFEST_URL;
 pub use enums::UpdateError;
 pub use manifest::platform_key;
+pub use signature::signing_payload;
 pub use staging::{clear_pending, read_pending};
 pub use types::{Artifact, Manifest, PendingUpdate};
 pub use version::is_newer;

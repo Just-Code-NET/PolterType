@@ -21,10 +21,16 @@
 //!
 //! | Platform | Backend | Notes |
 //! |---|---|---|
-//! | Wayland (wlroots: Hyprland, Sway, …) | layer-shell | primary target |
+//! | Wayland — wlroots (Hyprland, Sway, …) **and KWin** | layer-shell | primary target; KWin verified 6.7.3 |
 //! | X11 | override-redirect window | zero-permission path |
-//! | GNOME/KDE Wayland | noop | no layer-shell for 3rd-party apps |
+//! | GNOME Wayland | override-redirect via XWayland | Mutter has no layer-shell; the X11 fallback still maps |
+//! | Wayland with neither layer-shell nor XWayland | noop | the only remaining gap |
 //! | Windows / macOS | noop today | seam ready; see `docs/PLAN.md` |
+//!
+//! The backends are *probed*, not selected from a table of desktop
+//! names: layer-shell first, X11 second, noop last. That is why KDE
+//! worked the whole time nobody claimed it did — and why a compositor
+//! that gains layer-shell tomorrow needs no code change here.
 //!
 //! This crate is one of the platform-code islands (see the workspace
 //! `CLAUDE.md` hard rules): `#[cfg(target_os)]` is allowed here and
