@@ -12,9 +12,9 @@
 //!
 //! ## `cargo xtask assets icon-png <path> [--size N]`
 //!
-//! Renders the placeholder app icon (used by the release installers
-//! before someone designs a real brand mark) to a PNG. See
-//! `assets.rs` for the rationale on why this is procedural.
+//! Renders the app icon — the PolterType mark, drawn to match the
+//! site's `favicon.svg` — to a PNG for the release installers. See
+//! `assets/mod.rs` for the rationale on why this is procedural.
 //!
 //! ## `cargo xtask manifest [keygen | sign | verify | payload]`
 //!
@@ -76,9 +76,7 @@ fn print_help() {
     println!("  hooks install         Wire `.githooks/` into this clone (sets core.hooksPath).");
     println!("  hooks uninstall       Unset core.hooksPath (revert to default `.git/hooks/`).");
     println!("  assets icon-png <out> [--size N]");
-    println!(
-        "                         Render the placeholder app icon as a PNG (default size 1024)."
-    );
+    println!("                         Render the app icon as a PNG (default size 1024).");
     println!("  manifest              Sign / verify the release manifest (see `manifest` alone");
     println!("                         for the subcommands). Signing happens on the");
     println!("                         maintainer's machine, never in CI.");

@@ -124,8 +124,8 @@ cp "${DESKTOP_SRC}" "${APPDIR}/usr/share/applications/${APP_NAME}.desktop"
 
 # linuxdeploy needs an icon at AppDir/usr/share/icons/.../<exec-name>.png
 # **and** a top-level <exec-name>.png alongside the .desktop file.
-# Both come from the same source PNG — easier than managing per-size
-# variants until we have a real icon set.
+# Both come from the same source PNG — the mark is rendered at whatever
+# size we ask for, so there is nothing to gain from per-size variants.
 cp "${ICON_PNG}" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png"
 
 # Bundled data tree (layout mappings + FST wordlists). Goes under

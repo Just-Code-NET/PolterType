@@ -42,7 +42,7 @@ cargo xtask help            # list available subcommands
 cargo xtask wordlists fetch # re-fetch + Hunspell-expand bundled dictionaries
 cargo xtask hooks install   # see below
 cargo xtask hooks uninstall
-cargo xtask assets icon-png <out> [--size N]   # render the placeholder app icon
+cargo xtask assets icon-png <out> [--size N]   # render the app icon (the PolterType mark)
 ```
 
 ## Git hooks (one-time per clone)

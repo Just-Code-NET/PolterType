@@ -1,4 +1,4 @@
-//! Placeholder app-icon rasteriser.
+//! App-icon rasteriser.
 
 use super::*;
 use anyhow::{Context, Result};
@@ -6,104 +6,109 @@ use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::Path;
 
-/// Render `size`×`size` RGBA PNG to `out`.
+/// Samples per axis inside one pixel. 4×4 is plenty once a pixel is
+/// under a design unit; below `FINE_DETAIL_SIZE` the smile's stroke is
+/// thinner than a pixel, so those sizes get a finer grid.
+const SAMPLES: u32 = 4;
+const FINE_SAMPLES: u32 = 8;
+const FINE_DETAIL_SIZE: u32 = 64;
+
+/// Output sizes above this skip the sample grid on pixels whose corners
+/// and centre all land on the same layer. Below it, every pixel takes
+/// the full grid: the probe can step over a sub-pixel feature, and at
+/// these sizes the whole image costs less than a megasample anyway.
+const ADAPTIVE_FROM: u32 = 256;
+
+/// Render `size`×`size` RGBA PNG of the app icon to `out`.
 pub fn render_app_icon(size: u32, out: &Path) -> Result<()> {
     if size < 32 {
         anyhow::bail!("icon size must be ≥ 32 px (got {size})");
     }
-    let n = size as usize;
-    let mut buf = vec![0u8; n * n * 4]; // start fully transparent
-
-    fill_rounded_square(&mut buf, n, &INDIGO, size as f32 * 0.18);
-    draw_kb_wordmark(&mut buf, n, &WHITE);
-
+    let buf = rasterise(size);
     write_png(out, &buf, size, size)
 }
 
-/// Fill an anti-aliased rounded square covering the full canvas.
-///
-/// Uses a signed-distance-field test against the rounded square: a
-/// pixel's distance to the nearest edge is positive outside and
-/// negative inside; we map a 1.5-px band around the edge to an alpha
-/// gradient so corners look smooth at any output size.
-pub(crate) fn fill_rounded_square(buf: &mut [u8], n: usize, color: &[u8; 4], radius: f32) {
-    let half = n as f32 / 2.0;
-    let band = 1.5; // anti-alias half-band (in pixels)
+/// Rasterise the icon into a `size`×`size` RGBA buffer.
+pub(crate) fn rasterise(size: u32) -> Vec<u8> {
+    let n = size as usize;
+    let scale = UNITS / size as f32;
+    let samples = if size <= FINE_DETAIL_SIZE {
+        FINE_SAMPLES
+    } else {
+        SAMPLES
+    };
+    let adaptive = size > ADAPTIVE_FROM;
 
+    let mut buf = vec![0u8; n * n * 4];
     for y in 0..n {
         for x in 0..n {
-            let xc = (x as f32 + 0.5) - half;
-            let yc = (y as f32 + 0.5) - half;
-            // SDF for a rounded box centred at origin, half-extent =
-            // (half, half), corner radius = `radius`.
-            let dx = xc.abs() - (half - radius);
-            let dy = yc.abs() - (half - radius);
-            let outside = dx.max(0.0).hypot(dy.max(0.0));
-            let inside = dx.max(dy).min(0.0); // negative when inside
-            let dist = outside + inside - radius;
-
-            let alpha = if dist <= -band {
-                1.0
-            } else if dist >= band {
-                0.0
-            } else {
-                // Linear ramp in the band — visually indistinguishable
-                // from a smoothstep at this scale.
-                0.5 - dist / (2.0 * band)
-            };
-            if alpha <= 0.0 {
-                continue;
-            }
-            let idx = (y * n + x) * 4;
-            buf[idx] = color[0];
-            buf[idx + 1] = color[1];
-            buf[idx + 2] = color[2];
-            buf[idx + 3] = ((color[3] as f32) * alpha).clamp(0.0, 255.0) as u8;
+            let px = pixel(x as f32, y as f32, scale, samples, adaptive);
+            let i = (y * n + x) * 4;
+            buf[i..i + 4].copy_from_slice(&px);
         }
     }
+    buf
 }
 
-/// Draw "kb" centred horizontally at ~62% of canvas width.
-///
-/// Two 5-wide glyphs + 1-col gap = 11 source columns mapped to
-/// `target_w` output columns. We round `cell_w` / `cell_h` to whole
-/// pixels (scaled-up nearest-neighbour) — at 1024px output that gives
-/// thick, crisp strokes; at smaller sizes everything still lines up.
-pub(crate) fn draw_kb_wordmark(buf: &mut [u8], n: usize, color: &[u8; 4]) {
-    const COLS: usize = 11; // 5 + 1 gap + 5
-    const ROWS: usize = 7;
-    let target_w = (n as f32 * 0.62) as usize;
-    let cell = (target_w / COLS).max(1);
-    let total_w = cell * COLS;
-    let total_h = cell * ROWS;
-    let off_x = n.saturating_sub(total_w) / 2;
-    let off_y = n.saturating_sub(total_h) / 2;
-
-    for (rows, gx0) in [(GLYPH_K, 0usize), (GLYPH_B, 6)] {
-        for (gy, &row) in rows.iter().enumerate() {
-            for gx in 0..5 {
-                let bit = (row >> (7 - gx)) & 1;
-                if bit == 0 {
-                    continue;
-                }
-                let px0 = off_x + (gx0 + gx) * cell;
-                let py0 = off_y + gy * cell;
-                for dy in 0..cell {
-                    for dx in 0..cell {
-                        let px = px0 + dx;
-                        let py = py0 + dy;
-                        if px >= n || py >= n {
-                            continue;
-                        }
-                        let idx = (py * n + px) * 4;
-                        buf[idx] = color[0];
-                        buf[idx + 1] = color[1];
-                        buf[idx + 2] = color[2];
-                        buf[idx + 3] = color[3];
-                    }
-                }
-            }
+/// Resolve one output pixel, anti-aliased by area sampling.
+fn pixel(x: f32, y: f32, scale: f32, samples: u32, adaptive: bool) -> [u8; 4] {
+    if adaptive {
+        let centre = layer_at((x + 0.5) * scale, (y + 0.5) * scale);
+        let uniform = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+            .iter()
+            .all(|&(dx, dy)| layer_at((x + dx) * scale, (y + dy) * scale) == centre);
+        if uniform {
+            return centre;
         }
+    }
+
+    // Average the covered samples' colour and let coverage drive alpha.
+    // Uncovered samples contribute nothing at all — folding their
+    // transparent black into the average is what gives naive AA its
+    // dark fringe.
+    let step = 1.0 / samples as f32;
+    let mut acc = [0u32; 3];
+    let mut hits = 0u32;
+    for sy in 0..samples {
+        for sx in 0..samples {
+            let u = (x + (sx as f32 + 0.5) * step) * scale;
+            let v = (y + (sy as f32 + 0.5) * step) * scale;
+            let c = layer_at(u, v);
+            if c[3] == 0 {
+                continue;
+            }
+            acc[0] += u32::from(c[0]);
+            acc[1] += u32::from(c[1]);
+            acc[2] += u32::from(c[2]);
+            hits += 1;
+        }
+    }
+    if hits == 0 {
+        return TRANSPARENT;
+    }
+    let total = samples * samples;
+    [
+        (acc[0] / hits) as u8,
+        (acc[1] / hits) as u8,
+        (acc[2] / hits) as u8,
+        (255 * hits / total) as u8,
+    ]
+}
+
+/// Colour of the topmost layer covering a point, in design units.
+fn layer_at(u: f32, v: f32) -> [u8; 4] {
+    if in_eye(u, v) || in_smile(u, v) {
+        INK
+    } else if in_ghost(u, v) {
+        GHOST
+    } else if in_round_rect(u, v, &KEY_WELL_RECT) {
+        KEY_SIDE
+    } else if in_round_rect(u, v, &KEY_FACE_RECT) {
+        KEY_FACE
+    } else if in_round_rect(u, v, &KEY_SIDE_RECT) {
+        KEY_SIDE
+    } else {
+        TRANSPARENT
     }
 }
 

@@ -98,13 +98,13 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --target ${{ matrix.arch }}-unknown-linux-gnu -p poltertype-app
 
-      - name: Render placeholder icon
+      - name: Render app icon
         # linuxdeploy wants a square PNG ≥ 256×256. We render at the
         # exact size we need — `cargo xtask assets icon-png` is the
         # only image tool we depend on, so no `magick` / `convert`
         # needed (ubuntu-latest doesn't ship ImageMagick v7's `magick`
-        # binary). Once we adopt a hand-designed brand mark, swap this
-        # step for a checkout of a checked-in PNG.
+        # binary). If the mark ever ships as a checked-in PNG instead,
+        # swap this step for a copy of that file.
         run: |
           mkdir -p target/dist
           cargo xtask assets icon-png target/dist/icon-256.png --size 256
