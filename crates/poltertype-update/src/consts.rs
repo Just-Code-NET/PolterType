@@ -72,7 +72,7 @@ pub(crate) const PAYLOAD_HEADER: &str = "poltertype-manifest-v1";
 ///
 /// **The staged rollout, in two releases.** Signing and verifying land
 /// together, but they cannot become mandatory in the same release: a
-/// user running 0.6.4 would be checking a manifest published before
+/// user running 0.7.0 would be checking a manifest published before
 /// anyone signed one. So:
 ///
 /// 1. **`false` (now).** A signature that is *present* must verify — a

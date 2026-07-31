@@ -22,7 +22,7 @@
 //! > **Status:** validated end-to-end on macOS 15 (Intel): the tap
 //! > receives events, corrections emit, and injected events are
 //! > recognised via the user-data tag. The `FlagsChanged` subscription
-//! > and `release_modifiers` (0.6.4) have not yet run on hardware.
+//! > and `release_modifiers` (0.7.0) have not yet run on hardware.
 //!
 //! ## Why this is a directory
 //!

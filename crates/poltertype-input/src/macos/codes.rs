@@ -158,7 +158,7 @@ pub(crate) fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x1B => 0x0C,       // -
         // Modifiers — mapped onto the SC-1 modifier slots the
         // classifier recognises as "discard, stay inside the word".
-        // Live since 0.6.4: the tap subscribes to `FlagsChanged`, so
+        // Live since 0.7.0: the tap subscribes to `FlagsChanged`, so
         // these arrive on macOS exactly as they do on Windows and
         // Linux. Without the mapping, Apple 0x3C (RShift) / 0x3B
         // (LControl) would land in the classifier's F-row range and

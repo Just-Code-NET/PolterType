@@ -12,19 +12,26 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.6.3 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.7.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
-> suggestions tooltip renders on Hyprland/Sway and X11. On
-> Linux/Wayland a correction now holds your keystrokes back while it
-> types and replays them behind itself, so carrying straight on with
-> the next word no longer scrambles the result — except behind an
-> input remapper such as keyd, where PolterType stands down and falls
-> back to detecting and repairing instead
-> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). macOS is validated on
-> hardware (macOS 15, Intel): listener, layout switching and
-> corrections all work; the keystroke hold-back is Linux-only there,
-> as on Windows. Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md) for the
-> full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
+> suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
+> (GNOME Wayland gets it through XWayland). On Linux/Wayland a
+> correction holds your keystrokes back while it types and replays
+> them behind itself, so carrying straight on with the next word no
+> longer scrambles the result — except behind an input remapper such
+> as keyd, where PolterType stands down and falls back to detecting
+> and repairing instead
+> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). **macOS: read this
+> before updating.** 0.6.2 was validated on real hardware (macOS 15,
+> Intel), but 0.7.0 changes the macOS input path — modifier events now
+> reach the engine, and corrections release held modifiers before
+> typing — and those changes have not been run on a Mac by anyone.
+> They are the fix for a correction under a held ⌘ going out as ⌘⌫;
+> if something looks wrong on your Mac, please say so in
+> [#3](https://github.com/Just-Code-NET/PolterType/issues/3). The
+> keystroke hold-back remains Linux-only there, as on Windows.
+> Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md)
+> for the full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
 
 ![PolterType settings window — Languages panel](docs/screenshots/settings-window.png)
 
@@ -104,7 +111,7 @@ is two requests: a `GET` of a small JSON manifest, and — only when
 there's actually a new version — a `GET` of the installer itself. No
 account, no identifier, nothing about you and nothing about what you
 type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.6.3
+a User-Agent naming the running version (`PolterType/0.7.0
 (updater)`). The exact manifest URL is printed on the Settings
 window's **General** pane, so you never have to take our word for it.
 
@@ -150,7 +157,9 @@ Three caveats worth stating plainly:
 - Pure Rust — no WebView, no Node.
 - `tao` event loop + `tray-icon` + `global-hotkey` + `single-instance`.
 - `ureq` + `rustls` + `sha2` for the updater — the app's only network
-  code, and the only reason a TLS stack is linked in at all.
+  code, and the only reason a TLS stack is linked in at all —
+  plus `ed25519-dalek` to check the release manifest's signature
+  (verification only; the app holds no secret).
 - Optional AI subsystem (`feature = "ai"`) — local ONNX or remote LLM
   detectors / word rewriters. Off by default, and **not wired to the
   engine yet**: the crate ships stubs that nothing constructs, so no

@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-31 (v0.6.3).
+> Created: 2026-05-02. Last updated: 2026-07-31 (v0.7.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,17 +9,18 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.6.2; most recently the macOS backend's first run on real
->   hardware, and autostart finally doing something) and §10
->   below, where every item is marked.
+>   0.7.0; most recently signed update manifests, aarch64 Linux builds
+>   and a setup pane that probes the machine instead of linking to a
+>   document) and §10 below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
 > * **What does not exist despite being described below** —
 >   `../CLAUDE.md`, the "Known gaps" section: the AI subsystem is not
->   wired to the engine, `FocusTracker` covers Windows / Hyprland /
->   X11 but not macOS or GNOME/KDE Wayland, and AT-SPI / `libei` /
->   the guided onboarding window do not exist.
+>   wired to the engine, `focused_exe()` answers on Windows / Hyprland
+>   / X11 and nowhere else, and AT-SPI listening / `libei` do not
+>   exist. The guided onboarding window does exist as of 0.7.0 — but
+>   its macOS half has never run on a Mac.
 >
 > Sections 2–4 in places describe the original intent (dependencies
 > that were never adopted; a tray menu that turned out differently).
@@ -49,6 +50,9 @@
 | 2026-07-11 | **Correction pipeline v2**: switch the layout first, then delete (not the other way around). | Details in `DECISIONS.md` (entry of 2026-07-11): removes the race with the echo from our own emitter. |
 | 2026-07-13 | **Linux `FocusTracker`**: Hyprland IPC + X11 EWMH, identity = executable basename via `/proc`, 150 ms TTL cache. GNOME/KDE Wayland stay noop (no compositor-agnostic query). | Closes the "quietest hole" from §3.9 on the two Linux paths that can answer honestly. Details in `DECISIONS.md` (2026-07-13). |
 | 2026-07-13 | **Hook-failure alert instead of a silent tray**: menu entry → setup guide, tooltip suffix, one-shot notification. A "Run setup" button that invokes `sudo` itself was rejected. | The listener returned a descriptive error since day one; the tray just never showed it. Self-`sudo` is the scary pattern the docs warn against. |
+| 2026-07-31 | **Update manifests are signed by a human, not by CI** (ed25519, key never in Actions). Verification ships one release ahead of enforcement. | An Actions secret is readable by exactly the attacker a signature defends against. Details in `DECISIONS.md` (2026-07-31). |
+| 2026-07-31 | **The hook-failure alert opens a Setup pane, not a browser tab.** Four states, including "set up, but this session predates it". Still no self-`sudo` — the button copies the command. | A document cannot tell the user which of the two Linux failure states they are in; a probe can. |
+| 2026-07-31 | **No Flatpak, decided rather than left open.** `uinput` is not grantable short of `--device=all`, and no portal exists. | Deciding once with evidence costs less than answering the question every few months. Details in `DECISIONS.md` (2026-07-31). |
 | 2026-07-24 | **Spelling suggestions**: dictionary-driven tooltip for mistyped same-layout words (`poltertype-popup` crate, `[suggestions]`, on by default). Below-threshold layout verdicts surface as the leading tooltip entry instead of being dropped. | Extends the correction promise to plain typos with the data we already bundle. Details in `DECISIONS.md` (2026-07-24). |
 
 ---
@@ -706,10 +710,10 @@ Always in context:
   string and no identifier — GitHub sees an IP and a User-Agent, the
   same as any HTTP server would. It is **not** telemetry and is not a
   place to add any. `[updates].enabled = false` switches it off
-  entirely. The trust boundary is the GitHub account that publishes
-  releases; a detached signature over the manifest
-  (`Manifest.signature`) is the reserved fix and is not implemented
-  yet. See `docs/DECISIONS.md`, 2026-07-13.
+  entirely. The trust boundary *was* the GitHub account that publishes
+  releases; since 0.7.0 `Manifest.signature` is a real detached ed25519
+  signature, verified before any URL in the manifest is read. It is not
+  yet mandatory — see `docs/DECISIONS.md`, 2026-07-13 and 2026-07-31.
 - **An update is never installed while the app runs.** We hold a global
   keyboard hook; the swap happens on Quit or on an explicit "Restart to
   update".
@@ -861,10 +865,12 @@ separate `poltertype --settings` process.
       goes through the main dispatch queue; HIToolbox asserts it and
       killed the process with SIGILL otherwise. See `DECISIONS.md`.
 - [x] **Run at login** — per-user LaunchAgent (`poltertype-autostart`).
-- [ ] **Accessibility onboarding** — there is no first-launch window.
-      The app does now trigger the system Accessibility prompt when
-      the tap fails to attach, which is a path out of a dead tray icon
-      but not the guided walkthrough.
+- [x] **Accessibility onboarding** — the Settings window's **Setup**
+      pane (0.7.0), opened by the tray's hook-failure alert. Reports
+      Accessibility and Input Monitoring separately, raises the
+      system's own prompt for each, and deep-links into the matching
+      System Settings pane. Never yet run on a Mac; the screenshots /
+      GIFs of the toggles remain undone.
 - [ ] **`NSWorkspace` focus tracking** — not implemented, so the
       `FocusTracker` on macOS is a no-op (see Phase 6 and §3.9).
 - [ ] **Keystroke hold-back.** The key gate is Linux/evdev only; on
@@ -895,15 +901,18 @@ separate `poltertype --settings` process.
       (post-0.2.2): "Setup Guide" menu entry + tooltip warning +
       one-shot notification when the listener fails to start. The
       originally sketched "Run setup" button (tray invoking `sudo`
-      itself) was **rejected** — see `DECISIONS.md`; the guided
-      first-launch onboarding window remains open (Phase 5 /
-      Phase 9 territory).
+      itself) was **rejected** — see `DECISIONS.md`; that rejection
+      still stands, and the Setup pane (0.7.0) copies the command to
+      the clipboard rather than running it.
 - [ ] **Wayland AT-SPI fallback listener** via `atspi` — not
       implemented (the dependency is not in the tree).
 - [ ] **`libei` (`reis`) as the portal variant of send-keys** — not
       implemented; `uinput` is currently the only path.
-- [ ] **`FocusTracker` for GNOME/KDE Wayland** — needs per-DE
-      backends (KWin script / GNOME shell extension), see §3.9.
+- [ ] **`FocusTracker` for GNOME/KDE Wayland** — the *window* half
+      still needs per-DE backends (KWin script / GNOME shell
+      extension), see §3.9. The *caret* half landed in 0.7.0:
+      AT-SPI answers on any compositor, so those sessions get a
+      caret-only tracker and the tooltip anchors properly there.
 
 ### Phase 7 — AI skeleton
 
@@ -928,8 +937,9 @@ single line of `poltertype-app` / `poltertype-core` imports
 
 - [x] Icons (rendered by `xtask assets icon-png`).
 - [x] GitHub Action — artifacts on tag (`release.yml`).
-- [x] **Installers**: MSI (WiX), universal DMG, AppImage. Shipped
-      together with 0.1 — earlier than Phase 9 planned.
+- [x] **Installers**: MSI (WiX), universal DMG, AppImage (x86_64
+      since 0.1 — earlier than Phase 9 planned; aarch64 added in
+      0.7.0, built natively on an ARM64 runner).
 - [ ] UI translation (i18n) — the interface is English-only.
 - [x] Screenshots in the README — landed 2026-07-13
       (`docs/screenshots/settings-window.png`).
@@ -943,11 +953,17 @@ single line of `poltertype-app` / `poltertype-core` imports
 - **Signing** the installers (Apple Developer ID, Windows EV/OV) —
   today all artifacts ship **unsigned**. This is also what would let
   the macOS updater stop stripping `com.apple.quarantine`.
-- **Signing the update manifest** (ed25519 / minisign, key held off
-  GitHub). Until then the updater trusts whoever can publish a
-  release — see `docs/DECISIONS.md`, 2026-07-13. The
-  `Manifest.signature` field already exists and parses.
-- Stores: winget, brew, AUR, Microsoft Store.
+- **Signing the update manifest** — *started in 0.7.0, not finished.*
+  `latest.json` now carries a detached ed25519 signature, made on the
+  maintainer's machine with a key that never enters CI and verified
+  against a public key compiled into the binary. What remains is the
+  second half of the rollout: `REQUIRE_SIGNATURE` is still `false`, so
+  a missing signature is accepted with a warning. Flip it once a signed
+  manifest has been the published `latest.json` for a full release
+  cycle — until then the updater still trusts whoever can publish a
+  release. See `docs/DECISIONS.md`, 2026-07-31.
+- Stores: Microsoft Store. winget, brew and AUR manifests are staged in
+  `packaging/` and not yet published anywhere.
 - Plugin marketplace: the loader is live (data-only packs); what
   remains open is the pack install / update / signing UX. WASM
   plugins — a separate topic.
@@ -964,8 +980,12 @@ single line of `poltertype-app` / `poltertype-core` imports
       maintainer's daily machine) after `setup-linux.sh`; on X11 —
       **without any script at all** (no longer a "fallback" but a
       first-class path).
-- [ ] macOS (Intel+ARM): builds and passes CI, but nobody has run the
-      cycle on real hardware. The only unconfirmed item.
+- [x] macOS (Intel): the full cycle, confirmed on real hardware by an
+      outside contributor at 0.6.2 (macOS 15).
+- [ ] macOS (Apple Silicon): still nobody. And since 0.7.0 changed the
+      macOS input path — `FlagsChanged`, modifier release — even the
+      Intel confirmation predates what now ships. The only unconfirmed
+      item.
 - [x] The tray shows the language, the menu works.
 - [x] The settings window: seven panels (more than planned), settings
       persist.

@@ -39,7 +39,7 @@ added" notification. No elevation is involved and nothing is written
 outside the user's own home directory; unticking the setting deletes
 the file.
 
-> **What exists (0.6.4).** When the keyboard hooks fail to start — the
+> **What exists (0.7.0).** When the keyboard hooks fail to start — the
 > usual cause on macOS being exactly this permission — the tray shows a
 > **⚠ Keyboard hooks unavailable — Setup…** entry, a tooltip warning,
 > and a one-shot notification. The entry opens the Settings window on

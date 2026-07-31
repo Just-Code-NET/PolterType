@@ -20,7 +20,7 @@ a deliberate human step against a third-party system.
 ## Bumping to a new release
 
 ```bash
-packaging/bump.sh 0.6.4
+packaging/bump.sh 0.7.0
 ```
 
 Downloads that release's artifacts, hashes the bytes GitHub is actually

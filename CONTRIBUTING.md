@@ -141,7 +141,12 @@ installers/          per-platform packaging — see "Releasing" below
   macos/Info.plist.in       template for the .app bundle
   macos/build-dmg.sh        universal-binary .app + .dmg via lipo + hdiutil
   linux/poltertype.desktop the AppImage's .desktop entry
-  linux/build-appimage.sh   wraps linuxdeploy + appimage plugin
+  linux/build-appimage.sh   wraps linuxdeploy + appimage plugin (ARCH=x86_64|aarch64)
+packaging/           distribution manifests — staged, not published
+  aur/               PKGBUILDs: poltertype (source) + poltertype-bin
+  winget/            the JustCode.PolterType manifest trio
+  homebrew/          the cask for Just-Code-NET/homebrew-tap
+  bump.sh            re-point all three at a published release
 scripts/
   setup-linux.sh — one-time evdev permission grant
 ```

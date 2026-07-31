@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Re-point every packaging manifest at a published release.
 #
-#     packaging/bump.sh 0.6.4
+#     packaging/bump.sh 0.7.0
 #
 # Downloads that release's artifacts, hashes them, and rewrites the
 # version + checksum in the AUR PKGBUILDs, the winget manifests and the
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-VERSION="${1:?usage: packaging/bump.sh <version>   (e.g. 0.6.4)}"
+VERSION="${1:?usage: packaging/bump.sh <version>   (e.g. 0.7.0)}"
 VERSION="${VERSION#v}"
 REPO="Just-Code-NET/PolterType"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

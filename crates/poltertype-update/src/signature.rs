@@ -21,10 +21,10 @@
 //! ```text
 //! poltertype-manifest-v1
 //! schema=1
-//! version=0.6.4
-//! notes_url=https://github.com/…/releases/tag/v0.6.4
+//! version=0.7.0
+//! notes_url=https://github.com/…/releases/tag/v0.7.0
 //! artifact=linux-x86_64
-//! url=https://github.com/…/poltertype-0.6.4-x86_64.AppImage
+//! url=https://github.com/…/poltertype-0.7.0-x86_64.AppImage
 //! sha256=9f86d081…
 //! size=28311552
 //! artifact=macos-universal

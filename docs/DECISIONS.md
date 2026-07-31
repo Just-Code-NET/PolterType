@@ -309,7 +309,7 @@ this already worked there.
 compiles — and runs its tests — on Linux and Windows CI. The FFI
 either side of it is compiled by CI's `macos-latest` job and executed
 by nobody yet; the tap change in particular wants a real Mac before
-0.6.4 ships.
+0.7.0 ships.
 
 ---
 
