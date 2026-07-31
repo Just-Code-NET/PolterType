@@ -35,14 +35,16 @@ unsafe extern "C" {
     static kAXTrustedCheckOptionPrompt: CFStringRef;
 }
 
-/// `IOHIDCheckAccess` / `IOHIDRequestAccess`, macOS 10.15+.
-///
-/// The request type we care about is `kIOHIDRequestTypeListenEvent`
-/// (1) — "may this process observe keystrokes", i.e. Input Monitoring.
-/// The returned `IOHIDAccessType` is 0 granted, 1 denied, 2 unknown,
-/// and we keep that third value rather than folding it into "denied":
-/// unknown means the system has not decided, which is a different
-/// sentence to write on screen.
+// `IOHIDCheckAccess` / `IOHIDRequestAccess`, macOS 10.15+. Plain `//`
+// because rustdoc generates nothing for an extern block and `-D
+// warnings` rejects a doc comment that documents nothing.
+//
+// The request type we care about is `kIOHIDRequestTypeListenEvent`
+// (1) — "may this process observe keystrokes", i.e. Input Monitoring.
+// The returned `IOHIDAccessType` is 0 granted, 1 denied, 2 unknown,
+// and we keep that third value rather than folding it into "denied":
+// unknown means the system has not decided, which is a different
+// sentence to write on screen.
 #[link(name = "IOKit", kind = "framework")]
 unsafe extern "C" {
     fn IOHIDCheckAccess(request: u32) -> u32;
