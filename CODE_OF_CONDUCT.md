@@ -57,13 +57,13 @@ officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the maintainers responsible for enforcement by opening an issue in
-[the issue tracker](https://github.com/Just-Code-NET/PolterType/issues).
+reported to the maintainers responsible for enforcement at
+**support@just-code.net**.
 
-**If a report should not be public** — which is often the right call — open an
-issue saying only that you have a conduct report, with no details, and a private
-channel will be arranged from there. You will not be asked to describe what
-happened in the open.
+Reporting privately is the normal path, not an exception — you will never be
+asked to describe what happened in a public issue. If you would rather not use
+email at all, open an issue saying only that you have a conduct report, with no
+details, and a private channel will be arranged from there.
 
 All complaints will be reviewed and investigated promptly and fairly. All
 community leaders are obligated to respect the privacy and security of the

@@ -15,9 +15,10 @@ Please **do not open a public issue** for anything that would let
 someone read another person's keystrokes, install code on their
 machine, or push a malicious update.
 
-If you cannot use GitHub's form, open a public issue saying only that
-you have a security report and giving no details — we will arrange a
-private channel from there.
+If you cannot use GitHub's form, email **support@just-code.net**.
+Please keep the details out of any public issue — for this app, a
+proof-of-concept posted in the open is a working exploit posted in the
+open.
 
 What helps, in rough order of usefulness:
 
