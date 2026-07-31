@@ -46,6 +46,17 @@ sed -i "s/^  '[0-9a-f]\{64\}'$/  '${APPIMAGE_SHA}'/" \
     "${ROOT}/packaging/aur/poltertype-bin/PKGBUILD"
 
 echo "==> winget"
+# The release date is metadata winget shows to users, and nothing else
+# recomputes it — left alone it silently keeps claiming the date of
+# whichever release these manifests were first written for.
+RELEASE_DATE="$(gh release view "v${VERSION}" -R "${REPO}" --json publishedAt \
+    --jq '.publishedAt | split("T")[0]' 2>/dev/null || true)"
+if [[ -z "${RELEASE_DATE}" ]]; then
+    echo "  (not published yet — leaving ReleaseDate alone)" >&2
+else
+    sed -i "s/^ReleaseDate: .*/ReleaseDate: ${RELEASE_DATE}/" \
+        "${ROOT}/packaging/winget/JustCode.PolterType.installer.yaml"
+fi
 sed -i "s/^PackageVersion: .*/PackageVersion: ${VERSION}/" \
     "${ROOT}/packaging/winget/"*.yaml
 sed -i \

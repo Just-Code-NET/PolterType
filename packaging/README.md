@@ -61,7 +61,7 @@ makepkg --printsrcinfo > .SRCINFO      # AUR requires this, and requires it curr
 makepkg -si                            # build and install it once before pushing
 namcap PKGBUILD ./*.pkg.tar.zst        # catches missing/redundant deps
 git add PKGBUILD .SRCINFO poltertype.install 99-poltertype.rules uinput.conf
-git commit -m "Initial import: poltertype 0.6.3"
+git commit -m "Initial import: poltertype 0.7.0"
 git push
 ```
 
@@ -93,8 +93,8 @@ install capable. Suggested identifier `JustCode.PolterType`.
 # Regenerate rather than hand-edit — wingetcreate fills in the
 # installer hash from the real download and validates the schema.
 wingetcreate update JustCode.PolterType \
-    --version 0.6.3 \
-    --urls https://github.com/Just-Code-NET/PolterType/releases/download/v0.6.3/poltertype-0.6.3-x86_64-pc-windows-msvc.msi \
+    --version 0.7.0 \
+    --urls https://github.com/Just-Code-NET/PolterType/releases/download/v0.7.0/poltertype-0.7.0-x86_64-pc-windows-msvc.msi \
     --submit
 ```
 
