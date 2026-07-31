@@ -365,19 +365,25 @@ forge, which is only true because the private key is not an
 Actions secret and never touches a runner. So this step is
 yours, and it happens on the draft, before publishing:
 
+**Run these from the repository root**, not from `/tmp`. Both tools
+need it: `gh` infers the repository from the git remote, and
+`cargo xtask` is an alias defined in this repo's `.cargo/config.toml`
+— outside it, cargo reports `no such command: xtask`. The manifest
+itself goes to `/tmp` so it can never be committed by accident.
+
 ```bash
-cd /tmp
-gh release download v0.2.1 --pattern latest.json --clobber
-cargo xtask manifest sign latest.json --key ~/.config/poltertype-signing/release.key
-gh release upload v0.2.1 latest.json --clobber
+cd /path/to/poltertype
+gh release download v0.2.1 --pattern latest.json --dir /tmp --clobber
+cargo xtask manifest sign /tmp/latest.json --key ~/.config/poltertype-signing/release.key
+gh release upload v0.2.1 /tmp/latest.json --clobber
 ```
 
 `sign` re-reads what it wrote and verifies it against the public
 key the app ships, so a mismatched key fails here rather than on
 a user's machine. To look before you sign,
-`cargo xtask manifest payload latest.json` prints the exact bytes
-the signature covers, and `cargo xtask manifest verify
-latest.json` re-checks an already-signed file.
+`cargo xtask manifest payload /tmp/latest.json` prints the exact
+bytes the signature covers, and `cargo xtask manifest verify
+/tmp/latest.json` re-checks an already-signed file.
 
 The workflow run's summary page carries these same commands, so
 you don't have to remember they exist.

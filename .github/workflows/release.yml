@@ -332,10 +332,14 @@ jobs:
             echo 'The manifest attached to this draft is **unsigned**. Sign it with the'
             echo 'release key (which lives on your machine, not here):'
             echo
+            echo 'Run these **from a checkout of this repository** — `gh` infers the repo'
+            echo 'from the git remote, and `cargo xtask` is an alias from its'
+            echo '`.cargo/config.toml`. The manifest goes to /tmp so it cannot be committed.'
+            echo
             echo '```bash'
-            echo "gh release download ${TAG} --pattern latest.json --clobber"
-            echo 'cargo xtask manifest sign latest.json --key ~/.config/poltertype-signing/release.key'
-            echo "gh release upload ${TAG} latest.json --clobber"
+            echo "gh release download ${TAG} --pattern latest.json --dir /tmp --clobber"
+            echo 'cargo xtask manifest sign /tmp/latest.json --key ~/.config/poltertype-signing/release.key'
+            echo "gh release upload ${TAG} /tmp/latest.json --clobber"
             echo '```'
             echo
             echo '`sign` verifies its own output against the public key compiled into the'
