@@ -6,6 +6,73 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-07-31 — macOS subscribes to `FlagsChanged`, and clears flags on everything it posts
+
+Two macOS gaps that turned out to be one story.
+
+**The dead arms (issue #4).** The event tap subscribed to `KeyDown` and
+`KeyUp` only. macOS never sends those for a modifier — a Shift press is
+a `kCGEventFlagsChanged` event (type 12) — so the Apple-modifier arms
+of the keycode table could never be reached, and modifier *state* came
+only from folding the flags carried by ordinary key events. The choice
+was to subscribe (Option A) or delete the arms and document
+flags-folding as the single source of truth (Option B).
+
+**Chose Option A.** Folding is accurate the instant a character key
+arrives and stale at every other moment: let go of Ctrl and nothing
+tells us until the next keystroke. `held_modifiers` is read at the
+*start* of a correction — often triggered by a chord, i.e. precisely
+when no ordinary key is flowing — so the stale window is the window
+that matters. Subscribing also puts macOS on the same footing as the
+Windows and X11 backends, which do get discrete modifier edges, and
+costs one extra event per modifier edge through a callback that only
+translates and `try_send`s.
+
+The subscription makes the keycode table's modifier arms live, which is
+a behaviour change in the engine's word buffer: Apple 0x3C (RShift)
+would otherwise land on SC-1 0x3C, inside the classifier's
+`0x3B..=0x53` "navigation — end the word and discard it" range. The
+arms were already written for exactly this, and now there are tests.
+`kVK_Function` (0x3F) is the one that was *not* covered: it rides the
+same `FlagsChanged` stream, has no SC Set-1 equivalent, and the
+identity fallback would put it at SC-1 0x3F — inside that same range,
+so holding Fn to reach an arrow key would have silently eaten the word
+in progress. Untracked modifier keycodes are dropped in the listener
+instead.
+
+**The missing release (issue #5).** `KeyEmitter::release_modifiers`
+had a default no-op that macOS inherited, so accepting a suggestion
+with `Ctrl+Shift+<digit>` while still holding the chord retyped the
+word under those modifiers.
+
+The macOS fix is in two independent halves, both of which we want:
+
+1. **`release_modifiers` posts `FlagsChanged` events.** There is no
+   key-up for a modifier on macOS; the release *is* a flags-changed
+   event whose flags describe what remains down. We post one per held
+   modifier, each carrying the picture after that key is up. Caps Lock
+   is excluded on purpose — it is a latch, and clearing it would turn
+   the user's Caps light off behind their back.
+2. **Every event we post has its flags cleared.** An event built from a
+   `HIDSystemState` source inherits the *live hardware* modifier flags,
+   so with the chord still held our backspaces would post as ⌘⌫ —
+   "delete to start of line" — and wreck far more than the word. This
+   half needs nothing to have worked at the OS level and covers the
+   case where the engine did not think anything was held.
+
+**Windows had the same no-op** and the same bug; it now sends key-ups
+for both sides of each held modifier via `SendInput`. Issue #5 assumed
+this already worked there.
+
+*Untested on hardware.* The tables and the direction rules moved into
+`macos/codes.rs`, which carries no Apple dependency and therefore
+compiles — and runs its tests — on Linux and Windows CI. The FFI
+either side of it is compiled by CI's `macos-latest` job and executed
+by nobody yet; the tap change in particular wants a real Mac before
+0.6.4 ships.
+
+---
+
 ## 2026-07-30 — Every macOS TIS call goes through the main dispatch queue
 
 `TISCopyCurrentKeyboardInputSource` and friends look like ordinary C

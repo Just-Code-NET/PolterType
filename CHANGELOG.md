@@ -4,6 +4,40 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.6.4
+
+### Fixed
+
+- **macOS: a suggestion accepted with its chord still held no longer
+  retypes the word under those modifiers.** `release_modifiers` was a
+  default no-op on macOS, and — worse — every event we posted inherited
+  the *live hardware* modifier flags from its `HIDSystemState` source,
+  so with ⌘ down our backspaces went out as ⌘⌫ ("delete to start of
+  line"). The emitter now clears the flags on everything it posts and
+  sends a `FlagsChanged` release for each modifier the engine believes
+  is down. Caps Lock is deliberately left alone — it is a latch, not a
+  held key.
+- **Windows: the same no-op, the same bug.** `release_modifiers` now
+  sends key-ups for both sides of each held modifier.
+- **macOS: modifier presses reach the engine at all.** The event tap
+  subscribed to `KeyDown`/`KeyUp` only, but macOS reports a modifier
+  moving as `FlagsChanged` — so the modifier arms of the keycode table
+  had been unreachable since they were written, and the engine only
+  learned what was held when an ordinary key arrived. It now sees the
+  same discrete modifier stream as the Windows and Linux backends,
+  which is what makes the fix above fire at the right moment. Keys with
+  no SC Set-1 equivalent (Fn, media) are dropped rather than falling
+  through the identity mapping into the word buffer's "navigation — end
+  the word" range.
+
+### Internal
+
+- The macOS backend is a directory rather than one file, and the part
+  most likely to be wrong — the Apple→SC Set-1 keycode table and the
+  `FlagsChanged` direction rules — carries no Apple dependency, so its
+  tests run on Linux and Windows CI too. Everything Mac-only stays
+  compile-checked by CI's `macos-latest` job.
+
 ## [0.6.3] — the key gate grows a safety catch, corrections learn ñ, and the logs forget your words
 
 ### Security
