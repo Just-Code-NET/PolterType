@@ -14,7 +14,15 @@
 //!    permissions aren't granted, the listener returns `InputError::Os`
 //!    so the tray can show an onboarding banner.
 //!
-//! AT-SPI fallback (no `sudo` required, less reliable) lands in v0.1.x.
+//! There is no third backend, and there is not going to be an AT-SPI
+//! one. The accessibility stack looked like a way to read keystrokes
+//! without `input`-group membership, but `at-spi2-registryd` has no
+//! keyboard of its own — on Wayland it relays only what the compositor
+//! hands it, and only mutter does. Measured on wlroots:
+//! `RegisterKeystrokeListener` returns false and no events arrive even
+//! with injected keys. On X11, where it would work, the XInput2
+//! listener above already needs no permissions. See `DECISIONS.md`,
+//! 2026-08-01.
 
 #![allow(unused_imports, dead_code)] // Linux-only code; Windows doesn't compile this.
 

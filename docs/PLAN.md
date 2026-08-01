@@ -916,10 +916,23 @@ separate `poltertype --settings` process.
       itself) was **rejected** — see `DECISIONS.md`; that rejection
       still stands, and the Setup pane (0.7.0) copies the command to
       the clipboard rather than running it.
-- [ ] **Wayland AT-SPI fallback listener** via `atspi` — not
-      implemented (the dependency is not in the tree).
+- [x] ~~**Wayland AT-SPI fallback listener** via `atspi`~~ —
+      **decided against 2026-08-01, with measurements.**
+      `RegisterKeystrokeListener` returns false on a wlroots session
+      and delivers nothing even with injected keys, because
+      `at-spi2-registryd` can only relay what the compositor hands it
+      and only mutter does. Where it *would* work (X11) we already
+      have a listener that needs no permissions, so it adds nothing
+      there. See `DECISIONS.md`, 2026-08-01.
 - [ ] **`libei` (`reis`) as the portal variant of send-keys** — not
-      implemented; `uinput` is currently the only path.
+      implemented; `uinput` is currently the only path. Still open
+      rather than decided: mutter and KWin do implement
+      `org.freedesktop.portal.RemoteDesktop`, so this one is real —
+      but no RemoteDesktop backend exists on the maintainer's machine
+      (`hyprland.portal` offers Screenshot, ScreenCast,
+      GlobalShortcuts, InputCapture; only `kde.portal` offers
+      RemoteDesktop), so it cannot be written and verified here.
+      Needs a GNOME or KDE session to develop against.
 - [ ] **`FocusTracker` for GNOME/KDE Wayland** — the *window* half
       still needs per-DE backends (KWin script / GNOME shell
       extension), see §3.9. The *caret* half landed in 0.7.0:
