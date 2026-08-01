@@ -917,9 +917,26 @@ first 2 KB, and decodes byte-for-byte as Latin-1 if the source says
 `ISO8859-*` / `LATIN1` / `WINDOWS-1252`. Adding a new dictionary
 in another encoding is a single match arm.
 
+> **Superseded 2026-08-01 — that rule was wrong, and it shipped
+> mojibake.** Two faults. `ISO8859-*` was matched as a prefix and
+> then decoded as Latin-1, so ISO-8859-2 and ISO-8859-7 came out
+> scrambled; and the scan ran per-file, but a Hunspell `.dic`
+> carries no `SET` of its own — the `.aff` declares the encoding
+> for the pair. The `.dic` therefore hit the "no SET, assume
+> Latin-1" default every time, which was invisible for the five
+> languages bundled then because four are UTF-8 and German is
+> genuinely Latin-1. Adding Polish and Greek exposed it: `słowo`
+> became `s³owo`, which matches nothing and looks like a word.
+> Now `encoding_of_aff` reads the `.aff` once and that encoding
+> decodes both halves, Latin-2 and Greek have real 96-entry tables
+> (generated from Python's codecs, not typed by hand), and an
+> unknown or missing `SET` is a hard error. Guessing an encoding is
+> the failure mode here, not a convenience.
+
 Storage on disk: bulk wordlists ship as `data/wordlists/<id>.txt.gz`
-rather than raw `.txt`. Raw, the six languages total ~165 MB
-(uk_ua alone is 84 MB after expansion); gzipped they're ~24 MB.
+rather than raw `.txt`. Raw, the fifteen bundled languages total
+583 MB (uk_ua alone is 84 MB after expansion); gzipped they're
+97 MB.
 Both `poltertype-core/build.rs` (`flate2::read::GzDecoder`) and the xtask
 generator (`flate2::write::GzEncoder`) handle the format
 transparently, and the build script falls back to a plain `.txt`
