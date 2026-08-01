@@ -8,6 +8,10 @@ pub(crate) enum FlagType {
     Long,
     /// `FLAG UTF-8` — one Unicode char per flag (used by es_ES).
     Utf8,
+    /// `FLAG num` — decimal flags separated by `,` (used by tr_TR,
+    /// whose affix table is one flag per surface form and so needs
+    /// far more than 65535 distinct flags).
+    Num,
 }
 
 /// One atom of a Hunspell condition pattern.

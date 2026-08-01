@@ -37,11 +37,7 @@ impl Aff {
                 flag_type = match rest.trim() {
                     "long" => FlagType::Long,
                     "UTF-8" => FlagType::Utf8,
-                    "num" => bail!(
-                        "this expander does not support `FLAG num` dictionaries — \
-                         the affected dictionary would have to be re-encoded with \
-                         `FLAG long` or default ASCII flags first"
-                    ),
+                    "num" => FlagType::Num,
                     other => bail!("unknown FLAG mode `{other}`"),
                 };
                 continue;
@@ -174,12 +170,6 @@ impl Aff {
     }
 
     fn parse_flags(&self, s: &str) -> Vec<String> {
-        match self.flag_type {
-            FlagType::Ascii | FlagType::Utf8 => s.chars().map(|c| c.to_string()).collect(),
-            FlagType::Long => {
-                let chars: Vec<char> = s.chars().collect();
-                chars.chunks(2).map(|c| c.iter().collect()).collect()
-            }
-        }
+        split_flags(s, self.flag_type)
     }
 }

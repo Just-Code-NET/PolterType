@@ -1,0 +1,76 @@
+# Layout mapping: עברית (Hebrew, standard Israeli).
+#
+# Keyed by Win SC Set-1 scancode (hex). Hebrew is unicase, so the
+# letter keys have no upper/lower pair. What sits at the shifted
+# level is what xkeyboard-config's `il` puts there — the Latin
+# capital on letter positions, punctuation elsewhere. We transcribe
+# that rather than invent a mapping: the field answers "which
+# character does the OS produce", and on Linux this is what it
+# produces.
+#
+# Watch two positions that are not where a Latin typist expects
+# them: `,` and `.` move to 0x28 and 0x35, while the US comma/period
+# keys (0x33 / 0x34) carry ת and ץ.
+#
+# Hebrew has no vowel letters, so the plausibility detector scores it
+# on script fit alone — `derive_vowels` returns an empty set for the
+# Hebrew script. The wordlist is what makes he-IL ↔ en-US sharp.
+
+id     = "he-IL"
+name   = "עברית"
+script = "Hebrew"
+
+[keys]
+# Number row
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "@" }
+0x04 = { plain = "3", shift = "#" }
+0x05 = { plain = "4", shift = "$" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "^" }
+0x08 = { plain = "7", shift = "&" }
+0x09 = { plain = "8", shift = "*" }
+0x0A = { plain = "9", shift = ")" }
+0x0B = { plain = "0", shift = "(" }
+0x0C = { plain = "-", shift = "_" }
+0x0D = { plain = "=", shift = "+" }
+
+# Top row
+0x10 = { plain = "/", shift = "Q" }
+0x11 = { plain = "'", shift = "W" }
+0x12 = { plain = "ק", shift = "E" }
+0x13 = { plain = "ר", shift = "R" }
+0x14 = { plain = "א", shift = "T" }
+0x15 = { plain = "ט", shift = "Y" }
+0x16 = { plain = "ו", shift = "U" }
+0x17 = { plain = "ן", shift = "I" }
+0x18 = { plain = "ם", shift = "O" }
+0x19 = { plain = "פ", shift = "P" }
+0x1A = { plain = "]", shift = "}" }
+0x1B = { plain = "[", shift = "{" }
+
+# Home row
+0x1E = { plain = "ש", shift = "A" }
+0x1F = { plain = "ד", shift = "S" }
+0x20 = { plain = "ג", shift = "D" }
+0x21 = { plain = "כ", shift = "F" }
+0x22 = { plain = "ע", shift = "G" }
+0x23 = { plain = "י", shift = "H" }
+0x24 = { plain = "ח", shift = "J" }
+0x25 = { plain = "ל", shift = "K" }
+0x26 = { plain = "ך", shift = "L" }
+0x27 = { plain = "ף", shift = ":" }
+0x28 = { plain = ",", shift = "\"" }
+
+# Bottom row
+0x2B = { plain = "\\", shift = "|" }
+0x2C = { plain = "ז", shift = "Z" }
+0x2D = { plain = "ס", shift = "X" }
+0x2E = { plain = "ב", shift = "C" }
+0x2F = { plain = "ה", shift = "V" }
+0x30 = { plain = "נ", shift = "B" }
+0x31 = { plain = "מ", shift = "N" }
+0x32 = { plain = "צ", shift = "M" }
+0x33 = { plain = "ת", shift = ">" }
+0x34 = { plain = "ץ", shift = "<" }
+0x35 = { plain = ".", shift = "?" }

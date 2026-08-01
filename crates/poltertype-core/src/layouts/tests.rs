@@ -16,7 +16,10 @@ use super::*;
 #[test]
 fn embedded_layouts_load() {
     let db = LayoutDb::load_embedded();
-    for id in ["en-US", "uk-UA", "ru-RU", "de-DE", "es-ES", "fr-FR"] {
+    for id in [
+        "en-US", "uk-UA", "ru-RU", "de-DE", "es-ES", "fr-FR", "pl-PL", "cs-CZ", "el-GR", "he-IL",
+        "tr-TR", "bg-BG", "it-IT", "pt-PT", "pt-BR",
+    ] {
         assert!(
             db.get(&LayoutId::from(id)).is_some(),
             "embedded layout `{id}` did not load"
@@ -24,9 +27,26 @@ fn embedded_layouts_load() {
     }
 }
 
+/// `build.rs::LAYOUTS` and [`BUNDLED_LAYOUT_STEMS`] are two lists that
+/// have to agree; when they drift the runtime only *warns*, so nothing
+/// fails until a user notices their language is missing. Pin the count
+/// against what actually loads.
+#[test]
+fn every_bundled_stem_resolves_to_a_layout() {
+    let db = LayoutDb::load_embedded();
+    assert_eq!(
+        db.len(),
+        BUNDLED_LAYOUT_STEMS.len(),
+        "{} bundled stems but {} layouts loaded — build.rs::LAYOUTS and \
+         BUNDLED_LAYOUT_STEMS have drifted, or a TOML failed to parse",
+        BUNDLED_LAYOUT_STEMS.len(),
+        db.len()
+    );
+}
+
 /// The active-filter feature: only requested layouts enter memory.
-/// This is what saves RAM for users who don't have all six bundled
-/// languages installed in the OS.
+/// This is what saves RAM for users who don't have all fifteen
+/// bundled languages installed in the OS — which is everyone.
 #[test]
 fn active_filter_drops_unrequested_layouts() {
     let want = [LayoutId::from("en-US"), LayoutId::from("uk-UA")];
@@ -86,6 +106,36 @@ fn new_languages_translate_distinctive_keys() {
         ("es-ES", 0x27, false, 'ñ'),
         ("fr-FR", 0x10, false, 'a'),
         ("fr-FR", 0x03, false, 'é'),
+        // Czech puts letters on the unshifted number row and swaps
+        // Y/Z like German.
+        ("cs-CZ", 0x03, false, 'ě'),
+        ("cs-CZ", 0x15, false, 'z'),
+        ("cs-CZ", 0x2C, false, 'y'),
+        // Greek: Q and W positions carry `;` and final sigma.
+        ("el-GR", 0x10, false, ';'),
+        ("el-GR", 0x11, false, 'ς'),
+        ("el-GR", 0x1E, false, 'α'),
+        // Hebrew is unicase — the letter positions are RTL glyphs.
+        ("he-IL", 0x1E, false, 'ש'),
+        ("he-IL", 0x14, false, 'א'),
+        // Turkish's dotless/dotted i pair, the one that bites.
+        ("tr-TR", 0x17, false, 'ı'),
+        ("tr-TR", 0x17, true, 'I'),
+        ("tr-TR", 0x28, false, 'i'),
+        ("tr-TR", 0x28, true, 'İ'),
+        // Bulgarian BDS is frequency-ordered, not phonetic: the `Q`
+        // position is a comma and `ъ` sits on `C`.
+        ("bg-BG", 0x10, false, ','),
+        ("bg-BG", 0x2E, false, 'ъ'),
+        ("bg-BG", 0x56, false, 'ѝ'),
+        ("it-IT", 0x27, false, 'ò'),
+        ("it-IT", 0x28, false, 'à'),
+        // Portuguese: ç on the `;` position in both orthographies,
+        // and the dead keys surfaced as spacing forms.
+        ("pt-PT", 0x27, false, 'ç'),
+        ("pt-PT", 0x1B, false, '´'),
+        ("pt-BR", 0x27, false, 'ç'),
+        ("pt-BR", 0x28, false, '~'),
     ];
     for (id, sc, shift, expected) in cases {
         let mapping = db.get(&LayoutId::from(id)).unwrap_or_else(|| {
@@ -121,6 +171,50 @@ fn wordlists_loaded_with_layouts() {
     }
     for w in ["слово", "привіт", "робити", "знати"] {
         assert!(uk_dict.contains(w), "uk dict missing `{w}`");
+    }
+}
+
+/// Every bundled language must recognise ordinary words of its own,
+/// **including ones that carry the script's diacritics**.
+///
+/// That second half is the point. Polish and Greek shipped through a
+/// `.dic` decoded with the wrong codepage: the ASCII-only words were
+/// all present and correct, so any spot-check that stuck to `jest` or
+/// `kai` passed, while `słowo` sat in the FST as `s³owo`. Each row
+/// below therefore mixes plain words with accented / non-Latin ones.
+#[test]
+fn every_bundled_dictionary_knows_its_own_words() {
+    let db = LayoutDb::load_embedded();
+    let cases: &[(&str, &[&str])] = &[
+        ("pl-PL", &["jest", "bardzo", "dzień", "słowo", "książka"]),
+        ("cs-CZ", &["ahoj", "slovo", "dobrý", "protože", "děkuji"]),
+        ("el-GR", &["λέξη", "είναι", "καλημέρα", "ευχαριστώ"]),
+        ("he-IL", &["שלום", "מילה", "ספר", "תודה"]),
+        (
+            "tr-TR",
+            &["kitap", "merhaba", "kelime", "güzel", "teşekkür"],
+        ),
+        ("bg-BG", &["дума", "книга", "здравей", "благодаря"]),
+        ("it-IT", &["parola", "grazie", "perché", "buongiorno"]),
+        ("pt-PT", &["palavra", "obrigado", "coração", "português"]),
+        ("pt-BR", &["palavra", "obrigado", "você", "português"]),
+    ];
+    for (id, words) in cases {
+        let layout = db
+            .get(&LayoutId::from(*id))
+            .unwrap_or_else(|| panic!("layout `{id}` not loaded"));
+        let dict = layout
+            .dictionary
+            .as_ref()
+            .unwrap_or_else(|| panic!("`{id}` has no dictionary — did the fetch fail for it?"));
+        for w in *words {
+            assert!(
+                dict.contains(w),
+                "{id} dictionary missing `{w}` — if the plain-ASCII words in \
+                 this row pass and only the accented ones fail, suspect the \
+                 codepage the .dic was decoded with"
+            );
+        }
     }
 }
 

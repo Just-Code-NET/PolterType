@@ -30,6 +30,22 @@ pub fn derive_vowels(id: &LayoutId, script: Script) -> Vec<char> {
         "de-DE" => "aeiouäöü".chars().collect(),
         "es-ES" => "aeiouáéíóúü".chars().collect(),
         "fr-FR" => "aeiouyàâéèêëîïôûùüÿ".chars().collect(),
+        "pl-PL" => "aeiouyąęó".chars().collect(),
+        "cs-CZ" => "aeiouyáéíóúůýě".chars().collect(),
+        // Greek needs the accented forms spelled out: the script
+        // default covers the bare vowels only, and Greek marks the
+        // stressed vowel of almost every polysyllabic word.
+        "el-GR" => "αεηιουωάέήίόύώϊϋΐΰ".chars().collect(),
+        // `ı` (dotless i) and `ı`'s dotted twin are both vowels, as
+        // are ö and ü — the bare Latin default would score four of
+        // Turkish's eight vowels as consonants.
+        "tr-TR" => "aeıioöuü".chars().collect(),
+        // `ъ` is a full vowel in Bulgarian (unlike Russian, where the
+        // same glyph is a silent sign), so the generic Cyrillic set
+        // is wrong here in both directions.
+        "bg-BG" => "аеиоуъюя".chars().collect(),
+        "it-IT" => "aeiouàèéìíîòóùú".chars().collect(),
+        "pt-PT" | "pt-BR" => "aeiouáàâãéêíóôõúü".chars().collect(),
         _ => match script {
             Script::Latin => "aeiouy".chars().collect(),
             Script::Cyrillic => "аеиіоуюяєїыэё".chars().collect(),

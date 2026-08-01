@@ -40,13 +40,17 @@ use anyhow::{Context, Result, bail};
 use std::path::PathBuf;
 
 mod consts;
+mod enums;
 mod hooks;
 mod paths;
+mod types;
 mod wordlists;
 
 use consts::*;
+use enums::*;
 use hooks::*;
 use paths::*;
+use types::*;
 use wordlists::*;
 
 fn main() -> Result<()> {

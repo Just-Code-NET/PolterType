@@ -17,18 +17,33 @@ pub(crate) fn parse_add(part: &str, flag_type: FlagType) -> (String, Vec<String>
     } else {
         add_raw.to_string()
     };
-    let continuation: Vec<String> = if cont_raw.is_empty() {
-        Vec::new()
-    } else {
-        match flag_type {
-            FlagType::Ascii | FlagType::Utf8 => cont_raw.chars().map(|c| c.to_string()).collect(),
-            FlagType::Long => {
-                let chars: Vec<char> = cont_raw.chars().collect();
-                chars.chunks(2).map(|c| c.iter().collect()).collect()
-            }
+    (add, split_flags(cont_raw, flag_type))
+}
+
+/// Chunk a flag string into individual flags according to the `.aff`'s
+/// declared `FLAG` mode. Shared by the `.dic` entry flags and the
+/// `<add>/CONT` continuation flags, which are encoded identically.
+pub(crate) fn split_flags(s: &str, flag_type: FlagType) -> Vec<String> {
+    if s.is_empty() {
+        return Vec::new();
+    }
+    match flag_type {
+        FlagType::Ascii | FlagType::Utf8 => s.chars().map(|c| c.to_string()).collect(),
+        FlagType::Long => {
+            let chars: Vec<char> = s.chars().collect();
+            chars.chunks(2).map(|c| c.iter().collect()).collect()
         }
-    };
-    (add, continuation)
+        // `FLAG num` is the one mode with an explicit separator, so
+        // it is also the one mode where an empty chunk is possible
+        // (`"1,,2"`, a trailing comma). Drop those rather than
+        // registering a flag named "" that every rule would match.
+        FlagType::Num => s
+            .split(',')
+            .map(str::trim)
+            .filter(|f| !f.is_empty())
+            .map(str::to_owned)
+            .collect(),
+    }
 }
 
 /// Compile a Hunspell condition string like `"[аяіе]яти"` /

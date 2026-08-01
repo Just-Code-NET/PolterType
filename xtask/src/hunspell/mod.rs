@@ -20,17 +20,17 @@
 //!   `<strip> <add> <condition>` shape.
 //! * Condition patterns: literal chars, `.` (any single char), `[abc]`
 //!   class, `[^abc]` negative class.
-//! * Three flag-encoding modes: default ASCII (one flag per char),
-//!   `FLAG long` (two chars per flag), and `FLAG UTF-8` (one Unicode
-//!   char per flag — same shape as ASCII at the parser level).
+//! * Four flag-encoding modes: default ASCII (one flag per char),
+//!   `FLAG long` (two chars per flag), `FLAG UTF-8` (one Unicode
+//!   char per flag — same shape as ASCII at the parser level), and
+//!   `FLAG num` (comma-separated decimals, which tr_TR needs — its
+//!   affix table is effectively one flag per surface form and runs
+//!   to six figures).
 //! * Continuation flags inside `<add>/CONT` — recursively expanded
 //!   with a depth cap to keep pathological cases bounded.
 //!
 //! ## What it does NOT cover
 //!
-//! * `FLAG num` (comma-separated decimal flags) — none of our
-//!   dictionaries use it; we error out if encountered so the build
-//!   fails loudly rather than silently mis-expanding.
 //! * `COMPOUND*` rules (compound-word generation). Compounds are a
 //!   tiny fraction of inflected forms in our target languages and
 //!   the engine doesn't need them — wrong-layout detection works

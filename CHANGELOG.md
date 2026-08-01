@@ -4,6 +4,86 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.8.0
+
+### Added
+
+- **Nine more languages: Polish, Czech, Greek, Hebrew, Turkish,
+  Bulgarian, Italian, and Portuguese in both its orthographies.**
+  PolterType now bundles fifteen layouts instead of six. Each one is a
+  layout TOML plus a full dictionary, so the same detection that makes
+  uk-UA ↔ en-US reliable applies to cs-CZ, tr-TR, it-IT and the rest.
+  Nothing loads that your OS doesn't have enabled — the active-layout
+  filter still means a two-keyboard user pays for two.
+
+  Layout mappings were generated from `xkeyboard-config` rather than
+  transcribed from keyboard pictures, and then reviewed; the trick is
+  written up in [docs/ADDING_A_LANGUAGE.md](docs/ADDING_A_LANGUAGE.md)
+  for the next person. Closes [#2].
+
+  Two of them carry a caveat worth reading before you expect magic:
+
+  * **Polish** maps to exactly the same characters as US English. The
+    standard Polish layout is the "programmer's" one — QWERTY with
+    every diacritic on AltGr, which PolterType doesn't track — so
+    there is no pl-PL ↔ en-US mistake to correct, and none is
+    possible. The Polish *wordlist* still does real work: it stops
+    Polish prose being dragged toward whichever other layout you have
+    active.
+  * **Hebrew** ships dictionary stems without affix expansion. Its
+    Hunspell table encodes the clitic prefixes as 3335 prefix rules,
+    which expand to 60.6 M forms — a 141 MB wordlist and a far bigger
+    FST in every installer. Hebrew shares its script with nothing else
+    bundled, so plausibility already separates it and the dictionary
+    is a refinement. See
+    [data/wordlists/CREDITS.md](data/wordlists/CREDITS.md).
+
+  **Installers grow by about 57 MB**, most of it Turkish — an
+  agglutinative language expands to 5.8 M forms and two 15 MB FSTs.
+  That is the price of the detection quality; nothing about it is
+  loaded at runtime unless you have a Turkish keyboard enabled.
+
+### Fixed
+
+- **Polish and Greek dictionaries would have shipped as mojibake, and
+  the French one hadn't been refreshed in a year.** Three separate
+  faults in `cargo xtask wordlists fetch`, all of which failed
+  quietly:
+
+  * Hunspell declares a dictionary's encoding once, in the `.aff` —
+    the `.dic` has no `SET` line of its own. We looked for one in each
+    file separately and fell back to Latin-1 when there wasn't any, so
+    Polish (ISO-8859-2) and Greek (ISO-8859-7) decoded into plausible
+    nonsense: `słowo` became `s³owo`, which neither matches a lookup
+    nor trips a check. German survived only because German really is
+    Latin-1. The `.aff`'s declared encoding is now what decodes both
+    halves, ISO-8859-2 and ISO-8859-7 have real tables, and an
+    unrecognised or absent `SET` is an error instead of a guess.
+  * The French source moved upstream (`fr_FR/` → `fr_FR/dictionaries/`)
+    and the old URL had been 404ing. The fetch printed one stderr line
+    and exited 0, so the stale wordlist just stayed. Fixed, and the
+    command now exits non-zero when any source fails. The refreshed
+    French list gains 11,701 forms and loses 26, all of them elision
+    artifacts like `d'pick-up`.
+  * `FLAG num` dictionaries (comma-separated numeric affix flags) were
+    rejected outright. Turkish needs them — its affix table runs to
+    six figures of distinct flags. Now supported.
+
+### Changed
+
+- `derive_vowels` learned the vowel sets of the new languages, which
+  the plausibility detector counts. Two are not what a script default
+  would give you: `ъ` is a full vowel in Bulgarian, and Turkish's
+  dotless `ı` is a vowel that the bare Latin set scores as a
+  consonant.
+- `data/wordlists/CREDITS.md` now states each dictionary's licence
+  per-language instead of hedging. The old blanket "most often
+  GPL-2-or-later or LGPL/MPL" was wrong about at least Russian, which
+  is BSD — and **Hebrew's Hspell is AGPL-3.0-or-later**, the strictest
+  thing in the tree and worth knowing before redistributing a build.
+
+[#2]: https://github.com/Just-Code-NET/PolterType/issues/2
+
 ## [0.8.0] — Windows learns to hold your keys, the AI seam comes alive, and the app gets its own face
 
 ### Added
