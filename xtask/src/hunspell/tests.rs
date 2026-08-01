@@ -87,10 +87,46 @@ fn rule_strips_correctly_in_unicode() {
 }
 
 #[test]
-fn flag_num_is_rejected() {
-    let err = Aff::parse("FLAG num\n").expect_err("FLAG num should fail");
-    assert!(
-        err.to_string().contains("FLAG num"),
-        "error mentions FLAG num: {err}"
-    );
+fn num_flags_split_on_commas() {
+    // tr_TR's shape: `FLAG num`, one numbered block per surface form,
+    // and a `.dic` entry carrying several of them at once.
+    let a = aff("FLAG num\n\
+         SET UTF-8\n\
+         SFX 1 N 1\n\
+         SFX 1 0 lar .\n\
+         SFX 23 N 1\n\
+         SFX 23 0 dan .\n\
+         SFX 456 N 1\n\
+         SFX 456 0 sız .\n");
+    let forms = a.expand("kitap", "1,23,456");
+    assert!(forms.contains("kitaplar"), "flag 1 in {forms:?}");
+    assert!(forms.contains("kitaptan") || forms.contains("kitapdan"));
+    assert!(forms.contains("kitapsız"), "three-digit flag 456");
+}
+
+#[test]
+fn num_flags_are_not_split_per_digit() {
+    // The bug this guards: chunking `"12"` per character would apply
+    // flags `1` and `2` instead of the single flag `12`.
+    let a = aff("FLAG num\n\
+         SFX 1 N 1\n\
+         SFX 1 0 a .\n\
+         SFX 2 N 1\n\
+         SFX 2 0 b .\n\
+         SFX 12 N 1\n\
+         SFX 12 0 c .\n");
+    let forms = a.expand("x", "12");
+    assert!(forms.contains("xc"), "flag 12 applies: {forms:?}");
+    assert!(!forms.contains("xa"), "flag 1 must NOT apply: {forms:?}");
+    assert!(!forms.contains("xb"), "flag 2 must NOT apply: {forms:?}");
+}
+
+#[test]
+fn num_flags_tolerate_empty_chunks() {
+    let a = aff("FLAG num\nSFX 7 N 1\nSFX 7 0 s .\n");
+    // A stray trailing / doubled comma must not register a flag named
+    // "" that then matches nothing (or, worse, everything).
+    let forms = a.expand("cat", "7,,");
+    assert!(forms.contains("cats"), "got {forms:?}");
+    assert_eq!(forms.len(), 2, "stem + one form only: {forms:?}");
 }

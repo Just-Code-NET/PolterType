@@ -1,5 +1,8 @@
 //! Wordlist pipeline: download, Hunspell-expand, write sorted.
 
+#[cfg(test)]
+mod tests;
+
 use crate::*;
 use anyhow::{Context, Result, bail};
 use std::collections::BTreeSet;
@@ -26,14 +29,13 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
     // forms (the ones a user actually types). Each language is
     // independent — a transient 404 / 5xx on one source shouldn't
     // take the whole script down.
-    fetch_hunspell(
-        &src_dir,
-        &wl_dir,
-        "uk_UA",
-        UK_DIC_URL,
-        UK_AFF_URL,
-        "uk_ua.txt.gz",
-    );
+    let mut failed: Vec<&str> = Vec::new();
+    for source in HUNSPELL_SOURCES {
+        if !fetch_hunspell(&src_dir, &wl_dir, source) {
+            failed.push(source.output);
+        }
+    }
+
     // uk_UA additionally ships a README that we keep next to the
     // sources for license-attribution purposes.
     if let Ok(readme) = http_get(UK_README_URL) {
@@ -41,38 +43,23 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
         let _ = fs::write(&p, &readme);
         println!("  saved {} ({} bytes)", p.display(), readme.len());
     }
-    fetch_hunspell(
-        &src_dir,
-        &wl_dir,
-        "ru_RU",
-        RU_DIC_URL,
-        RU_AFF_URL,
-        "ru_ru.txt.gz",
-    );
-    fetch_hunspell(
-        &src_dir,
-        &wl_dir,
-        "de_DE_frami",
-        DE_DIC_URL,
-        DE_AFF_URL,
-        "de_de.txt.gz",
-    );
-    fetch_hunspell(
-        &src_dir,
-        &wl_dir,
-        "es_ES",
-        ES_DIC_URL,
-        ES_AFF_URL,
-        "es_es.txt.gz",
-    );
-    fetch_hunspell(
-        &src_dir,
-        &wl_dir,
-        "fr",
-        FR_DIC_URL,
-        FR_AFF_URL,
-        "fr_fr.txt.gz",
-    );
+
+    // A dead upstream URL used to cost one stderr line and still exit
+    // 0, leaving whatever stale `.txt.gz` was already committed in
+    // place — which is exactly how the French source sat broken
+    // unnoticed. Per-language recovery is still the right behaviour,
+    // so we keep going and report at the end; the exit code is what
+    // changes.
+    if !failed.is_empty() {
+        bail!(
+            "{} of {} Hunspell sources failed: {}. \
+             Their previously committed wordlists were left untouched — \
+             check the URLs in xtask/src/consts.rs against upstream.",
+            failed.len(),
+            HUNSPELL_SOURCES.len(),
+            failed.join(", ")
+        );
+    }
 
     println!("\nDone. Review with `git diff data/wordlists/` and commit.");
     Ok(())
@@ -85,34 +72,27 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
 ///
 /// Errors are surfaced on stderr but don't abort the rest of the
 /// fetch run — partial progress is better than none for a multi-
-/// source script. `base` is the upstream source-file stem (e.g.
-/// `"uk_UA"`, `"de_DE_frami"`, `"fr"`); `output` is whatever
-/// filename we want in `wl_dir` (which we keep snake_case for
-/// consistency: `uk_ua.txt`, `de_de.txt`, `fr_fr.txt`).
-pub(crate) fn fetch_hunspell(
-    src_dir: &Path,
-    wl_dir: &Path,
-    base: &str,
-    dic_url: &str,
-    aff_url: &str,
-    output: &str,
-) {
-    let dic_path = src_dir.join(format!("{base}.dic"));
-    let aff_path = src_dir.join(format!("{base}.aff"));
+/// source script. Returns whether this language came through, so the
+/// caller can fail the command as a whole.
+pub(crate) fn fetch_hunspell(src_dir: &Path, wl_dir: &Path, source: &HunspellSource) -> bool {
+    let dic_path = src_dir.join(format!("{}.dic", source.base));
+    let aff_path = src_dir.join(format!("{}.aff", source.base));
 
-    if let Err(e) = download(dic_url, &dic_path) {
+    if let Err(e) = download(source.dic, &dic_path) {
         eprintln!("  {e}");
-        return;
+        return false;
     }
-    if let Err(e) = download(aff_url, &aff_path) {
+    if let Err(e) = download(source.aff, &aff_path) {
         eprintln!("  {e}");
-        return;
+        return false;
     }
 
-    let out = wl_dir.join(output);
-    if let Err(e) = process_hunspell_with_aff(&dic_path, &aff_path, &out) {
+    let out = wl_dir.join(source.output);
+    if let Err(e) = process_hunspell_with_aff(&dic_path, &aff_path, &out, source.expand) {
         eprintln!("  process {} failed: {e}", dic_path.display());
+        return false;
     }
+    true
 }
 
 pub(crate) fn download(url: &str, dest: &Path) -> Result<()> {
@@ -123,33 +103,34 @@ pub(crate) fn download(url: &str, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Read a Hunspell `.aff` or `.dic` and decode to UTF-8.
+/// Read the `SET <encoding>` directive out of a `.aff`.
 ///
-/// Most modern LibreOffice dictionaries (`uk_UA`, `ru_RU`, `es_ES`,
-/// `fr`) ship as UTF-8. The German `de_DE_frami` files are still
-/// ISO-8859-1 — the file declares `SET ISO8859-1` and the umlauts
-/// in conditions like `[äöü]` are encoded as single high bytes. To
-/// keep one code path:
+/// **This is the encoding of the whole dictionary pair, `.dic`
+/// included.** Hunspell declares it once, in the `.aff`; the `.dic`
+/// has no `SET` line of its own. Reading each file's own bytes for a
+/// `SET` and falling back to Latin-1 when there wasn't one is how
+/// Polish and Greek shipped as mojibake — the `.aff` decoded
+/// correctly, the `.dic` did not, and nothing failed. German came
+/// through only because German *is* Latin-1.
 ///
-/// 1. Try parsing as UTF-8. ~95 % of files take this fast lane.
-/// 2. On failure, look for the `SET <encoding>` directive in the
-///    first 2 KB (decoded byte-by-byte first as Latin-1 so the scan
-///    itself works).
-/// 3. If the SET says `ISO8859*` / `LATIN1` / `WINDOWS-1252`, decode
-///    every byte as the corresponding Latin-1 codepoint
-///    (`U+0000..=U+00FF`). For our dictionaries this is exact —
-///    Windows-1252 differs from Latin-1 only in 0x80-0x9F, which our
-///    sources don't use.
-/// 4. If the SET is missing, default to Latin-1 — better than an
-///    error, and `cargo xtask wordlists fetch` will print the file
-///    name in the build log either way.
-pub(crate) fn read_hunspell_text(path: &Path) -> Result<String> {
-    let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    if let Ok(s) = std::str::from_utf8(&bytes) {
-        return Ok(s.to_string());
-    }
+/// An unrecognised or absent `SET` is an error rather than a guess,
+/// for the same reason.
+pub(crate) fn detect_encoding(aff_path: &Path) -> Result<Encoding> {
+    let bytes = fs::read(aff_path).with_context(|| format!("read {}", aff_path.display()))?;
+    encoding_of_aff(&bytes)
+        .with_context(|| format!("determining the encoding of {}", aff_path.display()))
+}
 
-    // Latin-1 view of the first 2 KB — enough to find a SET line.
+/// The byte-level half of [`detect_encoding`], split out so it can be
+/// tested without touching the filesystem.
+pub(crate) fn encoding_of_aff(bytes: &[u8]) -> Result<Encoding> {
+    // A UTF-8 BOM would otherwise glue itself to the front of the very
+    // first line and hide a `SET` sitting there — pt_BR ships one.
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+
+    // Latin-1 view of the first 2 KB — enough to find a SET line, and
+    // safe on any byte, which matters because we don't yet know the
+    // encoding we're looking for.
     let preview: String = bytes.iter().take(2048).map(|&b| b as char).collect();
     let declared = preview
         .lines()
@@ -157,25 +138,62 @@ pub(crate) fn read_hunspell_text(path: &Path) -> Result<String> {
         .find_map(|l| l.trim().strip_prefix("SET "))
         .map(|s| s.trim().to_uppercase());
 
-    match declared.as_deref() {
-        Some("UTF-8") => bail!(
-            "{} declares `SET UTF-8` but its bytes aren't valid UTF-8",
-            path.display()
-        ),
-        Some(enc)
-            if enc.starts_with("ISO8859")
-                || enc.starts_with("ISO-8859")
-                || enc == "LATIN1"
-                || enc == "WINDOWS-1252" =>
-        {
-            Ok(bytes.iter().map(|&b| b as char).collect())
-        }
+    let normalized = declared
+        .as_deref()
+        .map(|e| e.replace("ISO-8859", "ISO8859"));
+    match normalized.as_deref() {
+        Some("UTF-8") => Ok(Encoding::Utf8),
+        Some("ISO8859-1" | "LATIN1" | "WINDOWS-1252") => Ok(Encoding::Latin1),
+        Some("ISO8859-2" | "LATIN2") => Ok(Encoding::Latin2),
+        Some("ISO8859-7") => Ok(Encoding::Greek),
         Some(other) => bail!(
-            "{} uses unsupported `SET {other}`; add it to read_hunspell_text",
-            path.display()
+            "declares `SET {other}`, which this expander cannot decode. \
+             Add the codepage to xtask/src/consts.rs and a variant to \
+             `Encoding` — do NOT let it fall through to Latin-1, that is \
+             what silently mangled Polish and Greek."
         ),
-        None => Ok(bytes.iter().map(|&b| b as char).collect()),
+        None => bail!(
+            "no `SET <encoding>` directive, so the encoding of the matching \
+             .dic is unknown. Guessing here corrupts every non-ASCII word \
+             without failing; add an explicit SET or extend \
+             `encoding_of_aff`."
+        ),
     }
+}
+
+/// Read a Hunspell `.aff` or `.dic` and decode it with the encoding
+/// [`detect_encoding`] found in the pair's `.aff`.
+pub(crate) fn read_hunspell_text(path: &Path, encoding: Encoding) -> Result<String> {
+    let raw = fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    // Same BOM as `encoding_of_aff` skips. Left in place it becomes a
+    // U+FEFF on the front of the first line — which `str::trim` does
+    // not remove, so it would quietly corrupt the first `.dic` entry.
+    let bytes = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&raw);
+    match encoding {
+        Encoding::Utf8 => std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .with_context(|| format!("{} declares UTF-8 but isn't valid UTF-8", path.display())),
+        // Every ISO-8859-N agrees with Unicode below 0xA0; only the
+        // top 96 bytes need a table, and Latin-1's is the identity.
+        Encoding::Latin1 => Ok(bytes.iter().map(|&b| b as char).collect()),
+        Encoding::Latin2 => Ok(decode_high(bytes, &LATIN2_HIGH)),
+        Encoding::Greek => Ok(decode_high(bytes, &GREEK_HIGH)),
+    }
+}
+
+/// Decode a single-byte codepage: `0x00..0xA0` pass through as their
+/// own code point, `0xA0..=0xFF` come from `high`.
+fn decode_high(bytes: &[u8], high: &[char; 96]) -> String {
+    bytes
+        .iter()
+        .map(|&b| {
+            if b < 0xA0 {
+                b as char
+            } else {
+                high[usize::from(b) - 0xA0]
+            }
+        })
+        .collect()
 }
 
 pub(crate) fn process_en(input: &Path, output: &Path) -> Result<()> {
@@ -210,12 +228,22 @@ pub(crate) fn process_en(input: &Path, output: &Path) -> Result<()> {
 /// the difference is that `set` now contains `1M+` entries instead
 /// of `350k` for inflected languages. FST encoding makes the on-disk
 /// size grow ~3-5×, which is fine for our embed budget.
-pub(crate) fn process_hunspell_with_aff(dic: &Path, aff: &Path, output: &Path) -> Result<()> {
-    let aff_text = read_hunspell_text(aff)?;
+///
+/// [`ExpandMode::StemsOnly`] skips step 2 and keeps the bare stems;
+/// see the enum for the one dictionary that needs it and why.
+pub(crate) fn process_hunspell_with_aff(
+    dic: &Path,
+    aff: &Path,
+    output: &Path,
+    mode: ExpandMode,
+) -> Result<()> {
+    // The .aff declares the encoding for both halves of the pair.
+    let encoding = detect_encoding(aff)?;
+    let aff_text = read_hunspell_text(aff, encoding)?;
     let parsed =
         hunspell::Aff::parse(&aff_text).with_context(|| format!("parse {}", aff.display()))?;
 
-    let dic_text = read_hunspell_text(dic)?;
+    let dic_text = read_hunspell_text(dic, encoding)?;
     let mut words: BTreeSet<String> = BTreeSet::new();
     let mut stem_count = 0usize;
     let mut iter = dic_text.lines();
@@ -234,7 +262,11 @@ pub(crate) fn process_hunspell_with_aff(dic: &Path, aff: &Path, output: &Path) -
             continue;
         }
         stem_count += 1;
-        for form in parsed.expand(stem, flags) {
+        let forms = match mode {
+            ExpandMode::Full => parsed.expand(stem, flags),
+            ExpandMode::StemsOnly => std::iter::once(stem.to_owned()).collect(),
+        };
+        for form in forms {
             let lower: String = form.chars().flat_map(char::to_lowercase).collect();
             let acceptable = lower
                 .chars()
@@ -248,10 +280,11 @@ pub(crate) fn process_hunspell_with_aff(dic: &Path, aff: &Path, output: &Path) -
 
     write_sorted(output, &words)?;
     let name = output.file_name().and_then(|s| s.to_str()).unwrap_or("?");
-    println!(
-        "  {name}: {} forms (expanded from {stem_count} stems via .aff rules)",
-        words.len()
-    );
+    let how = match mode {
+        ExpandMode::Full => format!("expanded from {stem_count} stems via .aff rules"),
+        ExpandMode::StemsOnly => format!("{stem_count} stems, affix expansion skipped"),
+    };
+    println!("  {name}: {} forms ({how})", words.len());
     Ok(())
 }
 
