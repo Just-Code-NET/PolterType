@@ -967,10 +967,12 @@ decision and opens no socket. The seam is real and empty. Details in
       `[ai].enabled` and `allow_remote` are both read. A bad entry is
       skipped with its id logged rather than costing the others, and an
       `api_key_ref` that is not a `keyring:` reference is refused.
-- [ ] A reference `LocalOnnxDetector` with `lid.176` — still a stub:
-      it validates the model path and then loads nothing.
-- [ ] A reference `RemoteLlmDetector` (Anthropic API) — still a stub;
-      no build makes network calls.
+- [x] ~~A reference `LocalOnnxDetector` / `RemoteLlmDetector`~~ —
+      **replaced in 0.10.0.** PolterType ships the interface and no
+      backend at all: one `LlmDetector` speaking three HTTP shapes,
+      pointed at whatever the user runs or holds a key for. Bundling
+      a model or a vendor client would be choosing for them. See
+      `docs/AI.md`.
 
 ### Phase 8 — Polish, release ✅ (partially)
 

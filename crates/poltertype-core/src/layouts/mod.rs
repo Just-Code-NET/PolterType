@@ -46,7 +46,7 @@ mod types;
 pub use db::LayoutDb;
 pub use enums::LayoutLoadError;
 pub use files::{user_layout_dir, user_profile_wordlist_dir, user_wordlist_dir};
-pub use types::{LayoutMapping, LoadOptions};
+pub use types::{LayoutMapping, LoadOptions, PluginManifest};
 
 #[cfg(test)]
 mod tests;
