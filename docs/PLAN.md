@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-01 (v0.9.0).
+> Created: 2026-05-02. Last updated: 2026-08-02 (v0.10.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,9 +9,10 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.9.0; most recently nine more bundled languages, a Windows
->   keystroke gate that is opt-in and unverified, and the AI seam
->   connected to the engine) and §10 below, where every item is marked.
+>   0.10.0; most recently a user-supplied LLM interface, focused-app
+>   tracking on GNOME/KDE via the a11y bus, UI translation, multi-token
+>   smart commands with `run_shell`, and plug-in installation) and §10
+>   below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
@@ -21,9 +22,10 @@
 >   (AT-SPI sees only apps with an accessibility bridge, which
 >   excludes most terminals) and absent on macOS; AT-SPI *keystroke
 >   listening* is decided against with measurements, and `libei` does
->   not exist. The AI subsystem *is* wired to the engine
->   as of 0.8.0, but both backends are still stubs that return no
->   opinion — "wired, no backend yet", never "AI-powered". The guided
+>   not exist. The AI subsystem ships an *interface* and no backend
+>   at all as of 0.10.0 — a socket the user points at their own model.
+>   Never call it "AI-powered": out of the box nothing answers. The
+>   guided
 >   onboarding window does exist as of 0.7.0 — but its macOS half has
 >   never run on a Mac.
 >
