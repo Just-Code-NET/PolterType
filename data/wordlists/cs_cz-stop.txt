@@ -1,0 +1,62 @@
+# Hand-curated 1- and 2-letter Czech stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/poltertype/wordlists/`:
+#   * `cs_cz-stop.txt`    → merged into THIS list at startup / reload
+#   * `cs_cz-extras.txt`  → merged into the user-overlay HashSet
+#   * `cs_cz.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — Czech prepositions are single consonants, so
+# this list is unusually long for a Latin-script language.
+a
+i
+k
+o
+s
+u
+v
+z
+
+# 2-letter — pronouns, prepositions, particles.
+až
+by
+co
+či
+do
+ho
+je
+jí
+jo
+ke
+ku
+mi
+mu
+my
+na
+ne
+ní
+no
+od
+on
+po
+se
+si
+ta
+tě
+ti
+to
+ty
+už
+ve
+za
+ze
+že

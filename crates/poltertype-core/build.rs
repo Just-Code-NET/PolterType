@@ -71,6 +71,15 @@ const LAYOUTS: &[(&str, &str)] = &[
     ("de_de", "de-DE"),
     ("es_es", "es-ES"),
     ("fr_fr", "fr-FR"),
+    ("pl_pl", "pl-PL"),
+    ("cs_cz", "cs-CZ"),
+    ("el_gr", "el-GR"),
+    ("he_il", "he-IL"),
+    ("tr_tr", "tr-TR"),
+    ("bg_bg", "bg-BG"),
+    ("it_it", "it-IT"),
+    ("pt_pt", "pt-PT"),
+    ("pt_br", "pt-BR"),
 ];
 
 fn main() {

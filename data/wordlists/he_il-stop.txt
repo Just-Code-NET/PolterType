@@ -1,0 +1,65 @@
+# Hand-curated 1- and 2-letter Hebrew stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/poltertype/wordlists/`:
+#   * `he_il-stop.txt`    → merged into THIS list at startup / reload
+#   * `he_il-extras.txt`  → merged into the user-overlay HashSet
+#   * `he_il.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — deliberately empty. Hebrew's one-letter forms
+# (ב ל כ מ ש ו ה) are bound prefixes that attach to the
+# following word; they are not typed as standalone tokens,
+# and listing them would veto legitimate corrections.
+
+# 2-letter — a dense band in Hebrew: particles, pronouns,
+# prepositions and a good number of ordinary nouns.
+אב
+אז
+אח
+אי
+אך
+אל
+אם
+אף
+את
+או
+בה
+בו
+בן
+בת
+גם
+דם
+הם
+הן
+זה
+זו
+יד
+יש
+כי
+כל
+כן
+לא
+לב
+לו
+לי
+לך
+מה
+מי
+מן
+עד
+על
+עם
+עץ
+פה
+רק
+שם
+של

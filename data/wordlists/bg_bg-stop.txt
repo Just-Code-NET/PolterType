@@ -1,0 +1,58 @@
+# Hand-curated 1- and 2-letter Bulgarian stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/poltertype/wordlists/`:
+#   * `bg_bg-stop.txt`    → merged into THIS list at startup / reload
+#   * `bg_bg-extras.txt`  → merged into the user-overlay HashSet
+#   * `bg_bg.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — prepositions, conjunctions and the copula.
+а
+в
+е
+и
+с
+у
+я
+
+# 2-letter — clitic pronouns, prepositions, particles.
+аз
+бе
+би
+ви
+ги
+го
+да
+до
+за
+из
+им
+ли
+ме
+ми
+му
+на
+не
+ни
+но
+от
+по
+са
+се
+си
+та
+те
+ти
+то
+тя
+че
+ще

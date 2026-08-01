@@ -11,4 +11,7 @@
 ///
 /// Kept in lock-step with `build.rs::LAYOUTS`. A mismatch shows up
 /// as a "missing TOML" warning at startup, never silently.
-pub const BUNDLED_LAYOUT_STEMS: &[&str] = &["en_us", "uk_ua", "ru_ru", "de_de", "es_es", "fr_fr"];
+pub const BUNDLED_LAYOUT_STEMS: &[&str] = &[
+    "en_us", "uk_ua", "ru_ru", "de_de", "es_es", "fr_fr", "pl_pl", "cs_cz", "el_gr", "he_il",
+    "tr_tr", "bg_bg", "it_it", "pt_pt", "pt_br",
+];

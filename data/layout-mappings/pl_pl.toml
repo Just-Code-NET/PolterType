@@ -1,0 +1,78 @@
+# Layout mapping: Polski (Polish — the "programmer's" layout, which
+# is the one essentially every Polish user actually has enabled).
+#
+# Keyed by Win SC Set-1 scancode (hex). The notable thing about this
+# file: at the unshifted and shifted levels it is *identical to
+# en-US*. Every Polish diacritic (ą ć ę ł ń ó ś ź ż) lives on AltGr,
+# and poltertype tracks only plain / shift — so there is deliberately
+# no pl-PL ↔ en-US correction signal here, and none is possible.
+#
+# It still earns its place. The file gives Polish an id the OS
+# switcher can target, and it is what a Polish wordlist hangs off:
+# without it, Polish prose reads as gibberish to the detector and
+# gets pulled toward whatever other layout is active. Against a
+# different script (uk-UA, ru-RU, el-GR …) detection works normally.
+#
+# The "Polish (QWERTZ)" typewriter variant does put the diacritics on
+# the base level, but almost nobody types on it. If you do, copy this
+# file to <config-dir>/poltertype/layouts/ and edit — a user TOML
+# with the same id wins over the bundled one.
+
+id     = "pl-PL"
+name   = "Polski"
+script = "Latin"
+
+[keys]
+# Number row
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "@" }
+0x04 = { plain = "3", shift = "#" }
+0x05 = { plain = "4", shift = "$" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "^" }
+0x08 = { plain = "7", shift = "&" }
+0x09 = { plain = "8", shift = "*" }
+0x0A = { plain = "9", shift = "(" }
+0x0B = { plain = "0", shift = ")" }
+0x0C = { plain = "-", shift = "_" }
+0x0D = { plain = "=", shift = "+" }
+
+# Top row
+0x10 = { plain = "q", shift = "Q" }
+0x11 = { plain = "w", shift = "W" }
+0x12 = { plain = "e", shift = "E" }
+0x13 = { plain = "r", shift = "R" }
+0x14 = { plain = "t", shift = "T" }
+0x15 = { plain = "y", shift = "Y" }
+0x16 = { plain = "u", shift = "U" }
+0x17 = { plain = "i", shift = "I" }
+0x18 = { plain = "o", shift = "O" }
+0x19 = { plain = "p", shift = "P" }
+0x1A = { plain = "[", shift = "{" }
+0x1B = { plain = "]", shift = "}" }
+
+# Home row
+0x1E = { plain = "a", shift = "A" }
+0x1F = { plain = "s", shift = "S" }
+0x20 = { plain = "d", shift = "D" }
+0x21 = { plain = "f", shift = "F" }
+0x22 = { plain = "g", shift = "G" }
+0x23 = { plain = "h", shift = "H" }
+0x24 = { plain = "j", shift = "J" }
+0x25 = { plain = "k", shift = "K" }
+0x26 = { plain = "l", shift = "L" }
+0x27 = { plain = ";", shift = ":" }
+0x28 = { plain = "'", shift = "\"" }
+
+# Bottom row
+0x2B = { plain = "\\", shift = "|" }
+0x2C = { plain = "z", shift = "Z" }
+0x2D = { plain = "x", shift = "X" }
+0x2E = { plain = "c", shift = "C" }
+0x2F = { plain = "v", shift = "V" }
+0x30 = { plain = "b", shift = "B" }
+0x31 = { plain = "n", shift = "N" }
+0x32 = { plain = "m", shift = "M" }
+0x33 = { plain = ",", shift = "<" }
+0x34 = { plain = ".", shift = ">" }
+0x35 = { plain = "/", shift = "?" }

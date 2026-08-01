@@ -1,0 +1,61 @@
+# Hand-curated 1- and 2-letter Portuguese (Brazilian) stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/poltertype/wordlists/`:
+#   * `pt_br-stop.txt`    → merged into THIS list at startup / reload
+#   * `pt_br-extras.txt`  → merged into the user-overlay HashSet
+#   * `pt_br.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — articles, prepositions, conjunctions.
+a
+à
+e
+é
+o
+
+# 2-letter — contractions, clitics, and the short verb
+# forms. Identical to pt_pt-stop.txt by design: the two
+# orthographies differ on longer words, not on these.
+ai
+aí
+ao
+as
+às
+cá
+da
+dá
+de
+dê
+do
+dó
+em
+eu
+fé
+há
+ir
+já
+lá
+me
+na
+no
+nó
+os
+ou
+pé
+se
+só
+te
+tu
+um
+vá
+vê
+vi

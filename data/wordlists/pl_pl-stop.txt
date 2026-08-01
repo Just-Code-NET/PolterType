@@ -1,0 +1,60 @@
+# Hand-curated 1- and 2-letter Polish stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/poltertype/wordlists/`:
+#   * `pl_pl-stop.txt`    → merged into THIS list at startup / reload
+#   * `pl_pl-extras.txt`  → merged into the user-overlay HashSet
+#   * `pl_pl.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one lowercase word per line; blank lines and `#` comments
+# ignored. Edit freely — entries are pure data.
+
+# 1-letter — conjunctions and prepositions, all real prose.
+a
+i
+o
+u
+w
+z
+
+# 2-letter — pronouns, prepositions, particles, conjunctions.
+aż
+bo
+by
+ci
+co
+do
+go
+im
+iż
+je
+ku
+ma
+mi
+mu
+my
+na
+ni
+no
+od
+on
+po
+są
+ta
+te
+to
+tu
+ty
+we
+wy
+za
+ze
+że
+ów
+oś

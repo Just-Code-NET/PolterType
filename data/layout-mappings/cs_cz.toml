@@ -1,0 +1,70 @@
+# Layout mapping: Čeština (Czech, QWERTZ).
+#
+# Keyed by Win SC Set-1 scancode (hex). Two things make this layout
+# unusually productive for poltertype: the number row carries
+# *letters* unshifted (ě š č ř ž ý á í é — the digits need Shift),
+# and Y/Z are swapped as in German. A Czech word typed with en-US
+# active comes out as a run of digits, which is about as loud a
+# signal as the detector ever gets.
+#
+# Dead keys (´ acute, ˇ caron, ¨ diaeresis) are surfaced as their
+# spacing equivalents.
+
+id     = "cs-CZ"
+name   = "Čeština"
+script = "Latin"
+
+[keys]
+# Number row
+0x02 = { plain = "+", shift = "1" }
+0x03 = { plain = "ě", shift = "2" }
+0x04 = { plain = "š", shift = "3" }
+0x05 = { plain = "č", shift = "4" }
+0x06 = { plain = "ř", shift = "5" }
+0x07 = { plain = "ž", shift = "6" }
+0x08 = { plain = "ý", shift = "7" }
+0x09 = { plain = "á", shift = "8" }
+0x0A = { plain = "í", shift = "9" }
+0x0B = { plain = "é", shift = "0" }
+0x0C = { plain = "=", shift = "%" }
+0x0D = { plain = "´", shift = "ˇ" }
+
+# Top row
+0x10 = { plain = "q", shift = "Q" }
+0x11 = { plain = "w", shift = "W" }
+0x12 = { plain = "e", shift = "E" }
+0x13 = { plain = "r", shift = "R" }
+0x14 = { plain = "t", shift = "T" }
+0x15 = { plain = "z", shift = "Z" }
+0x16 = { plain = "u", shift = "U" }
+0x17 = { plain = "i", shift = "I" }
+0x18 = { plain = "o", shift = "O" }
+0x19 = { plain = "p", shift = "P" }
+0x1A = { plain = "ú", shift = "/" }
+0x1B = { plain = ")", shift = "(" }
+
+# Home row
+0x1E = { plain = "a", shift = "A" }
+0x1F = { plain = "s", shift = "S" }
+0x20 = { plain = "d", shift = "D" }
+0x21 = { plain = "f", shift = "F" }
+0x22 = { plain = "g", shift = "G" }
+0x23 = { plain = "h", shift = "H" }
+0x24 = { plain = "j", shift = "J" }
+0x25 = { plain = "k", shift = "K" }
+0x26 = { plain = "l", shift = "L" }
+0x27 = { plain = "ů", shift = "\"" }
+0x28 = { plain = "§", shift = "!" }
+
+# Bottom row
+0x2B = { plain = "¨", shift = "'" }
+0x2C = { plain = "y", shift = "Y" }
+0x2D = { plain = "x", shift = "X" }
+0x2E = { plain = "c", shift = "C" }
+0x2F = { plain = "v", shift = "V" }
+0x30 = { plain = "b", shift = "B" }
+0x31 = { plain = "n", shift = "N" }
+0x32 = { plain = "m", shift = "M" }
+0x33 = { plain = ",", shift = "?" }
+0x34 = { plain = ".", shift = ":" }
+0x35 = { plain = "-", shift = "_" }

@@ -1,0 +1,72 @@
+# Layout mapping: Türkçe (Turkish-Q — the common one; Turkish-F is a
+# different typewriter layout and is not covered here).
+#
+# Keyed by Win SC Set-1 scancode (hex). The alphabet's extra letters
+# take punctuation positions: ı ğ ü ş i ö ç.
+#
+# Note the dotted/dotless pair — 0x17 is ı/I (dotless) and 0x28 is
+# i/İ (dotted). That pair is also the one place Turkish text bites
+# downstream: Unicode's *default* case folding maps I→i and İ→"i" plus
+# a combining dot, not the Turkish way round. Both the build-time FST
+# and the runtime lookup use that same default folding, so the two
+# agree and lookups match — which is the property that matters. Don't
+# "fix" one side on its own.
+
+id     = "tr-TR"
+name   = "Türkçe"
+script = "Latin"
+
+[keys]
+# Number row
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "'" }
+0x04 = { plain = "3", shift = "^" }
+0x05 = { plain = "4", shift = "+" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "&" }
+0x08 = { plain = "7", shift = "/" }
+0x09 = { plain = "8", shift = "(" }
+0x0A = { plain = "9", shift = ")" }
+0x0B = { plain = "0", shift = "=" }
+0x0C = { plain = "*", shift = "?" }
+0x0D = { plain = "-", shift = "_" }
+
+# Top row
+0x10 = { plain = "q", shift = "Q" }
+0x11 = { plain = "w", shift = "W" }
+0x12 = { plain = "e", shift = "E" }
+0x13 = { plain = "r", shift = "R" }
+0x14 = { plain = "t", shift = "T" }
+0x15 = { plain = "y", shift = "Y" }
+0x16 = { plain = "u", shift = "U" }
+0x17 = { plain = "ı", shift = "I" }
+0x18 = { plain = "o", shift = "O" }
+0x19 = { plain = "p", shift = "P" }
+0x1A = { plain = "ğ", shift = "Ğ" }
+0x1B = { plain = "ü", shift = "Ü" }
+
+# Home row
+0x1E = { plain = "a", shift = "A" }
+0x1F = { plain = "s", shift = "S" }
+0x20 = { plain = "d", shift = "D" }
+0x21 = { plain = "f", shift = "F" }
+0x22 = { plain = "g", shift = "G" }
+0x23 = { plain = "h", shift = "H" }
+0x24 = { plain = "j", shift = "J" }
+0x25 = { plain = "k", shift = "K" }
+0x26 = { plain = "l", shift = "L" }
+0x27 = { plain = "ş", shift = "Ş" }
+0x28 = { plain = "i", shift = "İ" }
+
+# Bottom row
+0x2B = { plain = ",", shift = ";" }
+0x2C = { plain = "z", shift = "Z" }
+0x2D = { plain = "x", shift = "X" }
+0x2E = { plain = "c", shift = "C" }
+0x2F = { plain = "v", shift = "V" }
+0x30 = { plain = "b", shift = "B" }
+0x31 = { plain = "n", shift = "N" }
+0x32 = { plain = "m", shift = "M" }
+0x33 = { plain = "ö", shift = "Ö" }
+0x34 = { plain = "ç", shift = "Ç" }
+0x35 = { plain = ".", shift = ":" }

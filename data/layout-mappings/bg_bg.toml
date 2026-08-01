@@ -1,0 +1,78 @@
+# Layout mapping: Български (Bulgarian, traditional BDS).
+#
+# Keyed by Win SC Set-1 scancode (hex). BDS is *not* a phonetic
+# transliteration of QWERTY the way the Russian and Ukrainian layouts
+# are — letters are placed by frequency, so 0x10 (US `Q`) is a comma
+# and the vowels cluster on the home row. Bulgarian typed with en-US
+# active therefore comes out as Latin noise with no relation to the
+# intended word, which the dictionary detector picks off easily.
+#
+# 0x56 — the extra key next to the left Shift on 105-key boards —
+# carries `ѝ` (grave-accented и, a real Bulgarian word: "her"), so it
+# is listed even though every other bundled layout skips that
+# scancode.
+#
+# `ъ` is a vowel in Bulgarian, and the generic Cyrillic vowel set
+# doesn't include it — hence the bg-BG entry in `derive_vowels`.
+
+id     = "bg-BG"
+name   = "Български"
+script = "Cyrillic"
+
+[keys]
+# Number row
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "?" }
+0x04 = { plain = "3", shift = "+" }
+0x05 = { plain = "4", shift = "\"" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "=" }
+0x08 = { plain = "7", shift = ":" }
+0x09 = { plain = "8", shift = "/" }
+0x0A = { plain = "9", shift = "–" }
+0x0B = { plain = "0", shift = "№" }
+0x0C = { plain = "-", shift = "$" }
+0x0D = { plain = ".", shift = "€" }
+
+# Top row
+0x10 = { plain = ",", shift = "ы" }
+0x11 = { plain = "у", shift = "У" }
+0x12 = { plain = "е", shift = "Е" }
+0x13 = { plain = "и", shift = "И" }
+0x14 = { plain = "ш", shift = "Ш" }
+0x15 = { plain = "щ", shift = "Щ" }
+0x16 = { plain = "к", shift = "К" }
+0x17 = { plain = "с", shift = "С" }
+0x18 = { plain = "д", shift = "Д" }
+0x19 = { plain = "з", shift = "З" }
+0x1A = { plain = "ц", shift = "Ц" }
+0x1B = { plain = ";", shift = "§" }
+
+# Home row
+0x1E = { plain = "ь", shift = "ѝ" }
+0x1F = { plain = "я", shift = "Я" }
+0x20 = { plain = "а", shift = "А" }
+0x21 = { plain = "о", shift = "О" }
+0x22 = { plain = "ж", shift = "Ж" }
+0x23 = { plain = "г", shift = "Г" }
+0x24 = { plain = "т", shift = "Т" }
+0x25 = { plain = "н", shift = "Н" }
+0x26 = { plain = "в", shift = "В" }
+0x27 = { plain = "м", shift = "М" }
+0x28 = { plain = "ч", shift = "Ч" }
+
+# Bottom row
+0x2B = { plain = "„", shift = "“" }
+0x2C = { plain = "ю", shift = "Ю" }
+0x2D = { plain = "й", shift = "Й" }
+0x2E = { plain = "ъ", shift = "Ъ" }
+0x2F = { plain = "э", shift = "Э" }
+0x30 = { plain = "ф", shift = "Ф" }
+0x31 = { plain = "х", shift = "Х" }
+0x32 = { plain = "п", shift = "П" }
+0x33 = { plain = "р", shift = "Р" }
+0x34 = { plain = "л", shift = "Л" }
+0x35 = { plain = "б", shift = "Б" }
+
+# ISO extra key (105-key boards)
+0x56 = { plain = "ѝ", shift = "Ѝ" }

@@ -1,0 +1,69 @@
+# Layout mapping: Ελληνικά (Greek).
+#
+# Keyed by Win SC Set-1 scancode (hex). Greek has no q/w/j, so those
+# positions carry something else: 0x10 is `;` (which doubles as the
+# Greek question mark), 0x11 is final sigma ς, and 0x24 is ξ. Accented
+# vowels are composed with the dead acute on 0x27, surfaced here as
+# its spacing form ´.
+#
+# Script alone separates Greek from every Latin layout, so detection
+# is solid here even before the wordlist gets a look in.
+
+id     = "el-GR"
+name   = "Ελληνικά"
+script = "Greek"
+
+[keys]
+# Number row
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "@" }
+0x04 = { plain = "3", shift = "#" }
+0x05 = { plain = "4", shift = "$" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "^" }
+0x08 = { plain = "7", shift = "&" }
+0x09 = { plain = "8", shift = "*" }
+0x0A = { plain = "9", shift = "(" }
+0x0B = { plain = "0", shift = ")" }
+0x0C = { plain = "-", shift = "_" }
+0x0D = { plain = "=", shift = "+" }
+
+# Top row
+0x10 = { plain = ";", shift = ":" }
+0x11 = { plain = "ς", shift = "Σ" }
+0x12 = { plain = "ε", shift = "Ε" }
+0x13 = { plain = "ρ", shift = "Ρ" }
+0x14 = { plain = "τ", shift = "Τ" }
+0x15 = { plain = "υ", shift = "Υ" }
+0x16 = { plain = "θ", shift = "Θ" }
+0x17 = { plain = "ι", shift = "Ι" }
+0x18 = { plain = "ο", shift = "Ο" }
+0x19 = { plain = "π", shift = "Π" }
+0x1A = { plain = "[", shift = "{" }
+0x1B = { plain = "]", shift = "}" }
+
+# Home row
+0x1E = { plain = "α", shift = "Α" }
+0x1F = { plain = "σ", shift = "Σ" }
+0x20 = { plain = "δ", shift = "Δ" }
+0x21 = { plain = "φ", shift = "Φ" }
+0x22 = { plain = "γ", shift = "Γ" }
+0x23 = { plain = "η", shift = "Η" }
+0x24 = { plain = "ξ", shift = "Ξ" }
+0x25 = { plain = "κ", shift = "Κ" }
+0x26 = { plain = "λ", shift = "Λ" }
+0x27 = { plain = "´", shift = "¨" }
+0x28 = { plain = "'", shift = "\"" }
+
+# Bottom row
+0x2B = { plain = "\\", shift = "|" }
+0x2C = { plain = "ζ", shift = "Ζ" }
+0x2D = { plain = "χ", shift = "Χ" }
+0x2E = { plain = "ψ", shift = "Ψ" }
+0x2F = { plain = "ω", shift = "Ω" }
+0x30 = { plain = "β", shift = "Β" }
+0x31 = { plain = "ν", shift = "Ν" }
+0x32 = { plain = "μ", shift = "Μ" }
+0x33 = { plain = ",", shift = "<" }
+0x34 = { plain = ".", shift = ">" }
+0x35 = { plain = "/", shift = "?" }

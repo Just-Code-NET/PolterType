@@ -272,7 +272,23 @@ fn tis_id_to_bcp47(id: &str) -> Option<String> {
             "com.apple.keylayout.French" => "fr-FR",
             "com.apple.keylayout.Spanish" => "es-ES",
             "com.apple.keylayout.Polish" => "pl-PL",
+            "com.apple.keylayout.PolishPro" => "pl-PL",
             "com.apple.keylayout.Greek" => "el-GR",
+            "com.apple.keylayout.GreekPolytonic" => "el-GR",
+            "com.apple.keylayout.Czech" => "cs-CZ",
+            "com.apple.keylayout.Czech-QWERTY" => "cs-CZ",
+            "com.apple.keylayout.Hebrew" => "he-IL",
+            "com.apple.keylayout.Hebrew-PC" => "he-IL",
+            "com.apple.keylayout.Hebrew-QWERTY" => "he-IL",
+            "com.apple.keylayout.Turkish" => "tr-TR",
+            "com.apple.keylayout.Turkish-Standard" => "tr-TR",
+            "com.apple.keylayout.Turkish-QWERTY-PC" => "tr-TR",
+            "com.apple.keylayout.Bulgarian" => "bg-BG",
+            "com.apple.keylayout.Bulgarian-Phonetic" => "bg-BG",
+            "com.apple.keylayout.Italian" => "it-IT",
+            "com.apple.keylayout.Italian-Pro" => "it-IT",
+            "com.apple.keylayout.Portuguese" => "pt-PT",
+            "com.apple.keylayout.Brazilian" => "pt-BR",
             _ => return None,
         }
         .to_owned(),
@@ -282,6 +298,15 @@ fn tis_id_to_bcp47(id: &str) -> Option<String> {
 /// Inverse of [`tis_id_to_bcp47`] — best-effort reverse lookup so
 /// `switch_to(LayoutId("uk-UA"))` finds the right TIS source. Falls
 /// back to the input string if no entry exists.
+///
+/// Deliberately narrower than the forward table: this one names the
+/// source we *ask macOS to select*, so only the base id each language
+/// is certain to have gets an entry. A wrong guess in the forward
+/// direction costs nothing (the id falls through unmapped and stays a
+/// stable opaque `LayoutId`), whereas a wrong guess here is a switch
+/// that silently targets a source the user doesn't have. Like the
+/// rest of the macOS backend, none of this has been exercised on real
+/// hardware — see the known-gaps list in CLAUDE.md.
 fn bcp47_to_tis_id(id: &str) -> Option<String> {
     Some(
         match id {
@@ -294,6 +319,13 @@ fn bcp47_to_tis_id(id: &str) -> Option<String> {
             "es-ES" => "com.apple.keylayout.Spanish",
             "pl-PL" => "com.apple.keylayout.Polish",
             "el-GR" => "com.apple.keylayout.Greek",
+            "cs-CZ" => "com.apple.keylayout.Czech",
+            "he-IL" => "com.apple.keylayout.Hebrew",
+            "tr-TR" => "com.apple.keylayout.Turkish",
+            "bg-BG" => "com.apple.keylayout.Bulgarian",
+            "it-IT" => "com.apple.keylayout.Italian",
+            "pt-PT" => "com.apple.keylayout.Portuguese",
+            "pt-BR" => "com.apple.keylayout.Brazilian",
             _ => return None,
         }
         .to_owned(),
