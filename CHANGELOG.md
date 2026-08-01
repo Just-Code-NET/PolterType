@@ -4,7 +4,7 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.8.0
+## [0.9.0] — nine more languages, and a dictionary pipeline that stops failing quietly
 
 ### Added
 
