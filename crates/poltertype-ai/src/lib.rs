@@ -63,6 +63,11 @@ mod cache;
 mod consts;
 mod enums;
 mod keys;
+// The whole module is the HTTP client's wrapper, so without the
+// feature there is nothing for it to do — and leaving it compiled
+// would be dead code that only a `--no-default-features` lint run
+// notices.
+#[cfg(feature = "remote")]
 mod transport;
 mod types;
 

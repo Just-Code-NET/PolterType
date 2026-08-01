@@ -24,7 +24,6 @@ pub struct Call<'a> {
 /// `Ok(None)` means the model declined to pick — a legitimate answer,
 /// cached like any other. `Err` means the call itself failed and
 /// nothing should be remembered.
-#[cfg(feature = "remote")]
 pub fn ask(client: &reqwest::blocking::Client, call: &Call<'_>) -> Result<Option<usize>, AiError> {
     let question = wire::Question {
         model: call.model,
@@ -58,14 +57,4 @@ pub fn ask(client: &reqwest::blocking::Client, call: &Call<'_>) -> Result<Option
         ));
     };
     Ok(wire::parse_choice(&reply, call.candidates.len()))
-}
-
-/// Without the `remote` feature there is no client type to take, and
-/// the detector never constructs one — this exists so the module
-/// compiles and any accidental call site fails loudly.
-#[cfg(not(feature = "remote"))]
-pub fn ask(_call: &Call<'_>) -> Result<Option<usize>, AiError> {
-    Err(AiError::RemoteDisabled(
-        "built without the `remote` cargo feature — no HTTP client exists in this binary".into(),
-    ))
 }

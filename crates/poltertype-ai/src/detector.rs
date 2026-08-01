@@ -21,7 +21,9 @@
 //!   the rest of the engine.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+#[cfg(feature = "remote")]
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 
 use poltertype_detect::{DetectionContext, DetectionVerdict, Detector, Verdict};
@@ -31,6 +33,7 @@ use crate::AiError;
 use crate::cache::{Decision, DecisionCache};
 use crate::consts::QUEUE_DEPTH;
 use crate::enums::{Locality, QueryMode, WireFormat};
+#[cfg(feature = "remote")]
 use crate::transport::Call;
 
 /// Everything the detector needs, already validated by the factory.
@@ -65,6 +68,10 @@ impl LlmSettings {
 }
 
 /// A question handed to the background worker.
+///
+/// Only read by the worker, which only exists with an HTTP client —
+/// so without the feature this is a type nothing consumes.
+#[cfg_attr(not(feature = "remote"), allow(dead_code))]
 struct Job {
     key: u64,
     candidates: Vec<String>,
