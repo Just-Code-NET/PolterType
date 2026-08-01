@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-07-31 (v0.8.0).
+> Created: 2026-05-02. Last updated: 2026-08-01 (v0.9.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,18 +9,20 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.7.0; most recently signed update manifests, aarch64 Linux builds
->   and a setup pane that probes the machine instead of linking to a
->   document) and §10 below, where every item is marked.
+>   0.9.0; most recently nine more bundled languages, a Windows
+>   keystroke gate that is opt-in and unverified, and the AI seam
+>   connected to the engine) and §10 below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
 > * **What does not exist despite being described below** —
->   `../CLAUDE.md`, the "Known gaps" section: the AI subsystem is not
->   wired to the engine, `focused_exe()` answers on Windows / Hyprland
->   / X11 and nowhere else, and AT-SPI listening / `libei` do not
->   exist. The guided onboarding window does exist as of 0.7.0 — but
->   its macOS half has never run on a Mac.
+>   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` answers
+>   on Windows / Hyprland / X11 and nowhere else, and AT-SPI listening
+>   / `libei` do not exist. The AI subsystem *is* wired to the engine
+>   as of 0.8.0, but both backends are still stubs that return no
+>   opinion — "wired, no backend yet", never "AI-powered". The guided
+>   onboarding window does exist as of 0.7.0 — but its macOS half has
+>   never run on a Mac.
 >
 > Sections 2–4 in places describe the original intent (dependencies
 > that were never adopted; a tray menu that turned out differently).

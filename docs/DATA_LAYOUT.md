@@ -141,7 +141,8 @@ user's disk — so it belongs in this document.
     pending.json                      bookkeeping: version, artifact
                                       path, SHA-256, install attempts
     poltertype-0.4.3-x86_64.AppImage  the downloaded installer
-                                      (20–40 MB, one at a time)
+                                      (~75–85 MB since 0.9.0 bundled
+                                      fifteen languages; one at a time)
 ```
 
 `data_local_dir` is the same `ProjectDirs::from("dev", "opensource",

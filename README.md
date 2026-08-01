@@ -12,7 +12,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.8.0 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.9.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland). On Linux/Wayland a
@@ -48,7 +48,12 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 - **Smart** — language detection per word; pluggable AI detectors for
   power users (off by default).
 - **Fast** — pure Rust, no WebView, no perceptible typing latency.
-- **Light** — single binary, ~10–15 MB.
+- **Light to run** — single binary, ~10–15 MB, and a tray icon's worth
+  of CPU and RAM. **The download is not light: the installers are
+  ~75–85 MB**, because the fifteen bundled dictionaries are most of
+  what you're downloading. Only the languages your OS actually has
+  enabled are ever read into memory, so the disk cost is one-time and
+  the runtime cost is what it always was.
 - **Quiet** — tray-only, minimal CPU/RAM, **zero telemetry**. Exactly
   one network call exists — the update check (§ [Staying up to
   date](#staying-up-to-date)) — it sends nothing about you, and one
@@ -115,7 +120,7 @@ is two requests: a `GET` of a small JSON manifest, and — only when
 there's actually a new version — a `GET` of the installer itself. No
 account, no identifier, nothing about you and nothing about what you
 type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.8.0
+a User-Agent naming the running version (`PolterType/0.9.0
 (updater)`). The exact manifest URL is printed on the Settings
 window's **General** pane, so you never have to take our word for it.
 
@@ -263,6 +268,38 @@ Three v1 actions: `type_text` (snippet expansion), `switch_layout`
 scopes a command to specific foreground apps using the same
 basename match `[exceptions].disabled_apps` already uses. Manage
 them on the **Commands** pane in Settings.
+
+## Languages
+
+Fifteen layouts ship with the app, each with a full dictionary:
+
+**English (US) · Ukrainian · Russian · German · Spanish · French ·
+Polish · Czech · Greek · Hebrew · Turkish · Bulgarian · Italian ·
+Portuguese (PT) · Portuguese (BR)**
+
+PolterType only loads the ones your OS actually has enabled, so
+bundling fifteen costs a two-keyboard user nothing at runtime.
+
+Two are worth a footnote rather than a surprise:
+
+- **Polish** gets no Polish↔English correction, and can't. The layout
+  essentially every Polish user has enabled is the "programmer's" one
+  — US QWERTY with the diacritics on AltGr, which PolterType doesn't
+  track — so under it Polish and English produce identical characters
+  and there is no mistake to detect. The Polish dictionary still does
+  real work: it stops Polish prose being dragged toward whatever other
+  layout you have active, and Polish↔Cyrillic works normally.
+- **Hebrew** ships dictionary stems rather than every inflected form,
+  because expanding its clitic prefixes yields 60 million of them.
+  Hebrew shares its script with nothing else bundled, so detection
+  leans on that and the dictionary refines it.
+
+**Yours isn't here?** Adding a language is one TOML file and one
+wordlist — no Rust required. The walkthrough is
+[docs/ADDING_A_LANGUAGE.md](docs/ADDING_A_LANGUAGE.md), and you can
+try it on your own machine without rebuilding anything by dropping the
+files into `<config-dir>/poltertype/layouts/` and
+`<config-dir>/poltertype/wordlists/`.
 
 ## Dev-friendly: stays out of code
 
