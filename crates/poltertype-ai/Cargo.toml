@@ -14,9 +14,11 @@ workspace = true
 
 [features]
 default = []
-# Enabling `remote` brings in reqwest + native-tls and lets the
-# RemoteLlmDetector make real HTTP calls. Off by default; users opt
-# in via `[ai].allow_remote = true` AND a feature-enabled build.
+# `remote` is what puts an HTTP client in the binary. Without it this
+# crate compiles with no `reqwest` anywhere in the tree — the claim
+# "a stock build cannot make an AI call" is checkable with
+# `cargo tree`, not just documented. Users opt in with this feature
+# AND `[ai].allow_remote = true` for a non-loopback endpoint.
 remote  = ["dep:reqwest"]
 
 [dependencies]
@@ -27,5 +29,13 @@ thiserror = { workspace = true }
 tracing   = { workspace = true }
 keyring   = { workspace = true }
 
-# Activated only when `--features remote` is on.
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls", "json"], optional = true }
+# Activated only when `--features remote` is on. No `json` feature:
+# request bodies are built and read in `wire.rs`, which keeps the
+# whole request/response contract testable on hosts where this
+# dependency does not exist.
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"], optional = true }
+
+[dev-dependencies]
+# Only to prove the hand-rolled JSON escaping in `wire.rs` produces
+# bodies a real parser accepts. Never linked into a shipped binary.
+serde_json = { workspace = true }

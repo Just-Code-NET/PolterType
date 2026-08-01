@@ -1,116 +1,187 @@
 # AI subsystem
 
-> **Status (v0.8.0): wired, no backend yet.** The extension traits are
-> real, the built-in detectors use them, and since 0.8.0 the app
-> *does* construct AI detectors — `[[ai.plugins]]` entries become
-> `Detector`s and join the pipeline. What they are not is useful: both
-> shipped backends are **stubs that return `NoOpinion`**. The local one
-> loads no ONNX model; the remote one makes no request. **No shipped
-> build makes an AI-related network call, with or without the feature
-> flags.**
+> **Status (v0.10.0): a working socket, and nothing plugged into it.**
+> PolterType ships the *interface* for a language model and never a
+> model, a vendor SDK, or a default endpoint. Configure
+> `[[ai.plugins]]` to point at an Ollama on your own machine, an API
+> you hold the key to, or a gateway of your own, and the engine gains
+> another voice in the layout decision. Configure nothing — the
+> default — and there is no AI in PolterType at all.
 >
-> So the honest sentence is "the seam is real and empty": a model can
-> be dropped in without touching the app, and until one is, enabling
-> the feature changes no decision.
->
-> Read that claim narrowly. Since v0.4.0 the app *does* make one
-> network call, in every build, on by default: the updater's check
-> against GitHub Releases. It has nothing to do with this subsystem —
-> it lives in `poltertype-update`, uses a different HTTP client
-> (`ureq`, not `reqwest`), and sends nothing about the user. See
-> [DECISIONS.md](DECISIONS.md) and the README's "Staying up to date".
-> The point of this document is that **AI** adds no network call; it
-> is no longer true that the binary makes none at all.
->
-> This document describes the intended design and marks, in each
-> section, what is actually implemented today. Nothing below is a
-> promise about current behaviour unless it says "implemented".
+> This is different from every previous release, where the backends
+> existed as stubs that returned no opinion. They are gone. What
+> replaced them is one detector that speaks three common HTTP shapes
+> and asks the model exactly one question.
 
-The plan is an opt-in AI/LLM subsystem that would let users:
+## The design, and why
 
-* extend the layout-detection pipeline with smarter classifiers
-  (local ONNX models, remote LLMs);
-* run *word rewriters* — post-correction tricks like
-  smart-capitalize, expand-acronym, slang→formal — without rebuilding
-  the whole engine.
+Bundling a model would mean choosing a vendor on the user's behalf and
+shipping megabytes most people never asked for. Bundling a client for
+one provider is the same choice with extra steps. So PolterType
+bundles neither: it provides a socket, and what answers is whatever
+the user already trusts.
 
-Everything here is **off by default**, and today it is inert.
+That is also what keeps the zero-telemetry posture intact. There is no
+address in this subsystem that we chose. The only endpoint it ever
+contacts is one the user typed into their own config file, and the
+only credential it uses is one they stored in their own keychain.
 
-## What exists today
+## Configuration
 
-| Piece | Where | State |
-|---|---|---|
-| `Detector` / `WordRewriter` traits | `poltertype-detect::traits` | **implemented**, and `Detector` is what the built-in detectors run on |
-| `DictionaryDetector`, `WordPlausibilityDetector` | `poltertype-detect` | **implemented** — these are the *only* detectors the engine runs |
-| `LocalOnnxDetector` | `poltertype-ai::local` | **stub** — logs a warning, returns `NoOpinion`. No ONNX runtime is even a dependency. |
-| `RemoteLlmDetector` | `poltertype-ai::remote` | **stub** — with `remote` on it builds an HTTP client and never uses it. Returns `NoOpinion`. |
-| `SmartCapitalize` rewriter | `poltertype-ai::rewriters` | **implemented, unreachable** — real logic over a hardcoded 7-word list; nothing calls it. Not AI-backed. |
-| `resolve_api_key()` | `poltertype-ai::keys` | **implemented, no callers** |
-| `[ai] enabled` / `allow_remote` | `poltertype-core::settings` | **parsed, inert** — both default `false` and no runtime code reads them |
+```toml
+[ai]
+enabled      = true
+allow_remote = false   # only needed for a non-loopback endpoint
 
-The gap that matters: **`poltertype-ai` is never imported by
-`poltertype-app` or `poltertype-core`.** It appears in
-`poltertype-app/Cargo.toml` as an optional dependency and nowhere
-else. The engine's detector list is constructed by hand in
-`poltertype-app::main`. Until that list is built from configuration,
-none of the above can run, however the flags are set.
+# A model running on your own machine. No key, no network permission:
+# nothing leaves the computer.
+[[ai.plugins]]
+type     = "llm"
+id       = "local"
+provider = "ollama"          # preset: fills in endpoint + format
+model    = "llama3"
 
-There is no rewriter stage in the engine at all — `WordRewriter` is a
-trait with no consumer.
+# A third-party API. Needs `allow_remote = true` above, and a key you
+# stored in the OS keychain yourself.
+[[ai.plugins]]
+type        = "llm"
+id          = "claude"
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_ref = "keyring:anthropic"
 
-## Privacy posture
+# Anything else that speaks a shape we know — a llama.cpp server, an
+# LM Studio, a vLLM, a company gateway. No preset needed.
+[[ai.plugins]]
+type     = "llm"
+id       = "work-gateway"
+endpoint = "https://llm.internal.example.com/v1/chat/completions"
+format   = "openai-chat"
+model    = "qwen2.5-7b"
+```
 
-**Today: no build can make an AI network call.** `reqwest` is an
-optional dependency of `poltertype-ai` alone, and the one type that
-holds a client never issues a request. That is a stronger guarantee
-than the design below, and it is the one that currently holds.
+| Field | Meaning |
+|---|---|
+| `type` | `llm` — the only kind today |
+| `id` | your name for the entry; appears in logs and in the verdict reason |
+| `provider` | optional preset filling in `endpoint` + `format`: `ollama`, `llama-cpp`, `lm-studio`, `openai`, `anthropic` |
+| `endpoint` | full URL to POST to. Overrides the preset |
+| `format` | `openai-chat`, `anthropic-messages`, `ollama-generate`. Overrides the preset |
+| `model` | required — the model name to ask for |
+| `api_key_ref` | `keyring:<entry>`. Optional; a local model needs none |
+| `mode` | `background` (default) or `blocking` — see below |
+| `max_latency_ms` | per-query budget. Default 2000; capped at 250 in `blocking` mode |
+| `cache_size` | decided words remembered. Default 2048; `0` disables |
 
-It is, however, a claim about *this subsystem* — not about the
-process. The app has had exactly one network capability since v0.4.0:
-the updater (`poltertype-update`, `ureq`, on by default, GitHub
-Releases only). Nothing routes user text through it and it cannot be
-used to reach an LLM. When wiring the AI subsystem up, do not treat
-the updater's existence as precedent — the gates below still apply in
-full, and "the app already talks to the network" is not an argument
-for skipping any of them.
+There is deliberately **no default endpoint**. An entry with neither
+`endpoint` nor `provider` is refused with a message saying so.
 
-The design keeps three independent gates between a user and a network
-call. Gates 1 and 2 are real (they are Cargo features); gate 3 is
-parsed but not yet enforced anywhere, because there is nothing to
-enforce it against:
+## The two things that make this safe to turn on
 
-1. **Cargo feature `ai`** in `poltertype-app`. Off by default; enabling
-   adds the `poltertype-ai` crate to the build. (Note it does *not*
-   forward the crate's own `remote` feature — see below.)
-2. **Cargo feature `remote`** in `poltertype-ai`. Off by default;
-   enabling adds `reqwest` + `rustls` so a `RemoteLlmDetector` *could*
-   make HTTP calls. Local detectors don't need it. Enabling it from an
-   app build takes `--features ai,poltertype-ai/remote`.
-3. **`[ai].allow_remote = true`** in `config.toml`. Off by default.
-   Intended to gate network use at runtime in a binary that is
-   otherwise capable. **Not yet read by any code path.**
+### It cannot slow your typing down
 
-When the subsystem is wired, the tray tooltip should surface the
-runtime state (whether AI is on, whether remote is permitted, and how
-often the engine has reached out). It does not do so today — the
-tooltip renders only the app name, the active layout, and a paused
-marker.
+`judge()` runs on the correction path — between you finishing a word
+and the word being fixed. A round-trip there, even to localhost, is
+the difference between a correction and a glitch.
+
+So the default mode **never waits**. It answers from a cache of
+already-decided words; on a miss it returns "no opinion" immediately
+and queues the question so the *next* occurrence of that word is
+decided. The first time you type a word the model contributes nothing,
+which is exactly what happened before there was a backend. After that
+it is free.
+
+That trade works because of how people type: the same few thousand
+words, over and over. A 2048-entry cache warms up within a session.
+
+`mode = "blocking"` puts the call inline if you want it, and is capped
+at 250 ms — past roughly a fifth of a second you have already started
+the next word, and a "correction" arriving then is just corruption
+arriving late. Asking for more is refused at startup, with the reason,
+rather than silently clamped into lag you would have to diagnose.
+
+### Local is not remote
+
+`[ai].allow_remote` exists to gate **typed words leaving your
+machine**. A request to `127.0.0.1` does not leave it, so a local
+model does not need that switch — requiring it would make people
+enable network access they are not using.
+
+The distinction is decided in one place, `poltertype-ai::locality`,
+and it is deliberately strict:
+
+* only literal loopback addresses and the name `localhost` count;
+* DNS is **not** resolved — a resolver answer can change between the
+  check and the request, and a `local.corp.net` that happens to point
+  at 127.0.0.1 today is exactly the kind of thing that should still
+  require a yes;
+* anything unparseable is treated as remote, because the answer that
+  asks permission is the safe one to be wrong with.
+
+## What is sent, and what is not
+
+One request per newly-seen ambiguous word, containing:
+
+* the candidate readings of that word, numbered;
+* the model name you configured;
+* a fixed one-sentence instruction asking which reading is real.
+
+That is all. Not the surrounding sentence, not the document, not the
+application you are typing in, and **not the layout ids** — those
+would reveal which languages you have installed. The model is asked to
+reply with a single number, and anything that is not a number naming a
+candidate is treated as no opinion.
+
+Nothing typed is ever logged: words reaching a `tracing` call go
+through `redact_word` like everywhere else in the engine, and the
+decision cache stores hashes of the question rather than the text.
+
+## The gates, in order
+
+Each is a real barrier, not a setting that looks like one:
+
+1. **Cargo feature `ai`** in `poltertype-app`. Off by default;
+   enabling links the `poltertype-ai` crate.
+2. **Cargo feature `remote`** in `poltertype-ai`. Off by default.
+   Without it no HTTP client is compiled in — `cargo tree` on a stock
+   build shows no `reqwest` at all, which is checkable rather than
+   merely documented. Enabling from an app build takes
+   `--features ai,poltertype-ai/remote`.
+3. **`[ai].enabled = true`** in `config.toml`. Off by default.
+4. **`[ai].allow_remote = true`** — additionally, and only for a
+   non-loopback endpoint.
+5. **A key in your keychain**, if the endpoint needs one. A literal
+   secret in `config.toml` is refused at construction, never used: a
+   key in that file is a key in your backups, your dotfiles repo, and
+   any log you attach to an issue.
+
+A plug-in that is not permitted still *loads* — it just returns no
+opinion, and says why once at startup. That way flipping a setting
+takes effect on the next restart without editing the entry.
+
+## What the updater has to do with this: nothing
+
+The app has had exactly one network capability since v0.4.0 — the
+updater, which fetches a release manifest from GitHub. It is a
+different crate, a different HTTP client (`ureq`), and no user text
+goes near it.
+
+Do not treat its existence as precedent when touching this subsystem.
+"The app already talks to the network" is not an argument for relaxing
+any of the five gates above. The updater sends nothing about you; this
+subsystem, when you switch it on, sends the words you type. Those are
+different things and the difference is the whole point.
 
 ## Architecture
 
-The `Detector` trait lives in `poltertype-detect` and is the real
-extension point — the built-in detectors implement it, and an AI
-detector would be one more implementation:
+The `Detector` trait in `poltertype-detect` is the extension point.
+The built-in detectors implement it and an AI detector is one more
+implementation:
 
 ```rust
 pub trait Detector: Send + Sync {
     fn name(&self) -> &'static str;
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict;
-}
-
-pub trait WordRewriter: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn rewrite(&self, req: &RewriteRequest<'_>) -> RewriteVerdict;
 }
 ```
 
@@ -124,89 +195,52 @@ pub enum Verdict {
 }
 ```
 
-The engine runs detectors in priority order and stops at the first
-non-`NoOpinion`. `Keep` is what lets the dictionary say "this is a
-real word, don't ask anyone else" — the main defence against false
-positives.
+Plug-ins are **appended** to the built-in detectors, never substituted
+for them. The offline dictionary and plausibility detectors keep
+working exactly as before; an LLM adds a voice to a decision it does
+not own. If the model picks the layout you are already typing in, that
+becomes a `Keep` — a vote to leave the word alone — rather than a
+switch to where you already are.
 
-## Planned configuration (not implemented)
-
-The intended shape is declarative: detectors and rewriters described
-in the user's `config.toml`, with `[ai]` carrying only the master
-switches.
-
-> **`[[ai.plugins]]` is real since 0.8.0; `[[ai.rewriters]]` is not.**
-> The settings struct is
-> `AiSettings { enabled, allow_remote, plugins }`, and each plug-in
-> entry is constructed into a `Detector` and appended to the pipeline.
-> What it will not do yet is *decide* anything — both backends are
-> stubs returning no opinion.
->
-> Rewriters remain unimplemented: there is no rewriter stage in
-> `poltertype-core`, so an `[[ai.rewriters]]` block is *silently
-> ignored* (settings parse with `#[serde(default)]` and no
-> `deny_unknown_fields`). Do not write one expecting an effect.
-
-```toml
-[ai]
-enabled = false
-allow_remote = false
-
-[[ai.plugins]]
-type = "local-onnx"
-id   = "fasttext-lid-176"
-model_path = "models/lid.176.onnx"
-
-[[ai.plugins]]
-type = "remote-llm"
-id   = "anthropic-haiku"
-provider = "anthropic"
-model = "claude-haiku-4-5-20251001"
-api_key_ref = "keyring:anthropic"
-max_latency_ms = 600
-
-[[ai.rewriters]]
-type = "smart-capitalize"
-id   = "default"
-require_confirmation = false
-```
-
-Wiring this up means: a settings schema for the two arrays, a factory
-mapping each `type` string to a struct, and a detector list in
-`poltertype-app::main` built from configuration instead of by hand.
+| Piece | Where |
+|---|---|
+| `LlmDetector` | `poltertype-ai::detector` |
+| Request/response shaping | `poltertype-ai::wire` — no HTTP types, so it is unit-tested on every host |
+| The one place a socket opens | `poltertype-ai::transport`, behind `feature = "remote"` |
+| Loopback-vs-remote | `poltertype-ai::locality` |
+| Decision cache | `poltertype-ai::cache` |
+| Config → detector | `poltertype-ai::factory` |
 
 ## API keys
 
-The lookup helper is implemented (it has no callers yet, because
-nothing makes a request). Keys resolve via
-`keyring::Entry::new("poltertype", <entry>)`, which uses:
+Keys resolve via `keyring::Entry::new("poltertype", <entry>)`:
 
 * Windows Credential Manager
 * macOS Keychain
 * Linux: GNOME Secret Service / KWallet (whichever is up)
 
-Storing a key (one-time, from your shell):
+Storing one, from your shell:
 
 ```bash
-# macOS / Linux
+# Linux
 secret-tool store --label "poltertype Anthropic" \
     service poltertype account anthropic
-# Windows: cmdkey /add:poltertype /user:anthropic /pass:<paste-key>
+# macOS
+security add-generic-password -s poltertype -a anthropic -w
+# Windows
+cmdkey /add:poltertype /user:anthropic /pass:<paste-key>
 ```
 
-`api_key_ref = "keyring:anthropic"` is then meant to resolve to the
-stored secret at request time. Keys never live in `config.toml`.
+`api_key_ref = "keyring:anthropic"` then resolves to it at startup. If
+the keychain cannot supply it — missing entry, locked keychain — the
+plug-in loads and stays silent with one explanatory warning, rather
+than disappearing with a message about config that config cannot fix.
 
-## Why the traits landed before the implementations
+## Word rewriters remain unimplemented
 
-Because the *shape* of the plug-in API is the load-bearing decision,
-and it is settled: a detector is anything that turns a
-`DetectionContext` into a three-way `Verdict`, and the engine already
-runs a priority-ordered list of them. Swapping in a real
-implementation is a matter of dropping in a struct that implements
-`Detector` — no engine surgery.
-
-What is *not* settled, and is what the remaining work consists of, is
-the wiring: config schema, a factory, and the runtime enforcement of
-`allow_remote`. Until that exists, treat this document as a design
-note rather than a feature description.
+`WordRewriter` is a trait with no consumer: there is no rewriter stage
+in `poltertype-core`, so an `[[ai.rewriters]]` block is **silently
+ignored**. `SmartCapitalize` in `poltertype-ai::rewriters` is real
+logic over a hardcoded word list that nothing calls, and it is not
+AI-backed. Do not write an `[[ai.rewriters]]` entry expecting an
+effect.

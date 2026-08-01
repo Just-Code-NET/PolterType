@@ -334,16 +334,19 @@ enabled = true
 allow_remote = false
 
 [[ai.plugins]]
-type = "remote-llm"
+type = "llm"
 id = "claude"
 provider = "anthropic"
 model = "claude-sonnet-4"
 api_key_ref = "keyring:anthropic"
 
 [[ai.plugins]]
-type = "local-onnx"
-id = "lid176"
-model_path = "/models/lid.176.onnx"
+type = "llm"
+id = "local"
+endpoint = "http://127.0.0.1:11434/api/generate"
+format = "ollama-generate"
+model = "llama3"
+mode = "background"
 "#;
     let s: Settings = toml::from_str(raw).expect("parse");
     assert!(s.ai.enabled);
@@ -354,8 +357,37 @@ model_path = "/models/lid.176.onnx"
         s.ai.plugins[0].api_key_ref.as_deref(),
         Some("keyring:anthropic")
     );
-    assert_eq!(s.ai.plugins[1].r#type, "local-onnx");
-    assert!(s.ai.plugins[1].model_path.is_some());
+    // The second entry is the shape that needs no key and no network
+    // permission: a model the user runs themselves.
+    assert_eq!(
+        s.ai.plugins[1].endpoint.as_deref(),
+        Some("http://127.0.0.1:11434/api/generate")
+    );
+    assert_eq!(s.ai.plugins[1].format.as_deref(), Some("ollama-generate"));
+    assert!(s.ai.plugins[1].api_key_ref.is_none());
+}
+
+/// A config written against 0.9.0 or earlier still *parses* — the
+/// schema is deliberately a flat struct of optional fields, so an
+/// entry naming a retired plug-in kind reaches the factory and is
+/// reported there with an explanation, rather than failing the whole
+/// settings file and leaving the user with no app.
+#[test]
+fn a_pre_0_10_ai_config_still_parses() {
+    let raw = r#"
+schema_version = 1
+
+[ai]
+enabled = true
+
+[[ai.plugins]]
+type = "local-onnx"
+id = "lid176"
+model_path = "/models/lid.176.onnx"
+"#;
+    let s: Settings = toml::from_str(raw).expect("an old config must not be a parse error");
+    assert_eq!(s.ai.plugins.len(), 1);
+    assert_eq!(s.ai.plugins[0].r#type, "local-onnx");
 }
 
 /// The schema lives in `poltertype-types`, not in the optional
