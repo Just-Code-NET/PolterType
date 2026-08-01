@@ -8,7 +8,7 @@ use poltertype_layout::LayoutId;
 use poltertype_types::{SwitchAction, logsafe};
 use tracing::{debug, warn};
 
-use crate::commands::find_matching_command;
+use crate::commands::{erase_len, find_matching_command};
 use crate::engine::buffer::WordBuffer;
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::heuristics::{
@@ -156,19 +156,35 @@ impl SwitcherEngine {
                 .and_then(|f| f.to_str())
                 .map(str::to_owned)
         });
-        if let Some(cmd) =
-            find_matching_command(&snap.commands, &current_text, focused_basename.as_deref())
-        {
+        // A multi-token trigger ("best regards") also has to see the
+        // words before this one, so the history is consulted here and
+        // updated below whatever the outcome.
+        let history = self.word_history.read().clone();
+        if let Some(cmd) = find_matching_command(
+            &snap.commands,
+            &current_text,
+            focused_basename.as_deref(),
+            &history,
+        ) {
             // Erase one on-screen character per buffered key plus the
-            // boundary. Counting keys (not rendered chars) survives
-            // scancodes our mapping table can't render — the screen
-            // still shows a character for those.
-            self.dispatch_smart_command(cmd, keys.len() + 1, boundary_char);
-            // The trigger text no longer exists on screen — the word
-            // must not be re-openable via backspace.
+            // boundary — and, for a phrase, the earlier words and the
+            // separator after each. Counting keys (not rendered
+            // chars) for the current word survives scancodes our
+            // mapping table can't render; the screen still shows a
+            // character for those.
+            self.dispatch_smart_command(cmd, erase_len(cmd, keys.len()), boundary_char);
+            // The trigger text no longer exists on screen — neither
+            // the word nor the phrase leading to it may be re-opened
+            // by backspace, or matched again by the next word.
             buffer.forget_completed();
+            self.word_history.write().clear();
             return;
         }
+        // Not a trigger: remember it, so it can be the first half of
+        // one next time.
+        self.word_history
+            .write()
+            .push_in(focused_basename.as_deref(), &current_text);
 
         // ---- Pre-decision filters (auto-switch only) ----
         //

@@ -118,17 +118,18 @@ fn find_matching_command_basic_match() {
     let list = vec![cmd("a", "anrl", &[]), cmd("b", "((en))", &[])];
 
     // Exact match.
-    let m = find_matching_command(&list, "anrl", None).expect("matches");
+    let m = find_matching_command(&list, "anrl", None, &WordHistory::default()).expect("matches");
     assert_eq!(m.id, "a");
     // Different trigger.
-    let m2 = find_matching_command(&list, "((en))", None).expect("matches");
+    let m2 =
+        find_matching_command(&list, "((en))", None, &WordHistory::default()).expect("matches");
     assert_eq!(m2.id, "b");
     // No match — case-sensitive, "ANRL" != "anrl".
-    assert!(find_matching_command(&list, "ANRL", None).is_none());
+    assert!(find_matching_command(&list, "ANRL", None, &WordHistory::default()).is_none());
     // No match — completely unrelated word.
-    assert!(find_matching_command(&list, "hello", None).is_none());
+    assert!(find_matching_command(&list, "hello", None, &WordHistory::default()).is_none());
     // No match — empty word.
-    assert!(find_matching_command(&list, "", None).is_none());
+    assert!(find_matching_command(&list, "", None, &WordHistory::default()).is_none());
 }
 
 /// `apps` filter: empty list = match anywhere; non-empty = the
@@ -138,14 +139,20 @@ fn find_matching_command_app_filter() {
     let list = vec![cmd("a", "anrl", &["Code.exe", "idea64.exe"])];
 
     // No app reported → fail closed (filter set, can't verify).
-    assert!(find_matching_command(&list, "anrl", None).is_none());
+    assert!(find_matching_command(&list, "anrl", None, &WordHistory::default()).is_none());
     // Wrong app → no match.
-    assert!(find_matching_command(&list, "anrl", Some("chrome.exe")).is_none());
+    assert!(
+        find_matching_command(&list, "anrl", Some("chrome.exe"), &WordHistory::default()).is_none()
+    );
     // Right app, exact case → match.
-    assert!(find_matching_command(&list, "anrl", Some("Code.exe")).is_some());
+    assert!(
+        find_matching_command(&list, "anrl", Some("Code.exe"), &WordHistory::default()).is_some()
+    );
     // Right app, wrong case → still match (case-insensitive
     // basename comparison, mirrors `disabled_apps` rules).
-    assert!(find_matching_command(&list, "anrl", Some("CODE.EXE")).is_some());
+    assert!(
+        find_matching_command(&list, "anrl", Some("CODE.EXE"), &WordHistory::default()).is_some()
+    );
 }
 
 /// First match wins when two commands share a trigger. That's
@@ -154,6 +161,6 @@ fn find_matching_command_app_filter() {
 #[test]
 fn find_matching_command_first_match_wins() {
     let list = vec![cmd("a", "dup", &[]), cmd("b", "dup", &[])];
-    let m = find_matching_command(&list, "dup", None).expect("matches");
+    let m = find_matching_command(&list, "dup", None, &WordHistory::default()).expect("matches");
     assert_eq!(m.id, "a");
 }

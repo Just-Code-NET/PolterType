@@ -29,6 +29,17 @@ pub struct Settings {
     /// `[hotkeys]` and the rest here.
     #[serde(default)]
     pub commands: Vec<UserCommand>,
+    /// Whether `run_shell` smart commands may execute at all.
+    ///
+    /// **Off by default, and that is the security boundary.** A
+    /// `[[commands]]` entry that runs a program turns a shared or
+    /// stolen `config.toml` into code that fires the next time the
+    /// user types an ordinary word — see the threat model in
+    /// [`crate::commands::shell`]. Entries are still parsed and shown
+    /// in Settings while this is false; they simply refuse to run,
+    /// and say so once per firing rather than failing silently.
+    #[serde(default)]
+    pub commands_allow_run_shell: bool,
     /// Per-application wordlist profiles. Each profile points at
     /// its own subdirectory under `<config-dir>/poltertype/wordlists/profiles/<id>/`
     /// and gets activated when the foreground app matches the
@@ -60,6 +71,7 @@ impl Default for Settings {
             exceptions: ExceptionSettings::default(),
             hotkeys: HotkeySettings::default(),
             commands: Vec::new(),
+            commands_allow_run_shell: false,
             wordlists: WordlistSettings::default(),
             sounds: SoundSettings::default(),
             suggestions: SuggestionSettings::default(),

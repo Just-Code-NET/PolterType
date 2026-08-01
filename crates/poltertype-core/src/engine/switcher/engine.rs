@@ -14,6 +14,7 @@ use poltertype_layout::LayoutSwitcher;
 use poltertype_types::Modifiers;
 
 use crate::audio::AudioPlayer;
+use crate::commands::WordHistory;
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::types::{KeystreamHotkeys, LastWord, PendingSuggestion};
 use crate::layouts::LayoutDb;
@@ -45,6 +46,14 @@ pub struct SwitcherEngine {
     pub(super) audio: Arc<AudioPlayer>,
     pub(super) out_tx: Sender<SwitcherEvent>,
     pub(super) paused: Arc<RwLock<bool>>,
+    /// The last few completed words, so a smart-command trigger can
+    /// span more than one of them (`best regards`).
+    ///
+    /// Bounded three ways — length, the idle timeout, and a focus
+    /// change — because this is the one place the engine holds more
+    /// of the user's text than the word being typed. See
+    /// [`crate::commands::phrase`].
+    pub(super) word_history: Arc<RwLock<WordHistory>>,
     /// Buffer of the previous fully-completed word (for "switch-last").
     pub(super) last_word: Arc<RwLock<Option<LastWord>>>,
     /// Expected echoes of our own injected keystrokes: scancodes of
@@ -131,6 +140,7 @@ impl SwitcherEngine {
             audio,
             out_tx,
             paused: Arc::new(RwLock::new(false)),
+            word_history: Arc::new(RwLock::new(WordHistory::default())),
             last_word: Arc::new(RwLock::new(None)),
             expected_echo: Mutex::new(VecDeque::new()),
             keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),

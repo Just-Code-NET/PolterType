@@ -171,6 +171,7 @@ pub fn derive_command_id(name: &str, action: &CommandAction, existing: &[UserCom
             CommandAction::TypeText { .. } => "type-text".into(),
             CommandAction::SwitchLayout { .. } => "switch-layout".into(),
             CommandAction::OpenPath { .. } => "open-path".into(),
+            CommandAction::RunShell(_) => "run-shell".into(),
         }
     };
     // Disambiguate by appending `-2`, `-3`, … as needed.
@@ -203,6 +204,18 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
         // as tofu on a clean Linux install).
         CommandAction::SwitchLayout { layout } => format!("-> {layout}"),
         CommandAction::OpenPath { path } => format!("open `{path}`"),
+        // Shown with its arguments so a reader of the list can see
+        // exactly what would run — the whole point of this action
+        // being visible rather than convenient.
+        CommandAction::RunShell(shell) => {
+            let argv = std::iter::once(shell.program.as_str())
+                .chain(shell.args.iter().map(String::as_str))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let preview = argv.chars().take(40).collect::<String>();
+            let suffix = if argv.chars().count() > 40 { "…" } else { "" };
+            format!("run `{preview}{suffix}`")
+        }
     };
     let apps_blurb = if cmd.apps.is_empty() {
         String::new()

@@ -91,6 +91,12 @@ impl SwitcherEngine {
                             // with the buffer.
                             buffer.abandon();
                             *self.last_word.write() = None;
+                            // The phrase history is bounded by time as
+                            // well as by length: a machine left alone
+                            // must not still be holding a sentence,
+                            // and a trigger should not fire from words
+                            // typed before a long pause.
+                            self.word_history.write().clear();
                             self.dismiss_suggestions(None);
                         }
                     }

@@ -49,25 +49,44 @@
 //! other two are power-user shortcuts that happen to fit the same
 //! "type a magic word, something happens" model.
 //!
-//! What's intentionally **not** here in v1:
+//! Since 0.10.0 there is a fourth, and it is the one with a threat
+//! model rather than a one-line description:
 //!
-//! * `RunShell { argv }` — full command execution. The blast radius
-//!   (a malicious `[[commands]]` entry in a stolen config could
-//!   mass-exfiltrate) makes this a separate security review.
-//! * Multi-token triggers (`best regards` → `…`). The buffer is
-//!   reset at every word boundary; matching across boundaries
-//!   needs a sliding window we don't have today.
-//! * Case-insensitive / case-preserving expansion. v1 matches
-//!   exactly — users pick triggers that don't collide with prose.
+//! * [`CommandAction::RunShell`] → a program, executed directly.
+//!   **Off unless `[commands].allow_run_shell` is true**, never run
+//!   through a shell, and never handed anything the user typed as an
+//!   argument. [`shell`] is where the reasoning lives; read it before
+//!   changing any of that.
+//!
+//! Multi-token triggers also landed in 0.10.0. The word buffer still
+//! resets at every boundary, so [`WordHistory`] holds the last few
+//! completed words alongside it — bounded by length, by the idle
+//! timeout, and by the focused application, because that history is
+//! the only place the engine keeps more of the user's text than the
+//! word being typed.
+//!
+//! What's still intentionally **not** here:
+//!
+//! * Case-insensitive / case-preserving expansion. Matching is
+//!   exact — users pick triggers that don't collide with prose, and a
+//!   case-insensitive `best regards` would fire on an ordinary
+//!   sign-off.
+//! * Placeholders that substitute typed text into an action. For
+//!   `run_shell` that would be an argument-injection channel; for the
+//!   others it is a feature nobody has asked for yet.
 
 mod consts;
 mod enums;
 mod matching;
+mod phrase;
+mod shell;
 mod types;
 
 pub use consts::*;
 pub use enums::*;
 pub use matching::*;
+pub use phrase::*;
+pub use shell::*;
 pub use types::*;
 
 #[cfg(test)]
