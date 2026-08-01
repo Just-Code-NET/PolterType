@@ -50,7 +50,7 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 - **Fast** — pure Rust, no WebView, no perceptible typing latency.
 - **Light to run** — single binary, ~10–15 MB, and a tray icon's worth
   of CPU and RAM. **The download is not light: the installers are
-  ~75–85 MB**, because the fifteen bundled dictionaries are most of
+  55–65 MB**, because the fifteen bundled dictionaries are most of
   what you're downloading. Only the languages your OS actually has
   enabled are ever read into memory, so the disk cost is one-time and
   the runtime cost is what it always was.
