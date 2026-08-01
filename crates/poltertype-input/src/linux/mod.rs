@@ -30,6 +30,7 @@ use tracing::info;
 
 use crate::{InputError, InputListener, KeyEmitter};
 
+pub mod portal;
 pub mod wayland;
 pub mod x11;
 
@@ -66,10 +67,44 @@ pub fn create_key_gate() -> crate::KeyGate {
     }
 }
 
+/// Pick the emitter for this session.
+///
+/// On Wayland `uinput` stays the default: it works on every
+/// compositor, needs no consent dialog, and is what the key gate is
+/// built around. The portal is tried only when uinput cannot be
+/// opened — which is precisely the "user has not run
+/// `setup-linux.sh`" case, and the one where an app that types
+/// nothing is indistinguishable from a broken one.
+///
+/// Deliberately in this order. Reversing it would put a consent
+/// dialog in front of every GNOME and KDE user who had already
+/// granted the group membership and did not need to be asked
+/// anything.
 pub fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
     match session_kind() {
         SessionKind::X11 => Ok(Box::new(x11::X11Emitter::new())),
-        SessionKind::Wayland | SessionKind::Unknown => Ok(Box::new(wayland::UinputEmitter::new())),
+        SessionKind::Wayland | SessionKind::Unknown => {
+            let uinput = wayland::UinputEmitter::new();
+            if uinput.is_usable() {
+                return Ok(Box::new(uinput));
+            }
+            if !portal::portal_available() {
+                // No portal either: hand back uinput anyway so the
+                // failure the user sees is the familiar
+                // permissions one the Setup pane explains, not a
+                // second story about portals they cannot act on.
+                info!("no uinput and no RemoteDesktop portal; staying on uinput for diagnostics");
+                return Ok(Box::new(uinput));
+            }
+            info!("uinput unavailable — trying the RemoteDesktop portal");
+            match portal::PortalEmitter::try_new() {
+                Ok(p) => Ok(Box::new(p)),
+                Err(e) => {
+                    info!(%e, "portal emitter unavailable; falling back to uinput");
+                    Ok(Box::new(uinput))
+                }
+            }
+        }
     }
 }
 

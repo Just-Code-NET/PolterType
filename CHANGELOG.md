@@ -123,6 +123,29 @@ and the project follows [Semantic Versioning](https://semver.org/).
   them, and replaces atomically — an interrupted install leaves the
   old pack or none, never half of a new one.
 
+- **Wayland can type without the setup script — on GNOME and KDE, in
+  theory.** `uinput` needs `input`-group membership plus a udev rule,
+  which is the one `sudo` standing between installing PolterType and
+  it doing anything. The `RemoteDesktop` portal is the standard,
+  permissioned way to ask a compositor to synthesise input, so it is
+  now tried **when and only when `uinput` cannot be opened** — nobody
+  who already ran `scripts/setup-linux.sh` will ever see a consent
+  dialog.
+
+  **This has never run.** There is no RemoteDesktop backend on the
+  machine it was written on, so it is written from the specification
+  and executed by nobody — the same standing as the macOS paths, and
+  it is labelled that way in the code. If it misbehaves on a real
+  GNOME or KDE session, assume PolterType is wrong before the
+  compositor.
+
+  It takes the portal's `NotifyKeyboardKeycode` rather than `libei`
+  deliberately: that method does exactly what a correction needs, and
+  going through `ConnectToEIS` and the libei protocol would have meant
+  a new protocol implementation and a heavyweight dependency to send
+  twenty keystrokes — while still needing the same session
+  negotiation. A restore token is stored so later launches are silent.
+
 ### Fixed
 
 - **A `-1` from a model was read as "the first candidate".** Every
