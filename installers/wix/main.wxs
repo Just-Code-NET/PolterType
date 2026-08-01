@@ -74,6 +74,7 @@
 <?define LicenseFileComponentGuid       = "4F8B6C02-5D1E-4A3F-9B2C-1D0E2F3A4B52" ?>
 <?define DataLayoutMappingsComponentGuid = "4F8B6C03-5D1E-4A3F-9B2C-1D0E2F3A4B53" ?>
 <?define DataWordlistsComponentGuid      = "4F8B6C04-5D1E-4A3F-9B2C-1D0E2F3A4B54" ?>
+<?define DataI18nComponentGuid           = "4F8B6C05-5D1E-4A3F-9B2C-1D0E2F3A4B55" ?>
 
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product Id="*"
@@ -123,6 +124,7 @@
             <ComponentGroupRef Id="MainComponents" />
             <ComponentRef Id="DataLayoutMappings" />
             <ComponentRef Id="DataWordlists" />
+            <ComponentRef Id="DataI18n" />
         </Feature>
 
         <Directory Id="TARGETDIR" Name="SourceDir">
@@ -195,6 +197,26 @@
                                           Name="pt_br.toml" />
                                     <RemoveFolder Id="RemoveDataLayoutMappingsDir"
                                                   Directory="DataLayoutMappingsDir"
+                                                  On="uninstall" />
+                                </Component>
+                            </Directory>
+                            <Directory Id="DataI18nDir" Name="i18n">
+                                <Component Id="DataI18n"
+                                           Guid="$(var.DataI18nComponentGuid)">
+                                    <RegistryValue Root="HKCU"
+                                                   Key="$(var.InstallRegKey)"
+                                                   Name="DataI18n"
+                                                   Type="integer"
+                                                   Value="1"
+                                                   KeyPath="yes" />
+                                    <!-- UI translations. English is compiled
+                                         into every call site, so a missing
+                                         catalog costs nothing. -->
+                                    <File Id="I18nUk"
+                                          Source="$(var.DataDir)\i18n\uk.toml"
+                                          Name="uk.toml" />
+                                    <RemoveFolder Id="RemoveDataI18nDir"
+                                                  Directory="DataI18nDir"
                                                   On="uninstall" />
                                 </Component>
                             </Directory>

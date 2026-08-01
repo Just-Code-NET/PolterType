@@ -979,7 +979,10 @@ decision and opens no socket. The seam is real and empty. Details in
 - [x] **Installers**: MSI (WiX), universal DMG, AppImage (x86_64
       since 0.1 — earlier than Phase 9 planned; aarch64 added in
       0.7.0, built natively on an ARM64 runner).
-- [ ] UI translation (i18n) — the interface is English-only.
+- [x] UI translation (i18n) — done in 0.10.0. Catalogs are data
+      (`data/i18n/<lang>.toml`), English is compiled in at every call
+      site as the fallback, and Ukrainian ships. Adding a language is
+      one file — see `docs/TRANSLATING_THE_UI.md`.
 - [x] Screenshots in the README — landed 2026-07-13
       (`docs/screenshots/settings-window.png`).
 

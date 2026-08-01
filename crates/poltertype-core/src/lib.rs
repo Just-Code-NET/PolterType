@@ -7,6 +7,7 @@ pub mod audio;
 pub mod commands;
 pub mod data_dir;
 pub mod engine;
+pub mod i18n;
 pub mod layouts;
 pub mod settings;
 pub mod wordlist_profiles;

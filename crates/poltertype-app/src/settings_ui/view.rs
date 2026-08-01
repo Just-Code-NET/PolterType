@@ -13,6 +13,8 @@ use iced::widget::{
 };
 use iced::{Alignment, Element, Font, Length, Padding};
 
+use poltertype_core::i18n::{tr, tr_args};
+
 use super::consts::*;
 use super::enums::*;
 use super::helpers::*;
@@ -102,7 +104,11 @@ impl SettingsApp {
                             .font(FONT_BOLD)
                             .color(b.ink),
                     )
-                    .push(Text::new("Settings").size(11).color(b.muted)),
+                    .push(
+                        Text::new(tr("ui.settings", "Settings"))
+                            .size(11)
+                            .color(b.muted),
+                    ),
             );
 
         Container::new(
@@ -158,27 +164,38 @@ impl SettingsApp {
         // "add language" button that (deliberately) doesn't exist:
         // PolterType follows the OS keyboard configuration instead of
         // keeping a second list to drift out of sync.
-        let subtitle = "This list mirrors the keyboard layouts enabled in your \
+        let subtitle = tr(
+            "languages.subtitle",
+            "This list mirrors the keyboard layouts enabled in your \
              operating system. To add or remove a language, change your \
-             system's keyboard settings, then reopen this window."
-            .to_owned();
+             system's keyboard settings, then reopen this window.",
+        )
+        .to_owned();
 
         let status = if implicit_all {
-            "All of them are currently considered. Untick 'Active' to \
-             restrict PolterType to a subset."
-                .to_owned()
+            tr(
+                "languages.status_all",
+                "All of them are currently considered. Untick 'Active' to \
+                 restrict PolterType to a subset.",
+            )
+            .to_owned()
         } else {
-            format!(
+            tr_args(
+                "languages.status_restricted",
                 "Restricted to {} layout(s). Tick more to include them, \
                  or hit 'Reset to defaults' on the About pane to go back \
                  to 'use every OS layout'.",
-                allow_list.len()
+                &[&allow_list.len().to_string()],
             )
         };
 
         let mut col = Column::new()
             .spacing(14)
-            .push(pane_header(b, "Languages", subtitle))
+            .push(pane_header(
+                b,
+                tr("languages.languages", "Languages"),
+                subtitle,
+            ))
             .push(Text::new(status).size(12).color(b.muted));
 
         if self.os_layouts.is_empty() {
@@ -206,7 +223,7 @@ impl SettingsApp {
                                 .width(Length::FillPortion(2)),
                         )
                         .push(
-                            Checkbox::new("Active", is_active_effective)
+                            Checkbox::new(tr("languages.active", "Active"), is_active_effective)
                                 .text_size(13)
                                 .on_toggle({
                                     let id = id.clone();
@@ -215,7 +232,7 @@ impl SettingsApp {
                                 .width(Length::FillPortion(1)),
                         )
                         .push(
-                            Checkbox::new("Ignore", is_ignored)
+                            Checkbox::new(tr("languages.ignore", "Ignore"), is_ignored)
                                 .text_size(13)
                                 .on_toggle({
                                     let id = id.clone();
@@ -242,17 +259,22 @@ impl SettingsApp {
         let row = |label: &'static str, current: &str, kind: HotkeyKind| -> Element<'_, Message> {
             let capturing = self.capturing == Some(kind);
             let display: Element<'_, Message> = if capturing {
-                Text::new("Press a combination… (Esc to cancel)")
-                    .size(13)
-                    .color(b.warn)
-                    .into()
+                Text::new(tr(
+                    "hotkeys.press_combination_esc_cancel",
+                    "Press a combination… (Esc to cancel)",
+                ))
+                .size(13)
+                .color(b.warn)
+                .into()
             } else {
                 hotkey_chips(b, current)
             };
             let action = if capturing {
-                Button::new(Text::new("Cancel").size(12)).on_press(Message::HotkeyRebindCancel)
+                Button::new(Text::new(tr("hotkeys.cancel", "Cancel")).size(12))
+                    .on_press(Message::HotkeyRebindCancel)
             } else {
-                Button::new(Text::new("Rebind").size(12)).on_press(Message::HotkeyRebindStart(kind))
+                Button::new(Text::new(tr("hotkeys.rebind", "Rebind")).size(12))
+                    .on_press(Message::HotkeyRebindStart(kind))
             };
             Row::new()
                 .spacing(16)
@@ -272,7 +294,7 @@ impl SettingsApp {
             .spacing(14)
             .push(pane_header(
                 b,
-                "Hotkeys",
+                tr("hotkeys.hotkeys", "Hotkeys"),
                 "Global hotkeys are registered with the OS at startup. \
                  Click 'Rebind', press the new combination, then save. \
                  The new binding takes effect after the tray restarts \
@@ -309,7 +331,7 @@ impl SettingsApp {
         let b = self.brand();
         let mut col = Column::new().spacing(14).push(pane_header(
             b,
-            "Commands",
+            tr("commands.commands", "Commands"),
             "Type a short token, get a phrase — like classic snippet expanders. \
              For example: typing the trigger `anrl` + space expands into \
              `Anatomical Reference List `. The engine watches every word \
@@ -322,9 +344,12 @@ impl SettingsApp {
         // ── Existing commands list ──────────────────────────────────
         if self.settings.commands.is_empty() {
             col = col.push(card(
-                Text::new("No commands yet — fill the form below to add one.")
-                    .size(12)
-                    .color(b.muted),
+                Text::new(tr(
+                    "commands.no_commands_yet_fill",
+                    "No commands yet — fill the form below to add one.",
+                ))
+                .size(12)
+                .color(b.muted),
             ));
         } else {
             let mut rows = Column::new().spacing(10);
@@ -369,9 +394,10 @@ impl SettingsApp {
                 .into()
         };
 
-        let mut form = Column::new()
-            .spacing(10)
-            .push(section_title(b, "Add a new command"));
+        let mut form = Column::new().spacing(10).push(section_title(
+            b,
+            tr("commands.add_new_command", "Add a new command"),
+        ));
 
         form = form.push(
             Row::new()
@@ -486,7 +512,7 @@ impl SettingsApp {
                 .push(status)
                 .push(Space::with_width(Length::Fill))
                 .push(
-                    Button::new(Text::new("Add command").size(12))
+                    Button::new(Text::new(tr("commands.add_command", "Add command")).size(12))
                         .on_press(Message::CommandAdd)
                         .style(theme::primary)
                         .padding(Padding {
@@ -514,7 +540,7 @@ impl SettingsApp {
         let b = self.brand();
         let mut col = Column::new().spacing(14).push(pane_header(
             b,
-            "Wordlists",
+            tr("wordlists.wordlists", "Wordlists"),
             "Add language-specific words to the per-layout dictionary \
              overlay. Use the Save button below to persist your edits, \
              or just close the window — either way, the engine's \
@@ -652,17 +678,23 @@ impl SettingsApp {
                 .placeholder("# one word per line — '#' starts a comment\n")
                 .into()
         } else {
-            Text::new("Pick a layout above to start editing.")
-                .size(13)
-                .color(b.muted)
-                .into()
+            Text::new(tr(
+                "wordlists.pick_layout_above_start",
+                "Pick a layout above to start editing.",
+            ))
+            .size(13)
+            .color(b.muted)
+            .into()
         };
         col = col.push(editor);
 
         let dirty_marker: Element<'_, Message> = if self.wordlist_dirty {
             // Plain text, no bullet glyph — the default UI font on a
             // clean Linux install may lack it and render tofu.
-            Text::new("unsaved changes").size(11).color(b.warn).into()
+            Text::new(tr("wordlists.unsaved_changes", "unsaved changes"))
+                .size(11)
+                .color(b.warn)
+                .into()
         } else {
             Space::with_width(Length::Shrink).into()
         };
@@ -699,7 +731,7 @@ impl SettingsApp {
         let b = self.brand();
         let col = Column::new().spacing(14).push(pane_header(
             b,
-            "Exceptions",
+            tr("exceptions.exceptions", "Exceptions"),
             "PolterType skips auto-correction when the foreground app's \
              executable basename is in this list. Manual switch (the \
              hotkey on the Hotkeys pane) bypasses the list — devs can \
@@ -710,9 +742,12 @@ impl SettingsApp {
         let mut rows = Column::new().spacing(8);
         if self.settings.exceptions.disabled_apps.is_empty() {
             rows = rows.push(
-                Text::new("No exceptions — PolterType is active in every app.")
-                    .size(12)
-                    .color(b.muted),
+                Text::new(tr(
+                    "exceptions.no_exceptions_poltertype_active",
+                    "No exceptions — PolterType is active in every app.",
+                ))
+                .size(12)
+                .color(b.muted),
             );
         }
         for (idx, entry) in self.settings.exceptions.disabled_apps.iter().enumerate() {
@@ -754,7 +789,7 @@ impl SettingsApp {
                             .width(Length::Fill),
                     )
                     .push(
-                        Button::new(Text::new("Add").size(13))
+                        Button::new(Text::new(tr("exceptions.add", "Add")).size(13))
                             .on_press(Message::ExceptionAdd)
                             .style(theme::primary)
                             .padding(Padding {
@@ -780,20 +815,35 @@ impl SettingsApp {
 
         let behaviour = Column::new()
             .spacing(12)
-            .push(section_title(b, "Behaviour"))
+            .push(section_title(b, tr("general.behaviour", "Behaviour")))
             .push(
-                Checkbox::new("Start automatically when I sign in", g.autostart)
-                    .text_size(13)
-                    .on_toggle(Message::AutostartToggled),
-            )
-            .push(
-                Checkbox::new("Play a soft chime on correction", g.sound_on_correct)
-                    .text_size(13)
-                    .on_toggle(Message::SoundOnCorrectToggled),
+                Checkbox::new(
+                    tr(
+                        "general.start_automatically_when_i",
+                        "Start automatically when I sign in",
+                    ),
+                    g.autostart,
+                )
+                .text_size(13)
+                .on_toggle(Message::AutostartToggled),
             )
             .push(
                 Checkbox::new(
-                    "Show a 2-second system notification on auto-switch",
+                    tr(
+                        "general.play_soft_chime_on",
+                        "Play a soft chime on correction",
+                    ),
+                    g.sound_on_correct,
+                )
+                .text_size(13)
+                .on_toggle(Message::SoundOnCorrectToggled),
+            )
+            .push(
+                Checkbox::new(
+                    tr(
+                        "general.show_second_system_notification",
+                        "Show a 2-second system notification on auto-switch",
+                    ),
                     g.show_notifications,
                 )
                 .text_size(13)
@@ -801,7 +851,10 @@ impl SettingsApp {
             )
             .push(
                 Checkbox::new(
-                    "Skip auto-switch on identifiers (foo_bar, snake_case, …)",
+                    tr(
+                        "general.skip_auto_switch_on",
+                        "Skip auto-switch on identifiers (foo_bar, snake_case, …)",
+                    ),
                     e.suppress_in_identifiers,
                 )
                 .text_size(13)
@@ -811,9 +864,9 @@ impl SettingsApp {
                 Row::new()
                     .spacing(10)
                     .align_y(Alignment::Center)
-                    .push(Text::new("Idle timeout (ms):").size(13))
+                    .push(Text::new(tr("general.idle_timeout_ms", "Idle timeout (ms):")).size(13))
                     .push(
-                        Button::new(Text::new("-100").size(12))
+                        Button::new(Text::new(tr("general.text", "-100")).size(12))
                             .on_press(Message::IdleTimeoutDelta(-100))
                             .style(theme::secondary)
                             .padding(Padding {
@@ -829,7 +882,7 @@ impl SettingsApp {
                             .font(Font::MONOSPACE),
                     )
                     .push(
-                        Button::new(Text::new("+100").size(12))
+                        Button::new(Text::new(tr("general.text2", "+100")).size(12))
                             .on_press(Message::IdleTimeoutDelta(100))
                             .style(theme::secondary)
                             .padding(Padding {
@@ -840,9 +893,12 @@ impl SettingsApp {
                             }),
                     )
                     .push(
-                        Text::new("Buffer is cleared after this much keyboard silence.")
-                            .size(11)
-                            .color(b.muted),
+                        Text::new(tr(
+                            "general.buffer_cleared_after_this",
+                            "Buffer is cleared after this much keyboard silence.",
+                        ))
+                        .size(11)
+                        .color(b.muted),
                     ),
             );
 
@@ -864,12 +920,15 @@ impl SettingsApp {
         }
         let appearance = Column::new()
             .spacing(12)
-            .push(section_title(b, "Appearance"))
+            .push(section_title(b, tr("general.appearance", "Appearance")))
             .push(theme_row)
             .push(
-                Text::new("System follows the OS light/dark preference. Save to persist.")
-                    .size(11)
-                    .color(b.muted),
+                Text::new(tr(
+                    "general.system_follows_os_light",
+                    "System follows the OS light/dark preference. Save to persist.",
+                ))
+                .size(11)
+                .color(b.muted),
             );
 
         // Updates. This pane is the app's disclosure surface for the one
@@ -902,7 +961,7 @@ impl SettingsApp {
         let interval_row = Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
-            .push(Text::new("Check every (hours):").size(13))
+            .push(Text::new(tr("general.check_every_hours", "Check every (hours):")).size(13))
             .push(step("-1", -1))
             .push(
                 Text::new(format!("{:>3}", u.check_interval_hours))
@@ -914,10 +973,13 @@ impl SettingsApp {
 
         let updates = Column::new()
             .spacing(12)
-            .push(section_title(b, "Updates"))
+            .push(section_title(b, tr("general.updates", "Updates")))
             .push(
                 Checkbox::new(
-                    "Download new versions automatically, install on restart",
+                    tr(
+                        "general.download_new_versions_automatically",
+                        "Download new versions automatically, install on restart",
+                    ),
                     u.enabled,
                 )
                 .text_size(13)
@@ -944,7 +1006,7 @@ impl SettingsApp {
 
         let folders = Column::new()
             .spacing(12)
-            .push(section_title(b, "Folders"))
+            .push(section_title(b, tr("general.folders", "Folders")))
             .push(
                 Row::new()
                     .spacing(8)
@@ -958,7 +1020,7 @@ impl SettingsApp {
             .spacing(14)
             .push(pane_header(
                 b,
-                "General",
+                tr("general.general", "General"),
                 "Behaviour of the tray app and the correction engine.".to_owned(),
             ))
             .push(card(behaviour))
@@ -992,7 +1054,7 @@ impl SettingsApp {
         let max_row = Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
-            .push(Text::new("Max suggestions (1–9):").size(13))
+            .push(Text::new(tr("suggestions.max_suggestions", "Max suggestions (1–9):")).size(13))
             .push(step("-1", Message::SuggestionMaxDelta(-1)))
             .push(
                 Text::new(format!("{:>2}", s.max_suggestions))
@@ -1002,15 +1064,24 @@ impl SettingsApp {
             )
             .push(step("+1", Message::SuggestionMaxDelta(1)))
             .push(
-                Text::new("Each entry is applied with one digit key, so 9 is the ceiling.")
-                    .size(11)
-                    .color(b.muted),
+                Text::new(tr(
+                    "suggestions.each_entry_applied_with",
+                    "Each entry is applied with one digit key, so 9 is the ceiling.",
+                ))
+                .size(11)
+                .color(b.muted),
             );
 
         let timeout_row = Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
-            .push(Text::new("Tooltip timeout (seconds):").size(13))
+            .push(
+                Text::new(tr(
+                    "suggestions.tooltip_timeout_seconds",
+                    "Tooltip timeout (seconds):",
+                ))
+                .size(13),
+            )
             .push(step("-5", Message::SuggestionTimeoutDelta(-5)))
             .push(
                 Text::new(format!("{:>3}", s.tooltip_timeout_secs))
@@ -1020,18 +1091,27 @@ impl SettingsApp {
             )
             .push(step("+5", Message::SuggestionTimeoutDelta(5)))
             .push(
-                Text::new("3–600 seconds; the tooltip hides itself when the time is up.")
-                    .size(11)
-                    .color(b.muted),
+                Text::new(tr(
+                    "suggestions.seconds_tooltip_hides_itself",
+                    "3–600 seconds; the tooltip hides itself when the time is up.",
+                ))
+                .size(11)
+                .color(b.muted),
             );
 
         let tooltip_card = Column::new()
             .spacing(12)
-            .push(section_title(b, "Tooltip"))
+            .push(section_title(b, tr("suggestions.tooltip", "Tooltip")))
             .push(
-                Checkbox::new("Show suggestions for mistyped words", s.enabled)
-                    .text_size(13)
-                    .on_toggle(Message::SuggestionsToggled),
+                Checkbox::new(
+                    tr(
+                        "suggestions.show_suggestions_mistyped_words",
+                        "Show suggestions for mistyped words",
+                    ),
+                    s.enabled,
+                )
+                .text_size(13)
+                .on_toggle(Message::SuggestionsToggled),
             )
             .push(max_row)
             .push(timeout_row);
@@ -1048,12 +1128,21 @@ impl SettingsApp {
 
         let mut chord_card = Column::new()
             .spacing(12)
-            .push(section_title(b, "Keyboard accept"))
+            .push(section_title(
+                b,
+                tr("suggestions.keyboard_accept", "Keyboard accept"),
+            ))
             .push(
                 Row::new()
                     .spacing(10)
                     .align_y(Alignment::Center)
-                    .push(Text::new("Keyboard accept modifiers:").size(13))
+                    .push(
+                        Text::new(tr(
+                            "suggestions.keyboard_accept_modifiers",
+                            "Keyboard accept modifiers:",
+                        ))
+                        .size(13),
+                    )
                     .push(modifiers_input),
             )
             .push(
@@ -1087,7 +1176,7 @@ impl SettingsApp {
             .spacing(14)
             .push(pane_header(
                 b,
-                "Suggestions",
+                tr("suggestions.suggestions", "Suggestions"),
                 "Offer dictionary suggestions in a small tooltip when a typed word looks \
                  misspelled. Clicking a suggestion (or pressing the accept chord + a digit) \
                  replaces the word."
@@ -1125,7 +1214,13 @@ impl SettingsApp {
                     .size(12)
                     .color(b.muted),
             )
-            .push(Text::new("Cross-platform automatic keyboard layout switcher.").size(13))
+            .push(
+                Text::new(tr(
+                    "about.cross_platform_automatic_keyboard",
+                    "Cross-platform automatic keyboard layout switcher.",
+                ))
+                .size(13),
+            )
             .push(
                 Row::new()
                     .spacing(4)
@@ -1137,31 +1232,41 @@ impl SettingsApp {
 
         let escape_hatches = Column::new()
             .spacing(12)
-            .push(section_title(b, "Power-user escape hatches"))
+            .push(section_title(
+                b,
+                tr(
+                    "about.power_user_escape_hatches",
+                    "Power-user escape hatches",
+                ),
+            ))
             .push(
                 Row::new()
                     .spacing(8)
                     .push(
-                        Button::new(Text::new("Reset to defaults").size(13))
-                            .on_press(Message::ResetDefaults)
-                            .style(theme::danger)
-                            .padding(Padding {
-                                top: 6.0,
-                                right: 12.0,
-                                bottom: 6.0,
-                                left: 12.0,
-                            }),
+                        Button::new(
+                            Text::new(tr("about.reset_defaults", "Reset to defaults")).size(13),
+                        )
+                        .on_press(Message::ResetDefaults)
+                        .style(theme::danger)
+                        .padding(Padding {
+                            top: 6.0,
+                            right: 12.0,
+                            bottom: 6.0,
+                            left: 12.0,
+                        }),
                     )
                     .push(
-                        Button::new(Text::new("Reload from disk").size(13))
-                            .on_press(Message::Reload)
-                            .style(theme::secondary)
-                            .padding(Padding {
-                                top: 6.0,
-                                right: 12.0,
-                                bottom: 6.0,
-                                left: 12.0,
-                            }),
+                        Button::new(
+                            Text::new(tr("about.reload_from_disk", "Reload from disk")).size(13),
+                        )
+                        .on_press(Message::Reload)
+                        .style(theme::secondary)
+                        .padding(Padding {
+                            top: 6.0,
+                            right: 12.0,
+                            bottom: 6.0,
+                            left: 12.0,
+                        }),
                     ),
             )
             .push(
@@ -1203,7 +1308,7 @@ impl SettingsApp {
                     .push(banner)
                     .push(Space::with_width(Length::Fill))
                     .push(
-                        Button::new(Text::new("Reload").size(13))
+                        Button::new(Text::new(tr("footer.reload", "Reload")).size(13))
                             .on_press(Message::Reload)
                             .style(theme::secondary)
                             .padding(Padding {
@@ -1214,7 +1319,7 @@ impl SettingsApp {
                             }),
                     )
                     .push(
-                        Button::new(Text::new("Save").size(13))
+                        Button::new(Text::new(tr("footer.save", "Save")).size(13))
                             .on_press(Message::Save)
                             .style(theme::primary)
                             .padding(Padding {
@@ -1305,7 +1410,7 @@ fn hotkey_chips(b: &'static theme::BrandPalette, combo: &str) -> Element<'static
     let mut row = Row::new().spacing(4).align_y(Alignment::Center);
     for (i, part) in combo.split('+').enumerate() {
         if i > 0 {
-            row = row.push(Text::new("+").size(11).color(b.muted));
+            row = row.push(Text::new(tr("footer.text", "+")).size(11).color(b.muted));
         }
         row = row.push(keycap_chip(display_key_token(part)));
     }
