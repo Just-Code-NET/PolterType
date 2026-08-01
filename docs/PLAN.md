@@ -16,9 +16,12 @@
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
 > * **What does not exist despite being described below** —
->   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` answers
->   on Windows / Hyprland / X11 and nowhere else, and AT-SPI listening
->   / `libei` do not exist. The AI subsystem *is* wired to the engine
+>   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` is
+>   complete on Windows / Hyprland / X11, partial on other Wayland
+>   (AT-SPI sees only apps with an accessibility bridge, which
+>   excludes most terminals) and absent on macOS; AT-SPI *keystroke
+>   listening* is decided against with measurements, and `libei` does
+>   not exist. The AI subsystem *is* wired to the engine
 >   as of 0.8.0, but both backends are still stubs that return no
 >   opinion — "wired, no backend yet", never "AI-powered". The guided
 >   onboarding window does exist as of 0.7.0 — but its macOS half has
@@ -933,11 +936,16 @@ separate `poltertype --settings` process.
       GlobalShortcuts, InputCapture; only `kde.portal` offers
       RemoteDesktop), so it cannot be written and verified here.
       Needs a GNOME or KDE session to develop against.
-- [ ] **`FocusTracker` for GNOME/KDE Wayland** — the *window* half
-      still needs per-DE backends (KWin script / GNOME shell
-      extension), see §3.9. The *caret* half landed in 0.7.0:
-      AT-SPI answers on any compositor, so those sessions get a
-      caret-only tracker and the tooltip anchors properly there.
+- [x] **`FocusTracker` for GNOME/KDE Wayland** — done in 0.10.0, and
+      not the way this line planned. The per-DE backends (KWin script
+      / GNOME shell extension) turned out to be unnecessary: AT-SPI
+      events arrive from the application's own bus connection, so the
+      a11y bus can be asked which process sent one. One backend, no
+      user-installed artifacts, every compositor. The caret half
+      landed the same way in 0.7.0.
+      **Partial by nature:** only apps with an accessibility bridge
+      are visible, which excludes most terminals. See
+      `atspi_focus.rs`.
 
 ### Phase 7 — AI skeleton
 

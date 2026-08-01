@@ -330,12 +330,15 @@ explicitly:
   windows developers type in. Add the entries you want, or manage
   them on the **Exceptions** pane in Settings.
 
-> **The skip list needs a focus tracker, and one doesn't exist
-> everywhere.** Reading which application has focus is implemented on
-> Windows, Hyprland and X11. On macOS and on non-Hyprland Wayland
-> (GNOME/KDE) the tracker is a no-op, so the per-app skip list, the
-> per-app wordlist profiles below, and the `apps = [...]` scoping on
-> smart commands silently do nothing there.
+> **The skip list needs a focus tracker, and it isn't equally good
+> everywhere.** Reading which application has focus is complete on
+> Windows, Hyprland and X11. On other Wayland sessions (GNOME, KDE)
+> PolterType asks the accessibility bus instead — which works, but
+> only for applications that expose an accessibility bridge. Most
+> terminals don't, so the per-app skip list, per-app wordlist
+> profiles, and `apps = [...]` scoping on smart commands may simply
+> not fire there. On macOS the tracker is still a no-op and they do
+> nothing at all.
 
 ### Adding your own vocabulary
 
