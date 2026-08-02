@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-01 (v0.9.0).
+> Created: 2026-05-02. Last updated: 2026-08-02 (v0.10.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -9,18 +9,23 @@
 > freshest summaries:
 >
 > * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.9.0; most recently nine more bundled languages, a Windows
->   keystroke gate that is opt-in and unverified, and the AI seam
->   connected to the engine) and §10 below, where every item is marked.
+>   0.10.0; most recently a user-supplied LLM interface, focused-app
+>   tracking on GNOME/KDE via the a11y bus, UI translation, multi-token
+>   smart commands with `run_shell`, and plug-in installation) and §10
+>   below, where every item is marked.
 > * **Why it is this way** — `DECISIONS.md`; several decisions below
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
 > * **What does not exist despite being described below** —
->   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` answers
->   on Windows / Hyprland / X11 and nowhere else, and AT-SPI listening
->   / `libei` do not exist. The AI subsystem *is* wired to the engine
->   as of 0.8.0, but both backends are still stubs that return no
->   opinion — "wired, no backend yet", never "AI-powered". The guided
+>   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` is
+>   complete on Windows / Hyprland / X11, partial on other Wayland
+>   (AT-SPI sees only apps with an accessibility bridge, which
+>   excludes most terminals) and absent on macOS; AT-SPI *keystroke
+>   listening* is decided against with measurements, and `libei` does
+>   not exist. The AI subsystem ships an *interface* and no backend
+>   at all as of 0.10.0 — a socket the user points at their own model.
+>   Never call it "AI-powered": out of the box nothing answers. The
+>   guided
 >   onboarding window does exist as of 0.7.0 — but its macOS half has
 >   never run on a Mac.
 >
@@ -916,90 +921,25 @@ separate `poltertype --settings` process.
       itself) was **rejected** — see `DECISIONS.md`; that rejection
       still stands, and the Setup pane (0.7.0) copies the command to
       the clipboard rather than running it.
-- [ ] **Wayland AT-SPI fallback listener** via `atspi` — not
-      implemented (the dependency is not in the tree).
-- [ ] **`libei` (`reis`) as the portal variant of send-keys** — not
-      implemented; `uinput` is currently the only path.
-- [ ] **`FocusTracker` for GNOME/KDE Wayland** — the *window* half
-      still needs per-DE backends (KWin script / GNOME shell
-      extension), see §3.9. The *caret* half landed in 0.7.0:
-      AT-SPI answers on any compositor, so those sessions get a
-      caret-only tracker and the tooltip anchors properly there.
-
-### Phase 7 — AI skeleton
-
-The skeleton exists and **is wired to the engine since 0.8.0**:
-`poltertype-app` reads `[[ai.plugins]]`, builds detectors through
-`poltertype_ai::build_detectors` and appends them to the pipeline.
-What it still has no use for is a **backend** — both shipped ones are
-stubs that return no opinion, so enabling the feature changes no
-decision and opens no socket. The seam is real and empty. Details in
-`docs/AI.md`.
-
-- [x] The `poltertype-ai` crate behind `feature = "ai"` (disabled by
-      default).
-- [x] The `Detector` + `WordRewriter` traits declared in
-      `poltertype-detect`.
-- [x] `docs/AI.md`.
-- [x] **Traits integrated into the pipeline** — 0.8.0. `[[ai.plugins]]`
-      entries become detectors and are *appended* to the built-in list;
-      `[ai].enabled` and `allow_remote` are both read. A bad entry is
-      skipped with its id logged rather than costing the others, and an
-      `api_key_ref` that is not a `keyring:` reference is refused.
-- [ ] A reference `LocalOnnxDetector` with `lid.176` — still a stub:
-      it validates the model path and then loads nothing.
-- [ ] A reference `RemoteLlmDetector` (Anthropic API) — still a stub;
-      no build makes network calls.
-
-### Phase 8 — Polish, release ✅ (partially)
-
-- [x] Icons (rendered by `xtask assets icon-png`).
-- [x] GitHub Action — artifacts on tag (`release.yml`).
-- [x] **Installers**: MSI (WiX), universal DMG, AppImage (x86_64
-      since 0.1 — earlier than Phase 9 planned; aarch64 added in
-      0.7.0, built natively on an ARM64 runner).
-- [ ] UI translation (i18n) — the interface is English-only.
-- [x] Screenshots in the README — landed 2026-07-13
-      (`docs/screenshots/settings-window.png`).
-
-- [x] **Auto-update** from GitHub Releases — background check,
-      checksum-verified download, install on restart
-      (`poltertype-update`). Landed 2026-07-13.
-
-### Phase 9 (later)
-
-- **Signing** the installers (Apple Developer ID, Windows EV/OV) —
-  today all artifacts ship **unsigned**. This is also what would let
-  the macOS updater stop stripping `com.apple.quarantine`.
-- **Signing the update manifest** — *started in 0.7.0, not finished.*
-  `latest.json` now carries a detached ed25519 signature, made on the
-  maintainer's machine with a key that never enters CI and verified
-  against a public key compiled into the binary. What remains is the
-  second half of the rollout: `REQUIRE_SIGNATURE` is still `false`, so
-  a missing signature is accepted with a warning. Flip it once a signed
-  manifest has been the published `latest.json` for a full release
-  cycle — until then the updater still trusts whoever can publish a
-  release. See `docs/DECISIONS.md`, 2026-07-31.
-- Stores: Microsoft Store. winget, brew and AUR manifests are staged in
-  `packaging/` and not yet published anywhere.
-- Plugin marketplace: the loader is live (data-only packs); what
-  remains open is the pack install / update / signing UX. WASM
-  plugins — a separate topic.
-
----
-
-## 11. v0.1 readiness metrics (definition of done)
-
-> **v0.1.0 has shipped** (the "First stable" release, see CHANGELOG).
-> Below — what from this list came true, and what did not.
-
-- [x] Windows: the full cycle "`руддщ` → `hello`, sound".
-- [x] Linux: the full cycle on Wayland (Hyprland + keyd — the
-      maintainer's daily machine) after `setup-linux.sh`; on X11 —
-      **without any script at all** (no longer a "fallback" but a
-      first-class path).
-- [x] macOS (Intel): the full cycle, confirmed on real hardware by an
-      outside contributor at 0.6.2 (macOS 15).
+- [x] ~~**Wayland AT-SPI fallback listener** via `atspi`~~ —
+      **decided against 2026-08-01, with measurements.**
+      `RegisterKeystrokeListener` returns false on a wlroots session
+      and delivers nothing even with injected keys, because
+      `at-spi2-registryd` can only relay what the compositor hands it
+      and only mutter does. Where it *would* work (X11) we already
+      have a listener that needs no permissions, so it adds nothing
+      there. See `DECISIONS.md`, 2026-08-01.
+- [x] **Portal send-keys** — done in 0.10.0, and not via `libei`.
+      The portal exposes `NotifyKeyboardKeycode` as a plain D-Bus
+      method, which is exactly what a correction needs; going through
+      `ConnectToEIS` and the libei protocol would have meant a new
+      protocol implementation and a heavy dependency to send twenty
+      keystrokes, and would still need the same session negotiation.
+      `zbus` was already in the tree.
+      **Never executed** — there is no RemoteDesktop backend on the
+      maintainer's machine. Tried only when `uinput` cannot be opened,
+      so nobody who already ran `setup-linux.sh` sees a consent
+      dialog. See `linux/portal/`.
 - [ ] macOS (Apple Silicon): still nobody. And since 0.7.0 changed the
       macOS input path — `FlagsChanged`, modifier release — even the
       Intel confirmation predates what now ships. The only unconfirmed

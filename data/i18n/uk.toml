@@ -1,0 +1,99 @@
+# Ukrainian translation of the PolterType settings window.
+#
+# Format: one flat table of `key = "text"`. The key is stable; the
+# English original lives in the source at each call site and is what
+# you get when a key is missing here, so an incomplete file is safe —
+# untranslated strings simply stay English.
+#
+# An empty value counts as "not translated yet" and is ignored, so
+# leaving `key = ""` in place is fine and better than a placeholder.
+#
+# `{}` marks a value substituted at run time, in order. Keep the same
+# number of them as the English unless your language genuinely needs
+# fewer; extras are left visible rather than crashing anything.
+#
+# Do not translate: the product name PolterType, layout ids (en-US),
+# config keys, and file names.
+
+# ── window chrome ────────────────────────────────────────────────────
+"ui.settings" = "Налаштування"
+"footer.save" = "Зберегти"
+"footer.reload" = "Перезавантажити"
+
+# ── Setup pane ───────────────────────────────────────────────────────
+"setup.setup" = "Налаштування системи"
+"setup.check_again" = "Перевірити ще раз"
+"setup.full_setup_guide" = "Повна інструкція"
+"setup.layout_switching_unavailable" = "Перемикання розкладки недоступне"
+"setup.what_backends_are_supported" = "Які механізми підтримуються?"
+
+# ── Languages pane ───────────────────────────────────────────────────
+"languages.languages" = "Мови"
+"languages.active" = "Активна"
+"languages.ignore" = "Ігнорувати"
+"languages.subtitle" = """
+Цей список повторює розкладки, увімкнені у вашій операційній системі. \
+Щоб додати або прибрати мову, змініть налаштування клавіатури в системі \
+та відкрийте це вікно знову."""
+"languages.status_all" = """
+Зараз враховуються всі. Зніміть позначку «Активна», щоб обмежити \
+PolterType підмножиною."""
+"languages.status_restricted" = """
+Обмежено до {} розкладок. Позначте більше, щоб їх додати, або \
+натисніть «Скинути до типових» на вкладці «Про програму», щоб \
+повернутися до «використовувати всі розкладки системи»."""
+
+# ── Hotkeys pane ─────────────────────────────────────────────────────
+"hotkeys.hotkeys" = "Гарячі клавіші"
+"hotkeys.cancel" = "Скасувати"
+"hotkeys.rebind" = "Перепризначити"
+"hotkeys.press_combination_esc_cancel" = "Натисніть комбінацію… (Esc — скасувати)"
+
+# ── Commands pane ────────────────────────────────────────────────────
+"commands.commands" = "Команди"
+"commands.add_command" = "Додати команду"
+"commands.add_new_command" = "Додати нову команду"
+"commands.no_commands_yet_fill" = "Команд ще немає — заповніть форму нижче, щоб додати."
+
+# ── Wordlists pane ───────────────────────────────────────────────────
+"wordlists.wordlists" = "Словники"
+"wordlists.pick_layout_above_start" = "Оберіть розкладку вгорі, щоб почати редагування."
+"wordlists.unsaved_changes" = "незбережені зміни"
+
+# ── Exceptions pane ──────────────────────────────────────────────────
+"exceptions.exceptions" = "Винятки"
+"exceptions.add" = "Додати"
+"exceptions.no_exceptions_poltertype_active" = "Винятків немає — PolterType працює в усіх застосунках."
+
+# ── Suggestions pane ─────────────────────────────────────────────────
+"suggestions.suggestions" = "Підказки"
+"suggestions.tooltip" = "Спливна підказка"
+"suggestions.keyboard_accept" = "Прийняття з клавіатури"
+"suggestions.show_suggestions_mistyped_words" = "Показувати підказки для слів із помилками"
+"suggestions.max_suggestions" = "Максимум підказок (1–9):"
+"suggestions.each_entry_applied_with" = "Кожен пункт застосовується однією цифрою, тому 9 — це межа."
+"suggestions.tooltip_timeout_seconds" = "Час показу підказки (секунди):"
+"suggestions.seconds_tooltip_hides_itself" = "3–600 секунд; підказка ховається сама, коли час вийде."
+"suggestions.keyboard_accept_modifiers" = "Модифікатори для прийняття з клавіатури:"
+
+# ── General pane ─────────────────────────────────────────────────────
+"general.general" = "Загальні"
+"general.behaviour" = "Поведінка"
+"general.appearance" = "Вигляд"
+"general.folders" = "Теки"
+"general.updates" = "Оновлення"
+"general.start_automatically_when_i" = "Запускати автоматично при вході в систему"
+"general.play_soft_chime_on" = "Тихий звук при виправленні"
+"general.show_second_system_notification" = "Показувати системне сповіщення на 2 секунди при автоперемиканні"
+"general.skip_auto_switch_on" = "Не перемикати на ідентифікаторах (foo_bar, snake_case, …)"
+"general.idle_timeout_ms" = "Пауза до скидання буфера (мс):"
+"general.buffer_cleared_after_this" = "Буфер очищується після такої тиші на клавіатурі."
+"general.system_follows_os_light" = "«Системна» слідує за світлою/темною темою ОС. Збережіть, щоб застосувати."
+"general.download_new_versions_automatically" = "Завантажувати нові версії автоматично, встановлювати при перезапуску"
+"general.check_every_hours" = "Перевіряти кожні (годин):"
+
+# ── About pane ───────────────────────────────────────────────────────
+"about.cross_platform_automatic_keyboard" = "Кросплатформний автоматичний перемикач розкладки."
+"about.power_user_escape_hatches" = "Для досвідчених користувачів"
+"about.reload_from_disk" = "Перечитати з диска"
+"about.reset_defaults" = "Скинути до типових"

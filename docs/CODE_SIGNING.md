@@ -5,7 +5,7 @@
 > can read is not a policy — and because SignPath Foundation requires
 > one from projects it signs for.
 >
-> Last updated: 2026-08-01 (v0.9.0).
+> Last updated: 2026-08-02 (v0.10.0).
 
 PolterType asks for an unusual amount of trust: it reads every
 keystroke on the machine and can type. A signature is how a user checks

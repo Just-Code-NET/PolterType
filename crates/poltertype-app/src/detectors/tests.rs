@@ -11,13 +11,26 @@ use poltertype_types::AiPluginConfig;
 
 use super::build_ai_detectors;
 
+/// An entry pointing at a third-party API the user holds a key for.
 fn remote_entry(id: &str) -> AiPluginConfig {
     AiPluginConfig {
-        r#type: "remote-llm".to_owned(),
+        r#type: "llm".to_owned(),
         id: id.to_owned(),
         provider: Some("anthropic".to_owned()),
         model: Some("claude-sonnet-4".to_owned()),
         api_key_ref: Some("keyring:anthropic".to_owned()),
+        ..Default::default()
+    }
+}
+
+/// An entry pointing at a model on the user's own machine. Needs no
+/// key and no `allow_remote`, because nothing leaves the computer.
+fn local_entry(id: &str) -> AiPluginConfig {
+    AiPluginConfig {
+        r#type: "llm".to_owned(),
+        id: id.to_owned(),
+        provider: Some("ollama".to_owned()),
+        model: Some("llama3".to_owned()),
         ..Default::default()
     }
 }
@@ -84,4 +97,46 @@ fn allow_remote_does_not_decide_whether_the_plugin_loads() {
         plugins,
     });
     assert_eq!(off.len(), on.len());
+}
+
+/// A model the user runs themselves loads with `allow_remote` off.
+/// That switch exists to gate typed words *leaving the machine*, and
+/// a request to loopback does not — requiring it here would make
+/// people enable network access they are not using.
+#[test]
+fn a_local_model_needs_no_network_permission() {
+    let built = build_ai_detectors(&AiSettings {
+        enabled: true,
+        allow_remote: false,
+        plugins: vec![local_entry("ollama")],
+    });
+    if cfg!(feature = "ai") {
+        assert_eq!(built.len(), 1, "a loopback endpoint must load");
+    } else {
+        assert!(built.is_empty());
+    }
+}
+
+/// A config written for 0.9.0 names plug-in kinds that no longer
+/// exist. It must cost the user a log line, not the app: the entry is
+/// skipped and anything valid beside it still loads.
+#[test]
+fn a_retired_plugin_kind_is_skipped_without_taking_the_rest_down() {
+    let mut old = local_entry("stale");
+    old.r#type = "local-onnx".to_owned();
+
+    let built = build_ai_detectors(&AiSettings {
+        enabled: true,
+        allow_remote: false,
+        plugins: vec![old, local_entry("current")],
+    });
+    if cfg!(feature = "ai") {
+        assert_eq!(
+            built.len(),
+            1,
+            "the retired entry goes, the valid one stays"
+        );
+    } else {
+        assert!(built.is_empty());
+    }
 }

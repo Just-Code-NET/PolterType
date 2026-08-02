@@ -3975,6 +3975,7 @@ dependencies = [
  "poltertype-types",
  "reqwest",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tracing",
 ]
@@ -4057,6 +4058,7 @@ dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
  "crossbeam-channel",
+ "directories",
  "evdev",
  "libc",
  "parking_lot 0.12.5",

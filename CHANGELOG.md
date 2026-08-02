@@ -4,6 +4,167 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.9.0
+
+### Added
+
+- **The AI subsystem is a socket you plug your own model into.** Both
+  shipped backends were stubs that returned no opinion; they are gone.
+  What replaced them is one detector that speaks three common HTTP
+  shapes — `openai-chat`, `anthropic-messages`, `ollama-generate` —
+  and asks a model exactly one question.
+
+  **PolterType ships no model, no vendor SDK and no default endpoint.**
+  What answers is an Ollama on your own machine, an API you hold the
+  key to, or a gateway of your own, named by you in `[[ai.plugins]]`.
+  Configure nothing — the default — and there is no AI in PolterType
+  at all. An entry with neither an `endpoint` nor a `provider` preset
+  is refused with a message saying exactly that: picking one for you
+  would be choosing a vendor on your behalf.
+
+  Two properties the implementation exists to hold up.
+
+  *It cannot slow your typing down.* `judge` runs between you
+  finishing a word and the word being fixed, so the default mode never
+  waits: it answers from a cache of already-decided words and queues a
+  miss for next time. The first time you type a word the model
+  contributes nothing — exactly what the stubs did for every word —
+  and everything after it is free, because people retype the same few
+  thousand words all day. `mode = "blocking"` puts the call inline if
+  you want it, capped at 250 ms and **refused at startup with the
+  reason** above that, rather than silently clamped into lag you would
+  have to diagnose.
+
+  *Local is not remote.* `[ai].allow_remote` exists to gate typed
+  words **leaving your machine**, and a request to `127.0.0.1` does
+  not leave it — so a model you run yourself needs no network
+  permission. Requiring one would make people enable access they are
+  not using. The distinction is decided in one place, resolves no DNS
+  (a resolver answer can change between the check and the request),
+  and treats anything unparseable as remote.
+
+  What goes on the wire is one word's candidate readings and a fixed
+  instruction. Not the sentence, not the document, not the focused
+  application, and **not the layout ids** — those would reveal which
+  languages you have installed. Keys stay in the OS keychain; a literal
+  secret in `config.toml` is refused, not used. Without the `remote`
+  cargo feature no HTTP client is compiled in at all, which `cargo
+  tree` will confirm.
+
+- **PolterType knows which application you are in on GNOME and KDE.**
+  `focused_exe()` returned `None` on every Wayland session but
+  Hyprland, so `[exceptions].disabled_apps`, per-app wordlist profiles
+  and `apps = [...]` scoping were quietly inert on the two largest
+  desktops.
+
+  The plan was a KWin script plus a GNOME Shell extension — two
+  out-of-tree artifacts, in two languages, that you would have to
+  install. It turned out to be unnecessary: AT-SPI events arrive over
+  the accessibility bus from the *application's own* connection, so
+  the bus itself can be asked whose it is. One backend, nothing to
+  install, and it works on any compositor with an a11y bridge.
+
+  **Read the limit before relying on it.** Only applications with a
+  live accessibility bridge are visible — GTK, Qt and Electron answer;
+  most terminals do not, and a terminal is where developers type. An
+  app that never emits also never *un*-focuses the previous one, so
+  observations carry an age and anything older than five minutes counts
+  as no answer. This is an improvement on nothing, not an equivalent
+  of a compositor query.
+
+- **The settings window speaks other languages, starting with
+  Ukrainian.** An app whose whole subject is other people's languages
+  had an English-only interface.
+
+  Translations are data — `data/i18n/<lang>.toml`, one flat table —
+  and a file in `<config-dir>/poltertype/i18n/` wins over the shipped
+  one, so a translator can edit and reopen the window without
+  rebuilding anything. English is compiled into every call site rather
+  than loaded, so a catalog that fails to parse, a key nobody
+  translated, or a file a packager forgot degrades to readable English
+  instead of a blank button. `[general].ui_language` picks; `"system"`
+  and `"auto"` both follow the environment. Adding a language is one
+  file — see [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
+
+- **Smart-command triggers can be more than one word.** `best regards`
+  now works. The word buffer still resets at every boundary, so the
+  engine keeps the last four completed words alongside it — bounded by
+  the same idle timeout that already abandons the buffer, and cleared
+  when you change application, because half a trigger typed in one
+  window must not complete in another. It is the one place the engine
+  holds more of your text than the word you are typing, and it is
+  sized accordingly.
+
+- **`run_shell` smart commands**, off by default and deliberately
+  awkward to misuse. PolterType already reads every keystroke; adding
+  "and can run a program" turns a shared or stolen `config.toml` into
+  code that fires the next time you type an ordinary word. So it needs
+  `[commands].allow_run_shell = true`, runs **no shell** — a program
+  and an argument vector, executed directly, so a metacharacter is
+  just a character — and never puts anything you typed into an
+  argument. A timeout, an output cap, no stdin, and dispatch off the
+  correction path. Inserted output is truncated on a character
+  boundary, stripped of control characters (a newline typed into a
+  chat window sends it), and not inserted at all when the command
+  failed.
+
+- **Language packs have a supported way in.** The loader has read
+  `<data_dir>/plugins/<id>/` since v0.1, but getting a pack there meant
+  copying directories by hand with no validation. `install` takes a
+  directory already on your disk — **there is no download, and that is
+  the point.** Fetching third-party content into a process that reads
+  every keystroke is a far wider channel than the updater's signed,
+  no-payload manifest fetch; a pack you downloaded yourself is a trust
+  decision you made where you could see it. It also means no archive,
+  so no zip-slip and no decompression bomb.
+
+  Installation copies only what a data-only pack may contain, reports
+  everything it left behind, refuses symlinks rather than following
+  them, and replaces atomically — an interrupted install leaves the
+  old pack or none, never half of a new one.
+
+- **Wayland can type without the setup script — on GNOME and KDE, in
+  theory.** `uinput` needs `input`-group membership plus a udev rule,
+  which is the one `sudo` standing between installing PolterType and
+  it doing anything. The `RemoteDesktop` portal is the standard,
+  permissioned way to ask a compositor to synthesise input, so it is
+  now tried **when and only when `uinput` cannot be opened** — nobody
+  who already ran `scripts/setup-linux.sh` will ever see a consent
+  dialog.
+
+  **This has never run.** There is no RemoteDesktop backend on the
+  machine it was written on, so it is written from the specification
+  and executed by nobody — the same standing as the macOS paths, and
+  it is labelled that way in the code. If it misbehaves on a real
+  GNOME or KDE session, assume PolterType is wrong before the
+  compositor.
+
+  It takes the portal's `NotifyKeyboardKeycode` rather than `libei`
+  deliberately: that method does exactly what a correction needs, and
+  going through `ConnectToEIS` and the libei protocol would have meant
+  a new protocol implementation and a heavyweight dependency to send
+  twenty keystrokes — while still needing the same session
+  negotiation. A restore token is stored so later launches are silent.
+
+### Fixed
+
+- **A `-1` from a model was read as "the first candidate".** Every
+  model that means "none of these" and writes it as a negative number
+  would have had a word retyped as something the user did not ask for.
+
+### Changed
+
+- **There will be no AT-SPI keystroke listener**, and this is now a
+  decision with measurements rather than an open plan item. Registering
+  one returns false on wlroots and delivers nothing even with keys
+  injected through `uinput`, because `at-spi2-registryd` has no
+  keyboard of its own — on Wayland it relays what the compositor hands
+  it, and only mutter does. Where it *would* work (X11) the existing
+  listener already needs no permissions. Wayland still needs
+  `scripts/setup-linux.sh` once; anyone wanting a zero-permission
+  session has X11 today. See [docs/DECISIONS.md](docs/DECISIONS.md),
+  2026-08-01.
+
 ## [0.9.0] — nine more languages, and a dictionary pipeline that stops failing quietly
 
 ### Added

@@ -33,6 +33,7 @@
 //! outside the TTL cache entirely.
 
 mod atspi_caret;
+mod atspi_focus;
 mod cache;
 mod caret_only;
 mod consts;

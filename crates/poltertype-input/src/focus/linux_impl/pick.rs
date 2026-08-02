@@ -8,6 +8,7 @@ use crate::focus::{FocusTracker, NoopFocusTracker};
 use crate::linux::{SessionKind, session_kind};
 
 use super::atspi_caret::AtspiCaretWatcher;
+use super::atspi_focus::AtspiFocusWatcher;
 use super::cache::CachedFocusTracker;
 use super::caret_only::CaretOnlyFocusTracker;
 use super::consts::FOCUS_CACHE_TTL;
@@ -19,16 +20,26 @@ use super::x11::X11FocusTracker;
 /// (its IPC works regardless of what `XDG_SESSION_TYPE` says), then
 /// plain X11 sessions get EWMH. Everything else — GNOME / KDE on
 /// Wayland — has no compositor-agnostic active-window query, by
-/// design, so `focused_exe()` stays `None` there.
+/// design.
 ///
 /// It does **not** follow that those sessions get nothing. AT-SPI is a
 /// session-bus service and does not care which compositor is running,
-/// so the caret watcher answers on GNOME and KDE exactly as it does on
-/// Hyprland — and the caret is the tooltip's *best* anchor, better
-/// than the window geometry the other backends can offer. Building it
-/// on its own is what stops the tooltip being pinned to the bottom of
-/// the screen on the two largest desktops. No TTL cache: the caret
-/// watcher is event-driven and already cheap to read.
+/// so it answers on GNOME and KDE exactly as it does on Hyprland, and
+/// it supplies *both* halves:
+///
+/// * the caret, which is the tooltip's best anchor — better than the
+///   window geometry the other backends can offer;
+/// * the focused application, by asking the a11y bus which process
+///   owns the connection that sent a `window:activate`.
+///
+/// The second one is why `focused_exe()` is no longer flatly `None`
+/// on GNOME and KDE. Read [`super::atspi_focus`] before relying on
+/// it: an application with no accessibility bridge — most terminals —
+/// is invisible to it, so it is an improvement on nothing rather than
+/// an equivalent of a compositor answer.
+///
+/// No TTL cache on this branch: both watchers are event-driven and
+/// already cheap to read.
 ///
 /// Note the X11 backend is deliberately NOT used on non-Hyprland
 /// Wayland even when `DISPLAY` points at XWayland: XWayland only sees
@@ -49,8 +60,24 @@ pub(crate) fn create_linux_focus_tracker() -> Arc<dyn FocusTracker> {
         ));
     }
     match caret_watcher() {
-        Some(caret) => Arc::new(CaretOnlyFocusTracker::new(caret)),
+        Some(caret) => Arc::new(CaretOnlyFocusTracker::new(caret, focus_watcher())),
         None => Arc::new(NoopFocusTracker),
+    }
+}
+
+/// The AT-SPI focused-application watcher, for the branch that has no
+/// compositor to ask. Like the caret watcher it owns a thread and a
+/// bus connection, and failing to start is a normal, log-once
+/// condition rather than an error — the tracker simply keeps
+/// answering `None` for `focused_exe()`, which is where these
+/// sessions were before.
+fn focus_watcher() -> Option<Arc<AtspiFocusWatcher>> {
+    match AtspiFocusWatcher::try_new() {
+        Ok(w) => Some(Arc::new(w)),
+        Err(e) => {
+            info!(%e, "AT-SPI focus watcher unavailable; per-app features stay inert");
+            None
+        }
     }
 }
 

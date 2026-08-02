@@ -1,5 +1,7 @@
 //! What a matched command does.
 
+use super::shell::ShellCommand;
+
 use poltertype_types::LayoutId;
 use serde::{Deserialize, Serialize};
 
@@ -48,4 +50,9 @@ pub enum CommandAction {
     /// mapping; URLs get the default browser. Trigger + boundary
     /// are deleted; nothing is re-emitted.
     OpenPath { path: String },
+    /// Run a program. **Off unless `[commands].allow_run_shell` is
+    /// true**, executed without a shell, and never given anything the
+    /// user typed as an argument. `crate::commands::shell` carries
+    /// the threat model; read it before changing any of that.
+    RunShell(ShellCommand),
 }

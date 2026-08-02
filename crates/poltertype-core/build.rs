@@ -111,6 +111,32 @@ fn main() {
         prepare_wordlist(&src_wordlists, &out_wordlists, stem, tag);
     }
 
+    // ─── UI translations: copy catalogs ────────────────────────────
+    // Whole-directory copy rather than a list: catalogs are pure data
+    // with no build step, and a contributor adding `pl.toml` should
+    // not also have to edit a Rust file to make it ship.
+    let src_i18n = repo_root.join("data").join("i18n");
+    let out_i18n = out_root.join("i18n");
+    fs::create_dir_all(&out_i18n).expect("mkdir target/dist/data/i18n");
+    println!("cargo:rerun-if-changed={}", src_i18n.display());
+    match fs::read_dir(&src_i18n) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                    continue;
+                }
+                println!("cargo:rerun-if-changed={}", path.display());
+                if let Some(name) = path.file_name() {
+                    if let Err(e) = fs::copy(&path, out_i18n.join(name)) {
+                        println!("cargo:warning=i18n copy {} failed: {e}", path.display());
+                    }
+                }
+            }
+        }
+        Err(e) => println!("cargo:warning=no data/i18n directory ({e}); UI stays English"),
+    }
+
     // ─── Layout mappings: copy TOMLs ───────────────────────────────
     for (stem, _) in LAYOUTS {
         let src = src_mappings.join(format!("{stem}.toml"));

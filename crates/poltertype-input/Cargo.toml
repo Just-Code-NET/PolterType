@@ -49,3 +49,4 @@ libc  = "0.2"
 # source of on-screen caret coordinates on Linux. Blocking API only;
 # the watcher owns one background thread, no async runtime of ours.
 zbus  = { workspace = true }
+directories = { workspace = true }

@@ -1,6 +1,8 @@
 //! Keystream hotkey chords (Wayland path), the suggestion-accept
 //! digit chords (every platform), and smart-command dispatch.
 
+use std::sync::Arc;
+
 use crossbeam_channel::Receiver;
 use poltertype_input::{KeyDirection, KeyEvent};
 use tracing::{info, warn};
@@ -201,6 +203,55 @@ impl SwitcherEngine {
                     warn!(?e, id = %cmd.id, path = %path, "smart command: open failed");
                 }
             }
+            CommandAction::RunShell(shell) => self.dispatch_run_shell(cmd, shell, boundary_char),
+        }
+    }
+
+    /// Run a `run_shell` command off the correction path.
+    ///
+    /// The word-boundary handler must return promptly — it is what
+    /// stands between the user's keystroke and the corrected word —
+    /// and a user command can block for up to `shell::RUN_TIMEOUT`.
+    /// So the process is started on a worker thread, and the thread
+    /// types the output when there is any.
+    ///
+    /// The refusal check happens here as well as at settings load:
+    /// `allow_run_shell` can be turned off while the app runs, and
+    /// the entry that was legal at startup must stop working the
+    /// moment it is.
+    fn dispatch_run_shell(
+        &self,
+        cmd: &UserCommand,
+        shell: &crate::commands::ShellCommand,
+        boundary_char: char,
+    ) {
+        let allow = self.settings.snapshot().commands_allow_run_shell;
+        if let Err(refusal) = crate::commands::check(shell, allow) {
+            warn!(id = %cmd.id, %refusal, "smart command: refused");
+            return;
+        }
+
+        let shell = shell.clone();
+        let id = cmd.id.clone();
+        let emitter = Arc::clone(&self.key_emitter);
+        let spawned = std::thread::Builder::new()
+            .name("poltertype-smart-command".into())
+            .spawn(move || {
+                let Some(output) = crate::commands::run(&shell) else {
+                    return;
+                };
+                // Typing from a worker thread is safe for the same
+                // reason the correction replay is: the emitter is
+                // `Send + Sync` and every emitted key comes back
+                // through the listener marked as ours.
+                let mut text = output;
+                text.push(boundary_char);
+                if let Err(e) = emitter.send_text(&text) {
+                    warn!(?e, %id, "smart command: typing output failed");
+                }
+            });
+        if let Err(e) = spawned {
+            warn!(%e, id = %cmd.id, "smart command: could not start worker thread");
         }
     }
 }

@@ -33,6 +33,22 @@ if ! cargo fmt --all -- --check; then
     exit 1
 fi
 
+# Two clippy runs, not one, and this is the interesting part.
+#
+# CI lints WITHOUT `--all-features`, so the feature-off shape of an
+# optional crate is a configuration nothing local ever checked. That
+# is not hypothetical: the 0.10.0 AI work passed every local check and
+# then failed on all three CI platforms, because the HTTP module is
+# dead code when `remote` is off. Whichever set you run, run the other
+# one too — the cheap one first, since it is the one CI mirrors.
+echo "poltertype pre-commit: cargo clippy --workspace --all-targets -- -D warnings  (CI's set)"
+if ! cargo clippy --workspace --all-targets -- -D warnings; then
+    echo
+    echo "poltertype pre-commit: clippy found problems in the DEFAULT feature set."
+    echo "This is exactly what CI runs. Fix, or commit with --no-verify."
+    exit 1
+fi
+
 echo "poltertype pre-commit: cargo clippy --workspace --all-targets --all-features -- -D warnings"
 if ! cargo clippy --workspace --all-targets --all-features -- -D warnings; then
     echo

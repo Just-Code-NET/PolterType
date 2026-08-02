@@ -103,6 +103,16 @@ use state::*;
 pub fn run(open_setup: bool) -> Result<()> {
     let store = SettingsStore::load_or_default().context("load settings for UI")?;
     let initial_settings = store.snapshot();
+
+    // Before any widget exists: `tr` is called from the view function,
+    // which runs on every frame, so the catalog has to be in place
+    // first. Failing to find one is not an error — the interface is
+    // written in English at every call site and simply stays that way.
+    match poltertype_core::data_dir::resolve() {
+        Ok(dir) => poltertype_core::i18n::init(&dir, Some(&initial_settings.general.ui_language)),
+        Err(e) => warn!(?e, "no data dir; the interface stays in English"),
+    }
+
     let store = Arc::new(store);
 
     // Querying the OS layout list is best-effort — if it fails we

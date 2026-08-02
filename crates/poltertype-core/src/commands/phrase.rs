@@ -1,0 +1,168 @@
+//! Recent-word history, for triggers made of more than one token.
+//!
+//! A trigger used to be one word, because the word buffer resets at
+//! every boundary and there was nothing to match a phrase against.
+//! `best regards ` needs the engine to remember that `best` came
+//! immediately before `regards`, so this is that memory — and
+//! deliberately the smallest one that does the job.
+//!
+//! ## Why it is this small
+//!
+//! Keeping what the user typed is exactly what the rest of this
+//! project works to avoid: the word buffer is RAM-only and
+//! short-lived, and nothing is ever written to disk or a log. A word
+//! history makes that memory *longer*, so it is bounded on three
+//! axes at once:
+//!
+//! * **Length** — [`MAX_HISTORY_WORDS`] entries. Enough for the
+//!   longest trigger anyone reasonably writes, and no more.
+//! * **Time** — [`clear`] is called on the same idle timeout that
+//!   already clears the word buffer, so a machine left alone is not
+//!   holding a sentence.
+//! * **Context** — cleared when focus changes, so words typed in one
+//!   application cannot form a phrase with words typed in another.
+//!
+//! It also never leaves this process, is never logged (every debug
+//! line about it goes through `redact_word`), and holds only words
+//! that ended at a boundary — never the one being typed now.
+
+use super::UserCommand;
+
+/// How many completed words to remember.
+///
+/// Four covers `best regards`, `kind regards`, `with best regards`
+/// and the like. A longer window would buy vanishingly rare triggers
+/// at the cost of holding more of the user's text in memory.
+pub const MAX_HISTORY_WORDS: usize = 4;
+
+/// The most recent completed words, oldest first.
+///
+/// `Default` is an empty history, which is also the state after
+/// [`clear`] — there is no "uninitialised" case to handle.
+#[derive(Debug, Default, Clone)]
+pub struct WordHistory {
+    words: Vec<String>,
+    /// The application these words were typed in, so a change of
+    /// focus can drop them. Kept inside the history rather than
+    /// beside it: "words from two applications never form a phrase"
+    /// is an invariant of this type, and a caller that forgot to
+    /// check would silently break it.
+    context: Option<String>,
+}
+
+impl WordHistory {
+    /// Record a completed word typed in `context`, dropping the
+    /// oldest when full.
+    ///
+    /// A different `context` than last time clears the history first:
+    /// half a trigger typed in one window must not combine with a
+    /// word typed in another. An unknown context (`None` — every
+    /// platform where focus tracking does not answer) is treated as
+    /// its own single context, which keeps the feature working there
+    /// rather than disabling it on a technicality.
+    pub fn push_in(&mut self, context: Option<&str>, word: &str) {
+        if self.context.as_deref() != context {
+            self.words.clear();
+            self.context = context.map(str::to_owned);
+        }
+        self.push(word);
+    }
+
+    /// Record a completed word, dropping the oldest when full.
+    pub fn push(&mut self, word: &str) {
+        if word.is_empty() {
+            return;
+        }
+        if self.words.len() == MAX_HISTORY_WORDS {
+            self.words.remove(0);
+        }
+        self.words.push(word.to_owned());
+    }
+
+    /// Forget everything. Called on the idle timeout, on a focus
+    /// change, and after a command fires — see the module docs.
+    pub fn clear(&mut self) {
+        self.words.clear();
+        self.context = None;
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.words.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.words.len()
+    }
+
+    /// The last `n` words, oldest first — fewer if that many have not
+    /// been typed yet.
+    pub fn tail(&self, n: usize) -> &[String] {
+        let start = self.words.len().saturating_sub(n);
+        &self.words[start..]
+    }
+}
+
+/// Split a trigger into its tokens. Whitespace-separated, with any
+/// run of whitespace treated as one separator so a trigger written
+/// with two spaces still matches text typed with one.
+pub fn trigger_tokens(trigger: &str) -> Vec<&str> {
+    trigger.split_whitespace().collect()
+}
+
+/// Does `cmd`'s trigger match the word just completed, given what
+/// came before it?
+///
+/// A single-token trigger is the old behaviour exactly: compare
+/// against `current_word`. A multi-token trigger additionally
+/// requires its earlier tokens to be the immediately preceding
+/// words, in order.
+///
+/// Case-sensitive, like single-token matching always was — users pick
+/// triggers that do not collide with prose, and a case-insensitive
+/// `best regards` would fire on an ordinary sign-off.
+pub fn phrase_matches(cmd: &UserCommand, history: &WordHistory, current_word: &str) -> bool {
+    let tokens = trigger_tokens(&cmd.trigger);
+    let Some((last, earlier)) = tokens.split_last() else {
+        // An all-whitespace trigger matches nothing. Config
+        // validation rejects it too; this is the belt to that braces.
+        return false;
+    };
+    if *last != current_word {
+        return false;
+    }
+    if earlier.is_empty() {
+        return true;
+    }
+    // More leading tokens than we remember: cannot match, and must
+    // not match a truncated prefix.
+    let preceding = history.tail(earlier.len());
+    preceding.len() == earlier.len()
+        && preceding
+            .iter()
+            .zip(earlier)
+            .all(|(had, want)| had.as_str() == *want)
+}
+
+/// How many on-screen characters a fired command has to erase.
+///
+/// For a single-token trigger this is the buffered keys plus the
+/// boundary the user just typed — what the engine already counted.
+/// A multi-token trigger also has to take back the earlier words and
+/// the separator after each, or half the phrase is left on screen.
+///
+/// Counts **characters**, because that is what the screen shows and
+/// what a backspace removes.
+pub fn erase_len(cmd: &UserCommand, current_word_keys: usize) -> usize {
+    let tokens = trigger_tokens(&cmd.trigger);
+    let earlier: usize = tokens
+        .iter()
+        .rev()
+        .skip(1)
+        // +1 for the separator that followed each earlier token.
+        .map(|t| t.chars().count() + 1)
+        .sum();
+    current_word_keys + 1 + earlier
+}
+
+#[cfg(test)]
+mod tests;

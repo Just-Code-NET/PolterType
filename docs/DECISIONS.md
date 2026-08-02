@@ -6,6 +6,66 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-01 — No AT-SPI keystroke listener: measured, refused, and the reason is architectural
+
+`PLAN.md` has carried "Wayland AT-SPI fallback listener via `atspi`"
+as an open item since Phase 6, on the theory that the accessibility
+stack could read keystrokes without `input`-group membership and so
+retire `scripts/setup-linux.sh` for Wayland users. We finally measured
+it instead of assuming it. It does not work, and the reason is not
+something we can fix.
+
+**What was measured.** A probe registered a keystroke listener with
+`org.a11y.atspi.DeviceEventController` exactly as an assistive
+technology does — empty key set (all keys), press+release, global mode
+— on this Hyprland session, whose a11y bus is live and whose registry
+publishes the full `DeviceEventController` interface including
+`RegisterKeystrokeListener`. Two results:
+
+* `RegisterKeystrokeListener` returned **false**. The registry
+  declined outright.
+* With five real keystrokes injected through `uinput` inside the
+  listening window, **zero** `NotifyEvent` callbacks arrived.
+
+**Why it cannot be fixed here.** `at-spi2-registryd` has no privileged
+path to the keyboard of its own. On X11 it snoops via the X server; on
+Wayland it can only relay what the *compositor* hands it, and only
+mutter does that. A wlroots compositor never feeds the registry, so
+the interface exists, answers introspection, and refuses to register —
+which is exactly the failure shape that made this look plausible for
+so long.
+
+**And where it would work, it is redundant.** The matrix:
+
+| Session | Existing listener | What AT-SPI would add |
+|---|---|---|
+| X11 | XInput2, **needs no permissions at all** | nothing |
+| GNOME Wayland | evdev (`input` group) | possibly a permission-free path — untested, no GNOME box here |
+| KDE / wlroots Wayland | evdev (`input` group) | nothing; registration refused |
+
+So the feature is redundant on the one session type where it reliably
+works, unverifiable on the one where it might help, and dead on the
+rest. Writing it would mean several hundred lines of code that this
+project could never honestly describe as working — the same standard
+that keeps the macOS caveats in `CLAUDE.md` explicit.
+
+**Alternatives considered.** `libei` through the
+`org.freedesktop.portal.RemoteDesktop` portal is the *emitting* half
+of the same wish and remains genuinely promising — mutter and KWin
+both implement that portal. It is not implemented either, for a
+narrower reason: no RemoteDesktop backend exists on this machine
+(`hyprland.portal` declares Screenshot, ScreenCast, GlobalShortcuts
+and InputCapture; only `kde.portal` declares RemoteDesktop), so it
+cannot be exercised here at all. That one stays open rather than
+decided — see the entry in `PLAN.md`.
+
+**Consequence for users.** Wayland still needs `setup-linux.sh` once.
+That is the honest state, and the Setup pane already says so. Anyone
+who wants a zero-permission session today has one: X11, where the
+listener and emitter both need nothing.
+
+---
+
 ## 2026-07-31 — The setup walkthrough probes, and refuses to act on the user's behalf
 
 Replacing "here is a link to PERMISSIONS.md" with a screen that knows

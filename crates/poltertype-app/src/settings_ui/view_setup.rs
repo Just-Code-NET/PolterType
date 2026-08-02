@@ -16,6 +16,7 @@
 
 use iced::widget::{Button, Column, Container, Row, Space, Text};
 use iced::{Alignment, Element, Length, Padding};
+use poltertype_core::i18n::tr;
 use poltertype_input::setup::{StepAction, StepState};
 
 use super::consts::PERMISSIONS_DOC_URL;
@@ -66,7 +67,11 @@ impl SettingsApp {
 
         let mut body = Column::new()
             .spacing(18)
-            .push(pane_header(b, "Setup", headline.to_owned()))
+            .push(pane_header(
+                b,
+                tr("setup.setup", "Setup"),
+                headline.to_owned(),
+            ))
             .push(card(steps));
 
         // The second failure mode, and a genuinely different one:
@@ -78,7 +83,13 @@ impl SettingsApp {
             body = body.push(card(
                 Column::new()
                     .spacing(8)
-                    .push(section_title(b, "Layout switching is unavailable"))
+                    .push(section_title(
+                        b,
+                        tr(
+                            "setup.layout_switching_unavailable",
+                            "Layout switching is unavailable",
+                        ),
+                    ))
                     .push(
                         Text::new(
                             "PolterType found no way to change the keyboard layout on this \
@@ -90,16 +101,22 @@ impl SettingsApp {
                         .color(b.muted),
                     )
                     .push(
-                        Button::new(Text::new("What backends are supported?").size(12))
-                            .on_press(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned()))
-                            .style(theme::secondary)
-                            .padding(button_padding()),
+                        Button::new(
+                            Text::new(tr(
+                                "setup.what_backends_are_supported",
+                                "What backends are supported?",
+                            ))
+                            .size(12),
+                        )
+                        .on_press(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned()))
+                        .style(theme::secondary)
+                        .padding(button_padding()),
                     ),
             ));
         }
 
         let mut footer = Row::new().spacing(10).align_y(Alignment::Center).push(
-            Button::new(Text::new("Check again").size(13))
+            Button::new(Text::new(tr("setup.check_again", "Check again")).size(13))
                 .on_press(Message::SetupRecheck)
                 .style(theme::primary)
                 .padding(Padding {
@@ -110,7 +127,7 @@ impl SettingsApp {
                 }),
         );
         footer = footer.push(
-            Button::new(Text::new("Full setup guide").size(12))
+            Button::new(Text::new(tr("setup.full_setup_guide", "Full setup guide")).size(12))
                 .on_press(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned()))
                 .style(theme::secondary)
                 .padding(button_padding()),

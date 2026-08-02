@@ -47,6 +47,21 @@ impl UinputEmitter {
         s
     }
 
+    /// Whether the virtual keyboard actually exists.
+    ///
+    /// `new` creates it eagerly and tolerates failure, so this is how
+    /// a caller learns the difference between "ready" and "will retry
+    /// and probably fail again". The emitter-choosing code uses it to
+    /// decide whether the portal is worth asking about.
+    pub fn is_usable(&self) -> bool {
+        if self.device.lock().is_some() {
+            return true;
+        }
+        // One retry: the eager attempt may have run before udev
+        // applied the rule that grants access.
+        self.ensure_device().is_ok()
+    }
+
     fn ensure_device(&self) -> Result<(), InputError> {
         let mut g = self.device.lock();
         if g.is_some() {

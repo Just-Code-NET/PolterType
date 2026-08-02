@@ -20,9 +20,10 @@ pub fn find_matching_command<'a>(
     commands: &'a [UserCommand],
     typed_word: &str,
     focused_basename: Option<&str>,
+    history: &WordHistory,
 ) -> Option<&'a UserCommand> {
     commands.iter().find(|c| {
-        c.trigger == typed_word
+        phrase_matches(c, history, typed_word)
             && (c.apps.is_empty()
                 || focused_basename
                     .is_some_and(|b| c.apps.iter().any(|a| a.eq_ignore_ascii_case(b))))
