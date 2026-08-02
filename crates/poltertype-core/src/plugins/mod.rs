@@ -65,12 +65,14 @@
 //! enforces the parts of that a manifest could otherwise lie about.
 
 mod consts;
+mod discover;
 mod enums;
 mod install;
 mod types;
 mod validate;
 
 pub use consts::*;
+pub use discover::*;
 pub use enums::*;
 pub use install::*;
 pub use types::*;

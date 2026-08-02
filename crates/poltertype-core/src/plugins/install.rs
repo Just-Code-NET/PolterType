@@ -5,8 +5,9 @@ use std::path::{Component, Path, PathBuf};
 use tracing::{info, warn};
 
 use super::consts::*;
-use super::enums::PluginError;
-use super::types::InstalledPack;
+use super::enums::{PluginError, PluginKind};
+use super::types::{InstalledPack, ManifestHeader};
+use super::validate::{EXTENSION_BIN_DIR, check_extension};
 use crate::layouts::PluginManifest;
 
 /// Install the pack in `src` into `<data_dir>/plugins/<id>/`.
@@ -32,7 +33,22 @@ pub fn install(src: &Path, data_dir: &Path) -> Result<InstalledPack, PluginError
         return Err(PluginError::UnsafeId(id));
     }
 
-    let plan = plan_copy(src)?;
+    // What kind of plug-in this claims to be decides what it is
+    // allowed to carry — so it is read, and validated, before a single
+    // byte is copied.
+    let header = read_header(src)?;
+    if header.kind == PluginKind::Extension {
+        check_extension(&header.extension)?;
+        let exe = src.join(EXTENSION_BIN_DIR).join(&header.extension.exe);
+        if !exe.is_file() {
+            return Err(PluginError::NoExecutable(format!(
+                "{} declares {}/{} but there is no such file",
+                MANIFEST_NAME, EXTENSION_BIN_DIR, header.extension.exe
+            )));
+        }
+    }
+
+    let plan = plan_copy(src, header.kind)?;
     if plan.content_files == 0 {
         return Err(PluginError::Empty);
     }
@@ -141,6 +157,17 @@ pub fn read_manifest(dir: &Path) -> Result<PluginManifest, PluginError> {
     toml::from_str(&text).map_err(|e| PluginError::BadManifest(e.to_string()))
 }
 
+/// Read the installer's view of a manifest: what kind of plug-in this
+/// is, and — for an extension — everything it declares.
+pub fn read_header(dir: &Path) -> Result<ManifestHeader, PluginError> {
+    let path = dir.join(MANIFEST_NAME);
+    let text = std::fs::read_to_string(&path).map_err(|_| PluginError::MissingManifest {
+        dir: dir.to_path_buf(),
+        manifest: MANIFEST_NAME.to_owned(),
+    })?;
+    toml::from_str(&text).map_err(|e| PluginError::BadManifest(e.to_string()))
+}
+
 /// A pack id becomes a directory name, so it may not contain anything
 /// that escapes one or means something to a shell or a path parser.
 pub fn is_safe_id(id: &str) -> bool {
@@ -171,7 +198,7 @@ struct CopyPlan {
 ///
 /// One pass, no writes: the budget and the allow-list are enforced
 /// here so that a refusal never leaves a partial install.
-fn plan_copy(src: &Path) -> Result<CopyPlan, PluginError> {
+fn plan_copy(src: &Path, kind: PluginKind) -> Result<CopyPlan, PluginError> {
     let mut plan = CopyPlan {
         files: Vec::new(),
         content_files: 0,
@@ -194,7 +221,7 @@ fn plan_copy(src: &Path) -> Result<CopyPlan, PluginError> {
             return Err(PluginError::UnsafePath(path));
         }
         if meta.is_dir() {
-            match ALLOWED_CONTENT.iter().find(|(d, _)| *d == name) {
+            match allowed_dirs(kind).iter().find(|(d, _)| *d == name) {
                 Some((_, exts)) => collect_dir(src, &path, exts, &mut plan)?,
                 None => plan.skipped.push(format!("{name}/")),
             }
@@ -211,6 +238,20 @@ fn plan_copy(src: &Path) -> Result<CopyPlan, PluginError> {
 
     check_budget(&plan)?;
     Ok(plan)
+}
+
+/// Which content directories this kind of plug-in may populate.
+///
+/// A pack gets the data directories and nothing else — that is what
+/// makes "a pack cannot execute" a fact about the installer rather
+/// than a hope about pack authors. An extension gets the same, plus
+/// `bin/`.
+fn allowed_dirs(kind: PluginKind) -> Vec<(&'static str, &'static [&'static str])> {
+    let mut dirs = ALLOWED_CONTENT.to_vec();
+    if kind == PluginKind::Extension {
+        dirs.extend_from_slice(EXTENSION_CONTENT);
+    }
+    dirs
 }
 
 /// Collect the allowed files of one content directory.
@@ -240,10 +281,16 @@ fn collect_dir(
             plan.skipped.push(format!("{}/", rel.display()));
             continue;
         }
-        let ok = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| exts.iter().any(|a| a.eq_ignore_ascii_case(e)));
+        // An empty extension list means "any file", which is `bin/`:
+        // an executable on Unix has no extension at all, so listing
+        // the shapes we thought of would just be a list of the ones we
+        // forgot. Nothing in `bin/` is ever loaded — it is spawned as
+        // a separate process, by the one name the manifest declares.
+        let ok = exts.is_empty()
+            || path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| exts.iter().any(|a| a.eq_ignore_ascii_case(e)));
         if ok {
             plan.bytes += meta.len();
             plan.files.push(rel);

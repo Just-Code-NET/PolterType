@@ -4,7 +4,19 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
-use super::enums::ControlKind;
+use super::enums::{ControlKind, PluginKind};
+
+/// The parts of a manifest the *installer* cares about, read
+/// separately from [`crate::layouts::PluginManifest`] so that adding
+/// extensions did not have to reach into the layout loader's types.
+///
+/// Both views parse the same file; each ignores what it does not know.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct ManifestHeader {
+    pub kind: PluginKind,
+    pub extension: ExtensionManifest,
+}
 
 /// The `[extension]` section of a manifest: everything PolterType needs
 /// to run a plug-in and show it, without the plug-in running any code
