@@ -23,6 +23,7 @@ mod consts;
 mod detectors;
 mod enums;
 mod hotkeys;
+mod plugins;
 mod settings_proc;
 mod suggest_popup;
 mod tray;
@@ -440,6 +441,22 @@ fn main() -> Result<()> {
     menu.append_items(&[&item_about, &item_quit])
         .context("populate tray menu tail")?;
 
+    // Plug-ins last, so the app's own entries keep their position and
+    // a plug-in can never push Quit off the bottom of the menu.
+    let discovered = poltertype_core::plugins::extensions(&data_dir);
+    let plugin_menu = plugins::PluginMenu::build(discovered, &menu)?;
+    let mut supervisor = plugins::Supervisor::new();
+    supervisor.start_all(plugin_menu.extensions());
+    for ext in plugin_menu.extensions() {
+        info!(
+            id = %ext.id,
+            version = %ext.version,
+            development = ext.development,
+            service = supervisor.is_running(&ext.id),
+            "plug-in loaded"
+        );
+    }
+
     let setup_id = item_setup.as_ref().map(|i| i.id().clone());
     let update_id = item_update.as_ref().map(|i| i.id().clone());
     let settings_ui_id = item_settings_ui.id().clone();
@@ -636,11 +653,20 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::Menu(id)) => {
-                if id == quit_id {
+                // A service that died since the last click is reported
+                // now rather than at shutdown, when nobody is looking.
+                supervisor.reap();
+                if plugin_menu.handle(&id) {
+                    // Belonged to a plug-in; nothing of ours to do.
+                } else if id == quit_id {
                     info!("Quit clicked — shutting down");
                     if let Some(mut listener) = input_listener.take() {
                         listener.stop();
                     }
+                    // Before anything on disk is replaced: a plug-in
+                    // service still running through an update would be
+                    // a process whose binary moved under it.
+                    supervisor.stop_all();
                     // Quit is the moment we have been waiting for: the
                     // user is done typing, the hook is down, and nothing
                     // we replace can be in use. This is what "installs

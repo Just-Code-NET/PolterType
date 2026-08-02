@@ -68,6 +68,7 @@ mod consts;
 mod discover;
 mod enums;
 mod install;
+mod settings;
 mod types;
 mod validate;
 
@@ -75,6 +76,7 @@ pub use consts::*;
 pub use discover::*;
 pub use enums::*;
 pub use install::*;
+pub use settings::*;
 pub use types::*;
 pub use validate::*;
 

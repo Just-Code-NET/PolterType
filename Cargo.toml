@@ -66,6 +66,11 @@ parking_lot       = "0.12"
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml       = "0.8"
+# Format-preserving TOML, for editing a plug-in's own config file
+# without destroying the comments its author wrote for the user.
+# Already in the tree as a dependency of `toml`, so this vendors
+# nothing new.
+toml_edit  = "0.20"
 
 # OS interop
 directories = "5"

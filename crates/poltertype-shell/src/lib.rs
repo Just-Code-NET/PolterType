@@ -20,12 +20,14 @@
 
 mod instance;
 mod keys;
+mod process;
 
 #[cfg(test)]
 mod tests;
 
 pub use instance::instance_lock_id;
 pub use keys::{key_glyph, key_name_with_glyph};
+pub use process::request_stop;
 
 /// Keep a tray-only app out of the Dock and the app switcher.
 ///
