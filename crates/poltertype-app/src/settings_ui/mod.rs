@@ -73,12 +73,16 @@
 
 mod consts;
 mod enums;
+
+pub use enums::Pane;
 mod helpers;
+mod plugin_pane;
 mod state;
 mod system_theme;
 mod theme;
 mod update;
 mod view;
+mod view_plugins;
 mod view_setup;
 
 use std::sync::Arc;
@@ -101,6 +105,17 @@ use state::*;
 /// user find the right one is exactly the friction this pane exists to
 /// remove.
 pub fn run(open_setup: bool) -> Result<()> {
+    run_on(if open_setup {
+        enums::Pane::Setup
+    } else {
+        enums::Pane::Languages
+    })
+}
+
+/// Open the window on a named pane. `--setup` and `--plugins` both
+/// come through here; the flag is the entire protocol between the two
+/// processes.
+pub fn run_on(initial: enums::Pane) -> Result<()> {
     let store = SettingsStore::load_or_default().context("load settings for UI")?;
     let initial_settings = store.snapshot();
 
@@ -183,11 +198,7 @@ pub fn run(open_setup: bool) -> Result<()> {
                 os_layouts,
                 path,
                 store_for_init,
-                if open_setup {
-                    enums::Pane::Setup
-                } else {
-                    enums::Pane::Languages
-                },
+                initial,
                 layout_backend,
             ),
             Task::none(),

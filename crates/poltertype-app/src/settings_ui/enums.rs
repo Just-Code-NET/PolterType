@@ -18,6 +18,8 @@ pub enum Pane {
     General,
     Exceptions,
     Suggestions,
+    /// Installed plug-ins and their own settings.
+    Plugins,
     About,
 }
 
@@ -142,6 +144,17 @@ impl ThemeChoice {
 #[derive(Debug, Clone)]
 pub enum Message {
     SelectPane(Pane),
+
+    // ── Plug-ins pane ──────────────────────────────────────────────
+    // Addressed by (plug-in index, control index) rather than by key:
+    // the manifest is the only thing that says which key a control
+    // writes, and a message carrying its own key would let the UI
+    // write somewhere the manifest never declared.
+    PluginToggled(usize, usize, bool),
+    PluginChoiceSelected(usize, usize, String),
+    PluginTextChanged(usize, usize, String),
+    /// Runs one of the plug-in's declared commands by id.
+    PluginCommandClicked(usize, String),
     LanguageToggled(LayoutId, bool),
     LanguageIgnoreToggled(LayoutId, bool),
     AutostartToggled(bool),

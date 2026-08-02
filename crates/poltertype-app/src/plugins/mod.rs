@@ -12,4 +12,4 @@ mod menu;
 mod supervisor;
 
 pub use menu::PluginMenu;
-pub use supervisor::Supervisor;
+pub use supervisor::{Supervisor, run_command};

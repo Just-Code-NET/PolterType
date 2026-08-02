@@ -90,6 +90,9 @@ fn main() -> Result<()> {
             // user lands on the one screen that can help instead of
             // hunting for it.
             "--setup" => return settings_ui::run(true),
+            "--plugins" => {
+                return settings_ui::run_on(settings_ui::Pane::Plugins);
+            }
             "--version" | "-V" => {
                 println!("{APP_NAME} {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
