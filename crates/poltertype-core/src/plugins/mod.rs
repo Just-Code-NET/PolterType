@@ -46,15 +46,35 @@
 //!   location and renamed into place, so an interrupted install
 //!   leaves either the old pack or none — never half of a new one.
 
+//! ## Extensions are a second kind, not a looser pack
+//!
+//! Everything above describes a *language pack*, and none of it
+//! changes. A plug-in that ships a program is a different kind
+//! ([`PluginKind::Extension`]), declared as such in its manifest, so
+//! the larger decision the user is making is visible before anything
+//! is installed rather than inferred from what a directory happens to
+//! contain.
+//!
+//! An extension is never loaded into PolterType. It is a separate
+//! program that PolterType spawns, which is what keeps a third-party
+//! crash — or a third-party compromise — away from the process holding
+//! the global keyboard hook. What it contributes to the UI is
+//! *declared statically* in the manifest and rendered by PolterType
+//! itself: a plug-in never draws, so it can never imitate a system
+//! prompt or PolterType's own dialogs. [`check_extension`] is what
+//! enforces the parts of that a manifest could otherwise lie about.
+
 mod consts;
 mod enums;
 mod install;
 mod types;
+mod validate;
 
 pub use consts::*;
 pub use enums::*;
 pub use install::*;
 pub use types::*;
+pub use validate::*;
 
 #[cfg(test)]
 mod tests;

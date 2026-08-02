@@ -1,0 +1,124 @@
+//! Checking an extension's manifest before anything is run.
+//!
+//! Everything here happens on static text read from disk, before the
+//! plug-in's program is launched — which is the whole reason the
+//! contribution model is declarative. A plug-in that had to run in
+//! order to describe itself would already be running by the time the
+//! user saw what it wanted.
+//!
+//! The checks are about what PolterType would otherwise be tricked
+//! into doing on the plug-in's behalf, not about the plug-in being
+//! well-written:
+//!
+//! * it may only ask us to run a program **out of its own `bin/`**, by
+//!   plain file name — never a path, so a manifest cannot point at
+//!   `/usr/bin/env`, at something in the user's home, or at a sibling
+//!   pack;
+//! * every button and tray entry must name a command that exists, so a
+//!   click cannot fall through to nothing (or to whatever a later
+//!   version of the manifest puts under that name);
+//! * every stored control must name the config key it stores into, and
+//!   every choice must offer something to choose.
+
+use super::enums::{ControlKind, PluginError};
+use super::types::ExtensionManifest;
+
+/// Directory an extension's program must live in, inside the plug-in.
+pub const EXTENSION_BIN_DIR: &str = "bin";
+
+/// Refuse a manifest that would leave PolterType doing something
+/// unclear on the plug-in's behalf.
+pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
+    let exe = m.exe.trim();
+    if exe.is_empty() {
+        return Err(PluginError::NoExecutable(
+            "manifest has no [extension] exe".to_owned(),
+        ));
+    }
+    if !is_plain_file_name(exe) {
+        return Err(PluginError::BadExecutablePath(exe.to_owned()));
+    }
+
+    for c in &m.commands {
+        if c.id.trim().is_empty() {
+            return Err(PluginError::BadPane("a command has no id".to_owned()));
+        }
+    }
+
+    for item in &m.tray_items {
+        if !m.commands.iter().any(|c| c.id == item.command) {
+            return Err(PluginError::BadPane(format!(
+                "tray item {:?} refers to unknown command {:?}",
+                item.label, item.command
+            )));
+        }
+    }
+
+    for control in &m.pane {
+        match control.kind {
+            ControlKind::Button => {
+                if !m.commands.iter().any(|c| c.id == control.command) {
+                    return Err(PluginError::BadPane(format!(
+                        "button {:?} refers to unknown command {:?}",
+                        control.label, control.command
+                    )));
+                }
+            }
+            ControlKind::Choice => {
+                if control.options.is_empty() {
+                    return Err(PluginError::BadPane(format!(
+                        "choice {:?} offers no options",
+                        control.label
+                    )));
+                }
+                check_key(control.key.trim(), &control.label)?;
+            }
+            ControlKind::Toggle | ControlKind::Text | ControlKind::Number => {
+                check_key(control.key.trim(), &control.label)?;
+            }
+        }
+    }
+
+    if !m.config_file.is_empty() && !is_plain_file_name(&m.config_file) {
+        return Err(PluginError::BadPane(format!(
+            "config_file {:?} must be a plain file name",
+            m.config_file
+        )));
+    }
+
+    Ok(())
+}
+
+fn check_key(key: &str, label: &str) -> Result<(), PluginError> {
+    if key.is_empty() {
+        return Err(PluginError::BadPane(format!(
+            "control {label:?} stores a value but names no config key"
+        )));
+    }
+    // A key becomes a path into the plug-in's own TOML. Restricting it
+    // to identifier characters keeps a manifest from reaching sideways
+    // into a table it did not mean to name.
+    let ok = key
+        .split('.')
+        .all(|part| !part.is_empty() && part.chars().all(|c| c.is_alphanumeric() || c == '_'));
+    if !ok {
+        return Err(PluginError::BadPane(format!(
+            "control {label:?} has an unusable config key {key:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// Is this a bare file name — no directories, no traversal, no root?
+fn is_plain_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains('/')
+        && !name.contains('\\')
+        && name != "."
+        && name != ".."
+        && !name.starts_with('.')
+}
+
+#[cfg(test)]
+#[path = "validate_tests.rs"]
+mod tests;
