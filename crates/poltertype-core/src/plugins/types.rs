@@ -120,18 +120,50 @@ impl TrayItem {
 
     /// The label to render, given the plug-in's reported state.
     ///
-    /// A status entry whose key is missing from the report says so
-    /// rather than rendering an empty gap — "unknown" is information,
-    /// a blank is a bug the user has to guess at.
-    pub fn render(&self, state: &std::collections::HashMap<String, String>) -> String {
+    /// `state` is `None` when the plug-in could not be asked at all.
+    /// That is worth saying differently from "answered, but said
+    /// nothing about this key": the first is a plug-in to go and look
+    /// at, the second is ordinary. A blank would be neither, and would
+    /// leave the user guessing which.
+    pub fn render(&self, state: Option<&std::collections::HashMap<String, String>>) -> String {
+        if self.is_check() {
+            // The tick as a character, not only as a menu attribute.
+            // Tray backends draw a native checkmark differently, faintly
+            // or not at all, and an indicator you cannot see is the bug
+            // this whole mechanism exists to fix. Padded so the labels
+            // do not shift as the mark moves between them.
+            return format!("{} {}", self.mark(state), self.label);
+        }
         if !self.is_status() {
             return self.label.clone();
         }
-        let value = state.get(&self.state_key).map_or("unknown", String::as_str);
+        let value = match state {
+            None => "not responding",
+            Some(s) => s.get(&self.state_key).map_or("unknown", String::as_str),
+        };
         if self.label.contains("{}") {
             self.label.replacen("{}", value, 1)
         } else {
             format!("{}: {value}", self.label)
+        }
+    }
+
+    /// Is this alternative the live one?
+    pub fn is_active(&self, state: Option<&std::collections::HashMap<String, String>>) -> bool {
+        self.is_check()
+            && state.is_some_and(|s| {
+                s.get(&self.state_key)
+                    .is_some_and(|v| *v == self.state_value)
+            })
+    }
+
+    /// The glyph standing in for a tick. A space of the same width when
+    /// inactive, so nothing jumps sideways when the mark moves.
+    fn mark(&self, state: Option<&std::collections::HashMap<String, String>>) -> &'static str {
+        if self.is_active(state) {
+            "✓"
+        } else {
+            "\u{2007}"
         }
     }
 }

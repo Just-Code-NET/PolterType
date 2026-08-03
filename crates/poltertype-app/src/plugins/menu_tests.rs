@@ -127,7 +127,7 @@ fn an_entry_without_state_is_still_a_plain_command() {
     let item = tray("Draft a reply", "propose", "", "");
     assert!(!item.is_check());
     assert!(!item.is_status());
-    assert_eq!(item.render(&state(&[])), "Draft a reply");
+    assert_eq!(item.render(Some(&state(&[]))), "Draft a reply");
 }
 
 #[test]
@@ -135,8 +135,19 @@ fn an_entry_with_a_key_and_a_value_is_a_tick() {
     let item = tray("Ask before acting", "mode-ask", "mode", "ask");
     assert!(item.is_check());
     assert!(!item.is_status());
-    // The label is not rewritten — the tick carries the meaning.
-    assert_eq!(item.render(&state(&[("mode", "ask")])), "Ask before acting");
+    // The label carries the tick as a character too: a native
+    // checkmark is drawn differently, faintly, or not at all depending
+    // on the tray backend, and an indicator nobody can see is the bug
+    // this mechanism exists to fix.
+    assert_eq!(
+        item.render(Some(&state(&[("mode", "ask")]))),
+        "✓ Ask before acting"
+    );
+    assert_eq!(
+        item.render(Some(&state(&[("mode", "learn")]))),
+        "\u{2007} Ask before acting",
+        "an inactive alternative is padded, so nothing shifts sideways"
+    );
 }
 
 #[test]
@@ -144,7 +155,10 @@ fn an_entry_with_a_key_and_no_value_reports_rather_than_acts() {
     let item = tray("Autopilot — {}", "", "mode", "");
     assert!(item.is_status());
     assert!(!item.is_check());
-    assert_eq!(item.render(&state(&[("mode", "ask")])), "Autopilot — ask");
+    assert_eq!(
+        item.render(Some(&state(&[("mode", "ask")]))),
+        "Autopilot — ask"
+    );
 }
 
 #[test]
@@ -152,7 +166,10 @@ fn a_status_label_without_a_placeholder_still_shows_the_value() {
     // A plug-in author who forgets `{}` should not get a line that
     // silently drops the one thing it exists to say.
     let item = tray("Autopilot", "", "mode", "");
-    assert_eq!(item.render(&state(&[("mode", "auto")])), "Autopilot: auto");
+    assert_eq!(
+        item.render(Some(&state(&[("mode", "auto")]))),
+        "Autopilot: auto"
+    );
 }
 
 #[test]
@@ -160,9 +177,9 @@ fn an_unreported_key_says_unknown_rather_than_going_blank() {
     // The plug-in may be stopped, or its state command may have failed.
     // "unknown" is information; an empty gap is a puzzle.
     let item = tray("Autopilot — {}", "", "mode", "");
-    assert_eq!(item.render(&state(&[])), "Autopilot — unknown");
+    assert_eq!(item.render(Some(&state(&[]))), "Autopilot — unknown");
     assert_eq!(
-        item.render(&state(&[("something_else", "x")])),
+        item.render(Some(&state(&[("something_else", "x")]))),
         "Autopilot — unknown"
     );
 }
@@ -197,4 +214,21 @@ fn a_mode_no_entry_offers_ticks_nothing_rather_than_guessing() {
             .iter()
             .any(|i| live.get(&i.state_key).is_some_and(|v| *v == i.state_value))
     );
+}
+
+#[test]
+fn a_plugin_that_cannot_be_asked_says_so_rather_than_unknown() {
+    // "unknown" means it answered and did not mention this key —
+    // ordinary. A plug-in that could not be run at all is something to
+    // go and look at, and the two must not read the same.
+    let item = tray("Autopilot — {}", "", "mode", "");
+    assert_eq!(item.render(None), "Autopilot — not responding");
+    assert_eq!(item.render(Some(&state(&[]))), "Autopilot — unknown");
+}
+
+#[test]
+fn nothing_is_active_when_the_plugin_could_not_be_asked() {
+    let item = tray("Ask", "mode-ask", "mode", "ask");
+    assert!(!item.is_active(None));
+    assert!(item.is_active(Some(&state(&[("mode", "ask")]))));
 }

@@ -49,8 +49,9 @@ enum StateItem {
     /// Ticked when the reported value matches.
     Check {
         item: CheckMenuItem,
-        key: String,
-        value: String,
+        /// Kept whole: the label carries a glyph that has to be
+        /// re-rendered whenever the live alternative changes.
+        spec: poltertype_core::plugins::TrayItem,
     },
     /// A disabled line naming the current value.
     Status {
@@ -94,7 +95,7 @@ impl PluginMenu {
                     // Disabled: it reports, it does not act. Clicking it
                     // should do nothing, and looking disabled is how a
                     // menu says so before you try.
-                    let item = MenuItem::new(&entry.label, false, None);
+                    let item = MenuItem::new(entry.render(None), false, None);
                     menu.append(&item)
                         .with_context(|| format!("plug-in status entry {:?}", entry.label))?;
                     stateful.push((
@@ -108,7 +109,7 @@ impl PluginMenu {
                 }
 
                 if entry.is_check() {
-                    let item = CheckMenuItem::new(&entry.label, true, false, None);
+                    let item = CheckMenuItem::new(entry.render(None), true, false, None);
                     routes.insert(item.id().clone(), (index, entry.command.clone()));
                     menu.append(&item)
                         .with_context(|| format!("plug-in menu entry {:?}", entry.label))?;
@@ -116,8 +117,7 @@ impl PluginMenu {
                         index,
                         StateItem::Check {
                             item,
-                            key: entry.state_key.clone(),
-                            value: entry.state_value.clone(),
+                            spec: entry.clone(),
                         },
                     ));
                     continue;
@@ -161,7 +161,7 @@ impl PluginMenu {
         if self.stateful.is_empty() {
             return;
         }
-        let mut cache: HashMap<usize, HashMap<String, String>> = HashMap::new();
+        let mut cache: HashMap<usize, Option<HashMap<String, String>>> = HashMap::new();
 
         for (index, entry) in &self.stateful {
             let Some(ext) = self.extensions.get(*index) else {
@@ -171,13 +171,15 @@ impl PluginMenu {
                 .entry(*index)
                 .or_insert_with(|| read_state(ext))
                 .clone();
+            let state = state.as_ref();
 
             match entry {
-                StateItem::Check { item, key, value } => {
-                    item.set_checked(state.get(key).is_some_and(|v| v == value));
+                StateItem::Check { item, spec } => {
+                    item.set_checked(spec.is_active(state));
+                    item.set_text(spec.render(state));
                 }
                 StateItem::Status { item, spec } => {
-                    item.set_text(spec.render(&state));
+                    item.set_text(spec.render(state));
                 }
             }
         }

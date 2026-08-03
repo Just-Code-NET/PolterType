@@ -170,20 +170,26 @@ pub fn run_command(ext: &DiscoveredExtension, command_id: &str) -> Result<(), St
 /// Output is one `key=value` per line. Anything else on a line is
 /// ignored rather than rejected, so a plug-in may print a human-facing
 /// summary alongside without breaking this.
-pub fn read_state(ext: &DiscoveredExtension) -> HashMap<String, String> {
-    let mut state = HashMap::new();
+///
+/// `None` means the plug-in could not be asked at all — it is not
+/// installed, it crashed, it timed out. That is a different thing from
+/// answering without mentioning a particular key, and the menu says so
+/// differently, because one of them is worth investigating and the
+/// other is normal.
+pub fn read_state(ext: &DiscoveredExtension) -> Option<HashMap<String, String>> {
     if ext.manifest.state_args.is_empty() {
-        return state;
+        return None;
     }
 
     let stdout = match state_output(ext) {
         Ok(out) => out,
         Err(e) => {
             warn!(id = %ext.id, "cannot read plug-in state: {e}");
-            return state;
+            return None;
         }
     };
 
+    let mut state = HashMap::new();
     for line in stdout.lines() {
         if let Some((key, value)) = line.split_once('=') {
             let (key, value) = (key.trim(), value.trim());
@@ -192,7 +198,7 @@ pub fn read_state(ext: &DiscoveredExtension) -> HashMap<String, String> {
             }
         }
     }
-    state
+    Some(state)
 }
 
 /// Run the state command and return its stdout, or give up.
