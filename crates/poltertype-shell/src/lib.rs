@@ -25,7 +25,7 @@ mod process;
 #[cfg(test)]
 mod tests;
 
-pub use instance::instance_lock_id;
+pub use instance::{InstanceLock, acquire as acquire_instance_lock};
 pub use keys::{key_glyph, key_name_with_glyph};
 pub use process::request_stop;
 

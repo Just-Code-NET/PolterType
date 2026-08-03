@@ -63,7 +63,6 @@ use poltertype_input::{
 use poltertype_layout::create_switcher;
 use poltertype_popup::{PopupUiEvent, create_popup};
 use poltertype_types::LayoutId;
-use single_instance::SingleInstance;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tracing::{error, info, warn};
@@ -124,12 +123,20 @@ fn main() -> Result<()> {
     let config_dir = poltertype_core::settings::SettingsStore::project_dirs()
         .map(|d| d.config_dir().to_path_buf())
         .unwrap_or_else(|_| std::env::temp_dir());
-    let lock_id = poltertype_shell::instance_lock_id(APP_ID, &config_dir);
-    let instance = SingleInstance::new(&lock_id).context("create single-instance lock")?;
-    if !instance.is_single() {
-        warn!("another instance is already running, exiting");
+    let Some(_instance) = poltertype_shell::acquire_instance_lock(APP_ID, &config_dir)
+        .context("create single-instance lock")?
+    else {
+        // Named rather than merely stated: the commonest cause after a
+        // crash used to be a plug-in that outlived us still holding the
+        // lock, and "another instance is already running" gave nobody
+        // anything to act on. That leak is fixed, but the hint costs a
+        // line and the next cause will not be one we predicted either.
+        warn!(
+            "another instance is already running, exiting — if no PolterType window or tray \
+             icon exists, look for a leftover PolterType or plug-in process"
+        );
         return Ok(());
-    }
+    };
 
     // ─── Settings ──────────────────────────────────────────────────
     let settings = match SettingsStore::load_or_default() {

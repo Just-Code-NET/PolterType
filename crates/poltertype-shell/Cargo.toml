@@ -20,3 +20,9 @@ tracing = { workspace = true }
 # argument. `tao` already reaches the binary as the event-loop crate,
 # so this is a handle on something already linked.
 tao = { workspace = true }
+
+# Only the platforms whose primitive is already close-on-exec. Linux
+# binds its own abstract socket with `std` instead — see src/instance.rs
+# for why that is not a preference but a bug fix.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+single-instance = { workspace = true }
