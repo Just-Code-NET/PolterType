@@ -68,6 +68,7 @@ fn a_tray_item_pointing_at_nothing_is_refused() {
         tray_items: vec![TrayItem {
             label: "Do the thing".to_owned(),
             command: "nonexistent".to_owned(),
+            ..TrayItem::default()
         }],
         ..base()
     };
@@ -80,6 +81,7 @@ fn a_tray_item_pointing_at_a_real_command_is_fine() {
         tray_items: vec![TrayItem {
             label: "Run".to_owned(),
             command: "run".to_owned(),
+            ..TrayItem::default()
         }],
         ..base()
     };

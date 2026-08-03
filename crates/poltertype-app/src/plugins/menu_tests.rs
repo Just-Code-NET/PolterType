@@ -28,6 +28,7 @@ fn extension(id: &str, entries: &[(&str, &str)]) -> DiscoveredExtension {
                 .map(|(label, command)| TrayItem {
                     label: (*label).to_owned(),
                     command: (*command).to_owned(),
+                    ..TrayItem::default()
                 })
                 .collect(),
             ..ExtensionManifest::default()
@@ -89,7 +90,7 @@ fn two_plugins_with_identical_labels_stay_distinct() {
 fn a_click_on_something_else_is_not_claimed() {
     // The app's own menu items must fall through untouched.
     let menu = Menu::new();
-    let plugins = PluginMenu::build(vec![extension("demo", &[("Go", "go")])], &menu).unwrap();
+    let mut plugins = PluginMenu::build(vec![extension("demo", &[("Go", "go")])], &menu).unwrap();
     let ours = MenuItem::new("Quit", true, None);
     assert!(!plugins.handle(ours.id()));
 }
@@ -97,7 +98,103 @@ fn a_click_on_something_else_is_not_claimed() {
 #[test]
 fn a_click_on_a_plugin_entry_is_claimed() {
     let menu = Menu::new();
-    let plugins = PluginMenu::build(vec![extension("demo", &[("Go", "go")])], &menu).unwrap();
+    let mut plugins = PluginMenu::build(vec![extension("demo", &[("Go", "go")])], &menu).unwrap();
     let id = plugins.routes.keys().next().unwrap().clone();
     assert!(plugins.handle(&id));
+}
+
+// ── Showing which mode is in force ──────────────────────────────────
+
+fn state(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+    pairs
+        .iter()
+        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+        .collect()
+}
+
+fn tray(label: &str, command: &str, key: &str, value: &str) -> TrayItem {
+    TrayItem {
+        label: label.to_owned(),
+        command: command.to_owned(),
+        state_key: key.to_owned(),
+        state_value: value.to_owned(),
+    }
+}
+
+#[test]
+fn an_entry_without_state_is_still_a_plain_command() {
+    // The shape every existing plug-in uses must not change meaning.
+    let item = tray("Draft a reply", "propose", "", "");
+    assert!(!item.is_check());
+    assert!(!item.is_status());
+    assert_eq!(item.render(&state(&[])), "Draft a reply");
+}
+
+#[test]
+fn an_entry_with_a_key_and_a_value_is_a_tick() {
+    let item = tray("Ask before acting", "mode-ask", "mode", "ask");
+    assert!(item.is_check());
+    assert!(!item.is_status());
+    // The label is not rewritten — the tick carries the meaning.
+    assert_eq!(item.render(&state(&[("mode", "ask")])), "Ask before acting");
+}
+
+#[test]
+fn an_entry_with_a_key_and_no_value_reports_rather_than_acts() {
+    let item = tray("Autopilot — {}", "", "mode", "");
+    assert!(item.is_status());
+    assert!(!item.is_check());
+    assert_eq!(item.render(&state(&[("mode", "ask")])), "Autopilot — ask");
+}
+
+#[test]
+fn a_status_label_without_a_placeholder_still_shows_the_value() {
+    // A plug-in author who forgets `{}` should not get a line that
+    // silently drops the one thing it exists to say.
+    let item = tray("Autopilot", "", "mode", "");
+    assert_eq!(item.render(&state(&[("mode", "auto")])), "Autopilot: auto");
+}
+
+#[test]
+fn an_unreported_key_says_unknown_rather_than_going_blank() {
+    // The plug-in may be stopped, or its state command may have failed.
+    // "unknown" is information; an empty gap is a puzzle.
+    let item = tray("Autopilot — {}", "", "mode", "");
+    assert_eq!(item.render(&state(&[])), "Autopilot — unknown");
+    assert_eq!(
+        item.render(&state(&[("something_else", "x")])),
+        "Autopilot — unknown"
+    );
+}
+
+#[test]
+fn only_the_matching_alternative_is_ticked() {
+    let items = [
+        tray("Ask", "mode-ask", "mode", "ask"),
+        tray("Learn", "mode-learn", "mode", "learn"),
+        tray("Stop", "mode-off", "mode", "off"),
+    ];
+    let live = state(&[("mode", "learn")]);
+    let ticked: Vec<bool> = items
+        .iter()
+        .map(|i| live.get(&i.state_key).is_some_and(|v| *v == i.state_value))
+        .collect();
+    assert_eq!(ticked, vec![false, true, false]);
+}
+
+#[test]
+fn a_mode_no_entry_offers_ticks_nothing_rather_than_guessing() {
+    // `auto` is reachable from the command line but deliberately has no
+    // tray entry — arming unattended authority from a menu is too easy.
+    // The menu must then show no tick at all, not the nearest one.
+    let items = [
+        tray("Ask", "mode-ask", "mode", "ask"),
+        tray("Learn", "mode-learn", "mode", "learn"),
+    ];
+    let live = state(&[("mode", "auto")]);
+    assert!(
+        !items
+            .iter()
+            .any(|i| live.get(&i.state_key).is_some_and(|v| *v == i.state_value))
+    );
 }

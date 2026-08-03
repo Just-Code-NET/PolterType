@@ -46,10 +46,32 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
     }
 
     for item in &m.tray_items {
+        // A status entry reports rather than acts: it has a state key
+        // and no command, and is rendered disabled. Requiring a command
+        // of it would force plug-in authors to invent a do-nothing one.
+        if item.is_status() {
+            if m.state_args.is_empty() {
+                return Err(PluginError::BadPane(format!(
+                    "tray item {:?} shows state, but the manifest declares no state_args to \
+                     read it with",
+                    item.label
+                )));
+            }
+            continue;
+        }
         if !m.commands.iter().any(|c| c.id == item.command) {
             return Err(PluginError::BadPane(format!(
                 "tray item {:?} refers to unknown command {:?}",
                 item.label, item.command
+            )));
+        }
+        // A tick that nothing ever sets would sit permanently unticked
+        // and quietly claim the mode is never active.
+        if item.is_check() && m.state_args.is_empty() {
+            return Err(PluginError::BadPane(format!(
+                "tray item {:?} declares state_value, but the manifest declares no \
+                 state_args to read state with",
+                item.label
             )));
         }
     }

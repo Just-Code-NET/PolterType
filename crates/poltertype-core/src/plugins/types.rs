@@ -51,6 +51,19 @@ pub struct ExtensionManifest {
     pub tray_items: Vec<TrayItem>,
     /// The settings pane, rendered natively by PolterType.
     pub pane: Vec<PaneControl>,
+
+    /// Arguments to a command that prints the plug-in's current state,
+    /// one `key=value` per line. Empty means the plug-in reports
+    /// nothing and its tray entries are plain commands.
+    ///
+    /// Asking the plug-in, rather than reading its config file, is the
+    /// only answer that can be right: the config holds what a plug-in
+    /// *starts* as, and anything a user changes at runtime — a mode
+    /// armed from the command line, an authority that has since expired
+    /// — lives elsewhere or nowhere. A menu showing the config value
+    /// would confidently display the wrong thing, which is worse than
+    /// the blank menu it replaced.
+    pub state_args: Vec<String>,
 }
 
 /// A command the plug-in exposes, run as `<exe> <args…>`.
@@ -68,9 +81,59 @@ pub struct PluginCommand {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct TrayItem {
+    /// What the user sees. When this entry reports state rather than
+    /// acting (see [`Self::state_key`] with no [`Self::command`]),
+    /// `{}` in the label is replaced by the current value.
     pub label: String,
-    /// Id of a [`PluginCommand`].
+    /// Id of a [`PluginCommand`]. Empty means this entry only *shows*
+    /// state and cannot be clicked.
     pub command: String,
+
+    /// Which key of the plug-in's reported state this entry reflects.
+    ///
+    /// Empty — the entry is a plain command with no state, and renders
+    /// exactly as before.
+    ///
+    /// Set, **with** [`Self::state_value`] — the entry gets a tick when
+    /// the reported value matches, so a group of them reads as a set of
+    /// alternatives with the live one marked.
+    ///
+    /// Set, **without** [`Self::state_value`] — the entry is a disabled
+    /// status line showing the value in its label. Menus that draw
+    /// ticks faintly, or not at all, still say what is in force.
+    pub state_key: String,
+
+    /// The value of [`Self::state_key`] that ticks this entry.
+    pub state_value: String,
+}
+
+impl TrayItem {
+    /// Does this entry show a tick?
+    pub fn is_check(&self) -> bool {
+        !self.state_key.is_empty() && !self.state_value.is_empty()
+    }
+
+    /// Is this entry a read-only status line?
+    pub fn is_status(&self) -> bool {
+        !self.state_key.is_empty() && self.state_value.is_empty()
+    }
+
+    /// The label to render, given the plug-in's reported state.
+    ///
+    /// A status entry whose key is missing from the report says so
+    /// rather than rendering an empty gap — "unknown" is information,
+    /// a blank is a bug the user has to guess at.
+    pub fn render(&self, state: &std::collections::HashMap<String, String>) -> String {
+        if !self.is_status() {
+            return self.label.clone();
+        }
+        let value = state.get(&self.state_key).map_or("unknown", String::as_str);
+        if self.label.contains("{}") {
+            self.label.replacen("{}", value, 1)
+        } else {
+            format!("{}: {value}", self.label)
+        }
+    }
 }
 
 /// One control in the plug-in's settings pane.

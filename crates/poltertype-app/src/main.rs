@@ -71,6 +71,12 @@ use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
 
+/// How often a plug-in that reports state is re-asked while the user is
+/// not touching the menu. Slow on purpose: this exists so a change made
+/// elsewhere is not invisible indefinitely, not so the tray is a live
+/// dashboard, and every tick costs one subprocess per reporting plug-in.
+const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
+
 fn main() -> Result<()> {
     // CLI dispatch: `poltertype --settings` opens the Settings GUI
     // and exits when the window closes. Anything else falls through
@@ -447,7 +453,7 @@ fn main() -> Result<()> {
     // Plug-ins last, so the app's own entries keep their position and
     // a plug-in can never push Quit off the bottom of the menu.
     let discovered = poltertype_core::plugins::extensions(&data_dir);
-    let plugin_menu = plugins::PluginMenu::build(discovered, &menu)?;
+    let mut plugin_menu = plugins::PluginMenu::build(discovered, &menu)?;
     let mut supervisor = plugins::Supervisor::new();
     supervisor.start_all(plugin_menu.extensions());
     for ext in plugin_menu.extensions() {
@@ -652,9 +658,36 @@ fn main() -> Result<()> {
     };
 
     info!("entering event loop");
+    // A slow heartbeat, so a mode changed from the command line — or an
+    // authority that expired on its own — reaches the menu without the
+    // user having to click something first.
+    //
+    // A thread and the event-loop proxy rather than `ControlFlow::
+    // WaitUntil`: the GTK backend does not deliver a timed wake-up, so
+    // the timer version compiled, ran, and silently never fired. This
+    // is also how every other background producer in this app talks to
+    // the loop.
+    //
+    // Only armed when a plug-in actually reports something — stock
+    // PolterType stays fully idle.
+    if plugin_menu.reports_state() {
+        let proxy = event_loop.create_proxy();
+        std::thread::Builder::new()
+            .name("plugin-state".into())
+            .spawn(move || {
+                while proxy.send_event(UserEvent::PluginState).is_ok() {
+                    std::thread::sleep(PLUGIN_STATE_INTERVAL);
+                }
+            })
+            .context("cannot start the plug-in state heartbeat")?;
+    }
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            Event::UserEvent(UserEvent::PluginState) => {
+                plugin_menu.refresh();
+            }
             Event::UserEvent(UserEvent::Menu(id)) => {
                 // A service that died since the last click is reported
                 // now rather than at shutdown, when nobody is looking.
