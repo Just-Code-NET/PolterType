@@ -2,6 +2,16 @@ name: Release
 
 # Triggered on a `v*` tag (cuts a real release) or manually
 # (test the workflow without publishing — outputs go to artifacts only).
+#
+# The manual mode did not work until 2026-08-04: every installer job
+# took its version from `github.ref_name`, which on a dispatch is the
+# *branch* name. All four failed on it, and each in its own dialect —
+# WiX refused `feat/plugin` as a ProductVersion, and the AppImage's
+# output path picked up the `/` and came out as a mksquashfs error that
+# named nothing. So the one mode meant for rehearsing a release could
+# never rehearse it. Off a tag the version is the tag; off anything
+# else it is `0.0.0-dev`, which every builder accepts and nobody could
+# mistake for a release.
 on:
   push:
     tags:
@@ -111,7 +121,7 @@ jobs:
 
       - name: Build AppImage
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-dev' }}
           ARCH: ${{ matrix.arch }}
           ICON_PNG: target/dist/icon-256.png
           OUT_DIR: target/dist
@@ -161,7 +171,7 @@ jobs:
 
       - name: Build DMG
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-dev' }}
           BIN_X86_64: target/x86_64-apple-darwin/release/poltertype
           BIN_ARM64: target/aarch64-apple-darwin/release/poltertype
           ICON_ICNS: target/dist/AppIcon.icns
@@ -212,7 +222,7 @@ jobs:
       - name: Build MSI
         shell: pwsh
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-dev' }}
           BIN_PATH: target/x86_64-pc-windows-msvc/release/poltertype.exe
           ICON_PATH: target/dist/AppIcon.ico
           OUT_DIR: target/dist

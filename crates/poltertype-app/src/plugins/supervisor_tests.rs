@@ -180,3 +180,65 @@ fn the_fixture_can_actually_start_a_process() {
         "fixture interpreter {exe:?} {flag} did not run: {status:?}"
     );
 }
+
+/// A plug-in that declares `stop` is asked before it is killed.
+///
+/// The observable is a file the stop command creates: nothing else
+/// proves the command actually ran in the plug-in's own program rather
+/// than being decided about and skipped.
+///
+/// This is the whole graceful-shutdown path on Windows, where there is
+/// no signal to fall back to — see `STOP_COMMAND`.
+#[test]
+fn a_declared_stop_command_is_run_before_the_kill() {
+    let (_, flag) = shell();
+    let marker = std::env::temp_dir().join(format!(
+        "poltertype-stop-{}-{:?}.marker",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_file(&marker);
+
+    let mut ext = sleeper(true);
+    ext.manifest.commands.push(PluginCommand {
+        id: STOP_COMMAND.to_owned(),
+        label: "Stop".to_owned(),
+        args: vec![
+            flag.to_owned(),
+            format!("echo stopped> {}", marker.display()),
+        ],
+    });
+    assert!(declares_stop(&ext), "the fixture must declare the command");
+
+    let mut sup = Supervisor::new();
+    sup.start_all(std::slice::from_ref(&ext));
+    assert!(sup.is_running("test-sleeper"), "service should be running");
+
+    sup.stop_all();
+
+    // The command is spawned, not waited on, so give it a moment.
+    let mut ran = false;
+    for _ in 0..50 {
+        if marker.exists() {
+            ran = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let _ = std::fs::remove_file(&marker);
+    assert!(ran, "stop_all did not run the declared stop command");
+    assert!(!sup.is_running("test-sleeper"));
+}
+
+/// A plug-in that declares no stop command is not asked, and stopping
+/// it still works — the kill is what it always was.
+#[test]
+fn a_plugin_without_a_stop_command_is_simply_killed() {
+    let ext = sleeper(true);
+    assert!(!declares_stop(&ext));
+
+    let mut sup = Supervisor::new();
+    sup.start_all(std::slice::from_ref(&ext));
+    sup.stop_all();
+    assert!(!sup.is_running("test-sleeper"));
+}

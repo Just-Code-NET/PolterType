@@ -38,7 +38,32 @@ use tracing::{info, warn};
 struct Running {
     id: String,
     child: Child,
+    /// The extension this process came from, kept so it can be asked to
+    /// stop the way *it* declared. Cloning it costs a few strings once
+    /// per plug-in at startup.
+    ext: DiscoveredExtension,
 }
+
+/// The command id a plug-in may declare to be told "wind up now".
+///
+/// Reserved rather than invented per plug-in: the supervisor has to
+/// know the name to call it without being configured, and a plug-in
+/// that does not declare it simply is not asked.
+///
+/// This is how a graceful stop works on **every** platform, and it
+/// exists because the per-OS mechanisms do not. Unix has SIGTERM, which
+/// is real but only half the story: a plug-in still has to install a
+/// handler for it. Windows has no signal at all, and the console
+/// control event that stands in for one was measured here and refused —
+/// addressed to the child's process group it returned success and did
+/// nothing, and addressed to the whole console it killed the sender.
+/// Neither outcome is acceptable in the process holding the global
+/// keyboard hook. See `docs/DECISIONS.md`.
+///
+/// A declared command has none of those problems: it is the plug-in's
+/// own program, run the way every other plug-in action is run, and what
+/// "stop cleanly" means is the plug-in author's to define.
+pub const STOP_COMMAND: &str = "stop";
 
 /// Owns every plug-in process this app started.
 #[derive(Default)]
@@ -68,6 +93,7 @@ impl Supervisor {
                     self.running.push(Running {
                         id: ext.id.clone(),
                         child,
+                        ext: ext.clone(),
                     });
                 }
                 Err(e) => warn!(id = %ext.id, "could not start plug-in service: {e}"),
@@ -105,6 +131,19 @@ impl Supervisor {
     /// being polite costs a moment, not a guarantee.
     pub fn stop_all(&mut self) {
         for r in &mut self.running {
+            // The plug-in's own idea of stopping, first and on every
+            // platform. A plug-in that declares nothing is not asked,
+            // and falls through to the two lines below exactly as
+            // before.
+            if declares_stop(&r.ext) {
+                match run_command(&r.ext, STOP_COMMAND) {
+                    Ok(()) => info!(id = %r.id, "asked the plug-in to stop"),
+                    Err(e) => warn!(id = %r.id, "declared stop command failed: {e}"),
+                }
+            }
+            // And the OS's own way of asking, where there is one. Both
+            // are requests; neither is guaranteed, which is why the
+            // kill below is not optional.
             poltertype_shell::request_stop(r.child.id());
         }
         // A grace period, then whatever is left is killed. Deliberately
@@ -136,6 +175,11 @@ impl Drop for Supervisor {
         // keystroke-reading process with no visible owner.
         self.stop_all();
     }
+}
+
+/// Whether this extension declared the reserved stop command.
+pub fn declares_stop(ext: &DiscoveredExtension) -> bool {
+    ext.manifest.commands.iter().any(|c| c.id == STOP_COMMAND)
 }
 
 /// Run one of a plug-in's declared commands and leave it to finish on
