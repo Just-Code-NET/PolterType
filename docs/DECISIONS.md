@@ -6,6 +6,52 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-04 — Windows plug-in shutdown: console control events measured, refused, replaced by a declared command
+
+`request_stop` was an honest no-op on Windows, so a plug-in service was
+always killed 400 ms after PolterType decided to quit, losing whatever
+it held. The obvious remedy is the console control event — Windows has
+no signal, and `CTRL_BREAK_EVENT` is what stands in for one. We
+implemented it fully and measured it on Windows 11 rather than
+reasoning about it.
+
+**What was measured.** Children spawned with
+`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`, the console borrowed
+with `AttachConsole`, a real `SetConsoleCtrlHandler` routine installed
+*first* so the event could not come back at us, then
+`GenerateConsoleCtrlEvent`. Two addressings, two failures:
+
+* **To the child's own process group** (`dwProcessGroupId = pid`, the
+  documented shape for a group root): returned `Ok(())` and the child
+  went on running. Nothing observable happened at all.
+* **To the whole borrowed console** (`0`): the child died — and so did
+  the sender.
+
+**Why the guard did not hold.** `SetConsoleCtrlHandler(NULL, TRUE)`,
+the documented way to ignore console events, covers **Ctrl+C only**;
+this is Ctrl+Break. A real handler returning `TRUE` was installed
+instead and the process still went down, which is where we stopped:
+the sender here is the process that owns the global keyboard hook, and
+losing it mid-shutdown is worse than any buffer a plug-in might flush.
+
+**What we did instead.** The request goes through the interface
+plug-ins already have. A plug-in may declare a command with the
+reserved id `stop`; the supervisor runs it before the grace period. It
+is the plug-in's own program, invoked the way its every other action
+is, and what "stop cleanly" means belongs to its author. One path on
+three platforms, no `unsafe`, and `poltertype-shell` keeps
+`forbid(unsafe_code)` — which the console route would have cost.
+
+**Alternatives considered.** A named event or socket the plug-in waits
+on: a new contract to specify, document and get authors to implement,
+for no more than the declared command already gives. Keeping the no-op:
+rejected, since Unix plug-ins got a real request and Windows ones got
+silence. SIGTERM still goes out on Unix afterwards, and the kill still
+ends anything that ignores both — nothing here is a guarantee, and the
+caller must always have the kill.
+
+---
+
 ## 2026-08-01 — No AT-SPI keystroke listener: measured, refused, and the reason is architectural
 
 `PLAN.md` has carried "Wayland AT-SPI fallback listener via `atspi`"

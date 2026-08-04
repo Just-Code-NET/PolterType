@@ -4,6 +4,91 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] — plug-ins that run, and the first release Windows was actually held to
+
+Two blocks, and they meet in one place: the plug-in system landed in
+0.10.0 without anyone having run it on Windows, and running it there is
+what turned up most of what follows.
+
+### Windows
+
+PolterType has claimed to work on Windows since 0.1.0. It did. But no
+release had been *exercised* on it, and a week on a real machine found
+things that no amount of review had.
+
+- **The tray app no longer opens a console window.** Nothing set
+  `windows_subsystem`, so the binary linked as a console image and
+  Windows allocated a black window for it every time it was started by
+  anything that was not already a console — the Start Menu shortcut,
+  the autostart entry, Explorer. It sat behind the tray icon for the
+  life of the process, and the settings window brought a second one.
+
+- **Suggestions are now drawn on Windows.** The tooltip existed only as
+  a keyboard chord there: the engine ranked the candidates and nothing
+  ever showed them, so you had to already know what you were accepting.
+  There is now a layered, always-on-top, never-activated window, which
+  cannot take the keyboard away from what you are typing into because
+  the window style forbids it. It appears above the focused window;
+  caret-accurate placement needs a caret source Windows does not have
+  yet.
+
+- **The keystroke hold-back was losing what it held.** Off by default
+  and never run on hardware, `POLTERTYPE_HOLD_KEYS=1` turned out to
+  swallow your keystrokes and then fail to give them back — and after
+  that was fixed, to still drop the **spacebar**, which is the boundary
+  that triggers most corrections. It works now, and it stays off by
+  default for a new reason: holding costs a delay after every
+  correction that you can feel. Both fixes are shared with macOS, which
+  had the same two holes.
+
+- **Uninstalling takes the autostart entry with it.** It did not, so
+  removing PolterType left Windows trying to start a deleted program at
+  every login, with nothing in the interface to explain it.
+
+- **All fifteen keyboard layouts were checked against Windows' own
+  keymaps** — including the nine added in 0.9.0 that had never been
+  typed on. They match at the plain and shift levels, with four
+  exceptions in the whole set where Windows and xkb genuinely disagree
+  and one file cannot satisfy both. What the audit did turn up is
+  larger and is not fixed here: a language is not a keyboard, and
+  PolterType currently treats it as one
+  ([#20](https://github.com/Just-Code-NET/PolterType/issues/20)).
+
+- **`то` is a Ukrainian word again.** Two-letter tokens are judged
+  against a curated list rather than the dictionary, and that list had
+  `о` but not `то` — so a single letter could switch your layout while
+  one of the commonest words in the language could not.
+
+- **The release workflow's rehearsal mode could not build anything.**
+  It passed the branch name where a version was expected, and all four
+  installers failed on it, each in its own dialect. The one mode meant
+  for testing a release without publishing one had never worked.
+
+### Plug-ins
+
+- **Extensions can run on Windows at all.** A manifest names its
+  program without an extension so that one manifest describes a plug-in
+  everywhere; resolution took that name literally, and every toolchain
+  on Windows writes `foo.exe`. No extension had ever resolved there.
+
+- **No more console windows from plug-ins.** A tray app owns no
+  console, so every plug-in process was handed one of its own — once at
+  startup for a service, and again every single time the tray menu was
+  drawn, because the menu asks each plug-in for its state.
+
+- **A plug-in can be asked to stop, on every platform.** Services were
+  killed 400 ms after PolterType decided to quit, and on Windows they
+  were never asked at all. A plug-in may now declare a command with the
+  reserved id `stop`, run before the grace period — its own program,
+  deciding for itself what leaving cleanly means. The per-OS route was
+  tried first and measured: see `docs/DECISIONS.md`, 2026-08-04, for
+  why a console control event is not it.
+
+- **The supervisor's tests run off Unix.** They drove `/bin/sh`, so
+  three failed on Windows — and, worse, four passed for the wrong
+  reason, because most of that suite asserts a process is *not*
+  running, which is trivially true when it never started.
+
 ## [0.10.0] — you bring the model, the interface speaks your language, and the roadmap runs out of features
 
 ### Added
