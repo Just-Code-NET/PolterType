@@ -205,7 +205,11 @@ fn a_declared_stop_command_is_run_before_the_kill() {
         label: "Stop".to_owned(),
         args: vec![
             flag.to_owned(),
-            format!("echo stopped> {}", marker.display()),
+            // Quoted: `{:?}` on a `ThreadId` renders as `ThreadId(2)`,
+            // and an unquoted `(` is a subshell to `/bin/sh -c` — the
+            // marker path broke the very shell command meant to write
+            // it.
+            format!("echo stopped> \"{}\"", marker.display()),
         ],
     });
     assert!(declares_stop(&ext), "the fixture must declare the command");

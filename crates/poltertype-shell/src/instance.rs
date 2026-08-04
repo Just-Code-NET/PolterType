@@ -102,7 +102,7 @@ pub fn acquire(app_id: &str, config_dir: &Path) -> std::io::Result<Option<Instan
 
 /// What to hand `single-instance` on the platforms that still use it.
 #[cfg(not(target_os = "linux"))]
-fn lock_id(app_id: &str, config_dir: &Path) -> String {
+pub(crate) fn lock_id(app_id: &str, config_dir: &Path) -> String {
     #[cfg(target_os = "macos")]
     {
         if let Err(e) = std::fs::create_dir_all(config_dir) {
