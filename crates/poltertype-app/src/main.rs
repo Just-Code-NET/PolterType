@@ -13,6 +13,25 @@
 //! consulted by the engine on every word boundary. See
 //! `poltertype_core::commands` for the design.
 
+// A tray-only app must not own a console. Without this, Windows links
+// the binary as a CUI image and allocates a conhost for it the moment
+// it is started by anything that is not already a console — which is
+// every way a user actually launches it: the Start Menu shortcut, the
+// autostart run key, Explorer. The result was a black window sitting
+// behind the tray icon for the life of the process, and a second one
+// for the settings subprocess.
+//
+// Set unconditionally rather than under `not(debug_assertions)`, so the
+// shape we test is the shape we ship: the subsystem also decides
+// whether a spawned plug-in inherits our console or allocates its own,
+// and a dev build that quietly differed there would hide exactly the
+// bug `poltertype_shell::configure_child` exists to prevent.
+//
+// Diagnostics do not depend on the console: `init_tracing` writes a
+// daily-rotating file under `<data_dir>/poltertype/logs/`, and a GUI
+// image still inherits standard handles, so `poltertype.exe > log 2>&1`
+// keeps working from a shell. Ignored on every other platform.
+#![windows_subsystem = "windows"]
 #![forbid(unsafe_code)]
 
 mod icon_render;

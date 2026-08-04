@@ -212,14 +212,16 @@ pub fn read_state(ext: &DiscoveredExtension) -> Option<HashMap<String, String>> 
 fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
     use std::io::Read as _;
 
-    let mut child = Command::new(&ext.exe)
-        .args(&ext.manifest.state_args)
+    let mut cmd = Command::new(&ext.exe);
+    cmd.args(&ext.manifest.state_args)
         .current_dir(&ext.dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+        .stderr(Stdio::null());
+    // This one runs every time the tray menu is drawn, so a console
+    // window here would flash on every click, not once at startup.
+    poltertype_shell::configure_child(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
     // Drained on its own thread: a plug-in printing more than a pipe
     // buffer would block forever if we polled without reading.
@@ -260,13 +262,16 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
 const STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1_500);
 
 fn spawn(exe: &PathBuf, args: &[String], dir: &PathBuf) -> std::io::Result<Child> {
-    Command::new(exe)
-        .args(args)
+    let mut cmd = Command::new(exe);
+    cmd.args(args)
         // The plug-in's own directory, so a relative path in its
         // config means what its author expected.
         .current_dir(dir)
-        .stdin(Stdio::null())
-        .spawn()
+        .stdin(Stdio::null());
+    // A tray app owns no console, so a console child would be handed a
+    // window of its own. See `poltertype_shell::configure_child`.
+    poltertype_shell::configure_child(&mut cmd);
+    cmd.spawn()
 }
 
 #[cfg(test)]
