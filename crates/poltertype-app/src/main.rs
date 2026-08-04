@@ -13,6 +13,25 @@
 //! consulted by the engine on every word boundary. See
 //! `poltertype_core::commands` for the design.
 
+// A tray-only app must not own a console. Without this, Windows links
+// the binary as a CUI image and allocates a conhost for it the moment
+// it is started by anything that is not already a console — which is
+// every way a user actually launches it: the Start Menu shortcut, the
+// autostart run key, Explorer. The result was a black window sitting
+// behind the tray icon for the life of the process, and a second one
+// for the settings subprocess.
+//
+// Set unconditionally rather than under `not(debug_assertions)`, so the
+// shape we test is the shape we ship: the subsystem also decides
+// whether a spawned plug-in inherits our console or allocates its own,
+// and a dev build that quietly differed there would hide exactly the
+// bug `poltertype_shell::configure_child` exists to prevent.
+//
+// Diagnostics do not depend on the console: `init_tracing` writes a
+// daily-rotating file under `<data_dir>/poltertype/logs/`, and a GUI
+// image still inherits standard handles, so `poltertype.exe > log 2>&1`
+// keeps working from a shell. Ignored on every other platform.
+#![windows_subsystem = "windows"]
 #![forbid(unsafe_code)]
 
 mod icon_render;
@@ -23,6 +42,7 @@ mod consts;
 mod detectors;
 mod enums;
 mod hotkeys;
+mod plugins;
 mod settings_proc;
 mod suggest_popup;
 mod tray;
@@ -62,13 +82,18 @@ use poltertype_input::{
 use poltertype_layout::create_switcher;
 use poltertype_popup::{PopupUiEvent, create_popup};
 use poltertype_types::LayoutId;
-use single_instance::SingleInstance;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tracing::{error, info, warn};
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
+
+/// How often a plug-in that reports state is re-asked while the user is
+/// not touching the menu. Slow on purpose: this exists so a change made
+/// elsewhere is not invisible indefinitely, not so the tray is a live
+/// dashboard, and every tick costs one subprocess per reporting plug-in.
+const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 fn main() -> Result<()> {
     // CLI dispatch: `poltertype --settings` opens the Settings GUI
@@ -89,6 +114,9 @@ fn main() -> Result<()> {
             // user lands on the one screen that can help instead of
             // hunting for it.
             "--setup" => return settings_ui::run(true),
+            "--plugins" => {
+                return settings_ui::run_on(settings_ui::Pane::Plugins);
+            }
             "--version" | "-V" => {
                 println!("{APP_NAME} {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
@@ -114,12 +142,20 @@ fn main() -> Result<()> {
     let config_dir = poltertype_core::settings::SettingsStore::project_dirs()
         .map(|d| d.config_dir().to_path_buf())
         .unwrap_or_else(|_| std::env::temp_dir());
-    let lock_id = poltertype_shell::instance_lock_id(APP_ID, &config_dir);
-    let instance = SingleInstance::new(&lock_id).context("create single-instance lock")?;
-    if !instance.is_single() {
-        warn!("another instance is already running, exiting");
+    let Some(_instance) = poltertype_shell::acquire_instance_lock(APP_ID, &config_dir)
+        .context("create single-instance lock")?
+    else {
+        // Named rather than merely stated: the commonest cause after a
+        // crash used to be a plug-in that outlived us still holding the
+        // lock, and "another instance is already running" gave nobody
+        // anything to act on. That leak is fixed, but the hint costs a
+        // line and the next cause will not be one we predicted either.
+        warn!(
+            "another instance is already running, exiting — if no PolterType window or tray \
+             icon exists, look for a leftover PolterType or plug-in process"
+        );
         return Ok(());
-    }
+    };
 
     // ─── Settings ──────────────────────────────────────────────────
     let settings = match SettingsStore::load_or_default() {
@@ -440,6 +476,22 @@ fn main() -> Result<()> {
     menu.append_items(&[&item_about, &item_quit])
         .context("populate tray menu tail")?;
 
+    // Plug-ins last, so the app's own entries keep their position and
+    // a plug-in can never push Quit off the bottom of the menu.
+    let discovered = poltertype_core::plugins::extensions(&data_dir);
+    let mut plugin_menu = plugins::PluginMenu::build(discovered, &menu)?;
+    let mut supervisor = plugins::Supervisor::new();
+    supervisor.start_all(plugin_menu.extensions());
+    for ext in plugin_menu.extensions() {
+        info!(
+            id = %ext.id,
+            version = %ext.version,
+            development = ext.development,
+            service = supervisor.is_running(&ext.id),
+            "plug-in loaded"
+        );
+    }
+
     let setup_id = item_setup.as_ref().map(|i| i.id().clone());
     let update_id = item_update.as_ref().map(|i| i.id().clone());
     let settings_ui_id = item_settings_ui.id().clone();
@@ -632,15 +684,51 @@ fn main() -> Result<()> {
     };
 
     info!("entering event loop");
+    // A slow heartbeat, so a mode changed from the command line — or an
+    // authority that expired on its own — reaches the menu without the
+    // user having to click something first.
+    //
+    // A thread and the event-loop proxy rather than `ControlFlow::
+    // WaitUntil`: the GTK backend does not deliver a timed wake-up, so
+    // the timer version compiled, ran, and silently never fired. This
+    // is also how every other background producer in this app talks to
+    // the loop.
+    //
+    // Only armed when a plug-in actually reports something — stock
+    // PolterType stays fully idle.
+    if plugin_menu.reports_state() {
+        let proxy = event_loop.create_proxy();
+        std::thread::Builder::new()
+            .name("plugin-state".into())
+            .spawn(move || {
+                while proxy.send_event(UserEvent::PluginState).is_ok() {
+                    std::thread::sleep(PLUGIN_STATE_INTERVAL);
+                }
+            })
+            .context("cannot start the plug-in state heartbeat")?;
+    }
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            Event::UserEvent(UserEvent::PluginState) => {
+                plugin_menu.refresh();
+            }
             Event::UserEvent(UserEvent::Menu(id)) => {
-                if id == quit_id {
+                // A service that died since the last click is reported
+                // now rather than at shutdown, when nobody is looking.
+                supervisor.reap();
+                if plugin_menu.handle(&id) {
+                    // Belonged to a plug-in; nothing of ours to do.
+                } else if id == quit_id {
                     info!("Quit clicked — shutting down");
                     if let Some(mut listener) = input_listener.take() {
                         listener.stop();
                     }
+                    // Before anything on disk is replaced: a plug-in
+                    // service still running through an update would be
+                    // a process whose binary moved under it.
+                    supervisor.stop_all();
                     // Quit is the moment we have been waiting for: the
                     // user is done typing, the hook is down, and nothing
                     // we replace can be in use. This is what "installs

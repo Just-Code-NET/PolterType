@@ -149,17 +149,32 @@ keystrokes out itself, in order, once the correction is down. No extra
 permission is needed — it uses the `/dev/input/event*` access
 `setup-linux.sh` already grants.
 
-> **On Windows this exists but is switched off.** The low-level
-> keyboard hook can swallow events, and since 0.8.0 it does — for the
-> length of a correction, with the same replay-behind contract. It
-> needs no permission at all there. It is opt-in
-> (`POLTERTYPE_HOLD_KEYS=1`) because it has never run on real hardware:
-> a feature that can leave you unable to type is not one to enable for
-> people who did not ask. If you switch it on, please report what
-> happened either way —
-> [issue #7](https://github.com/Just-Code-NET/PolterType/issues/7).
+> **On Windows this exists, works, and is still switched off.** The
+> low-level keyboard hook swallows events for the length of a
+> correction and types them out behind it, with the same contract as
+> above, and it needs no permission at all there.
+>
+> 0.11.0 is the first release in which it has run on real hardware, and
+> that run changed both what it does and why it is off. Two bugs were
+> fixed that lost keystrokes outright rather than scrambling them — the
+> replay had no path back on Windows at all, and once it had one it
+> still dropped the **spacebar**, which is the boundary that triggers
+> most corrections.
+>
+> It stays opt-in (`POLTERTYPE_HOLD_KEYS=1`) for a different reason
+> than before: not fear, but **latency**. Holding means your keys are
+> withheld from the application for something like 75–100 ms after
+> every correction and then arrive together, which reads as the caret
+> lagging behind your typing. That trades a rare mangled word for a
+> constant delay, and it is not a trade to make on everybody's behalf.
+> Switch it on if you type fast enough to hit the race — and see
+> [issue #7](https://github.com/Just-Code-NET/PolterType/issues/7) for
+> the measurements. No keyboard wedge was observed at any point.
+>
 > **On macOS there is no implementation**, so a keystroke can still
-> land inside a correction there.
+> land inside a correction there — and both bugs above were fixed in
+> shared code, so whenever it is switched on there it starts from a
+> working replay rather than these two.
 
 **It stands down behind an input remapper.** keyd (and anything with
 the same design) holds every keyboard exclusively — *including

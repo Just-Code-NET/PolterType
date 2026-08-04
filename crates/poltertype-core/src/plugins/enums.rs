@@ -1,8 +1,69 @@
-//! Why an install refused.
+//! What kind of plug-in this is, and why an install refused.
 
 use std::path::PathBuf;
 
+use serde::Deserialize;
 use thiserror::Error;
+
+/// The two kinds of plug-in, which are **not** two points on one
+/// scale — they have different trust models and are validated by
+/// different rules.
+///
+/// A [`Self::Pack`] is data. It cannot execute; the installer's
+/// allow-list is what guarantees that, and nothing about it changes.
+///
+/// A [`Self::Extension`] ships a program. That is a genuinely larger
+/// decision by the user, so it is a separate kind rather than a looser
+/// pack: the difference is visible in the manifest, can be shown in
+/// the UI before anything is installed, and cannot be arrived at by a
+/// pack quietly gaining a field.
+///
+/// An extension never runs *inside* PolterType. It is spawned as its
+/// own process, so it has its own permissions and its own crashes, and
+/// the process that owns the global keyboard hook is not put at the
+/// mercy of third-party code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginKind {
+    /// Data only: layouts, wordlists, translations. The default, so a
+    /// manifest written before this field existed still means what it
+    /// meant.
+    #[default]
+    Pack,
+    /// Ships an executable that PolterType supervises as a separate
+    /// process and surfaces in its UI.
+    Extension,
+}
+
+impl PluginKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pack => "pack",
+            Self::Extension => "extension",
+        }
+    }
+}
+
+/// What a control in a plug-in's settings pane looks like.
+///
+/// Deliberately a small, closed set. PolterType renders these itself,
+/// natively, so a plug-in describes *what* it wants configured and
+/// never gets to draw anything — which is what keeps a third-party
+/// pane from imitating a system prompt or PolterType's own UI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ControlKind {
+    /// On/off, bound to a boolean key.
+    Toggle,
+    /// One of a fixed list of `options`.
+    Choice,
+    /// Free text, one line.
+    Text,
+    /// A whole number, bound to an integer key.
+    Number,
+    /// Runs one of the plug-in's declared commands. Binds to no key.
+    Button,
+}
 
 #[derive(Debug, Error)]
 pub enum PluginError {
@@ -30,6 +91,21 @@ pub enum PluginError {
     UnsafePath(PathBuf),
     #[error("pack contains nothing installable — no layouts, wordlists or translations")]
     Empty,
+    /// An extension declared no program to run, or named one that is
+    /// not in the pack. Refused rather than installed as a pack: a
+    /// half-declared extension would silently become inert.
+    #[error("extension declares no runnable program: {0}")]
+    NoExecutable(String),
+    /// The declared executable is not where it must be. Extensions may
+    /// only run something from their own `bin/` directory, so a
+    /// manifest cannot point PolterType at an arbitrary path on the
+    /// user's disk.
+    #[error("extension executable {0:?} must be a plain file name inside bin/")]
+    BadExecutablePath(String),
+    /// A pane control that cannot be rendered — an unknown key, a
+    /// choice with no options, a control bound to nothing.
+    #[error("settings pane is not usable: {0}")]
+    BadPane(String),
     #[error("{context}: {source}")]
     Io {
         context: String,

@@ -436,6 +436,29 @@
                 <RemoveFolder Id="RemoveManufacturerFolder"
                               Directory="ManufacturerFolder"
                               On="uninstall" />
+                <!--
+                    Take the autostart entry with us.
+
+                    "Run at login" is written by the *application*
+                    (`poltertype-autostart`, value name = `APP_ID`) when
+                    the user ticks the setting, so the installer never
+                    created it and, until this, never removed it either.
+                    Uninstalling left Windows trying to start a deleted
+                    executable at every login — verified on 2026-08-04
+                    by installing, running once, uninstalling, and
+                    finding the value still pointing into the removed
+                    directory.
+
+                    Declared here rather than fixed in the app because
+                    an uninstall does not run the app: there is no
+                    moment at which our own code could clean up after
+                    itself. Harmless when the user never enabled it —
+                    removing a value that is not there is not an error.
+                -->
+                <RemoveRegistryValue Id="RemoveAutostartEntry"
+                                     Root="HKCU"
+                                     Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                                     Name="dev.opensource.poltertype" />
                 <RegistryValue Root="HKCU"
                                Key="$(var.InstallRegKey)"
                                Name="MainExecutable"

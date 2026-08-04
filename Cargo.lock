@@ -4002,7 +4002,6 @@ dependencies = [
  "poltertype-tray",
  "poltertype-types",
  "poltertype-update",
- "single-instance",
  "tao",
  "tracing",
  "tracing-appender",
@@ -4035,6 +4034,7 @@ dependencies = [
  "serde",
  "thiserror 1.0.69",
  "toml",
+ "toml_edit 0.20.2",
  "tracing",
 ]
 
@@ -4093,6 +4093,7 @@ dependencies = [
  "tiny-skia",
  "tracing",
  "wayland-client",
+ "windows 0.58.0",
  "x11rb",
 ]
 
@@ -4100,6 +4101,7 @@ dependencies = [
 name = "poltertype-shell"
 version = "0.10.0"
 dependencies = [
+ "single-instance",
  "tao",
  "tracing",
 ]

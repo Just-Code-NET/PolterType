@@ -13,6 +13,10 @@ pub(crate) enum UserEvent {
     /// Suggestion-tooltip interaction (click / timeout).
     Popup(PopupUiEvent),
     Update(UpdateOutcome),
+    /// Time to re-ask every plug-in what state it is in, so the tray
+    /// reflects a change made somewhere else — from the command line,
+    /// or an authority that expired on its own.
+    PluginState,
 }
 
 /// What the background update worker found. Reported to the event loop

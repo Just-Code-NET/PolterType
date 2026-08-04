@@ -14,18 +14,22 @@
 //! | [`instance_lock_id`] | `single-instance` means a different thing by "id" per OS |
 //! | [`keep_out_of_dock`] | only macOS has a Dock, and `tao` overrides `LSUIElement` |
 //! | [`key_glyph`] | macOS prints glyphs on the keys, the others print words |
+//! | [`configure_child`] | only Windows hands a console program a window |
+//! | [`request_stop`] | only Unix has a signal to ask a process to leave |
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod instance;
 mod keys;
+mod process;
 
 #[cfg(test)]
 mod tests;
 
-pub use instance::instance_lock_id;
+pub use instance::{InstanceLock, acquire as acquire_instance_lock};
 pub use keys::{key_glyph, key_name_with_glyph};
+pub use process::{configure_child, request_stop};
 
 /// Keep a tray-only app out of the Dock and the app switcher.
 ///

@@ -12,19 +12,25 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.10.0 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.11.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
-> (GNOME Wayland gets it through XWayland). On Linux/Wayland a
+> (GNOME Wayland gets it through XWayland) — **and on Windows since
+> 0.11.0**, where it appears above the focused window rather than at
+> the caret. On Linux/Wayland a
 > correction holds your keystrokes back while it types and replays
 > them behind itself, so carrying straight on with the next word no
 > longer scrambles the result — except behind an input remapper such
 > as keyd, where PolterType stands down and falls back to detecting
 > and repairing instead
 > ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). The same hold-back
-> exists on Windows since 0.8.0 but is **off by default**
-> (`POLTERTYPE_HOLD_KEYS=1`) because nobody has run it on real
-> hardware. **macOS: read this
+> exists on Windows and stays **off by default**
+> (`POLTERTYPE_HOLD_KEYS=1`) — 0.11.0 is the first release where it has
+> run on real hardware, and what that showed is that it works and
+> costs a noticeable delay after every correction, which is not a
+> trade worth making for everyone
+> ([#7](https://github.com/Just-Code-NET/PolterType/issues/7)).
+> **macOS: read this
 > before updating.** 0.6.2 was validated on real hardware (macOS 15,
 > Intel), but 0.7.0 changed the macOS input path — modifier events now
 > reach the engine, and corrections release held modifiers before
@@ -228,15 +234,16 @@ good. The tooltip never steals keyboard focus and disappears after
 > The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
 > Sway and KDE Plasma, and an override-redirect window on X11 — which
 > also covers GNOME Wayland, since Mutter has no layer-shell but does
-> run XWayland. **macOS and Windows** have no overlay backend yet;
-> there the feature stays engine-side only, so suggestions exist but
-> nothing draws them.
+> run XWayland. **Windows** has had one since 0.11.0. **macOS** has no
+> overlay backend yet; there the feature stays engine-side only, so
+> suggestions exist but nothing draws them.
 >
-> Where it lands depends on what the focused app will tell us. Apps
-> with a live accessibility bridge report the caret, and the tooltip
-> sits directly above it; everything else gets it just above the
-> window's bottom edge — the neighbourhood of chat boxes and shell
-> prompts. It is never placed by your mouse pointer.
+> Where it lands depends on what the focused app will tell us. On
+> Linux, apps with a live accessibility bridge report the caret and
+> the tooltip sits directly above it; everything else — and **every
+> app on Windows**, where nothing reports the caret yet — gets it just
+> above the window's bottom edge, the neighbourhood of chat boxes and
+> shell prompts. It is never placed by your mouse pointer.
 
 ## Smart commands (text triggers)
 

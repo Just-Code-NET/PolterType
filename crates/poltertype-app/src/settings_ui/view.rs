@@ -32,6 +32,7 @@ impl SettingsApp {
             Pane::General => self.view_general(),
             Pane::Exceptions => self.view_exceptions(),
             Pane::Suggestions => self.view_suggestions(),
+            Pane::Plugins => self.view_plugins(),
             Pane::About => self.view_about(),
         };
 
@@ -132,6 +133,7 @@ impl SettingsApp {
                 .push(item("General", Pane::General))
                 .push(item("Exceptions", Pane::Exceptions))
                 .push(item("Suggestions", Pane::Suggestions))
+                .push(item("Plug-ins", Pane::Plugins))
                 .push(item("About", Pane::About))
                 .push(Space::with_height(Length::Fill))
                 .push(

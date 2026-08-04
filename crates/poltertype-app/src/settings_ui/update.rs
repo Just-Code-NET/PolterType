@@ -2,6 +2,7 @@
 
 use iced::Task;
 use iced::widget::text_editor;
+use poltertype_core::plugins::SettingValue;
 use poltertype_core::settings::{MIN_UPDATE_INTERVAL_HOURS, Settings, SettingsStore};
 use tracing::{info, warn};
 
@@ -20,6 +21,47 @@ impl SettingsApp {
 
         match msg {
             Message::SelectPane(p) => self.pane = p,
+
+            // Every plug-in edit writes straight through to the
+            // plug-in's own file: it may be running and watching that
+            // file, so a pane holding changes back would be showing a
+            // state the plug-in is not in.
+            Message::PluginToggled(plugin, index, on) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set(index, SettingValue::Bool(on));
+                }
+            }
+            Message::PluginChoiceSelected(plugin, index, chosen) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set(index, SettingValue::Text(chosen));
+                }
+            }
+            Message::PluginTextChanged(plugin, index, text) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    // A number control stores a number; anything that
+                    // is not one yet is left in the box rather than
+                    // written, so a half-typed "12" does not land as 1.
+                    let value = match pane.control(index).map(|c| c.kind) {
+                        Some(poltertype_core::plugins::ControlKind::Number) => {
+                            match text.trim().parse::<i64>() {
+                                Ok(n) => Some(SettingValue::Int(n)),
+                                Err(_) => None,
+                            }
+                        }
+                        _ => Some(SettingValue::Text(text)),
+                    };
+                    if let Some(value) = value {
+                        pane.set(index, value);
+                    }
+                }
+            }
+            Message::PluginCommandClicked(plugin, command) => {
+                if let Some(pane) = self.plugins.get(plugin) {
+                    if let Err(e) = crate::plugins::run_command(&pane.ext, &command) {
+                        tracing::warn!("plug-in button failed: {e}");
+                    }
+                }
+            }
 
             Message::LanguageToggled(id, active) => {
                 // The "Active" checkbox renders the *effective* state,

@@ -56,6 +56,12 @@ pub struct SettingsApp {
     /// Free-form text in the "add a new disabled app" input on the
     /// Exceptions pane. Empty by default; cleared on Add.
     pub(super) exception_draft: String,
+    /// Installed plug-ins that declare a settings pane, with the
+    /// values read from *their* config files. Loaded once when the
+    /// window opens: these files belong to other programs, and
+    /// re-reading them on every frame would fight whoever else is
+    /// writing them.
+    pub(super) plugins: Vec<super::plugin_pane::PluginPane>,
 
     // ── Commands pane: draft of a new command ──────────────────────
     /// Free-form display name. Falls back to id if blank at Add time.
@@ -138,6 +144,16 @@ impl SettingsApp {
             None => (None, String::new()),
         };
 
+        // Plug-in configs live beside PolterType's own config
+        // directory, not inside it — a plug-in is a separate program,
+        // not a subsection of this one. Computed here because the
+        // struct literal below takes ownership of `config_path`.
+        let plugin_config_root = config_path
+            .parent()
+            .and_then(|d| d.parent())
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_default();
+
         Self {
             settings,
             os_layouts,
@@ -152,6 +168,13 @@ impl SettingsApp {
             save_banner: None,
             capturing: None,
             exception_draft: String::new(),
+            plugins: {
+                let data_dir = poltertype_core::resolve_data_dir().unwrap_or_default();
+                super::plugin_pane::load_all(
+                    poltertype_core::plugins::extensions(&data_dir),
+                    &plugin_config_root,
+                )
+            },
             command_draft_name: String::new(),
             command_draft_trigger: String::new(),
             command_draft_action_kind: CommandActionKind::TypeText,

@@ -46,7 +46,49 @@ fn make_pack(root: &Path, id: &str) {
     );
 }
 
+/// A minimal well-formed extension: a manifest naming a program, and
+/// that program sitting in `bin/` under the name the platform's
+/// toolchain would actually have written.
+fn make_extension(root: &Path, id: &str, exe_stem: &str) {
+    write(
+        &root.join("manifest.toml"),
+        &format!(
+            "id = \"{id}\"\nname = \"Test extension\"\nversion = \"1.0\"\n\
+             kind = \"extension\"\n\n[extension]\nexe = \"{exe_stem}\"\n"
+        ),
+    );
+    write(
+        &root
+            .join("bin")
+            .join(format!("{exe_stem}{}", std::env::consts::EXE_SUFFIX)),
+        "not really a program",
+    );
+}
+
 // ── the happy path ───────────────────────────────────────────────────
+
+#[test]
+fn installs_an_extension_whose_program_carries_the_platform_suffix() {
+    // The manifest says `helper`; on Windows the file in `bin/` is
+    // `helper.exe`, because that is what every toolchain writes. The
+    // installer refusing that pack would make a portable manifest
+    // uninstallable on the one platform that decorates the name — so
+    // resolution has to know about the suffix on both doors into
+    // "run this program", install as well as discovery.
+    let src = Scratch::new("ext-src");
+    let data = Scratch::new("ext-data");
+    make_extension(src.path(), "testext", "helper");
+
+    let out = install(src.path(), data.path()).expect("extension should install");
+    assert_eq!(out.id, "testext");
+    assert!(
+        out.path
+            .join("bin")
+            .join(format!("helper{}", std::env::consts::EXE_SUFFIX))
+            .is_file(),
+        "the program should have been copied into the installed bin/"
+    );
+}
 
 #[test]
 fn installs_a_well_formed_pack() {

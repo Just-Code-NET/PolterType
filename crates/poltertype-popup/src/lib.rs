@@ -9,7 +9,7 @@
 //!   that grabs focus breaks the very keystrokes we exist to fix.
 //!   Wayland: `wlr-layer-shell` surface with
 //!   `keyboard_interactivity = None`. X11: an override-redirect
-//!   window (never focused by the WM). Windows (future):
+//!   window (never focused by the WM). Windows:
 //!   `WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW`.
 //! * **Never log the words being shown** — same privacy rule as the
 //!   engine: typed text stays out of the logs at any level.
@@ -25,7 +25,8 @@
 //! | X11 | override-redirect window | zero-permission path |
 //! | GNOME Wayland | override-redirect via XWayland | Mutter has no layer-shell; the X11 fallback still maps |
 //! | Wayland with neither layer-shell nor XWayland | noop | the only remaining gap |
-//! | Windows / macOS | noop today | seam ready; see `docs/PLAN.md` |
+//! | Windows 10 / 11 | layered topmost window | `UpdateLayeredWindow`; per-monitor DPI |
+//! | macOS | noop today | seam ready; see `docs/PLAN.md` |
 //!
 //! The backends are *probed*, not selected from a table of desktop
 //! names: layer-shell first, X11 second, noop last. That is why KDE
@@ -42,24 +43,26 @@
 mod enums;
 mod factory;
 mod noop;
-// The shared placement + renderer are consumed only by the Linux
-// backends today. On Windows/macOS (noop-only) compiling them trips
-// `-D dead_code` on the CI lanes — un-gate these (and `tests`) when
-// a backend lands there.
-#[cfg(target_os = "linux")]
+// The shared placement + renderer are consumed by every real backend.
+// Still gated, because macOS has none and compiling them there would
+// trip `-D dead_code` on that CI lane; add its target here when one
+// lands.
+#[cfg(any(target_os = "linux", windows))]
 mod place;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 mod render;
 mod traits;
 mod types;
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(windows)]
+mod windows;
 
 pub use enums::{PopupAnchor, PopupUiEvent};
 pub use factory::create_popup;
 pub use traits::SuggestionPopup;
 pub use types::{PopupEntry, PopupModel};
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, any(target_os = "linux", windows)))]
 mod tests;

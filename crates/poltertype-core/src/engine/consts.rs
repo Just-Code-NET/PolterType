@@ -80,3 +80,16 @@ pub const SC_V: u32 = 0x2F;
 /// evdev `KEY_INSERT` — used for the Shift+Insert paste shortcut. (Insert
 /// has no plain SC-1 byte; the listener reports the raw evdev code.)
 pub const SC_INSERT: u32 = 110;
+
+/// SC Set-1 scancode for the spacebar.
+///
+/// A layout overlay describes the 46 character keys and nothing else,
+/// so the spacebar has no entry in any of them. That matters wherever
+/// held keystrokes are replayed as *text*: without special-casing it
+/// here, the boundary that triggered the correction in the first place
+/// is the one keystroke that never comes back, and the next word runs
+/// straight into the corrected one.
+pub const SC_SPACE: u32 = 0x39;
+/// SC Set-1 scancode for Backspace. Also layout-independent, and also
+/// not text — it has to be re-emitted as a keypress, in order.
+pub const SC_BACKSPACE: u32 = 0x0E;
