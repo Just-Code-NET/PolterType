@@ -135,18 +135,46 @@ pub fn load(dir: &Path) -> Result<Option<DiscoveredExtension>, PluginError> {
     }))
 }
 
+/// The declared program inside one directory, if it is there.
+///
+/// A manifest names its program with **no extension**, and
+/// [`check_extension`](super::validate::check_extension) refuses
+/// anything that is not a plain file name — both so that one manifest
+/// describes a plug-in on all three platforms. Windows is where that
+/// promise has to be kept rather than assumed: Cargo (and every other
+/// toolchain) writes `foo.exe`, so the bare `foo` a portable manifest
+/// declares never names a file that exists, and every extension was
+/// invisible there.
+///
+/// The suffix is read from `std::env::consts::EXE_SUFFIX` — a runtime
+/// constant, not a `cfg` — so this crate keeps its zero platform
+/// conditionals. It is empty on Unix, where the second candidate would
+/// just be the first one again, so it is only ever tried where it
+/// differs.
+pub(crate) fn exe_in(dir: &Path, name: &str) -> Option<PathBuf> {
+    let plain = dir.join(name);
+    if plain.is_file() {
+        return Some(plain);
+    }
+    if std::env::consts::EXE_SUFFIX.is_empty() {
+        return None;
+    }
+    let suffixed = dir.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    suffixed.is_file().then_some(suffixed)
+}
+
 /// Where the program actually is: installed under `bin/`, or built by
 /// Cargo into `target/`. Newest wins between debug and release, so
-/// whichever was built last is the one that runs.
+/// whichever was built last is the one that runs. Each candidate is
+/// resolved through [`exe_in`], so a platform that decorates executable
+/// names finds them.
 pub fn resolve_exe(dir: &Path, name: &str) -> Option<PathBuf> {
-    let installed = dir.join(EXTENSION_BIN_DIR).join(name);
-    if installed.is_file() {
+    if let Some(installed) = exe_in(&dir.join(EXTENSION_BIN_DIR), name) {
         return Some(installed);
     }
     let mut built: Vec<(std::time::SystemTime, PathBuf)> = ["debug", "release"]
         .iter()
-        .map(|profile| dir.join("target").join(profile).join(name))
-        .filter(|p| p.is_file())
+        .filter_map(|profile| exe_in(&dir.join("target").join(profile), name))
         .filter_map(|p| {
             let when = std::fs::metadata(&p).ok()?.modified().ok()?;
             Some((when, p))

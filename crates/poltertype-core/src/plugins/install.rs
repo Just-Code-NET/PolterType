@@ -39,8 +39,12 @@ pub fn install(src: &Path, data_dir: &Path) -> Result<InstalledPack, PluginError
     let header = read_header(src)?;
     if header.kind == PluginKind::Extension {
         check_extension(&header.extension)?;
-        let exe = src.join(EXTENSION_BIN_DIR).join(&header.extension.exe);
-        if !exe.is_file() {
+        // Through `exe_in`, so a pack built for a platform that
+        // decorates executable names installs. The manifest names the
+        // program without an extension on purpose — refusing the pack
+        // whose `bin/` holds the `.exe` that name resolves to would
+        // make a portable manifest uninstallable on Windows.
+        if super::discover::exe_in(&src.join(EXTENSION_BIN_DIR), &header.extension.exe).is_none() {
             return Err(PluginError::NoExecutable(format!(
                 "{} declares {}/{} but there is no such file",
                 MANIFEST_NAME, EXTENSION_BIN_DIR, header.extension.exe

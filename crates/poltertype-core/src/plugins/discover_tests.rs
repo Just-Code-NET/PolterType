@@ -92,6 +92,54 @@ fn a_checkout_is_found_through_its_cargo_target_directory() {
     fs::remove_dir_all(&dir).unwrap();
 }
 
+/// The name a toolchain actually writes for a program called `stem` on
+/// this platform: `stem` on Unix, `stem.exe` on Windows.
+fn built_as(stem: &str) -> String {
+    format!("{stem}{}", std::env::consts::EXE_SUFFIX)
+}
+
+#[test]
+fn an_installed_program_with_the_platforms_suffix_is_found() {
+    // The regression behind "manifest.toml declares poltertype-autopilotd
+    // but no built copy of it was found", seen the first time PolterType
+    // ran on Windows. A manifest names its program with no extension so
+    // that one manifest describes the plug-in everywhere — which means
+    // resolution, not the manifest, is what has to know about `.exe`.
+    //
+    // Phrased through `EXE_SUFFIX` rather than a literal ".exe" so it
+    // asserts the same rule on every platform: on Unix the suffix is
+    // empty and this is the ordinary case, on Windows it is the case
+    // that used to make every extension invisible.
+    let dir = scratch("suffix-installed");
+    write_extension(&dir, "demo", "demo-plugin");
+    put_binary(&dir.join(EXTENSION_BIN_DIR).join(built_as("demo-plugin")));
+
+    let found = load(&dir).unwrap().expect("should be an extension");
+    assert_eq!(found.id, "demo");
+    assert_eq!(
+        found.exe.file_name().and_then(|n| n.to_str()),
+        Some(built_as("demo-plugin").as_str()),
+        "{:?}",
+        found.exe
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_checkout_built_with_the_platforms_suffix_resolves() {
+    // The developer half of the same rule: what Cargo left in target/.
+    let dir = scratch("suffix-checkout");
+    put_binary(&dir.join("target").join("debug").join(built_as("tool")));
+
+    let exe = resolve_exe(&dir, "tool").expect("the built program should resolve");
+    assert_eq!(
+        exe.file_name().and_then(|n| n.to_str()),
+        Some(built_as("tool").as_str()),
+        "{exe:?}"
+    );
+    fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn an_extension_whose_program_was_never_built_is_refused() {
     let dir = scratch("unbuilt");
