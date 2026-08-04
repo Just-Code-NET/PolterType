@@ -19,7 +19,11 @@ pub fn create_key_gate() -> KeyGate {
     {
         KeyGate::windows(std::sync::Arc::new(windows::WindowsGate::new()))
     }
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(target_os = "macos")]
+    {
+        KeyGate::macos(std::sync::Arc::new(macos::MacosGate::new()))
+    }
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     {
         KeyGate::disabled()
     }
@@ -41,7 +45,12 @@ pub fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputEr
     }
     #[cfg(target_os = "macos")]
     {
-        Ok(Box::new(macos::MacosListener::new()))
+        // Same wiring as Windows: the tap callback consults the gate
+        // on every keystroke.
+        Ok(Box::new(match gate.macos_inner() {
+            Some(g) => macos::MacosListener::with_gate(std::sync::Arc::clone(g)),
+            None => macos::MacosListener::new(),
+        }))
     }
     #[cfg(target_os = "linux")]
     {

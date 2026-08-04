@@ -1,8 +1,9 @@
 //! `KeyGate` — the "hold the user's keystrokes back while we type" seam.
 
-// Only the evdev and Windows backends have anything behind the gate;
-// elsewhere `KeyGate` is an empty struct and this import would be dead.
-#[cfg(any(target_os = "linux", windows))]
+// Only the evdev, Windows and macOS backends have anything behind the
+// gate; elsewhere `KeyGate` is an empty struct and this import would
+// be dead.
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 use std::sync::Arc;
 
 /// Holds physical keystrokes back from applications for the duration of
@@ -17,10 +18,10 @@ use std::sync::Arc;
 /// behind the correction in the order they were typed.
 ///
 /// A gate that reports `available() == false` is a no-op, and that is
-/// the common case: macOS has no implementation, the Windows one is
-/// off unless `POLTERTYPE_HOLD_KEYS=1` because it has never run on real
-/// hardware, and even the evdev gate stands down on stacks where it
-/// would do more harm than good. Callers must therefore treat
+/// the common case: the Windows one is off unless
+/// `POLTERTYPE_HOLD_KEYS=1` because it has never run on real hardware,
+/// and even the evdev gate stands down on stacks where it would do
+/// more harm than good. Callers must therefore treat
 /// [`hold`](Self::hold) returning `false` as normal and stay correct
 /// without it.
 #[derive(Clone, Default)]
@@ -29,6 +30,8 @@ pub struct KeyGate {
     inner: Option<Arc<crate::linux::wayland::EvdevGate>>,
     #[cfg(windows)]
     inner: Option<Arc<crate::windows::WindowsGate>>,
+    #[cfg(target_os = "macos")]
+    inner: Option<Arc<crate::macos::MacosGate>>,
 }
 
 impl KeyGate {
@@ -58,15 +61,25 @@ impl KeyGate {
         self.inner.as_ref()
     }
 
+    #[cfg(target_os = "macos")]
+    pub(crate) fn macos(inner: Arc<crate::macos::MacosGate>) -> Self {
+        Self { inner: Some(inner) }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(crate) fn macos_inner(&self) -> Option<&Arc<crate::macos::MacosGate>> {
+        self.inner.as_ref()
+    }
+
     /// Can this gate actually hold keys? Answered by the backend once
     /// the input stack is up, so it is only meaningful after the
     /// listener has started.
     pub fn available(&self) -> bool {
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         {
             self.inner.as_ref().is_some_and(|g| g.available())
         }
-        #[cfg(not(any(target_os = "linux", windows)))]
+        #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
         {
             false
         }
@@ -79,11 +92,11 @@ impl KeyGate {
     /// the backend also enforces its own ceiling: a caller that dies
     /// mid-correction cannot leave the keyboard dead.
     pub fn hold(&self) -> bool {
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         {
             self.inner.as_ref().is_some_and(|g| g.hold())
         }
-        #[cfg(not(any(target_os = "linux", windows)))]
+        #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
         {
             false
         }
@@ -91,7 +104,7 @@ impl KeyGate {
 
     /// Let the user's keystrokes through again. Idempotent.
     pub fn release(&self) {
-        #[cfg(any(target_os = "linux", windows))]
+        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         if let Some(g) = self.inner.as_ref() {
             g.release();
         }

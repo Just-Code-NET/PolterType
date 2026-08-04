@@ -40,6 +40,8 @@ mod consts;
 #[cfg(target_os = "macos")]
 mod emitter;
 #[cfg(target_os = "macos")]
+mod gate;
+#[cfg(target_os = "macos")]
 mod listener;
 
 #[cfg(test)]
@@ -47,5 +49,7 @@ mod tests;
 
 #[cfg(target_os = "macos")]
 pub use emitter::MacosEmitter;
+#[cfg(target_os = "macos")]
+pub use gate::MacosGate;
 #[cfg(target_os = "macos")]
 pub use listener::MacosListener;
