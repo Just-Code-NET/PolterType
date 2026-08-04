@@ -6,31 +6,80 @@ use poltertype_core::plugins::{DiscoveredExtension, ExtensionManifest, PluginCom
 
 use super::*;
 
+/// The interpreter these fixtures drive, and the flag that makes it
+/// take a command string.
+///
+/// Chosen at runtime rather than with `#[cfg(target_os)]`: what differs
+/// is a *value* — which program, which flag — not an API, and this
+/// crate holds no platform conditionals (see `CONTRIBUTING.md`).
+///
+/// Getting this wrong is not a failing test but a **passing** one: half
+/// this suite asserts that something is *not* running, which is
+/// trivially true when the process never started. The fixture was
+/// `/bin/sh` for everyone until PolterType was first run on Windows,
+/// and the three tests that assert a positive were the only ones that
+/// noticed.
+fn shell() -> (PathBuf, &'static str) {
+    if cfg!(windows) {
+        (PathBuf::from("cmd.exe"), "/C")
+    } else {
+        (PathBuf::from("/bin/sh"), "-c")
+    }
+}
+
+/// A command that outlives anything this suite waits for.
+///
+/// Windows has no `sleep` binary; `ping` against the loopback with a
+/// one-second interval is the usual stand-in, and unlike `timeout` it
+/// does not need a console to read from — these children are spawned
+/// with a null stdin.
+fn stay_alive() -> &'static str {
+    if cfg!(windows) {
+        "ping -n 31 127.0.0.1 >nul"
+    } else {
+        "sleep 30"
+    }
+}
+
+/// A command that exits immediately with the given code.
+fn exit_with(code: u8) -> String {
+    format!("exit {code}")
+}
+
 /// An extension whose "program" is a shell that just waits, so the
 /// supervisor can be exercised without a plug-in existing.
 fn sleeper(service: bool) -> DiscoveredExtension {
+    let (exe, flag) = shell();
     DiscoveredExtension {
         id: "test-sleeper".to_owned(),
         name: "Sleeper".to_owned(),
         version: "0".to_owned(),
         dir: std::env::temp_dir(),
-        exe: PathBuf::from("/bin/sh"),
+        exe,
         manifest: ExtensionManifest {
             exe: "sh".to_owned(),
             service_args: if service {
-                vec!["-c".to_owned(), "sleep 30".to_owned()]
+                vec![flag.to_owned(), stay_alive().to_owned()]
             } else {
                 Vec::new()
             },
             commands: vec![PluginCommand {
                 id: "quick".to_owned(),
                 label: "Quick".to_owned(),
-                args: vec!["-c".to_owned(), "true".to_owned()],
+                args: vec![flag.to_owned(), exit_with(0)],
             }],
             ..ExtensionManifest::default()
         },
         development: true,
     }
+}
+
+/// The same, with the service replaced by one that exits with `code`.
+fn dies_with(code: u8) -> DiscoveredExtension {
+    let (_, flag) = shell();
+    let mut ext = sleeper(true);
+    ext.manifest.service_args = vec![flag.to_owned(), exit_with(code)];
+    ext
 }
 
 #[test]
@@ -54,8 +103,7 @@ fn an_extension_with_no_service_starts_nothing() {
 
 #[test]
 fn a_service_that_exits_is_reaped_and_reported_once() {
-    let mut ext = sleeper(true);
-    ext.manifest.service_args = vec!["-c".to_owned(), "exit 3".to_owned()];
+    let ext = dies_with(3);
 
     let mut sup = Supervisor::new();
     sup.start_all(std::slice::from_ref(&ext));
@@ -80,8 +128,7 @@ fn a_dead_service_is_not_restarted() {
     // An automatic restart would turn a plug-in that crashes on start
     // into a fork bomb, and would hide the failure the user needs to
     // see.
-    let mut ext = sleeper(true);
-    ext.manifest.service_args = vec!["-c".to_owned(), "exit 1".to_owned()];
+    let ext = dies_with(1);
     let mut sup = Supervisor::new();
     sup.start_all(std::slice::from_ref(&ext));
     for _ in 0..50 {
@@ -114,4 +161,22 @@ fn stopping_twice_is_harmless() {
     sup.stop_all();
     sup.stop_all();
     assert!(!sup.is_running("test-sleeper"));
+}
+
+/// The fixture itself has to work, or most of this file passes by
+/// accident. Asserts the positive directly, so a platform where the
+/// interpreter is missing or takes a different flag fails here — with
+/// an obvious message — rather than quietly turning six tests into
+/// assertions about a process that was never created.
+#[test]
+fn the_fixture_can_actually_start_a_process() {
+    let (exe, flag) = shell();
+    let status = std::process::Command::new(&exe)
+        .arg(flag)
+        .arg(exit_with(0))
+        .status();
+    assert!(
+        matches!(&status, Ok(s) if s.success()),
+        "fixture interpreter {exe:?} {flag} did not run: {status:?}"
+    );
 }
