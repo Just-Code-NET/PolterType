@@ -4093,6 +4093,7 @@ dependencies = [
  "tiny-skia",
  "tracing",
  "wayland-client",
+ "windows 0.58.0",
  "x11rb",
 ]
 

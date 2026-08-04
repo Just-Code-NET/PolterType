@@ -45,7 +45,23 @@ fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup>
     Box::new(NoopPopup)
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Windows has one backend and it needs nothing probed: a layered
+/// topmost window is available on every version we ship to. It can
+/// still fail to be created (a session with no interactive window
+/// station, for one), and then the tooltip degrades to the keyboard
+/// accept chord exactly as it does elsewhere.
+#[cfg(windows)]
+fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    match crate::windows::WindowsPopup::try_new(events) {
+        Ok(p) => Box::new(p),
+        Err(e) => {
+            tracing::warn!(err = %e, "layered popup unavailable");
+            Box::new(NoopPopup)
+        }
+    }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn create_for_platform(_events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
     Box::new(NoopPopup)
 }

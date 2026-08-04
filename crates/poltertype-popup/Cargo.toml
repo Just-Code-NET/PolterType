@@ -23,3 +23,16 @@ cosmic-text       = { workspace = true }
 smithay-client-toolkit = { workspace = true }
 wayland-client         = { workspace = true }
 x11rb                  = { workspace = true }
+
+# `Gdi` is the layered-window surface (a DIB section handed to
+# UpdateLayeredWindow); `HiDpi` is the per-monitor scale the renderer
+# draws at. Same major as poltertype-input's, so one `windows` crate
+# is linked rather than two.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+] }
