@@ -189,6 +189,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     // *active* — a listen-only tap's return value is ignored by the
     // window server. Disabled-by-env gates keep the old listen-only tap.
     let active = gate.as_ref().is_some_and(|g| g.wants_active_tap());
+    let gate_for_callback = gate.clone();
 
     let callback =
         move |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> Option<CGEvent> {
@@ -236,7 +237,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                 // `FlagsChanged` events never get swallowed: holding a
                 // modifier edge but not its counterpart would leave the
                 // system modifier state stuck.
-                if let Some(g) = gate.as_ref() {
+                if let Some(g) = gate_for_callback.as_ref() {
                     if matches!(ev_type, CGEventType::KeyDown | CGEventType::KeyUp) {
                         let ours = event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA)
                             == EMITTER_TAG;
