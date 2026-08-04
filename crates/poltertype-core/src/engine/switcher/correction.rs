@@ -14,7 +14,7 @@ use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
 use crate::engine::consts::{
     HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES,
-    INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG,
+    INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
 };
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::heuristics::{is_paste_shortcut, is_submission_scancode};
@@ -23,6 +23,104 @@ use crate::engine::types::{HeldKeys, LastWord, WindowDrain};
 use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
+    /// Type out keystrokes the key gate held back, by whichever emit
+    /// path this backend actually has.
+    ///
+    /// `send_keys` replays raw scancodes — what Wayland needs, and what
+    /// the gate was written against, since it was born on evdev.
+    /// Windows and macOS answer `Unsupported` on purpose: their
+    /// Unicode-emit API is the more robust path there, and replaying
+    /// scancodes would race the layout switch we have just asked for.
+    /// The correction itself has fallen back to `send_text` for that
+    /// reason since the beginning; **this path had not**, so on those
+    /// platforms the gate swallowed the user's keystrokes from the
+    /// application and then failed to give them back.
+    ///
+    /// Held-and-dropped is strictly worse than never held: it is the
+    /// one way this feature can *lose* typing rather than merely
+    /// scramble it, which is why the gate stays off by default until a
+    /// platform is known to come back from here. Found the first time
+    /// the Windows gate ran on real hardware (2026-08-04): every burst
+    /// logged `no scancode-replay path` and the characters were gone.
+    ///
+    /// What the fallback cannot reproduce is a keystroke that is not a
+    /// character — Backspace, the arrows, Esc translate to nothing in
+    /// any layout and are dropped. That is the same narrow loss the
+    /// mid-correction shortcut already carries, and it is bounded by
+    /// the length of one burst.
+    fn emit_held_keys(&self, keys: &[ReplayKey], to: &LayoutId) -> Result<(), InputError> {
+        let sent = self.key_emitter.send_keys(keys);
+        self.push_echoes(self.key_emitter.take_emitted());
+        match sent {
+            Err(InputError::Unsupported(_)) => {}
+            other => return other,
+        }
+
+        let mapping = self.layouts.get(to);
+        let mut text = String::new();
+        let mut dropped = 0usize;
+
+        for k in keys {
+            // Backspace is not text. It has to go out as a keypress,
+            // and in its place in the sequence — the user pressed it to
+            // delete what they typed just before it, so emitting it
+            // after the rest would eat the wrong character.
+            if k.scancode == SC_BACKSPACE {
+                self.flush_text(&mut text)?;
+                let sent = self.key_emitter.send_backspaces(1);
+                self.push_echoes(self.key_emitter.take_emitted());
+                sent?;
+                continue;
+            }
+            // Space before the overlay, because no overlay has it: a
+            // layout describes the 46 character keys, so the spacebar
+            // translates to nothing and used to be dropped. It is also
+            // the single most likely key to be held, being the boundary
+            // that triggers most corrections.
+            //
+            // Enter and Tab are deliberately *not* here: replaying them
+            // submits a line or moves focus, which `is_submission_scancode`
+            // already refuses to do anywhere else in a correction.
+            let c = if k.scancode == SC_SPACE {
+                Some(' ')
+            } else {
+                mapping.and_then(|m| {
+                    m.translate_key(poltertype_types::WordKey {
+                        scancode: k.scancode,
+                        shift: k.shift,
+                        timestamp_ms: 0,
+                    })
+                })
+            };
+            match c {
+                Some(c) => text.push(c),
+                None => dropped += 1,
+            }
+        }
+        self.flush_text(&mut text)?;
+
+        if dropped > 0 {
+            // Counts only — never the characters, same rule as the rest
+            // of this path.
+            debug!(
+                dropped,
+                "held keys that are neither text nor Backspace could not be replayed"
+            );
+        }
+        Ok(())
+    }
+
+    /// Emit whatever text has accumulated, and empty the buffer.
+    fn flush_text(&self, text: &mut String) -> Result<(), InputError> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        let sent = self.key_emitter.send_text(text);
+        self.push_echoes(self.key_emitter.take_emitted());
+        text.clear();
+        sent
+    }
+
     /// Returns `true` once keystrokes were actually emitted (delete +
     /// replay happened, however imperfectly) — `false` means the
     /// correction aborted with the user's text untouched.
@@ -421,9 +519,7 @@ impl SwitcherEngine {
                             count = pending.len(),
                             "typing out keystrokes the gate held back"
                         );
-                        let sent = self.key_emitter.send_keys(&pending);
-                        self.push_echoes(self.key_emitter.take_emitted());
-                        if let Err(e) = sent {
+                        if let Err(e) = self.emit_held_keys(&pending, to) {
                             warn!(?e, "flushing held keystrokes failed");
                             break;
                         }
