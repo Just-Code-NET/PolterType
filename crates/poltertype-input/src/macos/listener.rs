@@ -13,6 +13,7 @@ use core_foundation::runloop::{
 };
 use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+    CallbackResult,
 };
 use crossbeam_channel::Sender;
 use tracing::{debug, info, trace};
@@ -192,7 +193,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     let gate_for_callback = gate.clone();
 
     let callback =
-        move |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> Option<CGEvent> {
+        move |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> CallbackResult {
             // The OS turned our tap off — put it back. Delivered on the
             // tap itself, not in the key stream.
             if matches!(
@@ -204,7 +205,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                     // Safety: the port belongs to our live tap.
                     unsafe { CGEventTapEnable(*port as CFMachPortRef, true) };
                 }
-                return Some(event.clone());
+                return CallbackResult::Keep;
             }
 
             if let Some(ev_out) = to_key_event(ev_type, event) {
@@ -243,13 +244,13 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                             == EMITTER_TAG;
                         if g.swallow(ours) {
                             trace!(scancode = ev_out.scancode, "key held by gate");
-                            return None;
+                            return CallbackResult::Drop;
                         }
                     }
                 }
             }
             // Pass-through; we listen but don't suppress.
-            Some(event.clone())
+            CallbackResult::Keep
         };
 
     let tap = match core_graphics::event::CGEventTap::new(
@@ -290,7 +291,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     // Safety: hand the mach port to a CFRunLoopSource. The source
     // owns a +1 refcount we wrap into Drop via CFRunLoopSource.
     let source = unsafe {
-        let mach_port_ref: CFMachPortRef = tap.mach_port.as_concrete_TypeRef();
+        let mach_port_ref: CFMachPortRef = tap.mach_port().as_concrete_TypeRef();
         let src_ref = CFMachPortCreateRunLoopSource(std::ptr::null(), mach_port_ref, 0);
         if src_ref.is_null() {
             let _ = ready_tx.send(Err("CFMachPortCreateRunLoopSource returned null".into()));
@@ -308,7 +309,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
         );
     }
     tap.enable();
-    let _ = TAP_PORT.set(tap.mach_port.as_concrete_TypeRef() as usize);
+    let _ = TAP_PORT.set(tap.mach_port().as_concrete_TypeRef() as usize);
     if let Some(g) = gate.as_ref() {
         g.set_tap_running(true);
     }
