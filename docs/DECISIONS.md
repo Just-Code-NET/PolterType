@@ -6,6 +6,55 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-05 — A plug-in service that dies must be noticed by the app, not by the user weeks later
+
+`Supervisor::reap` was written to be "called from the tray's heartbeat".
+It never was: the only call site was the menu-click handler, so a
+service that died was reaped the next time the user happened to open the
+tray menu — and until then it was also a zombie process, because nobody
+else waits on these children.
+
+Measured here, on the machine this is written on. The capture daemon of
+the `poltertype-autopilot` plug-in exited one second after startup, at
+11:30, on an error it printed to an inherited stderr nobody was reading.
+It was found at 22:11 — **ten and a half hours** during which the user
+believed a plug-in was capturing and it was not. The tray had been
+reporting `Mode: learn` the whole time, correctly and uselessly: a
+plug-in's state comes from a one-shot command that answers exactly the
+same whether the service behind it is alive or dead.
+
+**What changed.**
+
+* `reap` now runs on the plug-in heartbeat — the 15-second tick that
+  already existed for refreshing state — and *before* the refresh, so
+  the menu is never redrawn from a state nothing is enforcing. The
+  heartbeat is armed if any service is being supervised, not only if a
+  plug-in reports state.
+* A departure produces a **notification**, on the error path that is
+  not gated by `[general].show_notifications`. A `warn!` line in a file
+  the user does not know about is not a user interface — the same
+  reasoning as the startup input alert.
+* A service's own stdout and stderr now go to
+  `logs/plugin-<id>.log`, truncated at every start, instead of being
+  inherited. A tray app launched from a desktop entry has no terminal,
+  so "inherited" means the one line explaining the failure goes
+  nowhere. The last non-blank line of that file is what the
+  notification quotes.
+
+**What deliberately did not change.** No restart. A service that dies
+stays dead until the user acts: restarting a plug-in that crashes on
+startup produces a fork bomb that also fills the log, and hides the
+failure instead of showing it. The whole point of this entry is that
+the failure was hidden.
+
+**Alternative considered.** Capturing the pipe in-process and keeping
+the last N lines in memory. Rejected: a reader thread per service, a
+plug-in blocked on a full pipe if that thread ever failed to start, and
+nothing left on disk for the user to read afterwards. A file has none
+of those failure modes and is the artefact you actually want at 22:11.
+
+---
+
 ## 2026-08-04 — Windows plug-in shutdown: console control events measured, refused, replaced by a declared command
 
 `request_stop` was an honest no-op on Windows, so a plug-in service was

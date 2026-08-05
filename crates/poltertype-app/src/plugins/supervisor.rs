@@ -26,12 +26,29 @@
 //!
 //! **No inherited standard input.** A plug-in gets a null stdin, so it
 //! can never sit waiting on a terminal that a tray app does not have.
+//!
+//! ## Where a service's own output goes
+//!
+//! Into a file of its own, `logs/plugin-<id>.log`, truncated at every
+//! PolterType start — not to the terminal it used to inherit. A tray app
+//! launched from a desktop entry has no terminal, so "inherited" means
+//! the one line explaining why a plug-in died goes nowhere. This is
+//! written for the moment after the fact: the service is gone, and the
+//! question is why. The tail of that file is what [`Supervisor::reap`]
+//! quotes and what reaches the user.
+//!
+//! It is the plug-in's output, not ours, so nothing here filters it.
+//! A plug-in that prints something it shouldn't prints it into its own
+//! log; PolterType's rule about never logging typed text binds
+//! PolterType, and a plug-in that reads keystrokes is trusted with them
+//! by having been installed at all.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
 use poltertype_core::plugins::DiscoveredExtension;
+use poltertype_core::settings::SettingsStore;
 use tracing::{info, warn};
 
 /// One running service, and enough to identify it in a log line.
@@ -42,6 +59,19 @@ struct Running {
     /// stop the way *it* declared. Cloning it costs a few strings once
     /// per plug-in at startup.
     ext: DiscoveredExtension,
+    /// Where this service's own output went, if we managed to open a
+    /// file for it. Read only when the service is gone.
+    log: Option<PathBuf>,
+}
+
+/// A service that has exited, and the shortest true answer to "why".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Departed {
+    pub id: String,
+    /// Exit status, plus the last thing the plug-in said if it said
+    /// anything. Already one line, already bounded — it goes in a
+    /// notification.
+    pub why: String,
 }
 
 /// The command id a plug-in may declare to be told "wind up now".
@@ -82,18 +112,21 @@ impl Supervisor {
             if ext.manifest.service_args.is_empty() {
                 continue;
             }
-            match spawn(&ext.exe, &ext.manifest.service_args, &ext.dir) {
+            let log = service_log(&ext.id);
+            match spawn(&ext.exe, &ext.manifest.service_args, &ext.dir, log.as_ref()) {
                 Ok(child) => {
                     info!(
                         id = %ext.id,
                         pid = child.id(),
                         development = ext.development,
+                        log = ?log.as_ref().map(|(path, _)| path),
                         "plug-in service started"
                     );
                     self.running.push(Running {
                         id: ext.id.clone(),
                         child,
                         ext: ext.clone(),
+                        log: log.map(|(path, _)| path),
                     });
                 }
                 Err(e) => warn!(id = %ext.id, "could not start plug-in service: {e}"),
@@ -102,25 +135,57 @@ impl Supervisor {
     }
 
     /// Report any service that has exited since the last check, and
-    /// forget it. Called from the tray's heartbeat so a plug-in dying
-    /// shows up in the log at the moment it happens rather than at
-    /// shutdown.
-    pub fn reap(&mut self) -> Vec<String> {
+    /// forget it.
+    ///
+    /// Called from the plug-in heartbeat, every
+    /// [`crate::PLUGIN_STATE_INTERVAL`], so that a service dying is
+    /// noticed while it is happening. It used to run only when the user
+    /// clicked a tray entry, which on 2026-08-05 meant a capture daemon
+    /// that died one second after startup went unnoticed for ten hours
+    /// — the tray kept cheerfully reporting the mode it was no longer
+    /// in, because the mode is answered by a one-shot command that
+    /// works fine whether the service is alive or not.
+    ///
+    /// Reaping is also what stops the corpse being a zombie: nobody
+    /// else waits on these children while the app is running.
+    pub fn reap(&mut self) -> Vec<Departed> {
         let mut gone = Vec::new();
         self.running.retain_mut(|r| match r.child.try_wait() {
             Ok(Some(status)) => {
-                warn!(id = %r.id, ?status, "plug-in service exited");
-                gone.push(r.id.clone());
+                let last = r.log.as_deref().and_then(last_line);
+                warn!(
+                    id = %r.id,
+                    ?status,
+                    log = ?r.log,
+                    last = last.as_deref().unwrap_or(""),
+                    "plug-in service exited"
+                );
+                gone.push(Departed {
+                    id: r.id.clone(),
+                    why: match &last {
+                        Some(line) => format!("{status} — {line}"),
+                        None => status.to_string(),
+                    },
+                });
                 false
             }
             Ok(None) => true,
             Err(e) => {
                 warn!(id = %r.id, "cannot check on plug-in service: {e}");
-                gone.push(r.id.clone());
+                gone.push(Departed {
+                    id: r.id.clone(),
+                    why: format!("cannot check on it: {e}"),
+                });
                 false
             }
         });
         gone
+    }
+
+    /// Whether any service is being supervised at all — the heartbeat
+    /// that reaps them has no reason to run otherwise.
+    pub fn has_services(&self) -> bool {
+        !self.running.is_empty()
     }
 
     /// Ask every service to stop, then make sure it did.
@@ -193,7 +258,10 @@ pub fn run_command(ext: &DiscoveredExtension, command_id: &str) -> Result<(), St
         .find(|c| c.id == command_id)
         .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
 
-    spawn(&ext.exe, &cmd.args, &ext.dir)
+    // No log file for a one-shot: it inherits, as it always has. The
+    // service log exists because a service dies unobserved; a command
+    // is something the user just clicked and is watching for.
+    spawn(&ext.exe, &cmd.args, &ext.dir, None)
         .map(|child| {
             info!(id = %ext.id, command = %command_id, pid = child.id(), "plug-in command started");
             // Deliberately not waited on: these are user-facing actions
@@ -305,18 +373,87 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
 /// blocks the thread that draws the menu.
 const STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1_500);
 
-fn spawn(exe: &PathBuf, args: &[String], dir: &PathBuf) -> std::io::Result<Child> {
+fn spawn(
+    exe: &PathBuf,
+    args: &[String],
+    dir: &PathBuf,
+    log: Option<&(PathBuf, std::fs::File)>,
+) -> std::io::Result<Child> {
     let mut cmd = Command::new(exe);
     cmd.args(args)
         // The plug-in's own directory, so a relative path in its
         // config means what its author expected.
         .current_dir(dir)
         .stdin(Stdio::null());
+    // Both streams to the same file, in the order the plug-in wrote
+    // them. Without a log file we inherit, which is what this always
+    // did and is still right when there *is* a terminal.
+    if let Some((_, file)) = log {
+        match (file.try_clone(), file.try_clone()) {
+            (Ok(out), Ok(err)) => {
+                cmd.stdout(Stdio::from(out)).stderr(Stdio::from(err));
+            }
+            _ => warn!("cannot hand the plug-in its log file; letting it inherit"),
+        }
+    }
     // A tray app owns no console, so a console child would be handed a
     // window of its own. See `poltertype_shell::configure_child`.
     poltertype_shell::configure_child(&mut cmd);
     cmd.spawn()
 }
+
+/// Open this service's log, truncating whatever the last run left.
+///
+/// Truncated rather than appended so the file always answers "what
+/// happened this run" and cannot grow without bound across restarts.
+/// Best-effort throughout: a plug-in must still start on a machine
+/// where the log directory cannot be created.
+fn service_log(id: &str) -> Option<(PathBuf, std::fs::File)> {
+    let dir = SettingsStore::log_dir().ok()?;
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        warn!(id = %id, "cannot create the log directory for the plug-in: {e}");
+        return None;
+    }
+    // The id comes from a directory name on disk and could contain a
+    // separator; keep it to one file in one place.
+    let path = dir.join(format!("plugin-{}.log", id.replace(['/', '\\'], "-")));
+    match std::fs::File::create(&path) {
+        Ok(file) => Some((path, file)),
+        Err(e) => {
+            warn!(id = %id, path = ?path, "cannot open a log for the plug-in: {e}");
+            None
+        }
+    }
+}
+
+/// The last non-blank line a plug-in wrote, trimmed to something that
+/// fits in a notification.
+///
+/// Reads the end of the file only: a plug-in that logged all day must
+/// not be pulled into memory to answer one question.
+fn last_line(path: &std::path::Path) -> Option<String> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let from = len.saturating_sub(LOG_TAIL_BYTES);
+    file.seek(SeekFrom::Start(from)).ok()?;
+    let mut buf = Vec::new();
+    file.take(LOG_TAIL_BYTES).read_to_end(&mut buf).ok()?;
+
+    let text = String::from_utf8_lossy(&buf);
+    let line = text.lines().rev().find(|l| !l.trim().is_empty())?.trim();
+    Some(match line.char_indices().nth(LOG_LINE_CHARS) {
+        Some((cut, _)) => format!("{}…", &line[..cut]),
+        None => line.to_owned(),
+    })
+}
+
+/// How much of the end of a plug-in's log to read, and how much of the
+/// line found there to repeat. Both are about a notification body, not
+/// about diagnosis — the file itself is the diagnosis.
+const LOG_TAIL_BYTES: u64 = 8 * 1024;
+const LOG_LINE_CHARS: usize = 200;
 
 #[cfg(test)]
 #[path = "supervisor_tests.rs"]
