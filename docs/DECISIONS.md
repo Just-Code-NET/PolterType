@@ -1959,3 +1959,28 @@ matches by kernel identity, not by name string. A periodic re-probe
 was rejected: grabbing our own emitter outside a hold would swallow
 in-flight suggestion emissions; at hold time nothing of ours is on the
 wire yet, so the check is free of side effects exactly there.
+
+## 2026-08-05 — The AI feature ships compiled into the release installers
+
+All four installers are now built with
+`--features ai,poltertype-ai/remote`, and main CI lints and tests that
+feature set so a release configuration can no longer break unseen.
+Owner's call, and the reasoning is the product promise itself:
+"configure your own model in `config.toml`" is meaningless if the
+downloaded build lacks the subsystem — since 0.8.0 the feature existed
+and no published release enabled it, which quietly reduced the promise
+to "recompile the app yourself". Nothing about the runtime posture
+moves: `[ai].enabled` defaults to off, no model / vendor SDK / default
+endpoint ships, an entry naming no endpoint and no provider preset is
+refused, a non-loopback endpoint additionally needs
+`[ai].allow_remote = true`, and keys live in the OS keychain only.
+With nothing configured the subsystem builds no detectors and opens no
+socket. The honest cost, named because we made the "grep the code"
+claim ourselves: the shipped binary now links a second HTTP client
+(`reqwest`+`rustls` in `poltertype-ai`) beside the updater's `ureq`,
+so every "TLS is only in the updater" sentence in README/docs/site is
+retired in the same release. What stays checkable with `cargo tree`:
+a stock source build still contains neither the feature nor the
+client. Revisit if a supply-chain argument against shipping a dormant
+HTTP client ever outweighs the config-only promise, or if a local
+in-process backend removes the need for HTTP entirely.

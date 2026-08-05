@@ -4,6 +4,37 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.11.0
+
+### Changed
+
+- **The AI subsystem now ships inside the official installers.** The
+  `ai` cargo feature has existed since 0.8.0 and no published release
+  ever enabled it — which quietly turned "configure your own model in
+  `config.toml`" into "recompile the app yourself". That was never the
+  deal: the promise is an integration you switch on, not a feature
+  flag you must build. All four installers are now built with
+  `--features ai,poltertype-ai/remote`, and main CI lints and tests
+  that feature set so a release configuration can no longer break
+  unseen.
+
+  Nothing about the defaults moves an inch. `[ai].enabled` is off; no
+  model, no vendor SDK and no default endpoint ships; an
+  `[[ai.plugins]]` entry naming neither an `endpoint` nor a `provider`
+  preset is refused; a non-loopback endpoint additionally needs
+  `[ai].allow_remote = true`; API keys live in the OS keychain only.
+  With nothing configured — the default — the subsystem builds no
+  detectors and opens no socket.
+
+  One claim in our own docs had to move, and honesty says name it:
+  the shipped binary now links a second HTTP client (`reqwest` +
+  `rustls`, inside `poltertype-ai`) beside the updater's `ureq`, so
+  "the updater is the only reason a TLS stack is linked in" is retired
+  from the README and the site. What remains true, and checkable with
+  `cargo tree`: a stock source build still contains neither the
+  feature nor the client, and a configured endpoint is the only thing
+  either client ever talks to.
+
 ## [0.11.0] — plug-ins that run, and the first release Windows was actually held to
 
 Two blocks, and they meet in one place: the plug-in system landed in

@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-02 (v0.10.0).
+> Created: 2026-05-02. Last updated: 2026-08-05 (v0.12.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -301,8 +301,8 @@ Implementations:
 | `WordPlausibilityDetector` (planned as `HeuristicDetector`) | fast rules: does the word look plausible for the current layout (letters, vowel ratio, consonant clusters). | ✅ in 0.1 |
 | `DictionaryDetector` | an FST dictionary over Hunspell-expanded lists. `lingua-rs` and n-grams were **not used** — dropped in favour of FST. | ✅ in 0.1 |
 | `ContextDetector` | takes the previous N words into account (Markov model). | ❌ missing (was planned for v0.2 — not done) |
-| `LocalOnnxDetector` | an ONNX model, offline. | 🚧 constructed from `[[ai.plugins]]` since 0.8.0, but still a stub that returns no opinion |
-| `RemoteLlmDetector` | API calls to OpenAI/Anthropic/local Ollama. Explicit opt-in only. | 🚧 stub; no build makes an **AI** network call (the updater is separate — see §6) |
+| `LocalOnnxDetector` | an ONNX model, offline. | ❌ removed in 0.10.0 — no in-process model; "local" now means `LlmDetector` pointed at a server on your own machine (Ollama, llama.cpp) |
+| `LlmDetector` (absorbed the planned `RemoteLlmDetector`) | one detector speaking `openai-chat` / `anthropic-messages` / `ollama-generate` to an endpoint the **user** names; loopback vs remote decided in `locality`, remote additionally gated by `[ai].allow_remote`. | ✅ real since 0.10.0; compiled into the installers since 0.12.0; builds nothing unless `[[ai.plugins]]` is configured |
 
 Pipeline policy (example):
 
@@ -420,8 +420,9 @@ enabled      = false
 allow_remote = false   # a second switch: even enabled, no network without it
 
 # Read since 0.8.0: each entry becomes a Detector appended to the
-# pipeline. Both shipped backends are still stubs that return no
-# opinion (docs/AI.md), so this changes no decision yet.
+# pipeline. Since 0.10.0 that detector is real (docs/AI.md) and since
+# 0.12.0 it ships in the installers; with no entries — the default —
+# nothing is built and nothing is called.
 [[ai.plugins]]
 type        = "remote-llm"
 id          = "claude"
@@ -557,12 +558,14 @@ require_confirmation = true
 
 #### D. Privacy guarantees
 
-> As of v0.2.0 the guarantee is stronger than designed: **there simply
-> is no network code**. Both backends are stubs that make no request, so
-> everything below is a requirement for the future implementation, not
-> a description of current behaviour. The tray-tooltip indicator and
-> the call counter **do not exist** — the tooltip shows only the name,
-> the layout and "(paused)".
+> As of v0.12.0 the subsystem is real and ships in the installers
+> (docs/AI.md): with an endpoint configured it asks one question per
+> newly-seen ambiguous word — candidates and a fixed instruction, no
+> sentence, no document, no layout ids. With nothing configured — the
+> default — no detectors are built and no request is ever made, so
+> everything below is enforced behaviour, not aspiration. The
+> tray-tooltip indicator and the call counter **do not exist** — the
+> tooltip shows only the name, the layout and "(paused)".
 
 - AI is disabled by default.
 - A separate `allow_remote` toggle — even with `enabled=true` the
@@ -657,10 +660,11 @@ poltertype/                      # (the Claude config is not here — it's
 │   ├── poltertype-detect/       # Detector pipeline
 │   │   └── src/{traits.rs, plausibility.rs, dictionary.rs, enums.rs}
 │   ├── poltertype-update/       # GitHub-Releases updater (v0.4.0+); the
-│   │   │                        # only network code in a default build
+│   │   │                        # only network code in a stock source build
 │   │   └── src/{check.rs, manifest.rs, download.rs, staging.rs, version.rs, apply/}
-│   ├── poltertype-ai/           # OPTIONAL (feature `ai`); wired, backends still stubs
-│   │   └── src/{local.rs, remote/, rewriters.rs, keys.rs}
+│   ├── poltertype-ai/           # feature `ai`; real LlmDetector since 0.10.0,
+│   │   │                        # compiled into the installers since 0.12.0
+│   │   └── src/{factory.rs, detector.rs, wire.rs, transport.rs, locality.rs, cache.rs, keys.rs, ...}
 │   └── poltertype-types/        # shared types (LayoutId, KeyEvent, ...)
 ├── data/                        # source of truth, consumed by build.rs
 │   ├── layout-mappings/         # TOML overlays (en_us.toml, uk_ua.toml, ...)
@@ -947,8 +951,9 @@ separate `poltertype --settings` process.
 - [x] The tray shows the language, the menu works.
 - [x] The settings window: seven panels (more than planned), settings
       persist.
-- [x] The AI subsystem is present in the code as a disabled
-      `feature = "ai"` with documentation — but, contrary to the
-      original wording, its backends are still **stubs** (see
-      Phase 7).
+- [x] The AI subsystem is real: the two original stub backends were
+      replaced in 0.10.0 by a single `LlmDetector` speaking three wire
+      formats to a user-named endpoint, and since 0.12.0 it ships
+      compiled into the installers — off until configured (see
+      Phase 7 and docs/AI.md).
 - [x] Screenshots in the README — added 2026-07-13.

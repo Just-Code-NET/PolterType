@@ -140,12 +140,18 @@ decision cache stores hashes of the question rather than the text.
 
 Each is a real barrier, not a setting that looks like one:
 
-1. **Cargo feature `ai`** in `poltertype-app`. Off by default;
-   enabling links the `poltertype-ai` crate.
-2. **Cargo feature `remote`** in `poltertype-ai`. Off by default.
-   Without it no HTTP client is compiled in — `cargo tree` on a stock
-   build shows no `reqwest` at all, which is checkable rather than
-   merely documented. Enabling from an app build takes
+1. **Cargo feature `ai`** in `poltertype-app` — links the
+   `poltertype-ai` crate.
+2. **Cargo feature `remote`** in `poltertype-ai` — puts the HTTP
+   client (`reqwest`) in the binary.
+
+   **The official installers compile both in since v0.12.0** — the
+   promise is a model integration you switch on in config, not a
+   feature flag you must rebuild the app for, so for a downloaded
+   build the ladder starts at gate 3. A stock *source* build
+   (`cargo build`, no flags) still excludes both: `cargo tree` on it
+   shows no `reqwest` outside the updater, which stays checkable
+   rather than merely documented. Enabling from a source build takes
    `--features ai,poltertype-ai/remote`.
 3. **`[ai].enabled = true`** in `config.toml`. Off by default.
 4. **`[ai].allow_remote = true`** — additionally, and only for a

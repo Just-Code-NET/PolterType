@@ -171,16 +171,20 @@ Three caveats worth stating plainly:
 
 - Pure Rust — no WebView, no Node.
 - `tao` event loop + `tray-icon` + `global-hotkey` + `single-instance`.
-- `ureq` + `rustls` + `sha2` for the updater — the app's only network
-  code, and the only reason a TLS stack is linked in at all —
-  plus `ed25519-dalek` to check the release manifest's signature
-  (verification only; the app holds no secret).
-- Optional AI subsystem (`feature = "ai"`) — local ONNX or remote LLM
-  detectors / word rewriters. Off by default. Since v0.8.0 configured
-  plug-ins are actually constructed and join the pipeline, but **both
-  shipped backends are stubs that return no opinion**, so no build
-  makes an AI-related network call regardless of the flags. (The
-  updater is separate, and does go to the network — see above.)
+- `ureq` + `rustls` + `sha2` for the updater, plus `ed25519-dalek` to
+  check the release manifest's signature (verification only; the app
+  holds no secret).
+- The AI subsystem (`feature = "ai"`, compiled into the official
+  installers since v0.12.0) — one detector that speaks `openai-chat`,
+  `anthropic-messages` or `ollama-generate` to an endpoint **you**
+  configure. PolterType ships no model, no vendor SDK and no default
+  endpoint; `[ai].enabled` defaults to off, and a non-loopback
+  endpoint additionally needs `[ai].allow_remote = true`. Its HTTP
+  client (`reqwest` + `rustls`) is the second and last place a TLS
+  stack is linked in, and it is dormant until an `[[ai.plugins]]`
+  entry names an endpoint — with nothing configured the subsystem
+  builds no detectors and opens no socket. A stock source build
+  (`cargo build`, no flags) still contains none of it.
   See [docs/AI.md](docs/AI.md).
 
 See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
@@ -440,12 +444,12 @@ cargo run -p poltertype-app
 # Release
 cargo build --release -p poltertype-app
 
-# With the AI subsystem compiled in. Configured plug-ins are wired to
-# the engine since v0.8.0, but both backends are still stubs returning
-# no opinion — so this flag opens no AI network call and changes no
-# decision. (It does not affect the updater, which is in every build.)
-# See docs/AI.md.
-cargo build --release -p poltertype-app --features ai
+# With the AI subsystem compiled in — the configuration the official
+# installers ship since v0.12.0. `[[ai.plugins]]` entries become real
+# detectors calling an endpoint YOU configure; with none configured
+# the subsystem builds nothing and opens no socket. (The updater is
+# separate and is in every build.) See docs/AI.md.
+cargo build --release -p poltertype-app --features ai,poltertype-ai/remote
 ```
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the per-OS native dep

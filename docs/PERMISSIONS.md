@@ -271,10 +271,16 @@ pane, or `[updates].enabled = false` in `config.toml`. The manifest URL
 is printed on that pane so you can verify the destination yourself.
 See [DECISIONS.md](DECISIONS.md) for the trust model and its limits.
 
-The AI subsystem (`docs/AI.md`) is a *second*, independent gate: off by
-default, feature-gated at compile time, and remote access needs a
-further explicit opt-in. Its two backends are stubs today and it makes
-no network calls at all.
+The AI subsystem ([docs/AI.md](AI.md)) is the *second* network
+capability, and it is opt-in at every layer. Since v0.12.0 the
+official installers ship it compiled in — but it makes no request of
+any kind until you write an `[[ai.plugins]]` entry naming an endpoint:
+PolterType ships no model, no vendor SDK and no default endpoint.
+`[ai].enabled` defaults to off; an endpoint that is not loopback
+additionally requires `[ai].allow_remote = true`, because a model on
+your own machine (`127.0.0.1`) never sends a typed word off it; API
+keys live in the OS keychain only. With nothing configured — the
+default — the subsystem builds no detectors and opens no socket.
 
 **macOS note:** the updater strips `com.apple.quarantine` from the
 bundle it installs. That is defensible only while the app is unsigned —
