@@ -35,6 +35,34 @@ and the project follows [Semantic Versioning](https://semver.org/).
   feature nor the client, and a configured endpoint is the only thing
   either client ever talks to.
 
+### Fixed
+
+- **A plug-in whose service dies is now noticed within seconds
+  instead of never.** The supervisor's reaping was documented as
+  running on the tray's heartbeat and in fact ran only when the user
+  clicked something in the menu, so a service that exited went
+  unreported — and stayed a zombie process — until the next click.
+  It was found the hard way: a capture plug-in here died one second
+  after startup and nobody knew for ten and a half hours, while the
+  tray kept reporting its mode correctly and uselessly, because a
+  plug-in's state comes from a one-shot command that answers the same
+  whether the service behind it is alive or dead.
+
+  Reaping now runs on the existing 15-second heartbeat, before the
+  menu is refreshed, and the heartbeat is armed for any supervised
+  service rather than only for plug-ins that report state. A service
+  that goes raises a **notification** naming it — on the path that is
+  not gated by `[general].show_notifications`, because a `warn!` line
+  in a file nobody knows about is not a user interface.
+
+  A service also gets somewhere to say why it went: its output now
+  goes to `logs/plugin-<id>.log`, truncated at every start, instead of
+  being inherited from a tray app that on most desktops has no
+  terminal at all. The last line of that file is what the notification
+  quotes. Still no automatic restart — a plug-in that crashes on
+  startup would become a fork bomb, and the failure would go back to
+  being invisible.
+
 ## [0.11.0] — plug-ins that run, and the first release Windows was actually held to
 
 Two blocks, and they meet in one place: the plug-in system landed in
