@@ -20,9 +20,10 @@
 //! layout-independent contract as Windows' `KEYEVENTF_UNICODE`.
 //!
 //! > **Status:** validated end-to-end on macOS 15 (Intel): the tap
-//! > receives events, corrections emit, and injected events are
-//! > recognised via the user-data tag. The `FlagsChanged` subscription
-//! > and `release_modifiers` (0.7.0) have not yet run on hardware.
+//! > receives events, corrections emit, injected events are
+//! > recognised via the user-data tag, and the key gate holds the
+//! > user's keystrokes back while a correction types (core-graphics
+//! > 0.25 — 0.24's tap trampoline could not swallow).
 //!
 //! ## Why this is a directory
 //!
