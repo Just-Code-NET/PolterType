@@ -93,3 +93,11 @@ jobs:
       # re-resolve (which also drops the "Updating crates.io index" hit).
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+
+      # The release installers compile the AI subsystem in
+      # (`--features ai,poltertype-ai/remote` in release.yml). Lint and
+      # test that feature set here too, or a change main CI never saw
+      # can break the next release build.
+      - run: cargo clippy -p poltertype-ai --features remote --all-targets --locked -- -D warnings
+      - run: cargo clippy -p poltertype-app --features ai,poltertype-ai/remote --all-targets --locked -- -D warnings
+      - run: cargo test -p poltertype-ai --features remote --locked

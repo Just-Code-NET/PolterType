@@ -106,7 +106,11 @@ jobs:
             file desktop-file-utils
 
       - name: Build release binary
-        run: cargo build --release --locked --target ${{ matrix.arch }}-unknown-linux-gnu -p poltertype-app
+        # `ai,poltertype-ai/remote` ships the AI subsystem compiled in —
+        # dormant until the user writes an `[[ai.plugins]]` entry; see
+        # docs/AI.md for the full opt-in ladder. All four installers must
+        # pass the same feature set or platforms silently diverge.
+        run: cargo build --release --locked --features ai,poltertype-ai/remote --target ${{ matrix.arch }}-unknown-linux-gnu -p poltertype-app
 
       - name: Render app icon
         # linuxdeploy wants a square PNG ≥ 256×256. We render at the
@@ -150,8 +154,8 @@ jobs:
 
       - name: Build release binaries (both arches)
         run: |
-          cargo build --release --locked --target x86_64-apple-darwin   -p poltertype-app
-          cargo build --release --locked --target aarch64-apple-darwin  -p poltertype-app
+          cargo build --release --locked --features ai,poltertype-ai/remote --target x86_64-apple-darwin   -p poltertype-app
+          cargo build --release --locked --features ai,poltertype-ai/remote --target aarch64-apple-darwin  -p poltertype-app
 
       - name: Render and convert icon
         run: |
@@ -205,7 +209,7 @@ jobs:
         shell: pwsh
 
       - name: Build release binary
-        run: cargo build --release --locked --target x86_64-pc-windows-msvc -p poltertype-app
+        run: cargo build --release --locked --features ai,poltertype-ai/remote --target x86_64-pc-windows-msvc -p poltertype-app
 
       - name: Render icon and convert to .ico
         # ImageMagick is preinstalled on windows-latest. We bake all
