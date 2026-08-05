@@ -8,24 +8,39 @@ use std::io::BufReader;
 use tracing::{debug, info, warn};
 
 pub(crate) fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
-    info!("audio worker started (cached OutputStream + idle refresh)");
+    use crossbeam_channel::RecvTimeoutError;
+
+    info!("audio worker started (cached OutputStream + idle release)");
 
     let mut state = WorkerState::new();
 
-    while let Ok(cmd) = rx.recv() {
-        match cmd {
-            AudioCmd::Refresh {
+    loop {
+        match rx.recv_timeout(STREAM_IDLE_REFRESH) {
+            Ok(AudioCmd::Refresh {
                 theme_dir: d,
                 volume: v,
-            } => {
+            }) => {
                 state.theme_dir = d;
                 state.volume = v;
                 debug!(theme_dir = ?state.theme_dir, volume = state.volume, "audio refreshed");
             }
-            AudioCmd::Play(event) => {
+            Ok(AudioCmd::Play(event)) => {
                 play_event(&mut state, event);
             }
-            AudioCmd::Shutdown => break,
+            Ok(AudioCmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                // No plays for a whole refresh window — release the
+                // stream. A long-lived open CoreAudio output on an
+                // HDMI / DisplayPort device keeps coreaudiod's power
+                // assertion alive, which on macOS blocks display
+                // sleep and system sleep. Dropping the stream hands
+                // the device back and costs only a ~20-50 ms reopen
+                // on the next sound (cushioned by LEAD_SILENCE_MS).
+                if state.stream.is_some() {
+                    debug!("audio: idle timeout — releasing output stream");
+                    state.invalidate();
+                }
+            }
         }
     }
     info!("audio worker stopped");

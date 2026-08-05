@@ -26,6 +26,14 @@
 //! these handle "user just plugged in headphones" gracefully without
 //! paying the per-play cost during normal pause / resume bursts.
 //!
+//! The cached stream is also **released outright** after
+//! [`STREAM_IDLE_REFRESH`] with no commands. A permanently open
+//! CoreAudio output on an HDMI / DisplayPort device keeps
+//! coreaudiod's power assertion alive, which on macOS blocks display
+//! and system sleep ("app holds the audio focus" symptom). Letting
+//! go of the stream between plays costs one ~20-50 ms reopen, hidden
+//! under the synth's lead silence.
+//!
 //! Themes live in `<config-dir>/sound-themes/<name>/<event>.ogg`.
 //! Missing files are silent — we never crash because audio is absent.
 
