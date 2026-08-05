@@ -192,11 +192,16 @@ fn the_fixture_can_actually_start_a_process() {
 #[test]
 fn a_declared_stop_command_is_run_before_the_kill() {
     let (_, flag) = shell();
-    let marker = std::env::temp_dir().join(format!(
-        "poltertype-stop-{}-{:?}.marker",
-        std::process::id(),
-        std::thread::current().id()
-    ));
+    // `std::process::id()` alone is unique enough: this test never runs
+    // twice concurrently against itself. It used to also fold in
+    // `{:?}` on a `ThreadId`, which renders as e.g. `ThreadId(2)` — an
+    // unquoted `(` is a subshell to `/bin/sh -c`, so the marker path
+    // broke the very shell command meant to write it, on every run.
+    // Dropping it removes the one character class this string can
+    // never safely contain, rather than trying to quote it correctly
+    // for two shell dialects (`/bin/sh -c` and `cmd.exe /C`) at once.
+    let marker =
+        std::env::temp_dir().join(format!("poltertype-stop-{}.marker", std::process::id()));
     let _ = std::fs::remove_file(&marker);
 
     let mut ext = sleeper(true);
@@ -205,11 +210,7 @@ fn a_declared_stop_command_is_run_before_the_kill() {
         label: "Stop".to_owned(),
         args: vec![
             flag.to_owned(),
-            // Quoted: `{:?}` on a `ThreadId` renders as `ThreadId(2)`,
-            // and an unquoted `(` is a subshell to `/bin/sh -c` — the
-            // marker path broke the very shell command meant to write
-            // it.
-            format!("echo stopped> \"{}\"", marker.display()),
+            format!("echo stopped> {}", marker.display()),
         ],
     });
     assert!(declares_stop(&ext), "the fixture must declare the command");

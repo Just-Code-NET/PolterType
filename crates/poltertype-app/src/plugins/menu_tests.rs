@@ -37,7 +37,23 @@ fn extension(id: &str, entries: &[(&str, &str)]) -> DiscoveredExtension {
     }
 }
 
+// Five tests below construct a real `muda::Menu` to exercise routing
+// against it — the thing worth testing is which command a click
+// resolves to, and a fake menu would just be re-asserting our own
+// mock. On macOS that construction calls into AppKit, which
+// `objc2_foundation::thread::MainThreadMarker` refuses off the main
+// thread — and `cargo test` never runs a `#[test]` there, by design of
+// the harness, not a flag we can pass. `#[ignore]`d there rather than
+// faked: ignoring is honest about not being exercised, a fake would
+// silently claim coverage the process doesn't have. Not a gap in
+// `PluginMenu` itself — the same build+route logic runs for real every
+// time the tray menu is drawn, which is on the main thread.
+
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu can only be constructed on the main thread (AppKit); cargo test never runs a test there"
+)]
 fn a_plugin_with_no_entries_adds_nothing() {
     // The tray belongs to the user; a plug-in earns space in it by
     // having something to put there.
@@ -47,6 +63,10 @@ fn a_plugin_with_no_entries_adds_nothing() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu can only be constructed on the main thread (AppKit); cargo test never runs a test there"
+)]
 fn each_entry_routes_to_its_own_command() {
     let menu = Menu::new();
     let plugins = PluginMenu::build(
@@ -67,6 +87,10 @@ fn each_entry_routes_to_its_own_command() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu can only be constructed on the main thread (AppKit); cargo test never runs a test there"
+)]
 fn two_plugins_with_identical_labels_stay_distinct() {
     // Routing by menu id rather than by label is what keeps these
     // apart — and keeps either from ever matching one of ours.
@@ -87,6 +111,10 @@ fn two_plugins_with_identical_labels_stay_distinct() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu can only be constructed on the main thread (AppKit); cargo test never runs a test there"
+)]
 fn a_click_on_something_else_is_not_claimed() {
     // The app's own menu items must fall through untouched.
     let menu = Menu::new();
@@ -96,6 +124,10 @@ fn a_click_on_something_else_is_not_claimed() {
 }
 
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "muda::Menu can only be constructed on the main thread (AppKit); cargo test never runs a test there"
+)]
 fn a_click_on_a_plugin_entry_is_claimed() {
     let menu = Menu::new();
     let mut plugins = PluginMenu::build(vec![extension("demo", &[("Go", "go")])], &menu).unwrap();
