@@ -75,18 +75,24 @@ impl MacosGate {
             return false;
         }
         self.state.hold();
+        debug!("key gate: holding");
         true
     }
 
     pub(crate) fn release(&self) {
         self.state.release();
+        debug!("key gate: released");
     }
 
     /// Called from the tap callback, once per keystroke. Must stay
     /// allocation-free and lock-free — a callback that blocks gets the
     /// tap disabled by the OS.
     pub(crate) fn swallow(&self, ours: bool) -> bool {
-        self.state.swallow(ours, self.state.now_ms())
+        let s = self.state.swallow(ours, self.state.now_ms());
+        if s {
+            debug!("key gate: swallowing user keystroke");
+        }
+        s
     }
 
     /// The tap thread reports its lifecycle here.
