@@ -694,9 +694,10 @@ fn main() -> Result<()> {
     // is also how every other background producer in this app talks to
     // the loop.
     //
-    // Only armed when a plug-in actually reports something — stock
-    // PolterType stays fully idle.
-    if plugin_menu.reports_state() {
+    // Only armed when there is a plug-in to watch — stock PolterType
+    // stays fully idle. A service counts even if it reports no state:
+    // this heartbeat is also the only thing that notices one dying.
+    if plugin_menu.reports_state() || supervisor.has_services() {
         let proxy = event_loop.create_proxy();
         std::thread::Builder::new()
             .name("plugin-state".into())
@@ -712,12 +713,17 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::PluginState) => {
+                // Before the menu is refreshed, not after: a plug-in's
+                // state command answers the same whether its service is
+                // alive or dead, so the tray would otherwise keep
+                // showing a mode nothing is enforcing.
+                announce_departed(supervisor.reap());
                 plugin_menu.refresh();
             }
             Event::UserEvent(UserEvent::Menu(id)) => {
-                // A service that died since the last click is reported
-                // now rather than at shutdown, when nobody is looking.
-                supervisor.reap();
+                // A service that died since the last heartbeat is
+                // reported now rather than at the next one.
+                announce_departed(supervisor.reap());
                 if plugin_menu.handle(&id) {
                     // Belonged to a plug-in; nothing of ours to do.
                 } else if id == quit_id {
@@ -935,6 +941,30 @@ fn main() -> Result<()> {
             _ => {}
         }
     });
+}
+
+/// Tell the user a plug-in service is gone, once, as it happens.
+///
+/// A plug-in that stops is invisible by construction: it contributes
+/// tray entries that keep working (they are one-shot commands), so the
+/// menu looks exactly the same whether the service behind it is running
+/// or dead. Nothing else in this app would say otherwise, and a
+/// background service silently doing nothing is the failure people only
+/// discover much later — a capture daemon here did it for ten hours.
+///
+/// Uses the error-notification path for the same reason the startup
+/// input alert does: it is not gated by `show_notifications`, because
+/// this is not chatter about something that worked.
+fn announce_departed(gone: Vec<plugins::Departed>) {
+    for d in gone {
+        spawn_error_notification(format!(
+            "The {id} plug-in stopped and will not restart on its own.\n\
+             {why}\n\
+             Its own log is next to PolterType's, as plugin-{id}.log.",
+            id = d.id,
+            why = d.why,
+        ));
+    }
 }
 
 /// CLI help text. Kept short and stable — most users never invoke

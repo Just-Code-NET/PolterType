@@ -117,10 +117,75 @@ fn a_service_that_exits_is_reaped_and_reported_once() {
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert_eq!(gone, vec!["test-sleeper".to_owned()]);
+    let ids: Vec<&str> = gone.iter().map(|d| d.id.as_str()).collect();
+    assert_eq!(ids, vec!["test-sleeper"]);
+    // Whatever the platform calls it, the code the service died with
+    // has to survive into the line the user is shown.
+    assert!(gone[0].why.contains('3'), "{:?}", gone[0].why);
     assert!(!sup.is_running("test-sleeper"));
     // A dead service is reported once, not on every heartbeat.
     assert!(sup.reap().is_empty());
+}
+
+/// What a plug-in said last is the whole reason its log is read, so the
+/// reading is tested directly: the reap path above cannot produce a
+/// crash message on demand, and a plug-in dying with something to say
+/// is exactly the case that matters.
+#[test]
+fn the_last_thing_a_plugin_said_is_what_gets_quoted() {
+    let dir = std::env::temp_dir().join(format!("poltertype-tail-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("plugin.log");
+
+    // Trailing blank lines are what a tidy program ends with; the
+    // message is the line before them.
+    std::fs::write(&path, "starting up\nError: the keyring said no\n\n\n").unwrap();
+    assert_eq!(
+        last_line(&path).as_deref(),
+        Some("Error: the keyring said no")
+    );
+
+    // Nothing said at all: no quote, not an empty one.
+    std::fs::write(&path, "").unwrap();
+    assert_eq!(last_line(&path), None);
+    std::fs::write(&path, "\n  \n").unwrap();
+    assert_eq!(last_line(&path), None);
+
+    // A line too long for a notification is cut, not passed through.
+    std::fs::write(&path, format!("{}\n", "x".repeat(LOG_LINE_CHARS + 50))).unwrap();
+    let cut = last_line(&path).unwrap();
+    assert_eq!(cut.chars().count(), LOG_LINE_CHARS + 1, "{cut}");
+    assert!(cut.ends_with('…'));
+
+    // A plug-in that logged all day is not read into memory; only the
+    // end of the file is, and the answer still comes from the end.
+    let mut big = "noise\n".repeat(4 * LOG_TAIL_BYTES as usize / 6);
+    big.push_str("the last word\n");
+    std::fs::write(&path, big).unwrap();
+    assert_eq!(last_line(&path).as_deref(), Some("the last word"));
+
+    let _ = std::fs::remove_file(&path);
+}
+
+/// A service with no log file still reports its death — the file is a
+/// nicety, the reaping is not.
+#[test]
+fn a_service_whose_log_could_not_be_opened_is_still_reaped() {
+    let mut sup = Supervisor::new();
+    sup.start_all(std::slice::from_ref(&dies_with(2)));
+    for r in &mut sup.running {
+        r.log = None;
+    }
+    let mut gone = Vec::new();
+    for _ in 0..50 {
+        gone = sup.reap();
+        if !gone.is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(gone.len(), 1, "the death must be reported without a log");
+    assert!(!gone[0].why.is_empty());
 }
 
 #[test]
