@@ -5,6 +5,8 @@ Lives in the system tray. Detects when you start typing in the wrong
 layout, switches it, and retypes the last word — like a friendly
 poltergeist that haunts your keyboard.
 
+> 🌐 [Español](README.es.md)
+
 ![Typing "ma;ana" with the wrong layout active: PolterType switches the layout and retypes it as "mañana", and the rest of the sentence comes out right as typed](docs/screenshots/demo.gif)
 
 *Live capture, unedited timing: `ñ` sits on the US `;` key, so Spanish
