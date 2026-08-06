@@ -37,3 +37,4 @@ models/
 
 # --- Wordlist source archives (re-fetched via xtask, not source-of-truth) ---
 data/wordlists/sources/
+
