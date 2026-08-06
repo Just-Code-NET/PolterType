@@ -39,12 +39,15 @@ tarde` lands correctly as typed.*
 > before updating.** 0.6.2 was validated on real hardware (macOS 15,
 > Intel), but 0.7.0 changed the macOS input path — modifier events now
 > reach the engine, and corrections release held modifiers before
-> typing — and those changes have still not been run on a Mac by
-> anyone.
+> typing. The tap and emitter those changes live in have since been
+> run on real hardware again (Intel, while validating the key gate),
+> but the held-modifier case specifically still has nobody's report
+> behind it, and Apple Silicon none at all.
 > They are the fix for a correction under a held ⌘ going out as ⌘⌫;
 > if something looks wrong on your Mac, please say so in
 > [#3](https://github.com/Just-Code-NET/PolterType/issues/3). The
-> keystroke hold-back remains Linux-only there, as on Windows.
+> keystroke hold-back now exists on macOS too, off unless you switch
+> it on — the paragraph above has the detail.
 > Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md)
 > for the full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
 
