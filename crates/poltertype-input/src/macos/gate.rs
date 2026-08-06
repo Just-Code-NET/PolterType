@@ -115,10 +115,26 @@ impl MacosGate {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
+
+    /// Every test here drives the gate through the same process-global
+    /// environment variable, and the harness runs them on separate
+    /// threads: without serialising, one test's `remove_var` lands
+    /// between another's `set_var` and its `MacosGate::new()`, and the
+    /// wrong gate gets built. That failure is intermittent and only
+    /// ever appears on the macOS CI job — the most expensive kind to
+    /// chase — so the lock is cheaper than the flake.
+    ///
+    /// Poisoning is stepped over deliberately (`into_inner`): if one
+    /// test fails while holding the lock, the others should report
+    /// their own verdict rather than a cascade of poisoning panics.
+    static ENV: Mutex<()> = Mutex::new(());
 
     #[test]
     fn unavailable_until_the_tap_reports_running() {
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         // Enabled via env so the test is independent of the default.
         unsafe { std::env::set_var(HOLD_KEYS_ENV, "1") };
         let g = MacosGate::new();
@@ -134,6 +150,7 @@ mod tests {
 
     #[test]
     fn env_zero_disables_even_with_a_running_tap() {
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::set_var(HOLD_KEYS_ENV, "0") };
         let g = MacosGate::new();
         g.set_tap_running(true);
@@ -144,6 +161,7 @@ mod tests {
 
     #[test]
     fn default_is_opt_in() {
+        let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::remove_var(HOLD_KEYS_ENV) };
         let g = MacosGate::new();
         g.set_tap_running(true);
