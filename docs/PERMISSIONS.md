@@ -171,10 +171,13 @@ permission is needed — it uses the `/dev/input/event*` access
 > [issue #7](https://github.com/Just-Code-NET/PolterType/issues/7) for
 > the measurements. No keyboard wedge was observed at any point.
 >
-> **On macOS there is no implementation**, so a keystroke can still
-> land inside a correction there — and both bugs above were fixed in
-> shared code, so whenever it is switched on there it starts from a
-> working replay rather than these two.
+> **On macOS the gate exists and is likewise opt-in**
+> (`POLTERTYPE_HOLD_KEYS=1`) — same mechanism, same latency trade:
+> held keys arrive together after the burst instead of interleaving
+> with it. The event tap moves from listen-only to active only when
+> the gate is on. Validated on Intel hardware; the replay path (the
+> `send_text` fallback that both bugs above were fixed in) is what
+> makes it safe to enable there, exactly as predicted above.
 
 **It stands down behind an input remapper.** keyd (and anything with
 the same design) holds every keyboard exclusively — *including

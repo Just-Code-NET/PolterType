@@ -14,15 +14,15 @@ use crate::hold::HoldState;
 
 /// Environment override for the key gate, read once at startup.
 ///
-/// `POLTERTYPE_HOLD_KEYS=0` turns the gate off; anything else (or
-/// unset) leaves it on. The **default on macOS is on**: the tap
-/// callback's swallow decision is a couple of atomic loads, a past-
-/// deadline hold clears itself on the next keystroke, and a dead or
-/// wedged process cannot hold the keyboard — the tap dies with the
-/// process, and macOS disables one whose callback stops answering
-/// (which we survive by re-enabling on the disabled event itself).
-/// Same override name as Windows, whose default is the opposite
-/// (`windows/consts.rs` explains why theirs is opt-in).
+/// `POLTERTYPE_HOLD_KEYS=1` turns it on, `=0` off. The **default on
+/// macOS is off — same as Windows, and for the same current reason:
+/// not fear, but latency.** Held keys are withheld from the
+/// application for the length of the flush (engine-side:
+/// `HELD_FLUSH_QUIET_PROBES × POST_EMIT_LAG`, ceiling `HELD_FLUSH`),
+/// which reads as the caret lagging behind your typing after every
+/// correction. Switch it on if you type fast enough to hit the race;
+/// `docs/PERMISSIONS.md` states the trade. See
+/// `windows/consts::HOLD_KEYS_ENV`.
 pub(crate) const HOLD_KEYS_ENV: &str = "POLTERTYPE_HOLD_KEYS";
 
 pub struct MacosGate {
@@ -46,9 +46,12 @@ impl Default for MacosGate {
 
 impl MacosGate {
     pub(crate) fn new() -> Self {
-        let enabled = std::env::var(HOLD_KEYS_ENV).as_deref() != Ok("0");
-        if !enabled {
-            info!("key gate disabled by {HOLD_KEYS_ENV}=0");
+        let enabled = std::env::var(HOLD_KEYS_ENV).as_deref() == Ok("1");
+        if enabled {
+            info!(
+                "key gate enabled by {HOLD_KEYS_ENV}=1 — keystrokes are held back during \
+                 corrections, at a small delay after each one (see docs/PERMISSIONS.md)"
+            );
         }
         Self {
             state: HoldState::new(),
@@ -107,5 +110,46 @@ impl MacosGate {
             self.state.release();
             debug!("key gate: tap stopped — holds unavailable");
         }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unavailable_until_the_tap_reports_running() {
+        // Enabled via env so the test is independent of the default.
+        unsafe { std::env::set_var(HOLD_KEYS_ENV, "1") };
+        let g = MacosGate::new();
+        assert!(!g.available(), "no tap yet — must not claim to hold");
+        assert!(!g.hold(), "hold without a tap reports unheld");
+        g.set_tap_running(true);
+        assert!(g.available());
+        assert!(g.hold());
+        g.set_tap_running(false);
+        assert!(!g.available(), "tap gone — holds unavailable again");
+        unsafe { std::env::remove_var(HOLD_KEYS_ENV) };
+    }
+
+    #[test]
+    fn env_zero_disables_even_with_a_running_tap() {
+        unsafe { std::env::set_var(HOLD_KEYS_ENV, "0") };
+        let g = MacosGate::new();
+        g.set_tap_running(true);
+        assert!(!g.available());
+        assert!(!g.hold());
+        unsafe { std::env::remove_var(HOLD_KEYS_ENV) };
+    }
+
+    #[test]
+    fn default_is_opt_in() {
+        unsafe { std::env::remove_var(HOLD_KEYS_ENV) };
+        let g = MacosGate::new();
+        g.set_tap_running(true);
+        assert!(
+            !g.available(),
+            "default must be opt-in (latency trade — see docs/PERMISSIONS.md)"
+        );
     }
 }

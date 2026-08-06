@@ -4,6 +4,36 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — macOS: the key gate (opt-in)
+
+With `POLTERTYPE_HOLD_KEYS=1`, PolterType on macOS now holds your
+keystrokes back while a correction types, and replays them behind it
+— the race that used to scramble `зтзь ш ` into `ipnpm ` is closed on
+a third platform. The event tap moves from listen-only to active
+when the gate is on; our own emissions bypass the hold via the
+emitter stamp; a tap the OS disables for overrunning its callback
+budget is re-enabled instead of going deaf. Validated on Intel
+hardware: a 4-key burst fired mid-correction lands exactly once, in
+order, in the freshly switched layout.
+
+Off by default for the same reason as Windows: the flush delays held
+keys until the burst ends, which reads as the caret lagging after
+every correction. Turn it on if you type fast enough to hit the
+race — see `docs/PERMISSIONS.md`.
+
+Two findings rode along:
+
+- `core-graphics` 0.24's tap trampoline mapped a callback's `None`
+  back to the *original* event, so an "active" tap swallowed nothing
+  — the reason the gate now requires 0.25 (`CallbackResult::Drop`).
+- The final post-release sweep sent held keystrokes through
+  `send_keys`, which is `Unsupported` on macOS and Windows — they are
+  now emitted via the same `send_text` fallback as the main flush,
+  closing a narrow window where a fast typist could lose characters
+  outright.
+
 ## [0.12.0] — the AI socket ships in the box
 
 ### Changed

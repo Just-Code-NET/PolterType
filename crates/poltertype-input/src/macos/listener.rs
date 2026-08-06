@@ -181,6 +181,13 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
 /// arrives when a callback overruns its budget — ours is a few atomic
 /// loads, but an OS under load can still decide; coming back to life
 /// beats staying deaf).
+///
+/// One tap per process, by construction: `listener.start()` is called
+/// once (main.rs), so the silent first-wins of `OnceLock::set` is
+/// never observed. The set also runs after `tap.enable()` — a tap the
+/// OS managed to disable inside that gap would re-enable against a
+/// stale port, which fails toward keys reaching the application, the
+/// safe direction.
 static TAP_PORT: OnceLock<usize> = OnceLock::new();
 
 fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), String>>) {
