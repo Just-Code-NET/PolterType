@@ -1,7 +1,4 @@
-#![allow(unused_imports)]
-
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 use fst::Set as FstSet;
 

@@ -22,4 +22,4 @@ mod engine;
 mod run_loop;
 mod suggestions;
 
-pub use engine::SwitcherEngine;
+pub use engine::{EngineDeps, SwitcherEngine};

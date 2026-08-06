@@ -1,15 +1,10 @@
-#![allow(unused_imports)]
-
 use iced::keyboard::{Key, Modifiers, key::Named};
 use poltertype_core::commands::{CommandAction, UserCommand};
 use poltertype_layout::LayoutId;
 
 use super::enums::*;
 use super::helpers::*;
-use super::state::*;
-use super::system_theme;
 use super::theme;
-use super::*;
 
 /// The capture pipeline must produce strings that `global-hotkey`'s
 /// `FromStr` accepts. Otherwise rebinding succeeds in the UI but

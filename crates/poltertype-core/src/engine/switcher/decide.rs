@@ -15,7 +15,7 @@ use crate::engine::heuristics::{
     app_is_disabled, is_layout_eligible, is_structural_boundary, is_submission_boundary,
     looks_like_all_caps, render_for_code_check,
 };
-use crate::engine::types::LastWord;
+use crate::engine::types::{Correction, LastWord};
 
 use super::engine::SwitcherEngine;
 
@@ -420,16 +420,18 @@ impl SwitcherEngine {
                     shift: boundary_shift,
                 });
                 self.apply_correction(
-                    &current_layout,
-                    &target_layout,
-                    &current_text,
-                    &corrected_text,
-                    backspaces,
-                    &reason,
-                    snap.general.sound_on_correct,
-                    Some(&replay),
+                    &Correction {
+                        from: &current_layout,
+                        to: &target_layout,
+                        original: &current_text,
+                        corrected: &corrected_text,
+                        backspaces,
+                        reason: &reason,
+                        play_sound: snap.general.sound_on_correct,
+                        replay_keys: Some(&replay),
+                        pointer_click_allowance: 0,
+                    },
                     Some((key_rx, buffer)),
-                    0,
                 );
             }
         }

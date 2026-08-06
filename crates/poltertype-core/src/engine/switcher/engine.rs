@@ -114,20 +114,44 @@ pub struct SwitcherEngine {
     pub(super) paste_guard_until: RwLock<Instant>,
 }
 
+/// Everything the engine is built out of.
+///
+/// A struct rather than ten positional parameters, and not because a
+/// lint asked: seven of these are `Arc<dyn …>` trait objects, so any
+/// two of the same shape can be swapped at the call site and the
+/// compiler will accept it happily. Named fields make the wiring
+/// legible in `main.rs` and impossible to transpose. A constructor is
+/// also the one thing that cannot be "split into smaller functions" —
+/// the object is not usable half-built.
+pub struct EngineDeps {
+    pub settings: Arc<SettingsStore>,
+    pub layouts: Arc<LayoutDb>,
+    pub detectors: Vec<Box<dyn Detector>>,
+    pub layout_switcher: Arc<dyn LayoutSwitcher>,
+    pub key_emitter: Arc<dyn KeyEmitter>,
+    pub key_gate: KeyGate,
+    pub focus_tracker: Arc<dyn FocusTracker>,
+    pub audio: Arc<AudioPlayer>,
+    pub out_tx: Sender<SwitcherEvent>,
+    /// `None` when no suggestion provider is wired — the feature is
+    /// then inert, not merely disabled.
+    pub suggester: Option<Arc<dyn SuggestionProvider>>,
+}
+
 impl SwitcherEngine {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        settings: Arc<SettingsStore>,
-        layouts: Arc<LayoutDb>,
-        detectors: Vec<Box<dyn Detector>>,
-        layout_switcher: Arc<dyn LayoutSwitcher>,
-        key_emitter: Arc<dyn KeyEmitter>,
-        key_gate: KeyGate,
-        focus_tracker: Arc<dyn FocusTracker>,
-        audio: Arc<AudioPlayer>,
-        out_tx: Sender<SwitcherEvent>,
-        suggester: Option<Arc<dyn SuggestionProvider>>,
-    ) -> Self {
+    pub fn new(deps: EngineDeps) -> Self {
+        let EngineDeps {
+            settings,
+            layouts,
+            detectors,
+            layout_switcher,
+            key_emitter,
+            key_gate,
+            focus_tracker,
+            audio,
+            out_tx,
+            suggester,
+        } = deps;
         Self {
             settings,
             layouts,

@@ -1,8 +1,74 @@
 //! Plain data carried around by the engine: hotkey chords, the
 //! stashed last word, and the correction-window drain summary.
 
-use poltertype_input::KeyEvent;
+use poltertype_input::{KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
+use poltertype_types::WordKey;
+
+/// One correction, described in full: what to delete, what to type in
+/// its place, and under which layout.
+///
+/// This exists because the emitter took ten positional parameters —
+/// four of them `&str`/`&LayoutId` pairs that transpose silently. A
+/// swapped `from`/`to` or `original`/`corrected` compiles, passes
+/// every type check, and then deletes the wrong number of characters
+/// under the wrong layout. Named fields make that class of mistake
+/// visible at the call site, which is the whole point; the parameter
+/// count coming back under clippy's threshold is a side effect.
+pub struct Correction<'a> {
+    /// Layout the text was typed under. Equal to [`Self::to`] for a
+    /// same-layout replacement (a spelling suggestion), and that
+    /// equality is what the emitter keys "is this a switch?" off.
+    pub from: &'a LayoutId,
+    /// Layout to switch to and replay under.
+    pub to: &'a LayoutId,
+    /// What is on screen now — for the event payload and the log.
+    pub original: &'a str,
+    /// What should be on screen after.
+    pub corrected: &'a str,
+    /// How many characters to delete before typing the replacement.
+    pub backspaces: usize,
+    /// Why this is happening, for the log and the emitted event.
+    pub reason: &'a str,
+    pub play_sound: bool,
+    /// Scancodes to replay, when the replacement can be typed as keys
+    /// rather than injected as text.
+    pub replay_keys: Option<&'a [ReplayKey]>,
+    /// How many pointer presses the absorb machinery may swallow
+    /// instead of reading as "the caret moved". Zero everywhere except
+    /// a tooltip-click accept, where exactly one physical click — the
+    /// one that hit the tooltip, an overlay the app below never saw —
+    /// is still in flight in the key stream.
+    pub pointer_click_allowance: usize,
+}
+
+/// An accepted suggestion, worked out down to what the emitter needs.
+///
+/// Separate from applying it because the two halves are different
+/// jobs: deciding *what* the replacement is — which layout, how much
+/// of the screen to delete, whether it can be replayed as scancodes or
+/// has to go out as text — is all judgement and early returns, while
+/// emitting it is one call plus bookkeeping. They were one function
+/// with eight parameters; splitting them is what makes each half
+/// readable, and neither needs a lint silenced to exist.
+pub struct PlannedReplacement {
+    pub target_layout: LayoutId,
+    /// On-screen characters to delete: the word, the separator run,
+    /// the in-progress next word, and the chord digit if one was typed.
+    pub backspaces: usize,
+    /// The full replacement as rendered text — event payload, and the
+    /// body of the text-injection fallback.
+    pub corrected: String,
+    /// Scancodes for the replacement, when it can be typed rather than
+    /// injected.
+    pub replay: Option<Vec<ReplayKey>>,
+    pub reason: &'static str,
+    /// The replacement word in scancode form under the target layout,
+    /// used to re-point the word buffer's stash so backspacing across
+    /// the boundary re-opens the right thing. `None` when the layout
+    /// cannot type every character and text injection was used.
+    pub replacement_keys: Option<Vec<WordKey>>,
+}
 
 /// A resolved hotkey chord matched against the raw key stream.
 ///

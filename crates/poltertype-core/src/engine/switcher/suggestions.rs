@@ -38,7 +38,8 @@ use crate::engine::buffer::WordBuffer;
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::heuristics::is_submission_scancode;
 use crate::engine::types::{
-    AcceptModifiers, FrozenScreen, PendingSuggestion, SuggestionAction, SuggestionEntry,
+    AcceptModifiers, Correction, FrozenScreen, PendingSuggestion, PlannedReplacement,
+    SuggestionAction, SuggestionEntry,
 };
 use crate::settings::Settings;
 
@@ -356,42 +357,36 @@ impl SwitcherEngine {
         // ever ignores pointer presses, which always mean "caret
         // moved" for every OTHER purpose.)
         let click_allowance = usize::from(from_pointer);
-        self.apply_suggestion_replacement(
-            &pending,
-            &entry,
-            &run,
-            &tail,
-            click_allowance,
-            typed_digit,
-            buffer,
-            key_rx,
-        );
+        let Some(plan) =
+            self.plan_suggestion_replacement(&pending, &entry, &run, &tail, typed_digit)
+        else {
+            return;
+        };
+        self.apply_suggestion_replacement(&pending, &entry, &plan, click_allowance, buffer, key_rx);
     }
 
-    /// Emit the replacement. Reuses `apply_correction` wholesale: it
-    /// already owns the absorb window, echo bookkeeping, compensation
-    /// loop and buffer re-seeding, and every one of those hazards
-    /// applies here identically.
-    #[allow(clippy::too_many_arguments)]
-    fn apply_suggestion_replacement(
+    /// Work out what the replacement is: which layout to end up in,
+    /// how much of the screen to delete, what to replay in its place,
+    /// and how it reads once typed.
+    ///
+    /// `None` declines the accept, leaving the user's text untouched —
+    /// every reason to give up lives here rather than half-way through
+    /// emitting.
+    fn plan_suggestion_replacement(
         &self,
         pending: &PendingSuggestion,
         entry: &SuggestionEntry,
         boundary_run: &[(u32, bool)],
         tail_keys: &[WordKey],
-        click_allowance: usize,
         typed_digit: bool,
-        buffer: &mut WordBuffer,
-        key_rx: &Receiver<KeyEvent>,
-    ) {
-        let snap = self.settings.snapshot();
+    ) -> Option<PlannedReplacement> {
         let target_layout = entry
             .switch_to
             .clone()
             .unwrap_or_else(|| pending.layout.clone());
         let Some(target_mapping) = self.layouts.get(&target_layout) else {
             warn!(%target_layout, "suggestion target layout not in DB");
-            return;
+            return None;
         };
 
         // Screen model left of the caret:
@@ -404,7 +399,7 @@ impl SwitcherEngine {
             // only shrink via backspacing, which re-opens the word and
             // clears `completed()` — but belt and braces).
             debug!("suggestion accept declined: boundary run empty");
-            return;
+            return None;
         }
 
         // The word itself: cross-layout entries replay the original
@@ -487,17 +482,63 @@ impl SwitcherEngine {
         } else {
             "spelling suggestion accepted"
         };
-        let applied = self.apply_correction(
-            &pending.layout,
-            &target_layout,
-            &pending.rendered,
-            &corrected,
+
+        // The replacement word in scancodes, for re-pointing the
+        // buffer's stash afterwards. Worked out here because this is
+        // where the target mapping is in hand; `None` when the layout
+        // cannot type every character, which is exactly the case where
+        // the stash must be dropped rather than re-pointed.
+        let replacement_keys: Option<Vec<WordKey>> = {
+            let keys: Vec<WordKey> = entry
+                .text
+                .chars()
+                .filter_map(|c| target_mapping.key_for_char(c))
+                .map(|(scancode, shift)| WordKey {
+                    scancode,
+                    shift,
+                    timestamp_ms: 0,
+                })
+                .collect();
+            (keys.len() == entry.text.chars().count()).then_some(keys)
+        };
+
+        Some(PlannedReplacement {
+            target_layout,
             backspaces,
+            corrected,
+            replay: full_replay,
             reason,
-            snap.general.sound_on_correct,
-            full_replay.as_deref(),
+            replacement_keys,
+        })
+    }
+
+    /// Emit the replacement. Reuses `apply_correction` wholesale: it
+    /// already owns the absorb window, echo bookkeeping, compensation
+    /// loop and buffer re-seeding, and every one of those hazards
+    /// applies here identically.
+    fn apply_suggestion_replacement(
+        &self,
+        pending: &PendingSuggestion,
+        entry: &SuggestionEntry,
+        plan: &PlannedReplacement,
+        click_allowance: usize,
+        buffer: &mut WordBuffer,
+        key_rx: &Receiver<KeyEvent>,
+    ) {
+        let snap = self.settings.snapshot();
+        let applied = self.apply_correction(
+            &Correction {
+                from: &pending.layout,
+                to: &plan.target_layout,
+                original: &pending.rendered,
+                corrected: &plan.corrected,
+                backspaces: plan.backspaces,
+                reason: plan.reason,
+                play_sound: snap.general.sound_on_correct,
+                replay_keys: plan.replay.as_deref(),
+                pointer_click_allowance: click_allowance,
+            },
             Some((key_rx, buffer)),
-            click_allowance,
         );
         if !applied {
             return;
@@ -529,21 +570,10 @@ impl SwitcherEngine {
                     .zip(&pending.keys)
                     .all(|(a, b)| a.scancode == b.scancode && a.shift == b.shift);
             if still_same {
-                let new_keys: Vec<WordKey> = entry
-                    .text
-                    .chars()
-                    .filter_map(|c| target_mapping.key_for_char(c))
-                    .map(|(scancode, shift)| WordKey {
-                        scancode,
-                        shift,
-                        timestamp_ms: 0,
-                    })
-                    .collect();
-                if new_keys.len() == entry.text.chars().count() {
-                    buffer.replace_completed(new_keys);
-                } else {
-                    buffer.replace_completed(Vec::new());
-                }
+                // `None` means text injection was used and no scancode
+                // form exists — forget the stash rather than point it
+                // at something that is not on screen.
+                buffer.replace_completed(plan.replacement_keys.clone().unwrap_or_default());
             }
         }
         *self.last_word.write() = None;

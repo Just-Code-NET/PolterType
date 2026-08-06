@@ -4,20 +4,13 @@
 //! submodules, so the inner test modules resolve names through
 //! `use super::*` exactly as they did when they lived inline.
 
-#![allow(unused_imports)]
-
-use std::collections::VecDeque;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use poltertype_detect::{Detector, Verdict};
-use poltertype_input::{
-    EmittedKey, FocusTracker, InputError, KeyDirection, KeyEmitter, KeyEvent, ReplayKey,
-};
-use poltertype_layout::{LayoutId, LayoutSwitcher};
-use poltertype_types::SwitchAction;
+use poltertype_input::{EmittedKey, InputError, KeyDirection, KeyEmitter, KeyEvent};
+use poltertype_layout::LayoutId;
 
 use super::consts::*;
 use super::heuristics::*;
@@ -265,20 +258,21 @@ mod engine_integration_tests {
             let (key_tx, key_rx) = crossbeam_channel::bounded::<KeyEvent>(1024);
             let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<EngineCommand>();
             let (out_tx, out_rx) = crossbeam_channel::unbounded::<SwitcherEvent>();
-            let engine = SwitcherEngine::new(
-                Arc::clone(&settings),
+            let engine = SwitcherEngine::new(EngineDeps {
+                settings: Arc::clone(&settings),
                 layouts,
                 detectors,
-                Arc::<MockSwitcher>::clone(&switcher) as Arc<dyn poltertype_layout::LayoutSwitcher>,
-                Arc::<MockEmitter>::clone(&emitter) as Arc<dyn KeyEmitter>,
+                layout_switcher: Arc::<MockSwitcher>::clone(&switcher)
+                    as Arc<dyn poltertype_layout::LayoutSwitcher>,
+                key_emitter: Arc::<MockEmitter>::clone(&emitter) as Arc<dyn KeyEmitter>,
                 // The gate is a no-op in tests: these exercise the
                 // path taken when keystrokes cannot be held back.
-                poltertype_input::KeyGate::disabled(),
-                Arc::new(NoopFocusTracker),
-                Arc::new(crate::audio::AudioPlayer::for_tests()),
+                key_gate: poltertype_input::KeyGate::disabled(),
+                focus_tracker: Arc::new(NoopFocusTracker),
+                audio: Arc::new(crate::audio::AudioPlayer::for_tests()),
                 out_tx,
                 suggester,
-            );
+            });
             let engine_thread = std::thread::spawn(move || engine.run(key_rx, cmd_rx));
             Self {
                 key_tx,

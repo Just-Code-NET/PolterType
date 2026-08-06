@@ -18,7 +18,7 @@ use crate::engine::consts::{
 };
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::heuristics::{is_paste_shortcut, is_submission_scancode};
-use crate::engine::types::{HeldKeys, LastWord, WindowDrain};
+use crate::engine::types::{Correction, HeldKeys, LastWord, WindowDrain};
 
 use super::engine::SwitcherEngine;
 
@@ -125,26 +125,25 @@ impl SwitcherEngine {
     /// replay happened, however imperfectly) — `false` means the
     /// correction aborted with the user's text untouched.
     ///
-    /// `pointer_click_allowance`: how many pointer presses the absorb
-    /// machinery may swallow instead of treating as "caret moved".
-    /// Zero everywhere except a tooltip-click accept, where exactly
-    /// one physical click (the one that clicked the tooltip — an
-    /// overlay surface the app below never saw) is in flight in the
-    /// key stream.
-    #[allow(clippy::too_many_arguments)]
+    /// `live` is the running key stream and word buffer, present
+    /// whenever there is a session to absorb raced keystrokes into and
+    /// `None` in the tests that only assert what was emitted.
     pub(super) fn apply_correction(
         &self,
-        from: &LayoutId,
-        to: &LayoutId,
-        original: &str,
-        corrected: &str,
-        backspaces: usize,
-        reason: &str,
-        play_sound: bool,
-        replay_keys: Option<&[ReplayKey]>,
+        c: &Correction<'_>,
         live: Option<(&Receiver<KeyEvent>, &mut WordBuffer)>,
-        pointer_click_allowance: usize,
     ) -> bool {
+        let &Correction {
+            from,
+            to,
+            original,
+            corrected,
+            backspaces,
+            reason,
+            play_sound,
+            replay_keys,
+            pointer_click_allowance,
+        } = c;
         debug!(
             %from,
             %to,
@@ -861,16 +860,19 @@ impl SwitcherEngine {
             shift: boundary_shift,
         });
         self.apply_correction(
-            &last.layout,
-            &target,
-            &last.rendered,
-            &corrected,
-            last.keys.len() + 1,
-            "manual switch-last hotkey",
-            true,
-            Some(&replay),
+            &Correction {
+                from: &last.layout,
+                to: &target,
+                original: &last.rendered,
+                corrected: &corrected,
+                // The word, plus the boundary key that closed it.
+                backspaces: last.keys.len() + 1,
+                reason: "manual switch-last hotkey",
+                play_sound: true,
+                replay_keys: Some(&replay),
+                pointer_click_allowance: 0,
+            },
             Some((key_rx, buffer)),
-            0,
         );
     }
 }

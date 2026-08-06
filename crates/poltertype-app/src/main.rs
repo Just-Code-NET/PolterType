@@ -72,7 +72,7 @@ use anyhow::{Context, Result};
 use crossbeam_channel::{bounded, unbounded};
 use global_hotkey::GlobalHotKeyManager;
 use poltertype_core::audio::AudioPlayer;
-use poltertype_core::engine::{EngineCommand, SwitcherEngine, SwitcherEvent};
+use poltertype_core::engine::{EngineCommand, EngineDeps, SwitcherEngine, SwitcherEvent};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::SettingsStore;
 use poltertype_detect::Detector;
@@ -343,18 +343,18 @@ fn main() -> Result<()> {
     // the same channel.
     let engine_event_tx_for_poller = engine_event_tx.clone();
 
-    let engine = SwitcherEngine::new(
-        Arc::clone(&settings),
-        Arc::clone(&layouts),
+    let engine = SwitcherEngine::new(EngineDeps {
+        settings: Arc::clone(&settings),
+        layouts: Arc::clone(&layouts),
         detectors,
-        Arc::clone(&layout_switcher),
-        Arc::clone(&key_emitter),
-        key_gate.clone(),
-        Arc::clone(&focus_tracker),
-        Arc::clone(&audio),
-        engine_event_tx,
-        Some(suggester),
-    );
+        layout_switcher: Arc::clone(&layout_switcher),
+        key_emitter: Arc::clone(&key_emitter),
+        key_gate: key_gate.clone(),
+        focus_tracker: Arc::clone(&focus_tracker),
+        audio: Arc::clone(&audio),
+        out_tx: engine_event_tx,
+        suggester: Some(suggester),
+    });
     std::thread::Builder::new()
         .name("poltertype-engine".into())
         .spawn(move || engine.run(key_rx, engine_cmd_rx))

@@ -2,7 +2,7 @@
 //! the [`DictionaryDetector`] that consults them.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use fst::Set as FstSet;
 use parking_lot::RwLock;
@@ -12,6 +12,22 @@ use crate::enums::Verdict;
 use crate::text::{letters_only_lower, non_word_char_count};
 use crate::traits::Detector;
 use crate::types::DetectionContext;
+
+/// The empty FST every overlay-only dictionary shares, built once.
+///
+/// One `expect` on one expression, run at most once per process,
+/// instead of two on every construction: `fst`'s builder cannot fail
+/// on an empty set, and the bytes it produces are a valid FST by
+/// construction — neither of which clippy can see. Leaking here is
+/// deliberate and bounded, because the leaked buffer *is* the
+/// `&'static [u8]` the set borrows for the life of the program.
+#[allow(clippy::expect_used)]
+static EMPTY_FST: LazyLock<Arc<FstSet<&'static [u8]>>> = LazyLock::new(|| {
+    let bytes: Vec<u8> = fst::SetBuilder::memory()
+        .into_inner()
+        .expect("building an empty FST cannot fail");
+    Arc::new(FstSet::new(bytes.leak() as &'static [u8]).expect("an empty FST is a valid FST"))
+});
 
 /// Compact immutable per-layout dictionary backed by an FST. Built
 /// from the `data/wordlists/<id>.txt` files at compile time (see
@@ -94,24 +110,22 @@ impl LayoutDictionary {
     }
 
     /// Convenience: empty embedded FST + given overlay + given short
-    /// stop list + given weak list. Used in tests; runtime callers
-    /// always have a real embedded FST.
+    /// stop list + given weak list.
     ///
-    /// Both `expect`s here are infallible by `fst::SetBuilder`'s
-    /// contract — building an empty set never errors — but clippy
-    /// can't see that, so we silence it locally.
-    #[allow(clippy::expect_used)]
+    /// Not test-only, whatever the previous comment here said:
+    /// `poltertype-core`'s layout loader builds a dictionary this way
+    /// for any language that has user overlay files but no bundled
+    /// wordlist. That matters, because this used to construct — and
+    /// `leak()` — a fresh empty FST per call, so every such language
+    /// cost a permanent allocation on every settings reload, not just
+    /// at startup. It shares [`EMPTY_FST`] now.
     pub fn from_overlay_only(
         overlay: HashSet<String>,
         short_stop_words: HashSet<String>,
         weak: HashSet<String>,
     ) -> Self {
-        let empty: Vec<u8> = fst::SetBuilder::memory()
-            .into_inner()
-            .expect("SetBuilder::memory().into_inner() is infallible");
-        let set = FstSet::new(empty.leak() as &'static [u8]).expect("empty FST is always valid");
         Self {
-            embedded: Arc::new(set),
+            embedded: Arc::clone(&EMPTY_FST),
             user_overlay: overlay,
             short_stop_words,
             weak,

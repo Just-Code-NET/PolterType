@@ -1,15 +1,9 @@
-#![allow(unused_imports)]
+use std::path::PathBuf;
 
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-
-use poltertype_detect::{LayoutDictionary, LayoutProfile, Script};
 use poltertype_types::{LayoutId, WordKey};
 
 use super::consts::*;
-use super::files::*;
 use super::helpers::*;
-use super::plugins::*;
 use super::types::*;
 use super::*;
 
