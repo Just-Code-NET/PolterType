@@ -894,9 +894,11 @@ separate `poltertype --settings` process.
       GIFs of the toggles remain undone.
 - [ ] **`NSWorkspace` focus tracking** — not implemented, so the
       `FocusTracker` on macOS is a no-op (see Phase 6 and §3.9).
-- [ ] **Keystroke hold-back.** The key gate is Linux/evdev only; on
-      macOS, as on Windows, a keystroke can still land inside a
-      correction.
+- [ ] **Keystroke hold-back.** The key gate works on Linux/evdev and
+      on macOS (validated on Intel; opt-in via `POLTERTYPE_HOLD_KEYS=1`
+      because of the post-correction latency); on Windows it is
+      implemented but unvalidated, so a keystroke can still land
+      inside a correction there.
 - [ ] **Apple Silicon.** Validation so far is Intel-only.
 
 ### Phase 6 — Linux

@@ -32,6 +32,9 @@ tarde` lands correctly as typed.*
 > costs a noticeable delay after every correction, which is not a
 > trade worth making for everyone
 > ([#7](https://github.com/Just-Code-NET/PolterType/issues/7)).
+> On macOS the same hold-back exists too, equally **off by default**
+> (`POLTERTYPE_HOLD_KEYS=1`), validated on Intel hardware — see
+> [issue #8](https://github.com/Just-Code-NET/PolterType/issues/8).
 > **macOS: read this
 > before updating.** 0.6.2 was validated on real hardware (macOS 15,
 > Intel), but 0.7.0 changed the macOS input path — modifier events now

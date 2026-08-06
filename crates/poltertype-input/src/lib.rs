@@ -34,6 +34,12 @@ mod windows;
 mod enums;
 mod factory;
 mod gate;
+// The key gate's swallow decision, shared by the Windows and macOS
+// gates. Pure std, no OS imports — compiled under `cfg(test)` on every
+// host so its safety properties are tested where the project actually
+// runs CI.
+#[cfg(any(windows, target_os = "macos", test))]
+mod hold;
 mod traits;
 mod types;
 

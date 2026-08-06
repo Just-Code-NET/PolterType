@@ -1,6 +1,6 @@
 //! `WindowsGate` — the key gate's public face on Windows.
 //!
-//! Thin by design: [`HoldState`](super::hold::HoldState) holds every
+//! Thin by design: [`HoldState`](crate::hold::HoldState) holds every
 //! decision and is testable anywhere, while this type owns the two
 //! things that are genuinely Windows-shaped — whether the gate is
 //! switched on at all, and the clock the hook callback reads.
@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tracing::info;
 
 use super::consts::HOLD_KEYS_ENV;
-use super::hold::HoldState;
+use crate::hold::HoldState;
 
 pub struct WindowsGate {
     state: HoldState,

@@ -567,9 +567,13 @@ impl SwitcherEngine {
                 }
                 if !last.is_empty() {
                     debug!(count = last.len(), "typing out the last held keystrokes");
-                    let sent = self.key_emitter.send_keys(&last);
-                    self.push_echoes(self.key_emitter.take_emitted());
-                    if let Err(e) = sent {
+                    // Not `send_keys` directly: on macOS and Windows
+                    // that is `Unsupported`, and these keystrokes were
+                    // already swallowed from the application — dropping
+                    // them here would lose them outright. Same fix as
+                    // the main flush path; the second call site was
+                    // missed when `emit_held_keys` got its fallback.
+                    if let Err(e) = self.emit_held_keys(&last, to) {
                         warn!(?e, "flushing the last held keystrokes failed");
                     }
                 }

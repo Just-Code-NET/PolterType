@@ -1,7 +1,7 @@
 //! `CGEventTap` listener: attach, translate, forward.
 
 use std::ffi::{c_long, c_void};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -13,12 +13,14 @@ use core_foundation::runloop::{
 };
 use core_graphics::event::{
     CGEvent, CGEventFlags, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
+    CallbackResult,
 };
 use crossbeam_channel::Sender;
 use tracing::{debug, info, trace};
 
 use super::codes::{flags_changed_direction, mac_keycode_to_sc1};
-use super::consts::{K_CG_EVENT_SOURCE_USER_DATA, K_CG_KEYBOARD_EVENT_KEYCODE};
+use super::consts::{EMITTER_TAG, K_CG_EVENT_SOURCE_USER_DATA, K_CG_KEYBOARD_EVENT_KEYCODE};
+use super::gate::MacosGate;
 use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
 
 // ─── Accessibility permission prompt ─────────────────────────────────
@@ -68,11 +70,26 @@ fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
 
 pub struct MacosListener {
     started: bool,
+    /// The key gate the tap callback consults on every keystroke.
+    /// `None` = observe-only, the pre-gate behaviour.
+    gate: Option<Arc<MacosGate>>,
 }
 
 impl MacosListener {
     pub fn new() -> Self {
-        Self { started: false }
+        Self {
+            started: false,
+            gate: None,
+        }
+    }
+
+    /// Wire the listener to the gate the engine holds, so the tap
+    /// callback can swallow a keystroke instead of only observing it.
+    pub fn with_gate(gate: Arc<MacosGate>) -> Self {
+        Self {
+            started: false,
+            gate: Some(gate),
+        }
     }
 }
 
@@ -83,10 +100,11 @@ impl InputListener for MacosListener {
         }
         *sink_slot().write() = Some(sink);
 
+        let gate = self.gate.clone();
         let (ready_tx, ready_rx) = crossbeam_channel::bounded::<Result<(), String>>(1);
         thread::Builder::new()
             .name("poltertype-input-macos-tap".into())
-            .spawn(move || run_tap_thread(ready_tx))
+            .spawn(move || run_tap_thread(gate, ready_tx))
             .map_err(|e| InputError::Os(format!("spawn tap thread: {e}")))?;
 
         match ready_rx.recv_timeout(Duration::from_secs(3)) {
@@ -158,11 +176,45 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
     })
 }
 
-fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
+/// The tap's mach port, stashed after creation so the callback can
+/// re-enable the tap if the OS disables it (`kCGEventTapDisabledByTimeout`
+/// arrives when a callback overruns its budget — ours is a few atomic
+/// loads, but an OS under load can still decide; coming back to life
+/// beats staying deaf).
+///
+/// One tap per process, by construction: `listener.start()` is called
+/// once (main.rs), so the silent first-wins of `OnceLock::set` is
+/// never observed. The set also runs after `tap.enable()` — a tap the
+/// OS managed to disable inside that gap would re-enable against a
+/// stale port, which fails toward keys reaching the application, the
+/// safe direction.
+static TAP_PORT: OnceLock<usize> = OnceLock::new();
+
+fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), String>>) {
     use core_graphics::event::CGEventTapProxy;
 
+    // The gate only gets to make swallow decisions when the tap is
+    // *active* — a listen-only tap's return value is ignored by the
+    // window server. Disabled-by-env gates keep the old listen-only tap.
+    let active = gate.as_ref().is_some_and(|g| g.wants_active_tap());
+    let gate_for_callback = gate.clone();
+
     let callback =
-        |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> Option<CGEvent> {
+        move |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> CallbackResult {
+            // The OS turned our tap off — put it back. Delivered on the
+            // tap itself, not in the key stream.
+            if matches!(
+                ev_type,
+                CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput
+            ) {
+                if let Some(port) = TAP_PORT.get() {
+                    tracing::warn!(?ev_type, "event tap disabled by the OS; re-enabling");
+                    // Safety: the port belongs to our live tap.
+                    unsafe { CGEventTapEnable(*port as CFMachPortRef, true) };
+                }
+                return CallbackResult::Keep;
+            }
+
             if let Some(ev_out) = to_key_event(ev_type, event) {
                 if let Some(slot) = EVENT_SINK.get() {
                     if let Some(sink) = slot.read().as_ref() {
@@ -184,15 +236,38 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
                         }
                     }
                 }
+
+                // The key gate: while a correction burst is on the
+                // wire, the user's keystrokes are swallowed here (the
+                // engine already has them — it replays them behind the
+                // correction). Our own emissions are stamped and must
+                // always pass, or the correction swallows itself.
+                // `FlagsChanged` events never get swallowed: holding a
+                // modifier edge but not its counterpart would leave the
+                // system modifier state stuck.
+                if let Some(g) = gate_for_callback.as_ref() {
+                    if matches!(ev_type, CGEventType::KeyDown | CGEventType::KeyUp) {
+                        let ours = event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA)
+                            == EMITTER_TAG;
+                        if g.swallow(ours) {
+                            trace!(scancode = ev_out.scancode, "key held by gate");
+                            return CallbackResult::Drop;
+                        }
+                    }
+                }
             }
             // Pass-through; we listen but don't suppress.
-            Some(event.clone())
+            CallbackResult::Keep
         };
 
     let tap = match core_graphics::event::CGEventTap::new(
         CGEventTapLocation::Session,
         CGEventTapPlacement::HeadInsertEventTap,
-        CGEventTapOptions::ListenOnly,
+        if active {
+            CGEventTapOptions::Default
+        } else {
+            CGEventTapOptions::ListenOnly
+        },
         // `FlagsChanged` is how macOS reports a modifier press or
         // release — there is no KeyDown for Shift. Subscribing gives
         // the engine the same discrete modifier stream the Windows and
@@ -223,7 +298,7 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
     // Safety: hand the mach port to a CFRunLoopSource. The source
     // owns a +1 refcount we wrap into Drop via CFRunLoopSource.
     let source = unsafe {
-        let mach_port_ref: CFMachPortRef = tap.mach_port.as_concrete_TypeRef();
+        let mach_port_ref: CFMachPortRef = tap.mach_port().as_concrete_TypeRef();
         let src_ref = CFMachPortCreateRunLoopSource(std::ptr::null(), mach_port_ref, 0);
         if src_ref.is_null() {
             let _ = ready_tx.send(Err("CFMachPortCreateRunLoopSource returned null".into()));
@@ -241,6 +316,10 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
         );
     }
     tap.enable();
+    let _ = TAP_PORT.set(tap.mach_port().as_concrete_TypeRef() as usize);
+    if let Some(g) = gate.as_ref() {
+        g.set_tap_running(true);
+    }
 
     let _ = ready_tx.send(Ok(()));
 
@@ -256,6 +335,9 @@ fn run_tap_thread(ready_tx: Sender<Result<(), String>>) {
         if EVENT_SINK.get().map(|s| s.read().is_none()).unwrap_or(true) {
             break;
         }
+    }
+    if let Some(g) = gate.as_ref() {
+        g.set_tap_running(false);
     }
     info!("macOS CGEventTap thread exiting");
 }
@@ -277,4 +359,9 @@ unsafe extern "C" {
         port: CFMachPortRef,
         order: CFIndex,
     ) -> CFRunLoopSourceRef;
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+unsafe extern "C" {
+    fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
 }

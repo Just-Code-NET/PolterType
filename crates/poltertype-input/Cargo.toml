@@ -31,7 +31,11 @@ windows = { version = "0.58", features = [
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation     = "0.10"
-core-graphics       = "0.24"
+# 0.25 is the first release whose tap callback can actually swallow an
+# event (CallbackResult::Drop → NULL). 0.24's trampoline turned our
+# `None` back into the original event, so an "active" tap swallowed
+# nothing and the key gate doubled the user's keystrokes.
+core-graphics       = "0.25"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Wayland-first: evdev requires the user to be in the `input` group.

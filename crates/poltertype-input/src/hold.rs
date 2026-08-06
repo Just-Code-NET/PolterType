@@ -1,10 +1,11 @@
-//! The key gate's decision, with no Win32 in it.
+//! The key gate's decision, with no OS API in it.
 //!
 //! Everything that decides *whether to swallow a keystroke* lives here,
-//! deliberately free of `windows-rs`, so it compiles under `cfg(test)`
-//! on any host and the safety properties get tested on a machine this
-//! project actually has. The hook callback in `listener.rs` does
-//! nothing but read an event's flags and ask [`HoldState::swallow`].
+//! deliberately platform-free, so it compiles under `cfg(test)` on any
+//! host and the safety properties get tested on machines this project
+//! actually has. The Windows hook callback and the macOS event-tap
+//! callback each do nothing but read an event's flags and ask
+//! [`HoldState::swallow`].
 //!
 //! ## Why this is safer than it sounds
 //!
