@@ -33,6 +33,18 @@ Two findings rode along:
   now emitted via the same `send_text` fallback as the main flush,
   closing a narrow window where a fast typist could lose characters
   outright.
+### Fixed — macOS
+
+- **PolterType no longer blocks display / system sleep when the sound
+  output is HDMI (or DisplayPort).** The audio worker cached its
+  CoreAudio `OutputStream` for the whole life of the process once a
+  sound had played, and an open output stream on an HDMI device keeps
+  coreaudiod's power assertion alive — macOS then refuses to turn the
+  screen off or sleep, as if audio were playing forever. The worker
+  now releases the stream after 30 s without a sound command (the
+  existing `STREAM_IDLE_REFRESH` window) and reopens it lazily on the
+  next play; the ~20-50 ms reopen cost is hidden under the synth
+  tone's lead silence.
 
 ## [0.12.0] — the AI socket ships in the box
 
@@ -92,7 +104,6 @@ Two findings rode along:
   quotes. Still no automatic restart — a plug-in that crashes on
   startup would become a fork bomb, and the failure would go back to
   being invisible.
-
 ## [0.11.0] — plug-ins that run, and the first release Windows was actually held to
 
 Two blocks, and they meet in one place: the plug-in system landed in
