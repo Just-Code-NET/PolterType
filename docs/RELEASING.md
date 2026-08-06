@@ -63,6 +63,7 @@ file or convince yourself it genuinely didn't change.
 | Doc | Goes stale when… |
 |---|---|
 | `README.md` | anything user-facing changes — **especially the Status line, the Goals bullets, the install table, and the hotkey table** |
+| `README.<lang>.md` | the translations carry their own copy of the install table and the caveats, so **anything that changes a row of the English one changes theirs**. They hold no version numbers by design, which bounds this to structural changes: an installer added or renamed, a permission step altered, a caveat that stops being true. A translation nobody speaks is the easiest doc to leave rotting — if there is no one to update it, delete it rather than ship a lie in a language we cannot read |
 | `CLAUDE.md` | the `## Known gaps (as of vX.Y.Z)` heading — re-stamp it and re-verify every bullet; a gap that closed must come out |
 | `docs/PLAN.md` | the `Last updated:` line, the phase checkboxes, and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there) |
 | `docs/DECISIONS.md` | you made a call worth defending later — append an entry; don't rewrite history |
