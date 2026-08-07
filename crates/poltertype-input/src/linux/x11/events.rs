@@ -9,10 +9,12 @@ use poltertype_types::SC_POINTER_BUTTON;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
+use std::time::Instant;
 use tracing::{debug, info, trace, warn};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xinput::{self, ConnectionExt as _};
+use x11rb::protocol::xproto::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
 
 /// XInput2's "all master devices" pseudo-device. Selecting on masters
@@ -73,6 +75,7 @@ pub(crate) fn connect_and_select() -> Result<RustConnection, InputError> {
 
 pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
     let mut mods = ModState::default();
+    let mut last_resync = Instant::now();
     while !stop.load(Ordering::SeqCst) {
         match conn.poll_for_event() {
             Ok(Some(ev)) => {
@@ -83,7 +86,10 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
                     }
                 }
             }
-            Ok(None) => thread::sleep(POLL_IDLE),
+            Ok(None) => {
+                resync_modifiers(&conn, &mut mods, &mut last_resync);
+                thread::sleep(POLL_IDLE);
+            }
             // The connection is gone (X server shut down, session
             // ended). There is nothing to recover to — exit the thread
             // rather than spin on a dead socket forever.
@@ -94,6 +100,53 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
         }
     }
     info!("x11 listener thread exiting");
+}
+
+/// Ask the server which modifier keys are *actually* down, and correct
+/// our latched view if it disagrees.
+///
+/// Why this exists at all: we track modifiers by watching press and
+/// release edges, which is only sound while we see every edge. We do
+/// not. Any client holding an active keyboard grab stops XInput2 raw
+/// events reaching us for as long as it holds one — measured on X.org,
+/// three key taps produced nine raw events with no grab and **zero**
+/// during one, with no error and no disconnect. So a modifier pressed
+/// just before a grab and released inside it stays latched here
+/// forever, and `Modifiers::is_command()` then makes the engine treat
+/// every later keystroke as a shortcut. The app goes quiet, logs
+/// nothing, and stays quiet until restarted.
+///
+/// The reliable way to hit that is a desktop keybinding bound to a
+/// bare modifier: Cinnamon's per-layout switch shortcuts (`Alt_L` →
+/// first layout, `Alt_R` → second) grab for the accelerator, and
+/// PolterType makes them fire often because it changes the layout
+/// under the user
+/// ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)). A
+/// lock screen, a screenshot tool or any WM chord can do the same.
+///
+/// `XQueryKeymap` answers from the server's own device state rather
+/// than from event delivery, and — measured the same way — keeps
+/// working through a foreign grab. Cost is one round-trip per
+/// [`MOD_RESYNC_INTERVAL`], and only while we believe a modifier is
+/// held: an idle keyboard never asks at all.
+fn resync_modifiers(conn: &RustConnection, mods: &mut ModState, last: &mut Instant) {
+    if !mods.any_held() || last.elapsed() < MOD_RESYNC_INTERVAL {
+        return;
+    }
+    *last = Instant::now();
+    // A failed query is not worth a log line on every idle round: the
+    // connection erroring for real is caught by the caller's `Err`
+    // arm, which does report it.
+    let Ok(Ok(reply)) = conn.query_keymap().map(|cookie| cookie.reply()) else {
+        return;
+    };
+    if mods.resync(&reply.keys) {
+        debug!(
+            mods = ?mods.snapshot(),
+            "modifier state corrected from XQueryKeymap — an edge was missed, \
+             most likely to a keyboard grab by another client"
+        );
+    }
 }
 
 pub(crate) fn translate(ev: &Event, mods: &mut ModState) -> Option<KeyEvent> {

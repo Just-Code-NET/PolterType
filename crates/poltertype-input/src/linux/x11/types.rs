@@ -51,6 +51,44 @@ impl ModState {
         }
     }
 
+    /// Do we currently believe any *held* modifier is down? Caps Lock
+    /// is excluded: it is a latch we toggle on the press edge, not a
+    /// key whose held-ness the server could contradict.
+    pub(crate) fn any_held(&self) -> bool {
+        self.shift || self.control || self.alt || self.meta
+    }
+
+    /// Reconcile the latched flags against the server's own view of
+    /// which keys are physically down, as `XQueryKeymap` reports it.
+    /// Returns whether anything actually changed.
+    ///
+    /// Tracking modifiers off press/release edges is only correct while
+    /// we see every edge, and we do not: any client holding an active
+    /// keyboard grab stops XInput2 raw events reaching us for as long
+    /// as it holds one. A modifier pressed just before such a grab and
+    /// released inside it stays latched here forever — and because
+    /// `Modifiers::is_command()` is true whenever Ctrl/Alt/Meta is
+    /// held, the engine then reads every later keystroke as a shortcut
+    /// and abandons the word buffer. The app goes quiet with no error
+    /// and stays quiet until it is restarted (issue #26).
+    ///
+    /// Caps Lock is deliberately untouched: `XQueryKeymap` reports the
+    /// physical key, not the lock state, so folding it in here would
+    /// clear the latch every time the user let go of the key.
+    pub(crate) fn resync(&mut self, keys: &[u8; 32]) -> bool {
+        let held = |left: u32, right: u32| {
+            [left, right]
+                .into_iter()
+                .any(|evdev| evdev_to_x11(evdev).is_some_and(|code| keycode_is_down(keys, code)))
+        };
+        let before = (self.shift, self.control, self.alt, self.meta);
+        self.shift = held(EV_LEFTSHIFT, EV_RIGHTSHIFT);
+        self.control = held(EV_LEFTCTRL, EV_RIGHTCTRL);
+        self.alt = held(EV_LEFTALT, EV_RIGHTALT);
+        self.meta = held(EV_LEFTMETA, EV_RIGHTMETA);
+        before != (self.shift, self.control, self.alt, self.meta)
+    }
+
     /// The modifier set as the engine wants it: `shift` already folded
     /// together with Caps Lock, because downstream all that matters is
     /// whether the keystroke produced an uppercase glyph (`Lfdfq` →

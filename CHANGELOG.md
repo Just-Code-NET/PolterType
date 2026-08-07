@@ -45,6 +45,41 @@ and the project follows [Semantic Versioning](https://semver.org/).
   because being lenient there would mean corrections silently not
   happening.
 
+### Fixed — Linux/X11: a swallowed modifier release made the app go quiet
+
+PolterType could stop correcting anything at all, with no error in the
+log, and stay that way until it was restarted. The trigger reported
+was a Cinnamon layout-switch shortcut bound to a bare modifier
+(`Alt_L` → first layout, `Alt_R` → second), found by the same reporter
+as [#26](https://github.com/Just-Code-NET/PolterType/issues/26).
+
+The X11 backend tracks modifiers by watching press and release edges,
+because XInput2 raw events carry no modifier state of their own. That
+is only sound while we see every edge — and we do not. Any client
+holding an active keyboard grab stops raw events reaching everyone
+else for as long as it holds one: measured on X.org, three key taps
+produced nine raw events with no grab and **zero** during one, with no
+error and no disconnect. A desktop takes exactly such a grab to
+service a keybinding, so a modifier pressed just before it and
+released inside it left us latched with Alt held forever. From then on
+`Modifiers::is_command()` was true for every keystroke, the engine
+read each one as a shortcut, and the word buffer was abandoned every
+time.
+
+The listener now reconciles its modifier state against `XQueryKeymap`,
+which answers from the server's own device state rather than from
+event delivery and — measured the same way — keeps working through a
+foreign grab. It runs only on idle rounds and only while some modifier
+is believed held, so an idle keyboard never asks at all, and a stuck
+modifier clears within 200 ms.
+
+Cinnamon is the reliable trigger, not the only one: a lock screen, a
+screenshot tool or any window-manager chord can swallow the same edge.
+PolterType made the Cinnamon case frequent by switching the layout
+itself, so the user's shortcut often targeted the layout they were
+already in — which is the path in Cinnamon's `activateInputSource`
+that returns before releasing the grab.
+
 ## [0.14.1] — domains stay domains
 
 ### Fixed — typing a domain flipped the layout back and forth

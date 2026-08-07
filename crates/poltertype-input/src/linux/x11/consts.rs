@@ -35,6 +35,17 @@ pub(crate) const EV_RIGHTMETA: u32 = 126;
 /// large enough that an idle keyboard doesn't spin a core.
 pub(crate) const POLL_IDLE: Duration = Duration::from_millis(2);
 
+/// Shortest gap between two `XQueryKeymap` round-trips when
+/// reconciling a modifier we believe is held (`ModState::resync`).
+///
+/// The check runs only on idle rounds and only while some modifier is
+/// believed down, so on an idle keyboard it never runs at all. This
+/// bounds the one case where it would otherwise run at `POLL_IDLE`
+/// rate: a user genuinely holding Alt through a chord. A fifth of a
+/// second is far below noticing a correction is missing, and five
+/// round-trips a second against the local socket is nothing.
+pub(crate) const MOD_RESYNC_INTERVAL: Duration = Duration::from_millis(200);
+
 /// Pacing between the press and release edges of a synthetic key.
 ///
 /// XTest injects straight into the server's event queue, so we do not

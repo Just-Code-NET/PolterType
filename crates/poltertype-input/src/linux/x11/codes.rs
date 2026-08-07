@@ -20,6 +20,15 @@ pub(crate) fn evdev_to_x11(evdev: u32) -> Option<u8> {
     u8::try_from(evdev + EVDEV_OFFSET).ok()
 }
 
+/// Is this X11 keycode down, per an `XQueryKeymap` bit vector?
+///
+/// The reply is 32 bytes covering keycodes 0–255, least significant
+/// bit first: keycode `k` lives in bit `k % 8` of byte `k / 8`.
+pub(crate) fn keycode_is_down(keys: &[u8; 32], keycode: u8) -> bool {
+    let (byte, bit) = (usize::from(keycode) / 8, keycode % 8);
+    keys.get(byte).is_some_and(|b| b & (1 << bit) != 0)
+}
+
 /// Is this XInput2 button number a caret-moving click?
 ///
 /// Buttons 1/2/3 are left/middle/right and 8/9 are back/forward — all

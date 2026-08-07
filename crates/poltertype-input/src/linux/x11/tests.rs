@@ -115,3 +115,114 @@ fn every_tracked_modifier_is_recognised() {
     // KEY_A must not be.
     assert!(!is_modifier(30));
 }
+
+// ── XQueryKeymap reconciliation (issue #26) ─────────────────────────
+
+/// Build an `XQueryKeymap` reply in which exactly these evdev keys are
+/// down, the way the server packs it: keycode `k` in bit `k % 8` of
+/// byte `k / 8`.
+fn keymap_with(down: &[u32]) -> [u8; 32] {
+    let mut keys = [0u8; 32];
+    for &evdev in down {
+        let code = evdev_to_x11(evdev).unwrap_or_default();
+        assert_ne!(code, 0, "evdev {evdev} must fit an X11 keycode");
+        keys[usize::from(code) / 8] |= 1 << (code % 8);
+    }
+    keys
+}
+
+#[test]
+fn keymap_bits_are_read_the_way_the_server_packs_them() {
+    let keys = keymap_with(&[EV_LEFTALT]);
+    let alt = evdev_to_x11(EV_LEFTALT).unwrap_or_default();
+    assert_ne!(alt, 0, "left Alt must fit an X11 keycode");
+    assert!(keycode_is_down(&keys, alt));
+    // Neighbours in the same byte must not read as down — that is the
+    // shape a shift-by-one bug takes.
+    assert!(!keycode_is_down(&keys, alt.wrapping_add(1)));
+    assert!(!keycode_is_down(&keys, alt.wrapping_sub(1)));
+    assert!(!keycode_is_down(&keymap_with(&[]), alt));
+}
+
+#[test]
+fn a_modifier_whose_release_we_never_saw_is_cleared() {
+    // Issue #26 in one test. Cinnamon grabs the keyboard for a
+    // layout-switch shortcut bound to a bare Alt; the press reaches us
+    // and the release, delivered during the grab, does not. Left
+    // uncorrected the engine reads every later keystroke as a shortcut
+    // and the app goes quiet until it is restarted.
+    let mut m = ModState::default();
+    m.press(EV_RIGHTALT);
+    assert!(m.snapshot().is_command(), "alt latched on the press edge");
+
+    // The user is not holding anything: the server says so.
+    assert!(m.resync(&keymap_with(&[])), "resync must report the fix");
+    assert!(
+        !m.snapshot().is_command(),
+        "a stuck modifier must not survive a resync"
+    );
+}
+
+#[test]
+fn a_modifier_the_user_really_is_holding_survives() {
+    let mut m = ModState::default();
+    m.press(EV_LEFTALT);
+    assert!(!m.resync(&keymap_with(&[EV_LEFTALT])), "nothing changed");
+    assert!(m.snapshot().alt, "Alt is genuinely down — leave it alone");
+}
+
+#[test]
+fn resync_notices_a_press_we_missed_as_well_as_a_release() {
+    // The grab swallows edges in both directions; a modifier pressed
+    // during one is just as wrong as one released during one.
+    let mut m = ModState::default();
+    assert!(m.resync(&keymap_with(&[EV_LEFTCTRL, EV_RIGHTSHIFT])));
+    let s = m.snapshot();
+    assert!(s.control && s.shift && !s.alt && !s.meta);
+}
+
+#[test]
+fn either_side_of_a_modifier_pair_counts_as_held() {
+    for (left, right) in [
+        (EV_LEFTSHIFT, EV_RIGHTSHIFT),
+        (EV_LEFTCTRL, EV_RIGHTCTRL),
+        (EV_LEFTALT, EV_RIGHTALT),
+        (EV_LEFTMETA, EV_RIGHTMETA),
+    ] {
+        for code in [left, right] {
+            let mut m = ModState::default();
+            m.resync(&keymap_with(&[code]));
+            assert!(
+                m.any_held(),
+                "evdev {code} must register as a held modifier"
+            );
+        }
+    }
+}
+
+#[test]
+fn caps_lock_is_a_latch_and_resync_must_not_touch_it() {
+    // Caps is toggled on the press edge and stays on with the key up.
+    // XQueryKeymap reports the physical key, so folding it in here
+    // would clear the latch the moment the user let go.
+    let mut m = ModState::default();
+    m.press(EV_CAPSLOCK);
+    assert!(m.snapshot().shift, "caps folds into shift for the engine");
+    m.resync(&keymap_with(&[]));
+    assert!(
+        m.snapshot().shift,
+        "caps must survive a resync with no keys down"
+    );
+}
+
+#[test]
+fn an_idle_keyboard_needs_no_resync_at_all() {
+    // `any_held` is the gate that keeps this off the hot path: with no
+    // modifier believed down we never ask the server anything.
+    assert!(!ModState::default().any_held());
+    let mut m = ModState::default();
+    m.press(EV_LEFTALT);
+    assert!(m.any_held());
+    m.release(EV_LEFTALT);
+    assert!(!m.any_held());
+}
