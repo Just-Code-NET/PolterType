@@ -4,6 +4,49 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed — the hooks stopped rebuilding the world
+
+Nothing here changes the shipped application. It is all developer
+experience, and it is in `main` — a `git pull` is the whole upgrade.
+
+- **`cargo clippy` recompiled the entire workspace on every run,
+  changed file or not.** `poltertype-core`'s build script declared
+  `cargo:rerun-if-changed` on five wordlist paths per language, and
+  four of them do not exist for nearly any language — the bulk lists
+  ship as `<stem>.txt.gz`, so a plain `.txt` never exists, `-extras`
+  exists only for en_us and `-weak` only for uk_ua. Cargo treats a
+  build script naming a missing file as stale *always*, and every
+  crate here depends on that one. It now declares only what exists and
+  watches the containing directory, so a wordlist added later is still
+  picked up.
+- **The hooks were paying that three times over**, because clippy with
+  default features, clippy with `--all-features` and the pre-push
+  `cargo build` are three configurations sharing one `target/`, each
+  invalidating the last. They now use `target/lint`, `target/lint-all`
+  and `target/`. Check-only artefacts are cheap: about 900 MB each,
+  against the 69 GB the real build already occupies.
+
+Measured end to end on one changed file: pre-commit 261 s → 4 s,
+pre-push 130 s → 2 s. On an unchanged tree, 128 s → 0 s.
+
+### Changed — lint suppressions replaced by the fixes they were hiding
+
+`#[allow(clippy::too_many_arguments)]` came off three functions and
+`#![allow(unused_imports)]` off four test modules, by changing the code
+rather than the attribute. `SwitcherEngine::new` and `apply_correction`
+take parameter structs (`EngineDeps`, `Correction`) instead of ten
+positional arguments each — seven of `new`'s were `Arc<dyn …>`, so any
+two could be transposed and still compile. `apply_suggestion_replacement`
+split into a planning half and an emitting half. The four blanket
+import allows were hiding fourteen genuinely unused imports.
+
+Behaviour is unchanged; the audit also found and fixed a per-call leak
+in `LayoutDictionary::from_overlay_only`, which built and leaked a fresh
+empty FST on every construction — including at runtime, on every
+settings reload, for any language with user overlay files.
+
 ## [0.13.0] — macOS holds its keys
 
 ### Added — macOS: the key gate (opt-in)

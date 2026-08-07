@@ -62,7 +62,7 @@ Wires the versioned hooks under [`.githooks/`](.githooks/):
 
 | Hook | Runs | Why |
 |---|---|---|
-| `pre-commit` | `cargo fmt --all -- --check` + `cargo clippy --workspace --all-targets --all-features -- -D warnings` | No commits with formatter drift or lint violations. |
+| `pre-commit` | `cargo fmt --all -- --check`, then clippy twice — the default feature set (what CI runs) and `--all-features` | No commits with formatter drift or lint violations, in either feature shape. |
 | `pre-push` | `cargo build --workspace --all-targets` | No pushes that don't compile. |
 
 Bypass a single run with `git commit --no-verify` / `git push
@@ -72,6 +72,25 @@ Bypass a single run with `git commit --no-verify` / `git push
 The hooks mirror the gates CI enforces, so failing locally means
 failing on GitHub Actions — better to know in 2 seconds than in
 2 minutes after a push.
+
+**They are fast, and if they are not, something is wrong.** With
+everything already built, a commit costs about 4 seconds and a push
+about 2, because each of the three configurations above keeps its own
+build directory (`target/lint`, `target/lint-all`, `target/`) and
+therefore stays warm. Two costs are expected and normal: the first
+commit after a fresh clone fills the two lint directories, roughly two
+minutes each, and they occupy about 900 MB apiece.
+
+If instead *every* hook run takes minutes on an unchanged tree, the
+cause is almost certainly a build script declaring
+`cargo:rerun-if-changed` on a path that does not exist — cargo then
+treats that script as stale forever and rebuilds the workspace behind
+it. Ask cargo directly rather than guessing:
+
+```bash
+CARGO_LOG=cargo::core::compiler::fingerprint=info \
+    cargo clippy --workspace --all-targets 2>&1 | grep -E "stale:|dirty:"
+```
 
 ### Linux native deps
 
