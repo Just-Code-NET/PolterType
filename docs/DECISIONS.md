@@ -2034,3 +2034,48 @@ a stock source build still contains neither the feature nor the
 client. Revisit if a supply-chain argument against shipping a dormant
 HTTP client ever outweighs the config-only promise, or if a local
 in-process backend removes the need for HTTP entirely.
+
+## 2026-08-07 — A layout backend must be probed by what a desktop *does*
+
+Every Linux backend used to be selected by a reachability probe: is the
+tool in `PATH`, is the schema installed, does the daemon answer. That
+is a check on whether a backend *can run*, and the two are not the same
+question. Cinnamon ships `org.gnome.desktop.input-sources` (it comes
+with the shared GTK stack), populates it, and never reads it — so the
+gsettings backend passed its probe, wrote `current`, and changed
+nothing. The failure was silent in the worst available way: the next
+`current()` read back our own write, so the engine concluded the
+switch had happened and stopped correcting altogether
+([#26](https://github.com/Just-Code-NET/PolterType/issues/26), Linux
+Mint 22).
+
+The rule from here: where a desktop can be asked something only the
+real owner of the layout could answer, ask that instead of inferring
+it. Cinnamon's own backend is built on it — calling
+`org.Cinnamon.GetInputSources` and seeing whether it answers *is* the
+6.6-or-older test, in place of parsing `CinnamonVersion` and encoding
+a threshold that would rot. Where no such question exists, the
+fallback is a list of desktops known to ignore a schema, kept to what
+has actually been verified against upstream source rather than
+extended to everything that looks similar.
+
+Two things this decision explicitly rejects. **Not** "an IBus daemon
+is running, therefore IBus owns the layout": most desktops run one for
+CJK input while switching layouts by a different route entirely, and
+Cinnamon activates an `xkb:…` engine on every switch purely so XIM
+clients keep working — those engines echo symbols and change no
+layout. That inference was the first attempt at fixing #26 and it
+would have replaced one silent no-op with another. And **not** a
+startup self-test that switches the layout and switches it back to see
+whether it took: it is correct, and it flickers the user's keyboard
+every launch to answer a question that is nearly always already
+settled.
+
+`POLTERTYPE_LAYOUT_BACKEND` exists because all of the above is still
+a model of somebody else's input stack. It pins a backend, skips the
+probe, and — for `gnome` and `cinnamon` — skips the desktop-name check
+those two would otherwise apply, so a user whose setup we have modelled
+wrongly is never argued with by a heuristic. An unknown name, or a
+backend that will not start, is a startup error rather than a quiet
+fall back to probing: the whole point of the variable is to be told
+when the choice did not happen.
