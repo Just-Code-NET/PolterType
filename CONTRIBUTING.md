@@ -214,6 +214,49 @@ If your language has unusual vowels not covered by
 `derive_vowels()` in `crates/poltertype-core/src/layouts/helpers.rs`, extend that
 function with a special case.
 
+## Translating
+
+Two separate things can be translated, and neither needs any Rust:
+
+* **The settings window** — one TOML file under `data/i18n/`. The whole
+  guide is [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
+* **The README quick-start** — a `README.<lang>.md` beside this file.
+  `README.de.md`, `README.es.md`, `README.fr.md` and `README.uk.md` are
+  the shape to copy.
+
+A quick-start is deliberately **not** a translation of the whole README.
+Translate only the parts that barely change:
+
+1. What the app does — the opening paragraph — plus a line pointing at
+   the English README for everything else.
+2. The install table, all four installers.
+3. The two caveats: unsigned installers, and no Flatpak.
+4. The closing line pointing here for building from source.
+
+Then add your language to the link line under the intro in `README.md`,
+in alphabetical order of the language's own name.
+
+Three rules that keep a translation honest:
+
+* **No version numbers.** Write `<ver>` exactly as the English table
+  does, so a release cannot make your file wrong.
+* **Keep the caveats as blunt as the English.** Unsigned installers and
+  per-platform gaps are stated plainly on purpose — softening them in
+  translation is the one edit that turns a helpful file into a
+  misleading one.
+* **Translate meaning, not words.** Use the wording the OS itself shows
+  in your language for a permission or a warning dialog, rather than a
+  literal rendering of the English.
+
+Any language is welcome, and a layout contribution paired with a
+translation is welcome twice over. One thing to know before you start:
+when a structural change does reach the quick-start — an installer
+renamed, a permission step altered — [docs/RELEASING.md](docs/RELEASING.md)
+makes updating every `README.<lang>.md` part of the release checklist,
+and a translation nobody here can maintain gets deleted rather than left
+to rot. Saying you can keep yours current is worth more than one more
+language.
+
 ## Style & guarantees (hard rules)
 
 * `clippy --workspace --all-targets -- -D warnings` must pass.
