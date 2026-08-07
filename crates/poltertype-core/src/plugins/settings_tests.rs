@@ -190,3 +190,70 @@ fn a_round_trip_through_every_kind_keeps_the_document_stable() {
     );
     assert!(doc.contains("# Ceiling on how long"), "{doc}");
 }
+
+// ── arrays: the set a control adds itself to ────────────────────────
+
+#[test]
+fn ticking_a_row_adds_it_and_unticking_takes_it_out() {
+    let text = "[capture]\nallow_apps = [\"code\"]\n";
+    let with = set_array_member(text, "capture.allow_apps", "firefox", true).unwrap();
+    assert_eq!(
+        read_string_array(&with, "capture.allow_apps"),
+        ["code", "firefox"]
+    );
+
+    let without = set_array_member(&with, "capture.allow_apps", "code", false).unwrap();
+    assert_eq!(
+        read_string_array(&without, "capture.allow_apps"),
+        ["firefox"]
+    );
+}
+
+#[test]
+fn the_comments_explaining_the_list_survive_an_edit() {
+    // The file this was written for uses the allow-list's comments to
+    // explain why certain applications are deliberately absent. An
+    // edit that reformatted the array would delete the reasoning.
+    let text = "\
+# what we learn from
+[capture]
+allow_apps = [
+    \"code\",  # the editor
+    # kitty is DELIBERATELY absent: shells hold credentials
+]
+";
+    let out = set_array_member(text, "capture.allow_apps", "firefox", true).unwrap();
+    assert!(out.contains("DELIBERATELY absent"), "{out}");
+    assert!(out.contains("# the editor"), "{out}");
+    assert!(out.contains("firefox"), "{out}");
+}
+
+#[test]
+fn a_missing_array_is_created_rather_than_refused() {
+    let out = set_array_member("", "capture.allow_apps", "code", true).unwrap();
+    assert_eq!(read_string_array(&out, "capture.allow_apps"), ["code"]);
+}
+
+#[test]
+fn a_missing_array_reads_as_empty_not_as_an_error() {
+    assert!(read_string_array("", "capture.allow_apps").is_empty());
+    assert!(read_string_array("[capture]\n", "capture.allow_apps").is_empty());
+    // A key that holds something else is not an array, and saying so
+    // by returning nothing is better than guessing at its contents.
+    assert!(read_string_array("[capture]\nallow_apps = 3\n", "capture.allow_apps").is_empty());
+}
+
+#[test]
+fn adding_twice_or_removing_what_is_absent_changes_nothing() {
+    let text = "[capture]\nallow_apps = [\"code\"]\n";
+    let same = set_array_member(text, "capture.allow_apps", "code", true).unwrap();
+    assert_eq!(read_string_array(&same, "capture.allow_apps"), ["code"]);
+    let still = set_array_member(&same, "capture.allow_apps", "firefox", false).unwrap();
+    assert_eq!(read_string_array(&still, "capture.allow_apps"), ["code"]);
+}
+
+#[test]
+fn a_key_that_is_not_an_array_is_refused_rather_than_overwritten() {
+    let text = "[capture]\nallow_apps = \"code\"\n";
+    assert!(set_array_member(text, "capture.allow_apps", "firefox", true).is_err());
+}

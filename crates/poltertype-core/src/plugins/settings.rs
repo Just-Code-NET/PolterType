@@ -61,6 +61,98 @@ pub fn read_setting(text: &str, key: &str) -> Option<SettingValue> {
     }
 }
 
+/// Read an array of strings at a dotted key.
+///
+/// Separate from [`read_setting`] rather than another [`SettingValue`]
+/// variant, because an array is not a value a control *holds* — it is
+/// a set a control adds itself to or removes itself from. The pane
+/// renders one checkbox per candidate and each one asks the same
+/// question: is this name in there?
+///
+/// A missing key is an empty list, not an error: a plug-in whose
+/// allow-list is absent allows nothing, which is exactly what the
+/// unticked boxes will say.
+pub fn read_string_array(text: &str, key: &str) -> Vec<String> {
+    let Ok(doc) = text.parse::<Document>() else {
+        return Vec::new();
+    };
+    let mut item: &Item = doc.as_item();
+    for part in key.split('.') {
+        match item.get(part) {
+            Some(next) => item = next,
+            None => return Vec::new(),
+        }
+    }
+    item.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Add `member` to the array at `key`, or take it out.
+///
+/// The array is created if it is missing, and left exactly as written
+/// otherwise — including its comments, which in the file this was
+/// written for explain why each entry is there and, more importantly,
+/// why certain applications are deliberately *absent*. An edit that
+/// reformatted the list would delete the reasoning along with it.
+///
+/// Adding something already there, or removing something that is not,
+/// is a no-op rather than an error: the pane's checkbox and the file
+/// can disagree for a moment, and the honest resolution is the state
+/// the user just asked for.
+pub fn set_array_member(
+    text: &str,
+    key: &str,
+    member: &str,
+    present: bool,
+) -> Result<String, PluginError> {
+    let mut doc: Document = text
+        .parse()
+        .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
+
+    let parts: Vec<&str> = key.split('.').collect();
+    let (last, tables) = parts
+        .split_last()
+        .ok_or_else(|| PluginError::BadPane(format!("empty config key {key:?}")))?;
+
+    let mut item: &mut Item = doc.as_item_mut();
+    for part in tables {
+        if !item.is_table_like() && !item.is_none() {
+            return Err(PluginError::BadPane(format!(
+                "config key {key:?} runs through {part:?}, which is not a table"
+            )));
+        }
+        if item.get(part).is_none() {
+            item[*part] = toml_edit::table();
+        }
+        item = &mut item[*part];
+    }
+
+    if item.get(last).is_none() {
+        item[*last] = Item::Value(Value::Array(toml_edit::Array::new()));
+    }
+    let array = item
+        .get_mut(last)
+        .and_then(|i| i.as_array_mut())
+        .ok_or_else(|| PluginError::BadPane(format!("config key {key:?} is not an array")))?;
+
+    let at = array
+        .iter()
+        .position(|v| v.as_str().is_some_and(|s| s == member));
+    match (present, at) {
+        (true, None) => array.push(member),
+        (false, Some(i)) => {
+            array.remove(i);
+        }
+        _ => {}
+    }
+    Ok(doc.to_string())
+}
+
 /// Set the value at a dotted key, returning the whole file as it should
 /// now be written.
 ///

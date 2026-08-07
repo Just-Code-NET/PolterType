@@ -21,7 +21,7 @@ use iced::{Alignment, Element, Length};
 use poltertype_core::plugins::{ControlKind, SettingValue};
 
 use super::enums::*;
-use super::plugin_pane::ReportState;
+use super::plugin_pane::CommandOutput;
 use super::state::*;
 use super::theme::FONT_BOLD;
 use super::theme::FONT_MONO;
@@ -37,6 +37,12 @@ const PLUGIN_DEFAULT: &str = "(plug-in default)";
 /// report that pushed every other control off the screen would be a
 /// plug-in deciding the layout of somebody else's window.
 const REPORT_HEIGHT: f32 = 220.0;
+
+/// How tall a list may grow before it scrolls inside itself. Taller
+/// than a report because every row is a control the user came here to
+/// use, and scrolling past a wall of text to reach a checkbox is worse
+/// than scrolling within the list itself.
+const LIST_HEIGHT: f32 = 320.0;
 
 impl SettingsApp {
     pub(super) fn view_plugins(&self) -> Element<'_, Message> {
@@ -165,6 +171,8 @@ impl SettingsApp {
 
             ControlKind::Report => self.plugin_report(plugin, index, control),
 
+            ControlKind::List => self.plugin_list(plugin, index, control),
+
             // Said plainly, in place of the control. The alternative —
             // rendering nothing — leaves a plug-in looking like it
             // forgot half its settings.
@@ -183,6 +191,80 @@ impl SettingsApp {
         row.into()
     }
 
+    /// A list: one checkbox per row the plug-in supplied, each ticking
+    /// its own name into an array in the plug-in's config.
+    ///
+    /// The rows cannot come from the manifest — they are whatever is
+    /// installed on this machine — so the plug-in supplies them and
+    /// PolterType draws the boxes. It still draws only boxes: a row
+    /// contributes a name, a label and a line of detail, and nothing
+    /// about how any of it looks.
+    fn plugin_list<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        control: &'a poltertype_core::plugins::PaneControl,
+    ) -> Element<'a, Message> {
+        let pane = &self.plugins[plugin];
+        let column = Column::new().spacing(6).push(
+            Row::new()
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .push(Text::new(control.label.as_str()).size(13).font(FONT_BOLD))
+                .push(
+                    Button::new(Text::new("Refresh").size(12))
+                        .on_press(Message::PluginOutputRefresh(plugin, index)),
+                ),
+        );
+
+        match pane.outputs.get(&index) {
+            None | Some(CommandOutput::Loading) => {
+                return column
+                    .push(Text::new("Asking the plug-in…").size(12))
+                    .into();
+            }
+            Some(CommandOutput::Failed(why)) => {
+                return column
+                    .push(Text::new(format!("Could not ask the plug-in: {why}")).size(12))
+                    .into();
+            }
+            Some(CommandOutput::Ready(_)) => {}
+        }
+
+        let rows = pane.list_rows(index);
+        if rows.is_empty() {
+            return column
+                .push(Text::new("The plug-in offered nothing to choose from.").size(12))
+                .into();
+        }
+
+        let mut list = Column::new().spacing(8);
+        for row in rows {
+            let ticked = pane.in_array(index, &row.id);
+            let id = row.id.clone();
+            let mut entry = Column::new().spacing(2).push(
+                Checkbox::new(row.label.as_str(), ticked)
+                    .text_size(13)
+                    .on_toggle(move |on| Message::PluginListToggled(plugin, index, id.clone(), on)),
+            );
+            if !row.detail.is_empty() {
+                // Indented under its own box, so a row that says what
+                // was measured about an application reads as belonging
+                // to that application rather than to the next one.
+                entry = entry.push(
+                    Row::new()
+                        .push(Space::with_width(Length::Fixed(26.0)))
+                        .push(Text::new(row.detail.clone()).size(11)),
+                );
+            }
+            list = list.push(entry);
+        }
+
+        column
+            .push(Scrollable::new(list).height(Length::Fixed(LIST_HEIGHT)))
+            .into()
+    }
+
     /// A report: the plug-in's own answer, shown as text.
     ///
     /// Fixed-width and inside the plug-in's card on purpose. This is
@@ -196,15 +278,15 @@ impl SettingsApp {
         index: usize,
         control: &'a poltertype_core::plugins::PaneControl,
     ) -> Element<'a, Message> {
-        let state = self.plugins[plugin].reports.get(&index);
+        let state = self.plugins[plugin].outputs.get(&index);
         let body: Element<'a, Message> = match state {
-            None | Some(ReportState::Loading) => Text::new("Asking the plug-in…").size(12).into(),
-            Some(ReportState::Ready(text)) if text.trim().is_empty() => {
+            None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…").size(12).into(),
+            Some(CommandOutput::Ready(text)) if text.trim().is_empty() => {
                 Text::new("The plug-in had nothing to report.")
                     .size(12)
                     .into()
             }
-            Some(ReportState::Ready(text)) => Scrollable::new(
+            Some(CommandOutput::Ready(text)) => Scrollable::new(
                 Text::new(text.as_str())
                     .size(12)
                     .font(FONT_MONO)
@@ -215,7 +297,7 @@ impl SettingsApp {
             // Said plainly rather than left as an empty box: a plug-in
             // that cannot answer is worth seeing, and "nothing here"
             // would read as "nothing to say".
-            Some(ReportState::Failed(why)) => {
+            Some(CommandOutput::Failed(why)) => {
                 Text::new(format!("Could not ask the plug-in: {why}"))
                     .size(12)
                     .into()
@@ -231,7 +313,7 @@ impl SettingsApp {
                     .push(Text::new(control.label.as_str()).size(13).font(FONT_BOLD))
                     .push(
                         Button::new(Text::new("Refresh").size(12))
-                            .on_press(Message::PluginReportRefresh(plugin, index)),
+                            .on_press(Message::PluginOutputRefresh(plugin, index)),
                     ),
             )
             .push(Container::new(body).padding(10).width(Length::Fill))

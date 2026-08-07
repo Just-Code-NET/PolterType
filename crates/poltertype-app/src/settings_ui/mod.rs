@@ -88,7 +88,6 @@ mod view_setup;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use iced::Task;
 use poltertype_core::settings::SettingsStore;
 use poltertype_layout::LayoutId;
 use poltertype_layout::create_switcher;
@@ -192,17 +191,23 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
 
     let store_for_init = Arc::clone(&store);
     app.run_with(move || {
-        (
-            SettingsApp::new(
-                initial_settings,
-                os_layouts,
-                path,
-                store_for_init,
-                initial,
-                layout_backend,
-            ),
-            Task::none(),
-        )
+        let mut app = SettingsApp::new(
+            initial_settings,
+            os_layouts,
+            path,
+            store_for_init,
+            initial,
+            layout_backend,
+        );
+        // Controls that have to ask the plug-in are kicked off when the
+        // pane is *selected* — which never happens for the pane the
+        // window opens on. `poltertype --plugins` and the tray's own
+        // entry both land here directly, and without this the report
+        // and the list sit at "Asking the plug-in…" for ever. Seen on
+        // the first screenshot of the finished pane, which is exactly
+        // what screenshots are for.
+        let first = app.startup_task();
+        (app, first)
     })
     .map_err(|e| anyhow::anyhow!("iced runtime: {e}"))?;
 

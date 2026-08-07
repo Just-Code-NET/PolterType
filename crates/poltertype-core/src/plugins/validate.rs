@@ -107,6 +107,18 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
             ControlKind::Toggle | ControlKind::Text | ControlKind::Number => {
                 check_key(control.key.trim(), &control.label)?;
             }
+            ControlKind::List => {
+                // Both halves are load-bearing: without the command
+                // there are no rows to tick, and without the key a tick
+                // has nowhere to go.
+                check_key(control.key.trim(), &control.label)?;
+                if !m.commands.iter().any(|c| c.id == control.command) {
+                    return Err(PluginError::BadPane(format!(
+                        "list {:?} refers to unknown command {:?}",
+                        control.label, control.command
+                    )));
+                }
+            }
             // Nothing to check: we do not know what this control is, and
             // refusing a manifest for containing one would defeat the
             // point of tolerating it at all.

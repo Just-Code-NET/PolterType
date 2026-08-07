@@ -155,14 +155,17 @@ pub enum Message {
     PluginTextChanged(usize, usize, String),
     /// Runs one of the plug-in's declared commands by id.
     PluginCommandClicked(usize, String),
-    /// Ask a plug-in for a report again — the pane's refresh button,
-    /// and what opening the pane sends for each report it has not
-    /// asked for yet.
-    PluginReportRefresh(usize, usize),
-    /// A report came back. `Err` carries why it could not be had,
+    /// Ask a plug-in to run a control's command again — the pane's
+    /// refresh button, and what opening the pane sends for each
+    /// command-backed control it has not asked for yet.
+    PluginOutputRefresh(usize, usize),
+    /// A command answered. `Err` carries why it could not be had,
     /// which the pane shows rather than swallowing: a plug-in that
     /// cannot answer is something the user should see.
-    PluginReportLoaded(usize, usize, Result<String, String>),
+    PluginOutputLoaded(usize, usize, Result<String, String>),
+    /// A row of a list control was ticked or unticked: add or remove
+    /// that name in the plug-in's own config array.
+    PluginListToggled(usize, usize, String, bool),
     LanguageToggled(LayoutId, bool),
     LanguageIgnoreToggled(LayoutId, bool),
     AutostartToggled(bool),

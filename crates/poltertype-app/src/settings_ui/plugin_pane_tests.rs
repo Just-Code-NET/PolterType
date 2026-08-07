@@ -203,23 +203,23 @@ fn reports_are_asked_for_once_and_not_on_every_draw() {
         &root,
     );
     assert_eq!(
-        pane.unasked_reports(),
+        pane.unasked_commands(),
         vec![1],
         "the report, not the toggle"
     );
 
-    pane.reports.insert(1, ReportState::Loading);
+    pane.outputs.insert(1, CommandOutput::Loading);
     assert!(
-        pane.unasked_reports().is_empty(),
+        pane.unasked_commands().is_empty(),
         "asking twice would run the command twice"
     );
 
-    pane.reports
-        .insert(1, ReportState::Ready("42 episodes".to_owned()));
-    assert!(pane.unasked_reports().is_empty());
+    pane.outputs
+        .insert(1, CommandOutput::Ready("42 episodes".to_owned()));
+    assert!(pane.unasked_commands().is_empty());
     assert_eq!(
-        pane.reports.get(&1),
-        Some(&ReportState::Ready("42 episodes".to_owned()))
+        pane.outputs.get(&1),
+        Some(&CommandOutput::Ready("42 episodes".to_owned()))
     );
     std::fs::remove_dir_all(&root).unwrap();
 }
@@ -228,7 +228,7 @@ fn reports_are_asked_for_once_and_not_on_every_draw() {
 fn a_pane_with_no_report_asks_for_nothing() {
     let root = scratch("noreports");
     let pane = PluginPane::load(extension(vec![control(ControlKind::Toggle, "a.b")]), &root);
-    assert!(pane.unasked_reports().is_empty());
+    assert!(pane.unasked_commands().is_empty());
     std::fs::remove_dir_all(&root).unwrap();
 }
 
@@ -246,8 +246,91 @@ fn a_failed_report_is_remembered_rather_than_retried_forever() {
         }]),
         &root,
     );
-    pane.reports
-        .insert(0, ReportState::Failed("it exited 1".to_owned()));
-    assert!(pane.unasked_reports().is_empty());
+    pane.outputs
+        .insert(0, CommandOutput::Failed("it exited 1".to_owned()));
+    assert!(pane.unasked_commands().is_empty());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn list_rows_are_parsed_leniently() {
+    // The plug-in prints something a person could also read. A line
+    // with no tabs is a name that is its own label; extra fields are
+    // ignored; blank lines are skipped.
+    let root = scratch("listrows");
+    let mut pane = PluginPane::load(
+        extension(vec![PaneControl {
+            kind: ControlKind::List,
+            key: "capture.allow_apps".to_owned(),
+            command: "rows".to_owned(),
+            label: "Applications".to_owned(),
+            ..PaneControl::default()
+        }]),
+        &root,
+    );
+    pane.outputs.insert(
+        0,
+        CommandOutput::Ready(
+            "code\tVS Code\t150 episodes\n\nfirefox\n  \nslack\tSlack\tnothing yet\textra\n"
+                .to_owned(),
+        ),
+    );
+
+    let rows = pane.list_rows(0);
+    assert_eq!(rows.len(), 3);
+    assert_eq!(
+        (rows[0].id.as_str(), rows[0].label.as_str()),
+        ("code", "VS Code")
+    );
+    assert_eq!(rows[0].detail, "150 episodes");
+    assert_eq!(
+        (rows[1].id.as_str(), rows[1].label.as_str()),
+        ("firefox", "firefox"),
+        "a bare name is its own label"
+    );
+    assert_eq!(rows[2].detail, "nothing yet", "the fourth field is ignored");
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_list_that_was_never_asked_has_no_rows() {
+    let root = scratch("listunasked");
+    let pane = PluginPane::load(
+        extension(vec![PaneControl {
+            kind: ControlKind::List,
+            key: "capture.allow_apps".to_owned(),
+            command: "rows".to_owned(),
+            ..PaneControl::default()
+        }]),
+        &root,
+    );
+    assert!(pane.list_rows(0).is_empty());
+    assert_eq!(
+        pane.unasked_commands(),
+        vec![0],
+        "and it is still to be asked"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn ticking_a_row_writes_the_plugins_own_config() {
+    let root = scratch("listwrite");
+    let mut pane = PluginPane::load(
+        extension(vec![PaneControl {
+            kind: ControlKind::List,
+            key: "capture.allow_apps".to_owned(),
+            command: "rows".to_owned(),
+            ..PaneControl::default()
+        }]),
+        &root,
+    );
+    assert!(!pane.in_array(0, "code"));
+
+    pane.set_array_member(0, "code", true);
+    assert!(pane.in_array(0, "code"), "{:?}", pane.status);
+
+    pane.set_array_member(0, "code", false);
+    assert!(!pane.in_array(0, "code"));
     std::fs::remove_dir_all(&root).unwrap();
 }

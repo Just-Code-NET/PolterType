@@ -77,6 +77,19 @@ pub enum ControlKind {
     ///
     /// Binds to no key. Reads, never writes.
     Report,
+    /// A checkbox per row, where the rows come from the plug-in and
+    /// ticking one adds its name to an array in the plug-in's config.
+    ///
+    /// The control for a set nobody can write down in advance: which
+    /// applications to learn from, which of them to act in. A manifest
+    /// cannot list those — they are whatever is installed on this
+    /// machine — so the plug-in supplies the rows at runtime and
+    /// PolterType draws the boxes. Each row may carry a line of detail
+    /// under it, which is how a row can say what it *measured* about
+    /// that application rather than only naming it.
+    ///
+    /// `key` is the array. `command` produces the rows.
+    List,
     /// A control this PolterType does not know.
     ///
     /// Here so that a plug-in written for a newer PolterType still
