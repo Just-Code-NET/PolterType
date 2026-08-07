@@ -238,11 +238,35 @@ mod engine_integration_tests {
             detectors_override: Option<Vec<Box<dyn Detector>>>,
             accept_modifiers: Option<&str>,
         ) -> Self {
+            Self::start_configured(
+                idle_timeout_ms,
+                emitter,
+                fail_switch,
+                suggester,
+                detectors_override,
+                accept_modifiers,
+                |_| {},
+            )
+        }
+
+        /// The widest constructor: `tweak` gets the whole `Settings`
+        /// before the engine starts, for the settings no narrower
+        /// parameter covers (`[exceptions]`, and whatever comes next).
+        fn start_configured(
+            idle_timeout_ms: u64,
+            emitter: MockEmitter,
+            fail_switch: bool,
+            suggester: Option<Arc<dyn poltertype_detect::SuggestionProvider>>,
+            detectors_override: Option<Vec<Box<dyn Detector>>>,
+            accept_modifiers: Option<&str>,
+            tweak: impl FnOnce(&mut crate::settings::Settings),
+        ) -> Self {
             let mut settings = crate::settings::Settings::default();
             settings.engine.idle_timeout_ms = idle_timeout_ms;
             if let Some(m) = accept_modifiers {
                 settings.suggestions.accept_modifiers = m.to_owned();
             }
+            tweak(&mut settings);
             let settings = Arc::new(SettingsStore::for_tests(settings));
             let layouts = Arc::new(LayoutDb::load_embedded());
             let emitter = Arc::new(emitter);
@@ -1092,11 +1116,17 @@ mod engine_integration_tests {
             })
             .expect("engine alive");
         let ev = h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
-        let SwitcherEvent::AddToDictionary { layout, word } = ev else {
+        let SwitcherEvent::AddToDictionary {
+            layout,
+            word,
+            origin,
+        } = ev
+        else {
             unreachable!()
         };
         assert_eq!(layout, LayoutId::from("en-US"));
         assert_eq!(word, "hwllo");
+        assert_eq!(origin, DictionaryAddOrigin::Tooltip);
         let (ops, _) = h.stop();
         assert!(
             ops.is_empty(),
@@ -1461,6 +1491,118 @@ mod engine_integration_tests {
             "a cross-layout accept IS a layout correction"
         );
     }
+
+    /// `[exceptions].word_whitelist` says "never auto-correct this
+    /// word", and for a long time it only silenced the suggestion
+    /// tooltip while the correction went ahead regardless. The
+    /// detector here switches everything it is shown, so anything
+    /// that reaches it corrects — nothing must.
+    #[test]
+    fn whitelisted_word_is_not_auto_corrected() {
+        let h = Harness::start_configured(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            None,
+            None,
+            |s| s.exceptions.word_whitelist = vec!["GHBDSN".into()],
+        );
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        let (ops, events) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "a whitelisted word must not be touched, got {ops:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::KeptCurrent { reason } if reason.contains("whitelist"))),
+            "the decision trail must name the whitelist as the reason"
+        );
+    }
+
+    /// The manual hotkey after one of our own corrections puts the
+    /// word back — it used to re-apply the same correction, which
+    /// deleted the word and retyped it identically — and takes the
+    /// rescued word into the user's dictionary, the only route the
+    /// auto-correction path has into it.
+    #[test]
+    fn manual_hotkey_undoes_a_correction_and_learns_the_word() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "precondition: the engine corrected into uk-UA"
+        );
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
+        let SwitcherEvent::AddToDictionary {
+            layout,
+            word,
+            origin,
+        } = ev
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            layout,
+            LayoutId::from("en-US"),
+            "learn it where it was typed"
+        );
+        assert_eq!(word, "ghbdsn");
+        assert_eq!(origin, DictionaryAddOrigin::UndoneCorrection);
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA"), LayoutId::from("en-US")],
+            "the undo has to switch the layout back too"
+        );
+    }
+
+    /// The same hotkey on a word the engine *left alone* keeps its
+    /// original meaning — apply the switch we declined — and teaches
+    /// nothing: the user is telling us to correct that word, which is
+    /// the opposite of "this word is fine as typed".
+    #[test]
+    fn manual_hotkey_on_a_kept_word_switches_without_learning() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(vec![Box::new(NoOpinionDetector)]),
+        );
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        // No wait for `Corrected` here: with no correction of ours to
+        // reverse, the hotkey falls back to "some other layout", and
+        // which one that is depends on `LayoutDb` iteration order —
+        // it may land on a layout the mock OS doesn't have active, in
+        // which case the correction is declined before any keystroke.
+        // Either way the assertion below is the point.
+        h.settle();
+        let (_, events) = h.stop();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::AddToDictionary { .. })),
+            "forcing a switch must not add the pre-switch word to the dictionary"
+        );
+    }
 }
 
 mod boundary_tests {
@@ -1626,6 +1768,7 @@ mod last_word_consume_tests {
             boundary_char: ' ',
             boundary_scancode: 0x39,
             boundary_shift: false,
+            corrected_to: Some(LayoutId::new("en-US")),
         });
 
         // First fire of the manual hotkey: take wins, processes.

@@ -304,7 +304,15 @@ impl SuggestionProvider for Suggester {
             // entirely — report "known" so the engine stays quiet.
             return true;
         }
-        self.dicts.is_word(layout, &stripped)
+        if self.dicts.is_word(layout, &stripped) {
+            return true;
+        }
+        // Another form of a word the user has already added counts as
+        // known. Without this, every inflection of one piece of
+        // jargon costs its own trip through the tooltip — the single
+        // loudest complaint this feature produces in an inflected
+        // language.
+        self.dicts.overlay_covers_inflection(layout, &stripped)
     }
 
     fn suggest(&self, layout: &LayoutId, typed_rendering: &str, max: usize) -> Vec<Suggestion> {

@@ -6,6 +6,68 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-08 — Undoing a correction teaches the dictionary; the tooltip covers a word's other forms
+
+Three separate holes in "teach PolterType this word", found while
+looking into a user's report that "Add to dictionary" felt like it
+kept asking about the same words.
+
+**The button itself worked.** The evidence said so: every add reached
+both the overlay file and the running dictionary, and the file held no
+duplicates. What the user was actually hitting was the two gaps below.
+
+**`word_whitelist` did nothing about corrections.** Documented as
+"words that should never be auto-corrected", read only by
+`maybe_offer_suggestions`. It silenced the tooltip and let the
+correction go ahead — a setting that was inert in exactly the case it
+names. Now the first pre-decision filter, ahead of the heuristics:
+everything else in that block infers intent from shape and context,
+this one *is* the intent, so it goes first.
+
+**The correction path had no route into the dictionary.** "Add to
+dictionary" is a tooltip row, and the tooltip is only offered for
+words the engine keeps (`decide`'s `KeepCurrent` branch). For a word
+it corrected, there was no affordance at all — and those are the
+expensive ones. The gesture users already reach for is the manual
+switch-last hotkey, which after one of our corrections was a no-op
+worth nothing: it re-applied the same correction, deleting the word
+and retyping it identically. It now undoes instead, and treats the
+undo as the teaching signal it plainly is.
+
+*Alternative considered:* a tooltip after every correction with an
+"undo + add" row. Rejected — the app corrects constantly, that is the
+job, and a tooltip per correction is the noise the tooltip's own
+design rules already refuse ("a tooltip whose ONLY content is add to
+dictionary would itself be the noise it exists to stop").
+
+*Why it announces itself:* `DictionaryAddOrigin` splits the explicit
+route from the implicit one. Clicking a row labelled "Add to
+dictionary" is its own confirmation; an undo that also changes what
+the engine will do forever is not, so that one gets a notification. A
+dictionary growing behind the user's back is how "why did it stop
+correcting this?" starts.
+
+**Inflections cost one prompt each.** The overlay is exact-form, so in
+Ukrainian one piece of jargon is `деплой`, `деплою`, `деплоїмо`,
+`деплоїти` — four trips through the tooltip for one decision the user
+already made. Replayed against the reporting user's real wordlist, 11
+of 75 entries were forms of a word already in it.
+
+`shares_inflection_stem` is a shape rule — five characters of shared
+opening, at most four of ending on either side — not a stemmer. A
+stemmer per language is a data set of its own, and this has to work
+for whatever languages a user adds. The floor is set by the closest
+false pair we could find: `реалм` and `реальний` share exactly four
+characters and nothing else.
+
+*Scope, deliberately:* the suggestion path only. A lenient match in
+`DictionaryDetector::judge` would suppress corrections for words the
+user never taught us — a correction silently not happening, which is
+far worse than one extra tooltip. Being wrong in the suggestion
+direction costs a suggestion nobody asked for.
+
+---
+
 ## 2026-08-05 — A plug-in service that dies must be noticed by the app, not by the user weeks later
 
 `Supervisor::reap` was written to be "called from the tray's heartbeat".

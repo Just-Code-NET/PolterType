@@ -16,11 +16,16 @@ use crate::engine::consts::{
     HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES,
     INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
 };
-use crate::engine::enums::SwitcherEvent;
+use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
 use crate::engine::heuristics::{is_paste_shortcut, is_submission_scancode};
 use crate::engine::types::{Correction, HeldKeys, LastWord, WindowDrain};
 
 use super::engine::SwitcherEngine;
+
+/// Shortest word an undone correction may teach the dictionary. Same
+/// three-letter floor the suggestion tooltip uses, for the same
+/// reason: below it the engine is not working from the FST at all.
+const MIN_LEARNED_LETTERS: usize = 3;
 
 impl SwitcherEngine {
     /// Type out keystrokes the key gate held back, by whichever emit
@@ -663,6 +668,16 @@ impl SwitcherEngine {
                 reason: reason.to_owned(),
             });
             let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
+            // The stashed word now reads differently on screen than
+            // the user typed it, so record where we took it — the
+            // manual hotkey undoes a correction rather than re-
+            // applying one. Here rather than in `decide`, because
+            // only this far in is the correction actually on screen;
+            // and before the settle-and-seed below, which can run a
+            // later word through the pipeline and stash its own.
+            if let Some(last) = self.last_word.write().as_mut() {
+                last.corrected_to = Some(to.clone());
+            }
         }
 
         // ── Settle & seed ───────────────────────────────────────────
@@ -817,20 +832,43 @@ impl SwitcherEngine {
         out
     }
 
+    /// The manual switch-last hotkey, in both of its situations.
+    ///
+    /// **The engine left the word alone** — the usual case, and the
+    /// one the hotkey was built for: switch it to the other layout,
+    /// bypassing every pre-decision filter, because the user asking
+    /// outranks our guesses.
+    ///
+    /// **The engine already switched the word** — the hotkey puts it
+    /// back. It used to re-apply the same correction: same keys, same
+    /// target layout, so the word was deleted and retyped identically
+    /// and the one gesture a user reaches for when a correction is
+    /// wrong did visibly nothing. Undoing also teaches: a user who
+    /// takes a correction back has told us, as plainly as the tooltip
+    /// button does, that this word is right as typed — see
+    /// [`Self::learn_undone_word`].
     pub(super) fn force_switch_last(
         &self,
         last: LastWord,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
-        // Pick the most plausible alternate layout — in v0.1 with two
-        // layouts, "the other one" is fine. Generalisation will
-        // re-run the detector pipeline with `min_advantage = 0`.
-        let other = self.layouts.ids().find(|id| **id != last.layout).cloned();
-        let Some(target) = other else {
-            warn!("only one layout known; can't force-switch");
-            return;
+        // Where the word is now, and where this hotkey takes it.
+        let (from, target) = match last.corrected_to.clone() {
+            Some(applied) => (applied, last.layout.clone()),
+            None => {
+                // Pick the most plausible alternate layout — in v0.1
+                // with two layouts, "the other one" is fine.
+                // Generalisation will re-run the detector pipeline
+                // with `min_advantage = 0`.
+                let Some(other) = self.layouts.ids().find(|id| **id != last.layout).cloned() else {
+                    warn!("only one layout known; can't force-switch");
+                    return;
+                };
+                (last.layout.clone(), other)
+            }
         };
+        let undoing = last.corrected_to.is_some();
         let target_mapping = match self.layouts.get(&target) {
             Some(m) => m,
             None => {
@@ -838,7 +876,18 @@ impl SwitcherEngine {
                 return;
             }
         };
-        let mut corrected = target_mapping.translate_buffer(&last.keys);
+        // What is on screen right now: the user's own rendering,
+        // unless our correction replaced it with the `from` one.
+        let on_screen = if undoing {
+            self.layouts
+                .get(&from)
+                .map(|m| m.translate_buffer(&last.keys))
+                .unwrap_or_else(|| last.rendered.clone())
+        } else {
+            last.rendered.clone()
+        };
+        let restored = target_mapping.translate_buffer(&last.keys);
+        let mut corrected = restored.clone();
         corrected.push(last.boundary_char);
         // Replay the boundary the user actually typed — except
         // Enter/Tab, where a re-press would submit the line / move
@@ -859,20 +908,62 @@ impl SwitcherEngine {
             scancode: boundary_sc,
             shift: boundary_shift,
         });
-        self.apply_correction(
+        let applied = self.apply_correction(
             &Correction {
-                from: &last.layout,
+                from: &from,
                 to: &target,
-                original: &last.rendered,
+                original: &on_screen,
                 corrected: &corrected,
                 // The word, plus the boundary key that closed it.
                 backspaces: last.keys.len() + 1,
-                reason: "manual switch-last hotkey",
+                reason: if undoing {
+                    "manual switch-last hotkey (undoing a correction)"
+                } else {
+                    "manual switch-last hotkey"
+                },
                 play_sound: true,
                 replay_keys: Some(&replay),
                 pointer_click_allowance: 0,
             },
             Some((key_rx, buffer)),
         );
+        if applied && undoing {
+            self.learn_undone_word(&target, &restored);
+        }
+    }
+
+    /// Remember a word the user just rescued from a correction.
+    ///
+    /// The alternative was leaving the auto-correction path with no
+    /// escape hatch at all: the "Add to dictionary" row only exists
+    /// on the suggestion tooltip, and the tooltip only appears for
+    /// words the engine *kept*. Words it corrected — the ones that
+    /// actually cost the user something when the engine is wrong —
+    /// could be undone one at a time, for ever, and the app never
+    /// learned a thing.
+    ///
+    /// Short tokens are skipped. Below three letters the dictionary
+    /// runs on the curated short-stop lists rather than the FST (see
+    /// `LayoutDictionary`), and a stray one- or two-letter entry
+    /// there disables correction for a whole class of real words.
+    fn learn_undone_word(&self, layout: &LayoutId, word: &str) {
+        let letters = poltertype_detect::letters_only_lower(word);
+        if letters.chars().count() < MIN_LEARNED_LETTERS {
+            debug!(
+                letters = letters.chars().count(),
+                "undone word is too short to learn — leaving the dictionary alone"
+            );
+            return;
+        }
+        debug!(
+            %layout,
+            word = %logsafe::redact_word(word),
+            "learning a word from an undone correction"
+        );
+        let _ = self.out_tx.send(SwitcherEvent::AddToDictionary {
+            layout: layout.clone(),
+            word: word.to_owned(),
+            origin: DictionaryAddOrigin::UndoneCorrection,
+        });
     }
 }

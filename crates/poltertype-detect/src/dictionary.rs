@@ -170,6 +170,55 @@ impl LayoutDictionary {
     pub fn contains_in_overlay(&self, word_lowercase: &str) -> bool {
         self.user_overlay.contains(word_lowercase) || self.short_stop_words.contains(word_lowercase)
     }
+
+    /// True iff some `user_overlay` entry is plausibly the *same
+    /// word* as `word_lowercase` in a different grammatical form —
+    /// see [`shares_inflection_stem`] for the rule.
+    ///
+    /// Only the user's own additions are walked, never the embedded
+    /// FST: this exists to stop re-asking about a word the user has
+    /// already taught us, and stretching it over 370k bundled entries
+    /// would silence the suggestion tooltip for half the language.
+    pub fn overlay_covers_inflection(&self, word_lowercase: &str) -> bool {
+        self.user_overlay
+            .iter()
+            .any(|w| shares_inflection_stem(w, word_lowercase))
+    }
+}
+
+/// Shortest shared prefix that may stand in for a stem. Below this
+/// the "same word, other ending" reading stops being credible:
+/// `реалм` and `реальний` share exactly four characters and nothing
+/// else, which is what sets the floor here.
+const STEM_MIN_CHARS: usize = 5;
+
+/// Longest ending either side may carry past the shared prefix.
+/// Ukrainian and Russian inflect in 1–4 characters (`тулбар` →
+/// `тулбарі`, `деплой` → `деплоїмо`), which is what this admits;
+/// anything longer is a different word that happens to start the
+/// same way.
+const INFLECTION_TAIL_MAX: usize = 4;
+
+/// Do two words look like the same word in different grammatical
+/// forms? Deliberately a shape rule and not a stemmer:
+///
+/// * a real stemmer per language is a data set of its own, and this
+///   has to work for whatever languages the user has added;
+/// * being wrong here is cheap in one direction only — it can
+///   silence a spelling suggestion, never authorise a correction —
+///   so the rule lives on the suggestion path alone.
+///
+/// The motivating case: a user who adds `деплой` to their dictionary
+/// gets asked again about `деплою`, `деплоїмо`, `деплоїти`. Highly
+/// inflected languages turn one piece of jargon into a dozen tooltip
+/// prompts, and answering them all is the friction this removes.
+fn shares_inflection_stem(a: &str, b: &str) -> bool {
+    let shared = a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count();
+    if shared < STEM_MIN_CHARS {
+        return false;
+    }
+    a.chars().count() - shared <= INFLECTION_TAIL_MAX
+        && b.chars().count() - shared <= INFLECTION_TAIL_MAX
 }
 
 /// Looks the rendered text up in per-layout dictionaries.
@@ -246,6 +295,17 @@ impl DictionaryDetector {
         dicts
             .get(layout)
             .is_some_and(|d| d.contains_in_overlay(&lower))
+    }
+
+    /// True iff `layout`'s user overlay already holds another form of
+    /// `text` — see [`LayoutDictionary::overlay_covers_inflection`].
+    /// Consulted by the suggestion provider only.
+    pub fn overlay_covers_inflection(&self, layout: &LayoutId, text: &str) -> bool {
+        let lower = text.to_lowercase();
+        let dicts = self.dicts.read();
+        dicts
+            .get(layout)
+            .is_some_and(|d| d.overlay_covers_inflection(&lower))
     }
 
     /// True iff `text` is on `layout`'s curated weak list — see

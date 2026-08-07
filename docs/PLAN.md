@@ -371,6 +371,9 @@ suppress_for_all_caps = true     # skip URL, HTTP, API, ССЫЛКА…
 # default app skip-list". Shipping a list of editors and terminals
 # made the app look dead in exactly the windows developers type in.
 disabled_apps    = []
+# Never auto-corrected, never flagged by the tooltip. Matched on
+# letters only, case-insensitively: `Just-Code.net` here answers for
+# the buffer's `justcodenet`.
 word_whitelist   = ["nginx", "kubectl", "github"]
 
 [hotkeys]

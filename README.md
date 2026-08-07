@@ -206,7 +206,7 @@ the Settings window:
 | Default                | Action                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
-| `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. |
+| `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. On a word PolterType *just corrected* it undoes that correction and adds the word to your dictionary, so it won't happen again. |
 
 > **On macOS the pause default is `Ctrl+Shift+P`, not
 > `Ctrl+Shift+Space`.** `Ctrl+Space` and `Ctrl+Shift+Space` are macOS's
@@ -240,9 +240,18 @@ Everything is local: candidates come from the bundled dictionaries
 distance that knows `hwllo` is a slipped finger away from `hello`.
 The last row of every tooltip is **Add to dictionary** — one click
 teaches PolterType your jargon, names and project vocabulary for
-good. The tooltip never steals keyboard focus and disappears after
-30 seconds or the moment you type past it. Tune or disable it on the
+good, and other forms of the same word are covered with it (add
+`деплой` and `деплою`, `деплоїмо`, `деплоїти` stop being flagged).
+The tooltip never steals keyboard focus and disappears after 30
+seconds or the moment you type past it. Tune or disable it on the
 **Suggestions** pane (`[suggestions]` in `config.toml`).
+
+The tooltip only appears for words PolterType *keeps*. When it
+corrects a word it shouldn't have, the teaching gesture is
+`Ctrl+Shift+Backspace`: it puts the word back the way you typed it
+and adds it to your dictionary. And for vocabulary you already know
+it will get wrong, `word_whitelist` in `[exceptions]` takes words it
+must never touch.
 
 > The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
 > Sway and KDE Plasma, and an override-redirect window on X11 — which
