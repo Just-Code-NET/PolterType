@@ -38,15 +38,32 @@ impl WordPlausibilityDetector {
     }
 
     /// 0.0..=1.0 — higher is "this looks like a real word in `layout`".
+    ///
+    /// A dot-separated compound (`games.just-code.net`) is scored one
+    /// segment at a time and takes its *worst* segment's score — see
+    /// [`dotted_compound`] for why the dots must not go through the
+    /// stray-punctuation term.
     pub fn fit(&self, layout: &LayoutId, text: &str) -> Option<f32> {
         let prof = self.profiles.get(layout)?;
+        if let Some(segments) = dotted_compound(text) {
+            return Some(
+                segments
+                    .map(|seg| Self::score(prof, seg))
+                    .fold(1.0f32, f32::min),
+            );
+        }
+        Some(Self::score(prof, text))
+    }
+
+    /// The plain word-shape score, with no compound handling.
+    fn score(prof: &LayoutProfile, text: &str) -> f32 {
         let letters: Vec<char> = text
             .chars()
             .filter(|c| c.is_alphabetic())
             .flat_map(|c| c.to_lowercase())
             .collect();
         if letters.is_empty() {
-            return Some(0.0);
+            return 0.0;
         }
 
         // (1) Script fit: penalty for letters outside the layout's script.
@@ -118,8 +135,48 @@ impl WordPlausibilityDetector {
         //     leaving the clean candidate's advantage intact.
         let stray_penalty = non_word_char_count(text) as f32 * 0.4;
 
-        Some((script_fit * 0.5 + vowel_fit * 0.5 - cluster_penalty - stray_penalty).clamp(0.0, 1.0))
+        (script_fit * 0.5 + vowel_fit * 0.5 - cluster_penalty - stray_penalty).clamp(0.0, 1.0)
     }
+}
+
+/// Recognise a dot-separated compound — a hostname, a file name, a
+/// dotted identifier — and hand back its segments.
+///
+/// Why this exists. The `.` key is a *letter* in the Cyrillic layouts
+/// (scancode 0x34 is `ю` in uk-UA / ru-RU), so the buffer keeps a
+/// domain together as one token, and the two renderings of
+/// `games.just-code.net` are wildly asymmetric: uk-UA gets a clean
+/// run of Cyrillic letters, while en-US keeps literal dots and eats
+/// two stray-punctuation penalties. The correctly-typed domain scored
+/// **0.00** for its own layout against 0.75 for Cyrillic, so the
+/// detector "corrected" it into `пфьуіюогіе-сщвуютуе` — and then
+/// switched back on the next prose word, which is the "keeps
+/// switching several times" the bug report describes.
+///
+/// The dots in a compound are structure, not the cross-layout
+/// artifacts the stray term is aimed at, so they must not be scored
+/// as noise. Scoring each segment and keeping the **worst** one is
+/// what separates the two populations: every segment of a real
+/// hostname reads as a word, whereas a Cyrillic word that merely
+/// contains `ю` (`союз` → `cj.p`) leaves segments that read as
+/// nothing at all, and still gets corrected.
+///
+/// Returns `None` — leaving the caller on the ordinary path — unless
+/// the whole token is dots-plus-word-characters: any *other* stray
+/// character (`любов` → `k.,jd`) means this is a wrong-layout
+/// rendering rather than a compound, and empty segments (a leading,
+/// trailing or doubled dot) are not compound structure either.
+fn dotted_compound(text: &str) -> Option<impl Iterator<Item = &str>> {
+    if !text.contains('.') {
+        return None;
+    }
+    if non_word_char_count(text) != text.matches('.').count() {
+        return None; // stray punctuation beyond the dots
+    }
+    if text.split('.').any(str::is_empty) {
+        return None;
+    }
+    Some(text.split('.'))
 }
 
 impl Detector for WordPlausibilityDetector {

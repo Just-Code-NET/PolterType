@@ -411,6 +411,109 @@ mod engine_integration_tests {
         }
     }
 
+    /// The real pipeline the app wires up: dictionary first,
+    /// word-plausibility second. Needed by the domain regression
+    /// below — the bug it covers only exists against real scoring.
+    fn real_detectors() -> Vec<Box<dyn Detector>> {
+        use crate::layouts::LayoutDb;
+        let layouts = LayoutDb::load_embedded();
+        let dicts: std::collections::HashMap<LayoutId, poltertype_detect::LayoutDictionary> =
+            layouts
+                .iter()
+                .filter_map(|(id, m)| m.dictionary.as_ref().map(|d| (id.clone(), d.clone())))
+                .collect();
+        let profiles = layouts
+            .iter()
+            .map(|(id, m)| (id.clone(), m.detector_profile()))
+            .collect();
+        vec![
+            Box::new(poltertype_detect::DictionaryDetector::new(dicts)),
+            Box::new(poltertype_detect::WordPlausibilityDetector::new(profiles)),
+        ]
+    }
+
+    /// Type `text` as if on a physical en-US keyboard.
+    fn type_en_us(h: &Harness, text: &str) {
+        use crate::layouts::LayoutDb;
+        let layouts = LayoutDb::load_embedded();
+        let m = layouts.get(&LayoutId::from("en-US")).expect("en-US");
+        for ch in text.chars() {
+            let (sc, shift) = if ch == ' ' {
+                (SPACE, false)
+            } else {
+                m.keys
+                    .iter()
+                    .find_map(|(&sc, &(plain, shift))| {
+                        if plain == ch {
+                            Some((sc, false))
+                        } else if shift == Some(ch) {
+                            Some((sc, true))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| panic!("no en-US scancode for {ch:?}"))
+            };
+            h.key(sc, KeyDirection::Press, shift);
+            h.key(sc, KeyDirection::Release, shift);
+        }
+    }
+
+    /// Regression for the field report "ввід доменів працює дуже
+    /// погано — перемикає по декілька разів".
+    ///
+    /// `.` is `ю` in uk-UA, so a host stays one token and its en-US
+    /// rendering (dots intact) used to score 0.00 against the Cyrillic
+    /// rendering's 0.75. Typing a sentence with a domain in it
+    /// therefore switched **twice**: once to mangle the host into
+    /// `пфьуіюогіе-сщвуютуе`, then back again on the next prose word.
+    /// Both the host and the sentence around it must now survive
+    /// untouched — while a genuine wrong-layout word whose rendering
+    /// carries a dot is still corrected.
+    #[test]
+    fn domain_in_a_sentence_does_not_switch_the_layout() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us(&h, "check games.just-code.net now ");
+        h.settle();
+        let switches = h.switcher.switches.lock().clone();
+        assert!(
+            switches.is_empty(),
+            "a domain typed in its own layout must not switch anything, got {switches:?}"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing should have been rewritten: {ops:?}"
+        );
+    }
+
+    /// The guard above must not go so wide that it swallows real
+    /// corrections: `союз` typed under en-US comes out as `cj.p` —
+    /// dot and all — and still has to be fixed.
+    #[test]
+    fn cyrillic_word_rendering_with_a_dot_is_still_corrected() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us(&h, "cj.p ");
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "`cj.p` is `союз` mistyped, not a hostname"
+        );
+    }
+
     /// Baseline: a mistyped word + space triggers exactly one
     /// correction — switch first, then word-length+boundary
     /// backspaces, then the scancode replay ending in the boundary.

@@ -4,6 +4,35 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed — typing a domain flipped the layout back and forth
+
+- **A hostname typed in its own layout is no longer "corrected" into
+  Cyrillic.** Typing `games.just-code.net` under en-US rewrote it as
+  `пфьуіюогіе-сщвуютуе`, and the next prose word switched the layout
+  straight back — so a sentence with an address in it switched
+  **twice**, which is what the report "ввід доменів працює дуже
+  погано, перемикає по декілька разів" describes.
+
+  The `.` key is a letter in the Cyrillic layouts (scancode `0x34` is
+  `ю`), so the word buffer correctly keeps a whole host together as
+  one token — but that made the two renderings incomparable. The
+  Cyrillic one is a clean run of letters, while the en-US one keeps
+  its literal dots and paid the word-plausibility detector's
+  stray-punctuation penalty twice over, scoring **0.00** for its own
+  layout against 0.75 for Cyrillic. The correctly-typed domain looked
+  like the most obvious wrong-layout word the engine had ever seen.
+
+  Dot-separated compounds are now scored one segment at a time and
+  take their worst segment's score, so a host reads as plausible
+  exactly when every one of its parts does. A genuine wrong-layout
+  word whose rendering happens to carry a dot is still corrected —
+  `союз` comes out as `cj.p`, whose segments read as nothing — and a
+  dot sitting next to *other* stray punctuation (`любов` → `k.,jd`)
+  still takes the ordinary path. Full URLs were never affected: `:`
+  and `/` are structural boundaries the engine already stays out of.
+
 ## [0.14.0] — Cinnamon gets a backend that actually switches
 
 ### Added — Linux: a Cinnamon layout backend

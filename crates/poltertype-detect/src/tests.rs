@@ -103,6 +103,69 @@ fn does_not_switch_for_short_buffer() {
     assert_no_opinion(&detector(), &ctx(&en, &cands));
 }
 
+/// Regression: a domain typed correctly under en-US used to be
+/// "corrected" into Cyrillic. `.` is `ю` in uk-UA, so the buffer
+/// keeps the whole host together and the two renderings are
+/// asymmetric: uk-UA gets clean letters, en-US keeps the dots and
+/// paid two stray-punctuation penalties, scoring **0.00** against
+/// uk-UA's 0.75. Scoring the compound segment-wise is what fixes it.
+#[test]
+fn plausibility_keeps_hostname_typed_in_its_own_layout() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "games.just-code.net".into()),
+        (uk.clone(), "пфьуіюогіе-сщвуютуе".into()),
+    ];
+    match detector().judge(&ctx(&en, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep for a hostname, got {other:?}"),
+    }
+}
+
+/// The other half of the same fix: a *genuine* wrong-layout word
+/// whose en-US rendering carries a dot because `ю` sits on the `.`
+/// key must still be corrected. `союз` → `cj.p`: segment-wise
+/// scoring leaves `cj` and `p` reading as nothing, so the compound
+/// never earns the keep-veto a real hostname does.
+#[test]
+fn plausibility_still_switches_cyrillic_word_whose_render_has_a_dot() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![(en.clone(), "cj.p".into()), (uk.clone(), "союз".into())];
+    assert_switches_to(&detector(), &ctx(&en, &cands), &uk);
+}
+
+/// A dot next to *other* stray punctuation is a wrong-layout
+/// rendering, not compound structure — `любов` → `k.,jd` carries a
+/// comma too, so the ordinary scoring path (and its stray penalty)
+/// must still apply.
+#[test]
+fn plausibility_treats_dot_beside_other_punctuation_as_wrong_layout() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![(en.clone(), "k.,jd".into()), (uk.clone(), "любов".into())];
+    assert_switches_to(&detector(), &ctx(&en, &cands), &uk);
+}
+
+/// A compound is only as good as its worst segment, and leading /
+/// trailing / doubled dots are not compound structure at all.
+#[test]
+fn plausibility_fit_scores_compound_by_worst_segment() {
+    let d = detector();
+    let en = LayoutId::from("en-US");
+    let whole = d.fit(&en, "games.net").expect("profile");
+    let worst = d.fit(&en, "games.wsz").expect("profile");
+    assert!(whole > 0.9, "every segment reads as a word: {whole}");
+    assert!(
+        worst < d.keep_threshold,
+        "one unreadable segment must sink the compound: {worst}"
+    );
+    // Trailing dot: not a compound, so the stray term still bites.
+    let trailing = d.fit(&en, "yjdj.").expect("profile");
+    assert!(trailing < d.keep_threshold, "trailing dot: {trailing}");
+}
+
 // ─── DictionaryDetector ────────────────────────────────────────
 
 fn dict_detector() -> DictionaryDetector {
