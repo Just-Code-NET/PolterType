@@ -235,6 +235,12 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
    schema to be installed *and* to list at least one input source:
    the schema ships with GTK, so it is present on plenty of machines
    running no GNOME-family desktop at all, where it reads back empty.
+   It also stands down when an **IBus daemon is running on a desktop
+   that does not sync the schema into it** — there, writing the schema
+   changes a stored value and nothing else, so the session belongs to
+   backend 4. GNOME is the reason this is a question about the shell
+   rather than about IBus: gnome-shell runs IBus too and drives it
+   *from* this schema, so the schema stays authoritative there.
 4. **IBus** (`ibus engine`) — any DE hosting IBus.
 5. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx.
 6. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — locks the XKB
@@ -245,6 +251,26 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
    in sync with the layout, and locking the group underneath it would
    switch the keyboard while leaving that indicator lying. Stands down
    entirely under XWayland, where the compositor owns layout.
+
+**Pinning a backend.** `POLTERTYPE_LAYOUT_BACKEND` skips the probe and
+uses exactly the backend you name — `hyprland`, `kde`, `gnome`,
+`ibus`, `fcitx`, `x11`, or `auto` for the default probe:
+
+```bash
+POLTERTYPE_LAYOUT_BACKEND=ibus poltertype
+```
+
+It exists because the probe is a set of heuristics about somebody
+else's input stack, and heuristics are wrong sometimes. If the name is
+not one of the above, or that backend cannot start on this machine,
+PolterType exits with a message saying so — it does not quietly fall
+back to probing, because "we chose something else and didn't mention
+it" is the failure the variable is there to diagnose. `gnome`
+additionally overrides the IBus-mediation check described above, for
+the session where our guess is wrong and gsettings really does work.
+The chosen backend is logged at startup either way (`layout switcher
+ready backend=…`), which is the first line to read in any report about
+switching.
 
 If none respond, PolterType **does not start**: it logs `no layout
 switcher backend; aborting` and exits. There is no degraded mode where

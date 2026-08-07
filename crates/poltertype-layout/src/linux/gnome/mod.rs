@@ -10,17 +10,26 @@
 //! `('xkb', 'us')` etc.) and `current` is a `u` index into it.
 //! Switching = writing a new `current`.
 //!
-//! `try_init()` is a strict probe — it requires both `gsettings` in
-//! `$PATH` *and* a successful read of `sources` from the schema. So
-//! KDE / Hyprland / IBus / Fcitx-only sessions correctly fall through
-//! to their own backends instead of being claimed here.
+//! `try_init()` is a strict probe — it requires `gsettings` in
+//! `$PATH`, a successful read of a populated `sources` from the
+//! schema, *and* that nothing else is mediating input on this session
+//! (see [`probe`]). So KDE / Hyprland / IBus / Fcitx-only sessions
+//! correctly fall through to their own backends instead of being
+//! claimed here.
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
 mod consts;
+mod enums;
 mod gsettings;
+mod probe;
 mod switcher;
 
 pub use consts::*;
+pub(crate) use enums::*;
 pub use gsettings::*;
+pub(crate) use probe::*;
 pub use switcher::*;
+
+#[cfg(test)]
+mod tests;

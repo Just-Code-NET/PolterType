@@ -8,17 +8,28 @@ use tracing::{debug, warn};
 
 pub struct IBusSwitcher;
 
-pub fn try_init() -> Option<IBusSwitcher> {
-    // `ibus engine` returns 1 with no message when the daemon is not
-    // running; success → we have a usable IBus.
-    let ok = Command::new("ibus")
+/// Is an IBus daemon up and answering?
+///
+/// `ibus engine` returns 1 with no message when the daemon is not
+/// running (and the spawn fails outright when `ibus` is not
+/// installed); success → we have a usable IBus.
+///
+/// Public to the crate because the gsettings backend has to ask the
+/// same question before claiming a session — on a desktop that does
+/// not sync the schema into IBus, a live daemon means our writes go
+/// nowhere. See `gnome/probe.rs`.
+pub fn daemon_is_running() -> bool {
+    Command::new("ibus")
         .arg("engine")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map(|s| s.success())
-        .unwrap_or(false);
-    if !ok {
+        .unwrap_or(false)
+}
+
+pub fn try_init() -> Option<IBusSwitcher> {
+    if !daemon_is_running() {
         return None;
     }
     Some(IBusSwitcher)

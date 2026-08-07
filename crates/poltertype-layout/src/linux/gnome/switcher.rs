@@ -9,6 +9,19 @@ use tracing::{debug, warn};
 pub struct GnomeSwitcher;
 
 pub fn try_init() -> Option<GnomeSwitcher> {
+    init(Mediation::StandDown)
+}
+
+/// `try_init` with the mediation check skipped — for
+/// `POLTERTYPE_LAYOUT_BACKEND=gnome`. The check is a heuristic over
+/// desktop names, so it can be wrong on a shell nobody here has run;
+/// a user whose gsettings switching demonstrably works needs a way to
+/// say so that our guess cannot override.
+pub fn init_even_if_mediated() -> Option<GnomeSwitcher> {
+    init(Mediation::Ignore)
+}
+
+fn init(mediation: Mediation) -> Option<GnomeSwitcher> {
     // Reject if `gsettings` is not in PATH at all.
     let exists = Command::new("gsettings")
         .arg("--version")
@@ -35,6 +48,21 @@ pub fn try_init() -> Option<GnomeSwitcher> {
     // sources here; fall through.
     let sources = read_sources().unwrap_or_default();
     if sources.is_empty() {
+        return None;
+    }
+    // Populated is still not the same as obeyed: an input-method
+    // daemon can sit between the schema and the keyboard, and then
+    // every `gsettings set` we make is a write nobody reads. See
+    // `probe.rs` for why the test is the shell rather than the daemon.
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    if matches!(mediation, Mediation::StandDown)
+        && !gsettings_is_authoritative(&desktop, crate::linux::ibus::daemon_is_running())
+    {
+        debug!(
+            desktop = %desktop,
+            "input-sources schema is populated but IBus mediates input on this desktop; \
+             standing down so the IBus backend can claim the session"
+        );
         return None;
     }
     Some(GnomeSwitcher)

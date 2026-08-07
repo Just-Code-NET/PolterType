@@ -9,8 +9,10 @@
 //! 3. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
 //!    covers GNOME, Ubuntu Unity 7+, Cinnamon, Budgie, Pantheon
 //!    (elementary OS), MATE. `try_init()` here only matches when the
-//!    schema is actually installed, so KDE / standalone-Hyprland
-//!    sessions fall through.
+//!    schema is actually installed *and populated* *and* nothing is
+//!    mediating input behind it — a desktop that does not sync the
+//!    schema into a running IBus hands the session to IBus below
+//!    instead (`gnome/probe.rs`).
 //! 4. **IBus** (`ibus engine`) — any DE that hosts IBus.
 //! 5. **Fcitx5** (`fcitx5-remote`) — any DE that hosts Fcitx.
 //! 6. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — the bare-WM
@@ -23,7 +25,9 @@
 //!
 //! Each backend's `try_init()` does a cheap reachability probe (env
 //! var, schema check, or daemon ping). The first that initialises
-//! wins. The DE backends interact with their daemon via the canonical
+//! wins. Setting [`BACKEND_ENV`] skips the probe entirely and pins one
+//! backend — the escape hatch for an input stack we guessed wrong
+//! about, and the first thing to ask a bug reporter to try. The DE backends interact with their daemon via the canonical
 //! CLI tool shipped with that ecosystem — that's more robust against
 //! D-Bus interface drift between distro / DE versions than raw D-Bus
 //! calls (and lets us skip the zbus + async-runtime dep entirely).
@@ -36,6 +40,8 @@
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use tracing::info;
+
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 
 pub mod fcitx;
@@ -46,7 +52,22 @@ pub mod kde;
 pub mod shared;
 pub mod x11;
 
+/// Pins one backend instead of probing for it: `ibus`, `gnome`, `kde`,
+/// `hyprland`, `fcitx`, `x11` — or `auto` (the default) to probe.
+///
+/// Unset, empty or `auto` changes nothing. A name we don't know, or a
+/// backend that cannot initialise on this machine, is an error rather
+/// than a quiet fall-through to the probe: someone who pinned a
+/// backend wants to hear that it didn't happen, and "we picked a
+/// different one and said nothing" is the exact failure this variable
+/// exists to diagnose.
+pub const BACKEND_ENV: &str = "POLTERTYPE_LAYOUT_BACKEND";
+
 pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
+    if let Some(name) = pinned_backend_name() {
+        return create_pinned_switcher(&name);
+    }
+
     let mut tried: Vec<&'static str> = Vec::new();
 
     if let Some(s) = hyprland::try_init() {
@@ -82,6 +103,45 @@ pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
     Err(LayoutError::Unsupported(format!(
         "no Linux layout-switching backend available; probed: {tried:?}"
     )))
+}
+
+/// The backend name [`BACKEND_ENV`] asks for, normalised — `None` when
+/// the variable is unset, blank or `auto`.
+fn pinned_backend_name() -> Option<String> {
+    let raw = std::env::var(BACKEND_ENV).ok()?;
+    let name = raw.trim().to_ascii_lowercase();
+    (!name.is_empty() && name != "auto").then_some(name)
+}
+
+fn create_pinned_switcher(name: &str) -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
+    fn boxed<S: LayoutSwitcher + 'static>(s: Option<S>) -> Option<Box<dyn LayoutSwitcher>> {
+        s.map(|s| Box::new(s) as Box<dyn LayoutSwitcher>)
+    }
+
+    let built = match name {
+        "hyprland" => boxed(hyprland::try_init()),
+        "kde" | "plasma" => boxed(kde::try_init()),
+        "gnome" | "gsettings" => boxed(gnome::init_even_if_mediated()),
+        "ibus" => boxed(ibus::try_init()),
+        "fcitx" | "fcitx5" => boxed(fcitx::try_init()),
+        "x11" | "xkb" => boxed(x11::try_init()),
+        other => {
+            return Err(LayoutError::Unsupported(format!(
+                "{BACKEND_ENV}={other:?} names no backend; expected auto, hyprland, kde, \
+                 gnome, ibus, fcitx or x11"
+            )));
+        }
+    };
+
+    match built {
+        Some(s) => {
+            info!(backend = name, "layout backend pinned by {BACKEND_ENV}");
+            Ok(Box::new(CachedSwitcher::new(s)))
+        }
+        None => Err(LayoutError::Unsupported(format!(
+            "{BACKEND_ENV}={name} was asked for, but that backend does not initialise here"
+        ))),
+    }
 }
 
 /// TTL cache in front of a Linux backend.

@@ -6,6 +6,38 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed — Linux: the layout never switched where IBus owns the keyboard
+
+On Cinnamon with IBus mediating input, PolterType picked the gsettings
+backend, wrote `org.gnome.desktop.input-sources current`, and nothing
+happened: IBus does not read that schema, so the layout stayed put and
+the tray indicator never moved. The word was still retyped, so it
+looked half-working — and then it stopped working entirely, because
+the next `current()` read back the value we had just written and the
+app believed it was already in the other layout. Reported from Linux
+Mint 22 ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
+
+The gsettings probe used to accept any session where the schema was
+installed and populated. That is not the same as a session that
+*obeys* it: the schema ships with GTK, and on a GNOME derivative that
+does not sync it into IBus, writing it is a no-op. The probe now
+stands down when an IBus daemon is running on a desktop that does not
+feed it from the schema, and the IBus backend — which was already
+there, one step down the priority list — takes the session. GNOME
+itself is unaffected: gnome-shell drives IBus *from* this schema, so
+the schema stays authoritative there, which is why "is IBus running"
+alone could never be the test.
+
+New escape hatch for the input stacks we will inevitably still guess
+wrong about: `POLTERTYPE_LAYOUT_BACKEND=ibus` (also `gnome`, `kde`,
+`hyprland`, `fcitx`, `x11`, or `auto`) pins the backend and skips the
+probe. An unknown name, or a backend that cannot start here, is a
+startup error rather than a silent fall back to probing — the whole
+point of the variable is to be told when the choice did not happen.
+Pinning `gnome` also overrides the new mediation check, so a user
+whose gsettings switching demonstrably works is never argued with by
+a heuristic over desktop names.
+
 ### Changed — the hooks stopped rebuilding the world
 
 Nothing here changes the shipped application. It is all developer
