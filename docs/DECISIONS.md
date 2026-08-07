@@ -2079,3 +2079,47 @@ wrongly is never argued with by a heuristic. An unknown name, or a
 backend that will not start, is a startup error rather than a quiet
 fall back to probing: the whole point of the variable is to be told
 when the choice did not happen.
+
+## 2026-08-07 — A dotted compound is only as plausible as its worst segment
+
+The stray-punctuation term above (2026-07-31) had a blind spot that
+made typing a bare domain unusable. `.` is a *letter* in the Cyrillic
+layouts — scancode 0x34 is `ю` — so the word buffer correctly keeps
+`games.just-code.net` together as one token, and the two renderings of
+it are then not comparable at all: the uk-UA one is a clean run of
+Cyrillic letters, while the en-US one keeps its literal dots and pays
+the stray penalty twice. The correctly-typed domain scored **0.00**
+for its own layout against 0.75 for Cyrillic — the most confident
+wrong-layout verdict the engine can produce — so the host was rewritten
+as `пфьуіюогіе-сщвуютуе`, and the next prose word switched the layout
+straight back. A sentence with an address in it switched twice.
+
+Decision: a token made of dots plus word characters is scored one
+dot-separated segment at a time, and takes its **worst** segment's
+score. The dots themselves stop being counted as noise, because in
+that shape they are structure rather than the cross-layout artifact
+the term was aimed at.
+
+Why the worst segment and not the mean: the two populations are
+separated by their weakest part, not their average. Every segment of
+a real hostname reads as a word, whereas a Cyrillic word that merely
+contains `ю` leaves at least one segment that reads as nothing —
+`союз` → `cj.p`, `купюра` → `reg.hf`, `революція` → `htdjk.wsz`. A
+mean lets one strong segment carry a compound that a min correctly
+rejects, and those corrections are the ones users actually rely on.
+
+Deliberately narrow in three ways. Only `.` splits — the guard never
+looks at `;` or `]`, so the `mañana` case that motivated the stray
+term is untouched. A dot sitting next to *other* stray punctuation
+(`любов` → `k.,jd`) is a wrong-layout rendering rather than a
+compound, and takes the ordinary path. And a leading, trailing or
+doubled dot is not compound structure either, so `yjdj.` (`новою`)
+still pays the penalty in full.
+
+The residue we accept: a Cyrillic word with `у` on both sides of a
+`ю` renders as a compound whose segments both carry a Latin vowel
+(`утюгу` → `en.ue`), and its auto-correction is now skipped. That is
+a rare word shape against every domain anyone types, and the failure
+is the benign direction — the engine stays quiet and the manual
+switch-last hotkey still does the job, which is the same trade the
+structural-boundary and identifier guards already make.

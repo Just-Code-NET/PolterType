@@ -323,8 +323,8 @@ files into `<config-dir>/poltertype/layouts/` and
 ## Dev-friendly: stays out of code
 
 If you write code, you _don't_ want a layout switcher meddling with
-identifiers. Two guards protect you, and they are pure engine logic —
-they work in every app, on every OS:
+identifiers. Three guards protect you, and they are pure engine logic
+— they work in every app, on every OS:
 
 - **Per-token identifier guard** — the engine doesn't auto-switch on
   tokens that look like identifiers: `snake_case`, `camelCase`,
@@ -336,6 +336,14 @@ they work in every app, on every OS:
   even if the alternate scores higher. This is what keeps `kubectl`,
   `terraform`, `nginx`, surnames, and other "real but uncommon"
   vocabulary from getting auto-corrected to Cyrillic noise.
+  A dot-separated token — `games.just-code.net`, `config.toml` — is
+  judged one segment at a time and is only as plausible as its worst
+  segment, so a hostname reads as plausible exactly when all of its
+  parts do.
+- **Structural boundaries** — finishing a word with `:` `/` `\` `@`
+  `=` `#` `&` means you're typing a URL, a path, an email address or
+  an expression, so the engine stays out of it entirely. (Sentence
+  punctuation like `.` and `,` is deliberately *not* on that list.)
 
 If that isn't enough for a particular app, silence it there
 explicitly:
