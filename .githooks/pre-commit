@@ -14,6 +14,24 @@
 #
 # To install / re-install all hooks:
 #     cargo xtask hooks install
+#
+# ── Why each command below sets its own CARGO_TARGET_DIR ─────────────
+#
+# Cargo keys its fingerprints on the exact configuration: clippy with
+# the default features, clippy with `--all-features`, and the plain
+# `cargo build` in pre-push are three different ones. Sharing a single
+# `target/` means each run invalidates the previous run's work, so
+# nothing is ever warm and every hook recompiles the whole workspace.
+#
+# Measured on this repository, with everything already built and
+# nothing changed at all: 128 s per clippy run when shared, 0 s when
+# each configuration has its own directory (2 s after editing a file).
+# The lint directories hold check-only artefacts — about 900 MB each,
+# against the 69 GB the real build already occupies — so this trades a
+# rounding error of disk for the entire wait.
+#
+# They live under `target/`, which is already ignored by git and blown
+# away by `cargo clean` like everything else.
 
 set -e
 
@@ -42,7 +60,8 @@ fi
 # dead code when `remote` is off. Whichever set you run, run the other
 # one too — the cheap one first, since it is the one CI mirrors.
 echo "poltertype pre-commit: cargo clippy --workspace --all-targets -- -D warnings  (CI's set)"
-if ! cargo clippy --workspace --all-targets -- -D warnings; then
+if ! CARGO_TARGET_DIR=target/lint \
+     cargo clippy --workspace --all-targets -- -D warnings; then
     echo
     echo "poltertype pre-commit: clippy found problems in the DEFAULT feature set."
     echo "This is exactly what CI runs. Fix, or commit with --no-verify."
@@ -50,7 +69,8 @@ if ! cargo clippy --workspace --all-targets -- -D warnings; then
 fi
 
 echo "poltertype pre-commit: cargo clippy --workspace --all-targets --all-features -- -D warnings"
-if ! cargo clippy --workspace --all-targets --all-features -- -D warnings; then
+if ! CARGO_TARGET_DIR=target/lint-all \
+     cargo clippy --workspace --all-targets --all-features -- -D warnings; then
     echo
     echo "poltertype pre-commit: clippy found problems."
     echo "Fix the warnings above, then re-stage and re-commit."

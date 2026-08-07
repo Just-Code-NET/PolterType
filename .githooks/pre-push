@@ -10,6 +10,13 @@
 # build scripts (poltertype-core's wordlist→FST compiler, etc.) which a
 # `cargo check` can skip caching weirdness around.
 #
+# This is the only thing that uses the default `target/` now: the
+# pre-commit hook's clippy runs were moved to their own directories,
+# because three configurations sharing one made each invalidate the
+# others and every hook run rebuilt the workspace from scratch. Leaving
+# the real build here means `target/` holds exactly one configuration
+# and stays warm, so a push after a small change costs seconds.
+#
 # Bypass (use sparingly):
 #     git push --no-verify
 #

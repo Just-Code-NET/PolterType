@@ -107,6 +107,13 @@ fn main() {
     fs::create_dir_all(&out_mappings).expect("mkdir target/dist/data/layout-mappings");
 
     // ─── Wordlists: build FST + copy stop-word list ────────────────
+    //
+    // The directory is watched as a whole, the same way the i18n
+    // catalogs are above, so a wordlist that is *added* later still
+    // triggers a rebuild. That has to be here rather than inside
+    // `prepare_wordlist`, which now declares only files that exist —
+    // see the comment there for what declaring an absent one costs.
+    println!("cargo:rerun-if-changed={}", src_wordlists.display());
     for (stem, tag) in LAYOUTS {
         prepare_wordlist(&src_wordlists, &out_wordlists, stem, tag);
     }
@@ -185,11 +192,27 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     let stop = src_dir.join(format!("{stem}-stop.txt"));
     let weak = src_dir.join(format!("{stem}-weak.txt"));
 
-    println!("cargo:rerun-if-changed={}", txt_gz.display());
-    println!("cargo:rerun-if-changed={}", txt.display());
-    println!("cargo:rerun-if-changed={}", extras.display());
-    println!("cargo:rerun-if-changed={}", stop.display());
-    println!("cargo:rerun-if-changed={}", weak.display());
+    // ONLY paths that exist. A `rerun-if-changed` pointing at a missing
+    // file makes cargo treat this build script as stale on *every*
+    // invocation — and since every crate in the workspace depends on
+    // this one, everything downstream rebuilt too.
+    //
+    // That is not a theoretical cost. Of the five names below, four are
+    // absent for nearly every language: the bulk lists ship as
+    // `<stem>.txt.gz`, so the plain `.txt` never exists, `-extras` only
+    // for en_us and `-weak` only for uk_ua. Fifteen languages × four
+    // absent names meant `cargo clippy` recompiled the whole workspace
+    // from scratch every single time. Measured before the fix: a
+    // no-op run — nothing changed at all — cost 128 s, exactly as much
+    // as a run after editing a file.
+    //
+    // Creation of one of these is still caught: the containing
+    // directory is declared by the caller, and cargo scans it.
+    for path in [&txt_gz, &txt, &extras, &stop, &weak] {
+        if path.exists() {
+            println!("cargo:rerun-if-changed={}", path.display());
+        }
+    }
 
     // Bulk wordlist source ships gzipped (uk_ua alone is 84 MB raw,
     // ~10 MB gzipped). Plain `.txt` honoured as a fallback so a
