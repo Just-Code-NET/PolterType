@@ -2185,3 +2185,46 @@ a rare word shape against every domain anyone types, and the failure
 is the benign direction — the engine stays quiet and the manual
 switch-last hotkey still does the job, which is the same trade the
 structural-boundary and identifier guards already make.
+
+## 2026-08-08 — Input state is reconciled against the device, not inferred from edges
+
+The X11 backend tracked modifiers by watching press and release edges,
+because XInput2 raw events carry no modifier state of their own. That
+is correct only while every edge arrives, and it turns out edges go
+missing routinely: any client holding an active keyboard grab stops
+raw events reaching everyone else for as long as it holds one.
+Measured on X.org against a client selecting exactly what this backend
+selects — three key taps produced nine raw events with no grab and
+zero during one, with no error, no disconnect and nothing in any log.
+
+The consequence was disproportionate to the cause. One swallowed Alt
+release left the modifier latched forever; `Modifiers::is_command()`
+was then true for every keystroke, the engine read each one as a
+shortcut, and the word buffer was abandoned every time. The app stayed
+alive, kept receiving keys, and discarded all of them until it was
+restarted — the same silent-wrong-state failure shape as
+[#26](https://github.com/Just-Code-NET/PolterType/issues/26) itself,
+which is how it was found.
+
+The rule from here: **where the OS can be asked for the current state
+of an input device, ask it, and treat our edge-derived view as a cache
+to be reconciled — not as the truth.** `XQueryKeymap` answers from the
+server's own device state rather than from event delivery, and keeps
+working through a foreign grab (measured the same way). The listener
+reconciles against it on idle rounds, gated on believing some modifier
+is held, so an idle keyboard issues no round-trips at all.
+
+Two things this rejects. **Not** a periodic self-grab to detect the
+condition: `XGrabKeyboard` returning `AlreadyGrabbed` would name the
+culprit precisely, but a grab attempt on a cadence steals whatever
+keystroke lands in its window, which is a worse bug than the one being
+diagnosed. And **not** treating this as somebody else's problem
+because the missing release comes from another client's grab: a
+desktop taking a grab to service its own keybinding is normal, ours is
+the code that assumed it would see every edge.
+
+The same assumption lives in the evdev backend
+(`wayland::update_modifiers`), where `EVIOCGKEY` is the equivalent
+question. Nothing has reported it — an `EVIOCGRAB` by another process
+takes the whole device rather than swallowing one edge — so it is
+noted here rather than fixed on spec.
