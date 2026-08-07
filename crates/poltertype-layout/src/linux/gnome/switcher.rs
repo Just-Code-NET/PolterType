@@ -9,19 +9,19 @@ use tracing::{debug, warn};
 pub struct GnomeSwitcher;
 
 pub fn try_init() -> Option<GnomeSwitcher> {
-    init(Mediation::StandDown)
+    init(UnreadSchema::StandDown)
 }
 
-/// `try_init` with the mediation check skipped — for
-/// `POLTERTYPE_LAYOUT_BACKEND=gnome`. The check is a heuristic over
-/// desktop names, so it can be wrong on a shell nobody here has run;
-/// a user whose gsettings switching demonstrably works needs a way to
-/// say so that our guess cannot override.
-pub fn init_even_if_mediated() -> Option<GnomeSwitcher> {
-    init(Mediation::Ignore)
+/// `try_init` without the "this desktop ignores the schema" check —
+/// for `POLTERTYPE_LAYOUT_BACKEND=gnome`. The check is a list of
+/// desktop names, so it can only ever be as right as the reports
+/// behind it; a user whose gsettings switching demonstrably works
+/// needs a way to say so that our list cannot override.
+pub fn init_without_desktop_check() -> Option<GnomeSwitcher> {
+    init(UnreadSchema::Ignore)
 }
 
-fn init(mediation: Mediation) -> Option<GnomeSwitcher> {
+fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
     // Reject if `gsettings` is not in PATH at all.
     let exists = Command::new("gsettings")
         .arg("--version")
@@ -50,18 +50,18 @@ fn init(mediation: Mediation) -> Option<GnomeSwitcher> {
     if sources.is_empty() {
         return None;
     }
-    // Populated is still not the same as obeyed: an input-method
-    // daemon can sit between the schema and the keyboard, and then
-    // every `gsettings set` we make is a write nobody reads. See
-    // `probe.rs` for why the test is the shell rather than the daemon.
-    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-    if matches!(mediation, Mediation::StandDown)
-        && !gsettings_is_authoritative(&desktop, crate::linux::ibus::daemon_is_running())
-    {
+    // Populated is still not the same as read. Cinnamon populates
+    // this schema and drives the layout from somewhere else entirely,
+    // so `gsettings set … current` there lands in dconf and stops:
+    // no layout change, no indicator change, and the read-back of our
+    // own write convinces the engine the switch happened (#26).
+    // Cinnamon is probed before this backend and has already had its
+    // chance by the time we get here; this is the guard for the paths
+    // that reach us anyway.
+    if matches!(unread, UnreadSchema::StandDown) && crate::linux::cinnamon::session_is_cinnamon() {
         debug!(
-            desktop = %desktop,
-            "input-sources schema is populated but IBus mediates input on this desktop; \
-             standing down so the IBus backend can claim the session"
+            "input-sources schema is populated but Cinnamon does not read it; \
+             standing down rather than writing a key nobody acts on"
         );
         return None;
     }

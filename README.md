@@ -83,7 +83,7 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 10 / 11 | working                                                                                                                                                                       |
 | macOS 11+       | working — validated on macOS 15 (Intel); needs Accessibility **and** Input Monitoring permission (the app prompts on first launch) |
-| Linux (Wayland) | working; run `scripts/setup-linux.sh` once (evdev + uinput access). Layout switching: Hyprland, KDE Plasma, GSettings (GNOME / Ubuntu Unity / Cinnamon / Budgie / Pantheon / MATE), IBus, Fcitx5. |
+| Linux (Wayland) | working; run `scripts/setup-linux.sh` once (evdev + uinput access). Layout switching: Hyprland, KDE Plasma, Cinnamon, GSettings (GNOME / Ubuntu Unity / Budgie / Pantheon), IBus, Fcitx5. |
 | Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Layout switching via the DE backends above, falling back to XKB group locking on bare WMs (i3, openbox, …). |
 
 See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
@@ -111,7 +111,7 @@ polls — you never download that one by hand):
 > to `/dev/uinput`, which no Flatpak permission grants short of
 > `--device=all` — the whole device tree — and there is no portal for
 > it. Layout switching also needs host binaries (`hyprctl`,
-> `gsettings`, `qdbus`, `ibus`) that a sandbox does not have. The
+> `gsettings`, `gdbus`, `qdbus`, `ibus`) that a sandbox does not have. The
 > reasoning, sources and the conditions under which we'd revisit are
 > in [docs/DECISIONS.md](docs/DECISIONS.md) (2026-07-31). Use the
 > AppImage, or a native package.

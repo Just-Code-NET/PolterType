@@ -6,34 +6,53 @@
 //!    Hyprland config may have `kb_layout = us,ua,…` and we cycle by
 //!    index.
 //! 2. **KDE Plasma** (`qdbus6` / `qdbus` → `org.kde.keyboard`).
-//! 3. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
-//!    covers GNOME, Ubuntu Unity 7+, Cinnamon, Budgie, Pantheon
-//!    (elementary OS), MATE. `try_init()` here only matches when the
-//!    schema is actually installed *and populated* *and* nothing is
-//!    mediating input behind it — a desktop that does not sync the
-//!    schema into a running IBus hands the session to IBus below
-//!    instead (`gnome/probe.rs`).
-//! 4. **IBus** (`ibus engine`) — any DE that hosts IBus.
-//! 5. **Fcitx5** (`fcitx5-remote`) — any DE that hosts Fcitx.
-//! 6. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — the bare-WM
+//! 3. **Cinnamon** (`gdbus` → `org.Cinnamon`, or XKB groups on 6.4 and
+//!    older). Ahead of GSettings because Cinnamon ships that schema,
+//!    populates it, and never reads it — see [`cinnamon`].
+//! 4. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
+//!    GNOME, Ubuntu Unity 7+, Budgie, Pantheon (elementary OS).
+//!    `try_init()` here only matches when the schema is actually
+//!    installed *and populated*.
+//! 5. **IBus** (`ibus engine`) — any DE that hosts IBus and lets it
+//!    own the layout.
+//! 6. **Fcitx5** (`fcitx5-remote`) — any DE that hosts Fcitx.
+//! 7. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — the bare-WM
 //!    fallback (i3, openbox, plain `.xinitrc`), where no desktop
 //!    environment owns the layout and the X server itself holds it.
 //!    Last on purpose: where a DE *is* present it keeps a tray
 //!    indicator in sync with the layout, and locking the XKB group
 //!    underneath it would switch the keyboard while leaving that
-//!    indicator lying.
+//!    indicator lying. Cinnamon 6.4 is the exception that proves the
+//!    rule — there the indicator is *driven by* the XKB group, which
+//!    is why that case routes here deliberately rather than by
+//!    falling through.
 //!
 //! Each backend's `try_init()` does a cheap reachability probe (env
 //! var, schema check, or daemon ping). The first that initialises
 //! wins. Setting [`BACKEND_ENV`] skips the probe entirely and pins one
 //! backend — the escape hatch for an input stack we guessed wrong
-//! about, and the first thing to ask a bug reporter to try. The DE backends interact with their daemon via the canonical
-//! CLI tool shipped with that ecosystem — that's more robust against
+//! about, and the first thing to ask a bug reporter to try.
+//!
+//! The DE backends interact with their daemon via the canonical CLI
+//! tool shipped with that ecosystem — that's more robust against
 //! D-Bus interface drift between distro / DE versions than raw D-Bus
 //! calls (and lets us skip the zbus + async-runtime dep entirely).
 //! X11 is the exception: it speaks the protocol directly, because
 //! there is no daemon to ask and `setxkbmap` cannot switch a group —
 //! it can only re-install the whole layout list.
+//!
+//! ## Probing by what a desktop *does*, not by what it ships
+//!
+//! Issue [#26](https://github.com/Just-Code-NET/PolterType/issues/26)
+//! is the cautionary tale for everything above: a schema being
+//! installed, populated and writable says nothing about whether
+//! anyone reads it. A probe that only checks reachability can hand
+//! the session to a backend whose every write is a no-op, and the
+//! failure is silent in the worst way — we read our own write back
+//! and conclude the layout changed. Where a backend can be asked
+//! something only the real owner of the layout could answer (does
+//! this method exist? does this desktop drive this schema?), ask
+//! that instead.
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
@@ -44,6 +63,7 @@ use tracing::info;
 
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 
+pub mod cinnamon;
 pub mod fcitx;
 pub mod gnome;
 pub mod hyprland;
@@ -52,8 +72,9 @@ pub mod kde;
 pub mod shared;
 pub mod x11;
 
-/// Pins one backend instead of probing for it: `ibus`, `gnome`, `kde`,
-/// `hyprland`, `fcitx`, `x11` — or `auto` (the default) to probe.
+/// Pins one backend instead of probing for it: `cinnamon`, `ibus`,
+/// `gnome`, `kde`, `hyprland`, `fcitx`, `x11` — or `auto` (the
+/// default) to probe.
 ///
 /// Unset, empty or `auto` changes nothing. A name we don't know, or a
 /// backend that cannot initialise on this machine, is an error rather
@@ -79,6 +100,13 @@ pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
         return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
     }
     tried.push("kde");
+
+    // Before gsettings, not after: Cinnamon would pass the gsettings
+    // probe and then fail to switch anything (#26).
+    if let Some(s) = cinnamon::try_init() {
+        return Ok(Box::new(CachedSwitcher::new(s)));
+    }
+    tried.push("cinnamon");
 
     if let Some(s) = gnome::try_init() {
         return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
@@ -121,14 +149,15 @@ fn create_pinned_switcher(name: &str) -> Result<Box<dyn LayoutSwitcher>, LayoutE
     let built = match name {
         "hyprland" => boxed(hyprland::try_init()),
         "kde" | "plasma" => boxed(kde::try_init()),
-        "gnome" | "gsettings" => boxed(gnome::init_even_if_mediated()),
+        "cinnamon" => cinnamon::init_without_session_check(),
+        "gnome" | "gsettings" => boxed(gnome::init_without_desktop_check()),
         "ibus" => boxed(ibus::try_init()),
         "fcitx" | "fcitx5" => boxed(fcitx::try_init()),
         "x11" | "xkb" => boxed(x11::try_init()),
         other => {
             return Err(LayoutError::Unsupported(format!(
                 "{BACKEND_ENV}={other:?} names no backend; expected auto, hyprland, kde, \
-                 gnome, ibus, fcitx or x11"
+                 cinnamon, gnome, ibus, fcitx or x11"
             )));
         }
     };

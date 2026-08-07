@@ -229,48 +229,61 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
 1. **Hyprland** (`hyprctl switchxkblayout`) — when
    `HYPRLAND_INSTANCE_SIGNATURE` is set.
 2. **KDE Plasma** (`qdbus6`/`qdbus` → `org.kde.keyboard /Layouts`).
-3. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
-   covers **GNOME**, **Ubuntu Unity 7+**, **Cinnamon**, **Budgie**,
-   **Pantheon** (elementary OS), **MATE**. The probe requires the
-   schema to be installed *and* to list at least one input source:
-   the schema ships with GTK, so it is present on plenty of machines
-   running no GNOME-family desktop at all, where it reads back empty.
-   It also stands down when an **IBus daemon is running on a desktop
-   that does not sync the schema into it** — there, writing the schema
-   changes a stored value and nothing else, so the session belongs to
-   backend 4. GNOME is the reason this is a question about the shell
-   rather than about IBus: gnome-shell runs IBus too and drives it
-   *from* this schema, so the schema stays authoritative there.
-4. **IBus** (`ibus engine`) — any DE hosting IBus.
-5. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx.
-6. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — locks the XKB
+3. **Cinnamon** — two routes, and the probe picks by asking rather
+   than by version:
+   - **6.6 and newer**: `gdbus` → `org.Cinnamon.GetInputSources` and
+     `org.Cinnamon.ActivateInputSourceIndex`, the entry point
+     Cinnamon's own keyboard applet uses, so the tray indicator
+     follows.
+   - **6.4 and older** (Linux Mint 22.x): no such API. There layouts
+     are ordinary XKB groups — the applet drives
+     `XAppKbdLayoutController` → libgnomekbd → `XkbLockGroup`, and it
+     listens for group changes — so this routes to backend 7 on
+     purpose, logged as `linux-cinnamon-xkb` rather than
+     `linux-x11-xkb` so a bug report can tell a deliberate choice
+     from a fallback.
+4. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
+   covers **GNOME**, **Ubuntu Unity 7+**, **Budgie**, **Pantheon**
+   (elementary OS). The probe requires the schema to be installed
+   *and* to list at least one input source: the schema ships with GTK,
+   so it is present on plenty of machines running no GNOME-family
+   desktop at all, where it reads back empty. It also stands down on
+   Cinnamon, which populates the schema and reads a different one
+   ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
+5. **IBus** (`ibus engine`) — a DE that lets IBus own the layout.
+   Note that running an IBus daemon is not that: most desktops run one
+   for CJK input while switching layouts by another route entirely.
+6. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx.
+7. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — locks the XKB
    group, which is what the layouts in `setxkbmap -layout us,ua`
    actually are. This is the bare-WM fallback (i3, openbox, plain
    `.xinitrc`), where no desktop environment owns the layout. Probed
-   last on purpose: where a DE *is* present it keeps a tray indicator
-   in sync with the layout, and locking the group underneath it would
-   switch the keyboard while leaving that indicator lying. Stands down
-   entirely under XWayland, where the compositor owns layout.
+   last on purpose: where a DE *is* present it usually keeps a tray
+   indicator in sync with the layout, and locking the group underneath
+   it would switch the keyboard while leaving that indicator lying.
+   (Cinnamon 6.4 is the exception, which is why backend 3 routes here
+   knowingly.) Stands down entirely under XWayland, where the
+   compositor owns layout.
 
 **Pinning a backend.** `POLTERTYPE_LAYOUT_BACKEND` skips the probe and
-uses exactly the backend you name — `hyprland`, `kde`, `gnome`,
-`ibus`, `fcitx`, `x11`, or `auto` for the default probe:
+uses exactly the backend you name — `hyprland`, `kde`, `cinnamon`,
+`gnome`, `ibus`, `fcitx`, `x11`, or `auto` for the default probe:
 
 ```bash
 POLTERTYPE_LAYOUT_BACKEND=ibus poltertype
 ```
 
-It exists because the probe is a set of heuristics about somebody
-else's input stack, and heuristics are wrong sometimes. If the name is
-not one of the above, or that backend cannot start on this machine,
+It exists because the probe is a set of guesses about somebody else's
+input stack, and guesses are wrong sometimes. If the name is not one
+of the above, or that backend cannot start on this machine,
 PolterType exits with a message saying so — it does not quietly fall
 back to probing, because "we chose something else and didn't mention
 it" is the failure the variable is there to diagnose. `gnome`
-additionally overrides the IBus-mediation check described above, for
-the session where our guess is wrong and gsettings really does work.
-The chosen backend is logged at startup either way (`layout switcher
-ready backend=…`), which is the first line to read in any report about
-switching.
+additionally skips the "this desktop ignores the schema" check, for
+the session where our list of desktops is wrong and gsettings really
+does work. The chosen backend is logged at startup either way
+(`layout switcher ready backend=…`), which is the first line to read
+in any report about switching.
 
 If none respond, PolterType **does not start**: it logs `no layout
 switcher backend; aborting` and exits. There is no degraded mode where

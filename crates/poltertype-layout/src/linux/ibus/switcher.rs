@@ -14,10 +14,13 @@ pub struct IBusSwitcher;
 /// running (and the spawn fails outright when `ibus` is not
 /// installed); success → we have a usable IBus.
 ///
-/// Public to the crate because the gsettings backend has to ask the
-/// same question before claiming a session — on a desktop that does
-/// not sync the schema into IBus, a live daemon means our writes go
-/// nowhere. See `gnome/probe.rs`.
+/// Note what this deliberately is *not* used for: deciding that IBus
+/// owns the layout somewhere else. A great many desktops run an IBus
+/// daemon for CJK input while switching layouts by another route
+/// entirely — Cinnamon activates an `xkb:…` engine on every switch
+/// purely so XIM clients keep working, and those engines echo symbols
+/// rather than change any layout. "A daemon is up" answers only
+/// whether *this* backend can work if it is chosen.
 pub fn daemon_is_running() -> bool {
     Command::new("ibus")
         .arg("engine")

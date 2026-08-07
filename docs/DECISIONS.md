@@ -286,6 +286,7 @@ the honest Linux story.
 | Grab the keyboard (`EVIOCGRAB`) | the key gate | same, and only via `--device=all` |
 | `hyprctl` / Hyprland IPC socket | layout switching on wlroots | host binary + `$XDG_RUNTIME_DIR/hypr` socket |
 | `gsettings` | GNOME layout switching | host binary + dconf |
+| `gdbus` | Cinnamon layout switching | host binary + session bus name |
 | `qdbus` / `qdbus6` | KDE layout switching | host binary + session bus name |
 | `ibus`, `fcitx5-remote` | IME layout switching | host binaries |
 | AT-SPI bus | caret position for the tooltip | `--talk-name=org.a11y.Bus` |
@@ -311,7 +312,7 @@ operate at ([Flathub discourse][fh-remap]). We are in that class.
 
 **Even granting everything, the DE integration would still be
 broken.** Layout switching shells out to `hyprctl`, `gsettings`,
-`qdbus`, `ibus` and `fcitx5-remote` — host binaries that do not exist
+`gdbus`, `qdbus`, `ibus` and `fcitx5-remote` — host binaries that do not exist
 inside the runtime. `flatpak-spawn --host` would work and is exactly
 "disabling or bypassing security mechanisms" in Flathub's words. A
 Flatpak that needed `--device=all` *and* host command execution is not

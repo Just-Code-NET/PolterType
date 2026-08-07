@@ -18,7 +18,7 @@ same confusion unless you split it:
 
 **1. Native packages** — `.deb`, `.rpm`, AUR. No sandbox, so PolterType
 simply works: it reads `/dev/input`, writes `/dev/uinput`, and shells
-out to `hyprctl` / `gsettings` / `qdbus` / `ibus` exactly as it does
+out to `hyprctl` / `gsettings` / `gdbus` / `qdbus` / `ibus` exactly as it does
 from an AppImage. Nothing here is a technical question. The only real
 questions are **how the packages get built** and **where they are
 hosted**, and both have boring, good answers.
@@ -31,7 +31,7 @@ product's problem, and it bites twice:
   (`device=input` deliberately excludes it). Snap *can* — it has a
   `uinput` interface — so Snap clears this bar and Flatpak does not.
 - **Host binaries.** Layout switching is not one API; it is
-  `hyprctl`, `gsettings`, `qdbus`/`qdbus6`, `ibus` and `fcitx5-remote`,
+  `hyprctl`, `gsettings`, `gdbus`, `qdbus`/`qdbus6`, `ibus` and `fcitx5-remote`,
   none of which exist inside a runtime. **This is the wall both formats
   hit**, and it is the one people forget: an app that cannot switch the
   layout can still detect a wrong-layout word, fix the letters, and

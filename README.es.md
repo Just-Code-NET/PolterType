@@ -27,8 +27,8 @@ release incluye cuatro instaladores:
 > **No hay Flatpak y no lo habrá.** PolterType escribe en `/dev/uinput`, lo que
 > ningún permiso de Flatpak concede salvo `--device=all` (todo el árbol de
 > dispositivos), y no existe un portal para ello. El cambio de distribución
-> también necesita binarios del sistema (`hyprctl`, `gsettings`, `qdbus`,
-> `ibus`) que una sandbox no tiene. El razonamiento, las fuentes y las
+> también necesita binarios del sistema (`hyprctl`, `gsettings`, `gdbus`,
+> `qdbus`, `ibus`) que una sandbox no tiene. El razonamiento, las fuentes y las
 > condiciones bajo las cuales lo reconsideraríamos están en
 > [docs/DECISIONS.md](docs/DECISIONS.md) (2026-07-31). Usa el AppImage o un
 > paquete nativo.

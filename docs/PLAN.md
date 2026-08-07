@@ -226,7 +226,7 @@ Implementations:
 |---|---|
 | Windows | `LoadKeyboardLayoutW` + `PostMessageW(HWND_BROADCAST, WM_INPUTLANGCHANGEREQUEST, ...)` or `ActivateKeyboardLayout`. |
 | macOS | `TISCreateInputSourceList` → `TISSelectInputSource`. |
-| Linux Wayland | Probe in order: Hyprland (`hyprctl`), KDE (`qdbus`), GSettings (`gsettings org.gnome.desktop.input-sources` — GNOME/Unity/Cinnamon/Budgie/Pantheon/MATE), IBus (`ibus engine`), Fcitx5 (`fcitx5-remote`). Every probe is a real CLI/schema check, not just an env guess. |
+| Linux Wayland | Probe in order: Hyprland (`hyprctl`), KDE (`qdbus`), Cinnamon (`gdbus` → `org.Cinnamon`, or XKB groups on 6.4 and older), GSettings (`gsettings org.gnome.desktop.input-sources` — GNOME/Unity/Budgie/Pantheon), IBus (`ibus engine`), Fcitx5 (`fcitx5-remote`). Every probe is a real CLI/schema check, not just an env guess — and where a desktop can be asked something only the owner of the layout could answer, it is asked that. |
 | Linux X11 | `XkbLockGroup` via `x11rb` (fast) or a `setxkbmap -layout ...` fallback. |
 
 ### 3.3 SwitcherEngine (logic)
@@ -656,7 +656,7 @@ poltertype/                      # (the Claude config is not here — it's
 │   ├── poltertype-input/        # InputListener + KeyEmitter + FocusTracker
 │   │   └── src/{windows/, macos/, linux/{wayland,x11}/, focus/}
 │   ├── poltertype-layout/       # LayoutSwitcher + per-OS backends
-│   │   └── src/{windows/, macos/, linux/{hyprland,kde,gsettings,ibus,fcitx,x11}/}
+│   │   └── src/{windows/, macos/, linux/{hyprland,kde,cinnamon,gnome,ibus,fcitx,x11}/}
 │   ├── poltertype-detect/       # Detector pipeline
 │   │   └── src/{traits.rs, plausibility.rs, dictionary.rs, enums.rs}
 │   ├── poltertype-update/       # GitHub-Releases updater (v0.4.0+); the
@@ -906,9 +906,9 @@ separate `poltertype --settings` process.
 - [x] **Wayland evdev listener** via `evdev`; `setup-linux.sh` adds
       the user to the `input` group + udev rules (`/dev/input/event*`
       and `/dev/uinput`).
-- [x] Layout switcher: Hyprland → KDE → GSettings (GNOME family) →
-      IBus → Fcitx5 → X11 XKB, each as a separate backend behind the
-      `Trait`.
+- [x] Layout switcher: Hyprland → KDE → Cinnamon → GSettings (GNOME
+      family) → IBus → Fcitx5 → X11 XKB, each as a separate backend
+      behind the `Trait`.
 - [x] Send-keys via `uinput` (paired with evdev).
 - [x] X11: XInput2 listener + XTest emitter + XKB switcher
       (`XkbLatchLockState`). Requires zero permissions (no

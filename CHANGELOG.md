@@ -6,37 +6,58 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed — Linux: the layout never switched where IBus owns the keyboard
+### Added — Linux: a Cinnamon layout backend
 
-On Cinnamon with IBus mediating input, PolterType picked the gsettings
-backend, wrote `org.gnome.desktop.input-sources current`, and nothing
-happened: IBus does not read that schema, so the layout stayed put and
-the tray indicator never moved. The word was still retyped, so it
-looked half-working — and then it stopped working entirely, because
-the next `current()` read back the value we had just written and the
-app believed it was already in the other layout. Reported from Linux
-Mint 22 ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
+Cinnamon now has a backend of its own, and it is probed ahead of
+gsettings. On Cinnamon 6.6 and newer it asks the shell —
+`org.Cinnamon.GetInputSources` / `ActivateInputSourceIndex`, the same
+entry point the keyboard applet uses, so the tray indicator follows.
+On 6.4 and older (Linux Mint 22.x) there is no such API, and layouts
+there are ordinary XKB groups: the applet drives
+`XAppKbdLayoutController` → libgnomekbd → `XkbLockGroup`, and it
+listens for group changes, so locking a group both switches the
+keyboard and updates the indicator. Which of the two applies is
+settled by calling the method and seeing whether it answers, not by
+parsing a version.
 
-The gsettings probe used to accept any session where the schema was
-installed and populated. That is not the same as a session that
-*obeys* it: the schema ships with GTK, and on a GNOME derivative that
-does not sync it into IBus, writing it is a no-op. The probe now
-stands down when an IBus daemon is running on a desktop that does not
-feed it from the schema, and the IBus backend — which was already
-there, one step down the priority list — takes the session. GNOME
-itself is unaffected: gnome-shell drives IBus *from* this schema, so
-the schema stays authoritative there, which is why "is IBus running"
-alone could never be the test.
+### Fixed — Linux: the layout never switched on Cinnamon
 
-New escape hatch for the input stacks we will inevitably still guess
-wrong about: `POLTERTYPE_LAYOUT_BACKEND=ibus` (also `gnome`, `kde`,
-`hyprland`, `fcitx`, `x11`, or `auto`) pins the backend and skips the
-probe. An unknown name, or a backend that cannot start here, is a
-startup error rather than a silent fall back to probing — the whole
-point of the variable is to be told when the choice did not happen.
-Pinning `gnome` also overrides the new mediation check, so a user
-whose gsettings switching demonstrably works is never argued with by
-a heuristic over desktop names.
+PolterType picked the gsettings backend on Cinnamon, wrote
+`org.gnome.desktop.input-sources current`, and nothing happened. The
+word was still retyped, so it looked half-working — and then it
+stopped working at all, because the next `current()` read back the
+value we had just written and the app believed it was already in the
+other layout. Reported from Linux Mint 22
+([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
+
+Cinnamon ships `org.gnome.desktop.input-sources` (it comes with the
+shared GTK stack) and populates it, and never reads it. It keeps a
+fork of the schema — `org.cinnamon.desktop.input-sources` — of which
+only `sources` is live; the *current* source is in-memory state of its
+`InputSourceManager`, reachable through the shell, not through dconf.
+So the write landed in dconf and stopped there. The gsettings probe
+now requires more than "the schema is installed and populated", which
+was never the same question as "somebody reads it".
+
+IBus is not the culprit here despite `GTK_IM_MODULE=ibus`: Cinnamon
+does activate an `xkb:…` IBus engine on every switch, but only so XIM
+clients keep working, and — in the words of the comment above that
+call in Cinnamon's own source — those engines "simply 'echo' back
+symbols, despite their naming implying differently". Driving `ibus
+engine` on Cinnamon would have been a second write that changes no
+layout.
+
+### Added — `POLTERTYPE_LAYOUT_BACKEND`
+
+An escape hatch for the input stacks we will inevitably still guess
+wrong about: `POLTERTYPE_LAYOUT_BACKEND=cinnamon` (also `gnome`,
+`kde`, `hyprland`, `ibus`, `fcitx`, `x11`, or `auto`) pins the backend
+and skips the probe. An unknown name, or a backend that cannot start
+here, is a startup error rather than a silent fall back to probing —
+the whole point of the variable is to be told when the choice did not
+happen. Pinning `gnome` also skips the "this desktop ignores the
+schema" check, so a user whose gsettings switching demonstrably works
+is never argued with by a list of desktop names.
 
 ### Changed — the hooks stopped rebuilding the world
 
