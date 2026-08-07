@@ -251,17 +251,27 @@ impl SettingsApp {
                 // Indented under its own box, so a row that says what
                 // was measured about an application reads as belonging
                 // to that application rather than to the next one.
+                //
+                // `Length::Fill` so the sentence wraps instead of
+                // running under the scrollbar. It is the sentence that
+                // matters most on the row — what the autopilot could
+                // actually do in that application — and the first
+                // screenshot of this list had it cut off mid-word.
                 entry = entry.push(
                     Row::new()
                         .push(Space::with_width(Length::Fixed(26.0)))
-                        .push(Text::new(row.detail.clone()).size(11)),
+                        .push(Text::new(row.detail.clone()).size(11).width(Length::Fill)),
                 );
             }
             list = list.push(entry);
         }
 
         column
-            .push(Scrollable::new(list).height(Length::Fixed(LIST_HEIGHT)))
+            .push(
+                Scrollable::new(list.width(Length::Fill))
+                    .height(Length::Fixed(LIST_HEIGHT))
+                    .width(Length::Fill),
+            )
             .into()
     }
 
