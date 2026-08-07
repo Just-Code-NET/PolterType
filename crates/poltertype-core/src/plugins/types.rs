@@ -181,7 +181,8 @@ pub struct PaneControl {
     pub help: String,
     /// Allowed values for [`ControlKind::Choice`].
     pub options: Vec<String>,
-    /// Id of a [`PluginCommand`], for [`ControlKind::Button`].
+    /// Id of a [`PluginCommand`] — the one a [`ControlKind::Button`]
+    /// runs, or the one whose output a [`ControlKind::Report`] shows.
     pub command: String,
 }
 

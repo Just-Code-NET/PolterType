@@ -155,6 +155,14 @@ pub enum Message {
     PluginTextChanged(usize, usize, String),
     /// Runs one of the plug-in's declared commands by id.
     PluginCommandClicked(usize, String),
+    /// Ask a plug-in for a report again — the pane's refresh button,
+    /// and what opening the pane sends for each report it has not
+    /// asked for yet.
+    PluginReportRefresh(usize, usize),
+    /// A report came back. `Err` carries why it could not be had,
+    /// which the pane shows rather than swallowing: a plug-in that
+    /// cannot answer is something the user should see.
+    PluginReportLoaded(usize, usize, Result<String, String>),
     LanguageToggled(LayoutId, bool),
     LanguageIgnoreToggled(LayoutId, bool),
     AutostartToggled(bool),

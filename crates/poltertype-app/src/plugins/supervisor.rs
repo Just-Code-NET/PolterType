@@ -322,16 +322,55 @@ pub fn read_state(ext: &DiscoveredExtension) -> Option<HashMap<String, String>> 
 /// smaller problem than a tray that stops responding, so the process is
 /// killed and the previous state left alone.
 fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
+    capture_output(
+        ext,
+        &ext.manifest.state_args,
+        STATE_TIMEOUT,
+        "state command",
+    )
+}
+
+/// Run one of a plug-in's declared commands and return what it printed.
+///
+/// The other half of [`run_command`], and the reason it is a separate
+/// function rather than a flag: that one must return before the child
+/// does, because it runs on the thread drawing a menu. This one is for
+/// a pane that is *showing* an answer, so it waits — off the UI thread,
+/// with its own deadline, because a plug-in that hangs must cost the
+/// pane a message and not the window.
+pub fn read_report(ext: &DiscoveredExtension, command_id: &str) -> Result<String, String> {
+    let cmd = ext
+        .manifest
+        .commands
+        .iter()
+        .find(|c| c.id == command_id)
+        .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
+    capture_output(ext, &cmd.args, REPORT_TIMEOUT, "report command")
+}
+
+/// Run `args` against the plug-in and collect stdout, or give up.
+///
+/// The deadline is the reason this is not one `output()` call: that
+/// waits forever, and nothing here is allowed to. Shared by the state
+/// read and the report read so there is one place that knows how to
+/// wait for a plug-in without being taken hostage by it.
+fn capture_output(
+    ext: &DiscoveredExtension,
+    args: &[String],
+    timeout: std::time::Duration,
+    what: &str,
+) -> Result<String, String> {
     use std::io::Read as _;
 
     let mut cmd = Command::new(&ext.exe);
-    cmd.args(&ext.manifest.state_args)
+    cmd.args(args)
         .current_dir(&ext.dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    // This one runs every time the tray menu is drawn, so a console
-    // window here would flash on every click, not once at startup.
+    // The state read runs every time the tray menu is drawn, so a
+    // console window here would flash on every click, not once at
+    // startup.
     poltertype_shell::configure_child(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
@@ -344,7 +383,7 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
         buf
     });
 
-    let deadline = std::time::Instant::now() + STATE_TIMEOUT;
+    let deadline = std::time::Instant::now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -352,15 +391,15 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
                 return if status.success() {
                     Ok(out)
                 } else {
-                    Err(format!("state command exited {status}"))
+                    Err(format!("{what} exited {status}"))
                 };
             }
             Ok(None) if std::time::Instant::now() >= deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(format!(
-                    "state command did not answer within {}ms",
-                    STATE_TIMEOUT.as_millis()
+                    "{what} did not answer within {}ms",
+                    timeout.as_millis()
                 ));
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(10)),
@@ -372,6 +411,13 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
 /// How long a plug-in gets to report its state. Short on purpose: this
 /// blocks the thread that draws the menu.
 const STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1_500);
+
+/// How long a plug-in gets to produce a report. Longer than the state
+/// read can afford to be, because nothing is waiting on the UI thread
+/// for it and the answer may cost real work — our own autopilot opens
+/// an encrypted corpus to produce one. Still bounded: a pane that says
+/// "it did not answer" is honest, and one that never renders is not.
+const REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
 
 fn spawn(
     exe: &PathBuf,

@@ -63,6 +63,32 @@ pub enum ControlKind {
     Number,
     /// Runs one of the plug-in's declared commands. Binds to no key.
     Button,
+    /// Shows what one of the plug-in's declared commands prints.
+    ///
+    /// The only control that displays something the plug-in produced
+    /// rather than something the manifest declared — so it is worth
+    /// being precise about what that does and does not allow. The text
+    /// is rendered as text, in a fixed-width block that is visibly part
+    /// of the plug-in's card: it cannot draw a button, style itself,
+    /// or look like anything PolterType said. What it is for is the
+    /// answer a plug-in has and a manifest cannot: how much it has
+    /// learned, what it found, what it will and will not be able to do
+    /// on this machine.
+    ///
+    /// Binds to no key. Reads, never writes.
+    Report,
+    /// A control this PolterType does not know.
+    ///
+    /// Here so that a plug-in written for a newer PolterType still
+    /// *loads* on an older one. Without it, serde refuses the unknown
+    /// word, the refusal takes the whole manifest with it, and the
+    /// user's plug-in vanishes from the pane entirely because one line
+    /// mentioned a control that had not been invented when their app
+    /// was built. One unrenderable control is a far smaller problem,
+    /// and it is a problem that explains itself: the pane says the
+    /// control needs a newer version.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Error)]

@@ -8,6 +8,7 @@ use tracing::{info, warn};
 
 use super::enums::*;
 use super::helpers::*;
+use super::plugin_pane::ReportState;
 use super::state::*;
 
 impl SettingsApp {
@@ -20,7 +21,14 @@ impl SettingsApp {
         }
 
         match msg {
-            Message::SelectPane(p) => self.pane = p,
+            Message::SelectPane(p) => {
+                self.pane = p;
+                // Reports are asked for on the way into the pane, not
+                // on every draw: each one costs a process.
+                if p == Pane::Plugins {
+                    return self.load_pending_reports();
+                }
+            }
 
             // Every plug-in edit writes straight through to the
             // plug-in's own file: it may be running and watching that
@@ -53,6 +61,20 @@ impl SettingsApp {
                     if let Some(value) = value {
                         pane.set(index, value);
                     }
+                }
+            }
+            Message::PluginReportRefresh(plugin, control) => {
+                return self.load_report(plugin, control);
+            }
+            Message::PluginReportLoaded(plugin, control, outcome) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.reports.insert(
+                        control,
+                        match outcome {
+                            Ok(text) => ReportState::Ready(text),
+                            Err(why) => ReportState::Failed(why),
+                        },
+                    );
                 }
             }
             Message::PluginCommandClicked(plugin, command) => {
@@ -480,6 +502,56 @@ impl SettingsApp {
     /// `wordlist_status` — the caller picks the banner text via
     /// `banner_for_wordlist_save` / `banner_for_auto_save` so the
     /// phrasing matches the trigger ("Saved." vs "Auto-saved.").
+    /// Ask for every report on this pane that has not been asked yet.
+    pub(super) fn load_pending_reports(&mut self) -> Task<Message> {
+        let wanted: Vec<(usize, usize)> = self
+            .plugins
+            .iter()
+            .enumerate()
+            .flat_map(|(plugin, pane)| {
+                pane.unasked_reports()
+                    .into_iter()
+                    .map(move |control| (plugin, control))
+            })
+            .collect();
+        Task::batch(
+            wanted
+                .into_iter()
+                .map(|(plugin, control)| self.load_report(plugin, control))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// Run one report command off the UI thread and deliver the answer
+    /// as a message.
+    ///
+    /// A plain thread rather than anything cleverer: the work is one
+    /// blocking wait on a child process, the runtime underneath iced is
+    /// not ours to assume, and a oneshot channel bridges the two
+    /// without either of them having to know about the other.
+    pub(super) fn load_report(&mut self, plugin: usize, control: usize) -> Task<Message> {
+        let Some(pane) = self.plugins.get_mut(plugin) else {
+            return Task::none();
+        };
+        let Some(declared) = pane.ext.manifest.pane.get(control) else {
+            return Task::none();
+        };
+        let (ext, command) = (pane.ext.clone(), declared.command.clone());
+        pane.reports.insert(control, ReportState::Loading);
+
+        let (tx, rx) = iced::futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::plugins::read_report(&ext, &command));
+        });
+        Task::perform(
+            async move {
+                rx.await
+                    .unwrap_or_else(|_| Err("the report task went away".to_owned()))
+            },
+            move |outcome| Message::PluginReportLoaded(plugin, control, outcome),
+        )
+    }
+
     pub(super) fn flush_wordlist_to_disk(&mut self) -> WordlistFlushOutcome {
         if !self.wordlist_dirty {
             return WordlistFlushOutcome::Nothing;

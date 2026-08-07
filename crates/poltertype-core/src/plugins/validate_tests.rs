@@ -209,3 +209,79 @@ fn the_default_kind_is_data_only() {
     assert_eq!(PluginKind::Pack.as_str(), "pack");
     assert_eq!(PluginKind::Extension.as_str(), "extension");
 }
+
+#[test]
+fn a_report_must_name_a_command_that_exists() {
+    // A report pointing at nothing would render an empty block for
+    // ever, which reads as "this plug-in has nothing to say" rather
+    // than as the manifest error it is.
+    let m = ExtensionManifest {
+        pane: vec![PaneControl {
+            kind: ControlKind::Report,
+            label: "What it learned".to_owned(),
+            command: "no-such-command".to_owned(),
+            ..PaneControl::default()
+        }],
+        ..base()
+    };
+    match check_extension(&m) {
+        Err(PluginError::BadPane(why)) => {
+            assert!(why.contains("report"), "{why}");
+            assert!(why.contains("no-such-command"), "{why}");
+        }
+        other => panic!("expected a BadPane error, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_report_naming_a_declared_command_is_accepted() {
+    let m = ExtensionManifest {
+        pane: vec![PaneControl {
+            kind: ControlKind::Report,
+            label: "What it learned".to_owned(),
+            command: "run".to_owned(),
+            ..PaneControl::default()
+        }],
+        ..base()
+    };
+    assert!(check_extension(&m).is_ok());
+}
+
+#[test]
+fn a_report_needs_no_key_because_it_writes_nothing() {
+    // Every other control binds to a config key. This one reads, so
+    // requiring a key would be asking a manifest author to invent one.
+    let m = ExtensionManifest {
+        pane: vec![PaneControl {
+            kind: ControlKind::Report,
+            label: "Report".to_owned(),
+            command: "run".to_owned(),
+            key: String::new(),
+            ..PaneControl::default()
+        }],
+        ..base()
+    };
+    assert!(check_extension(&m).is_ok());
+}
+
+#[test]
+fn a_control_from_a_newer_polterype_does_not_take_the_manifest_with_it() {
+    // The compatibility rule that makes adding kinds safe: a plug-in
+    // written for a newer app must still load here, minus the control
+    // nobody can draw. Refusing the file would make the whole plug-in
+    // vanish from the pane because of one unfamiliar word.
+    let manifest: ExtensionManifest = toml::from_str(
+        r#"
+        exe = "some-plugin"
+        [[commands]]
+        id = "run"
+        args = ["run"]
+        [[pane]]
+        kind = "hologram"
+        label = "From the future"
+        "#,
+    )
+    .expect("an unknown control kind must not fail the parse");
+    assert_eq!(manifest.pane[0].kind, ControlKind::Unknown);
+    assert!(check_extension(&manifest).is_ok());
+}

@@ -21,7 +21,7 @@ mod styles;
 mod themes;
 mod types;
 
-pub use consts::FONT_BOLD;
+pub use consts::{FONT_BOLD, FONT_MONO};
 pub use ghost_mark::GhostMark;
 pub use styles::*;
 pub use themes::{brand_palette, dark, light};

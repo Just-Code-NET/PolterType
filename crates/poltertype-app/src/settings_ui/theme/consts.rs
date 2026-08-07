@@ -71,3 +71,9 @@ pub const FONT_BOLD: Font = Font {
     weight: Weight::Bold,
     ..Font::DEFAULT
 };
+
+/// Fixed-width, for text a program produced rather than text we wrote:
+/// a plug-in's report, where columns only line up if the glyphs do.
+/// `MONOSPACE` is a family request, so it resolves to whatever the
+/// system has and bundles nothing.
+pub const FONT_MONO: Font = Font::MONOSPACE;

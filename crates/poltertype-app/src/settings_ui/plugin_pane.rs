@@ -17,6 +17,21 @@ use poltertype_core::plugins::{
 };
 use tracing::warn;
 
+/// What a report control is showing right now.
+///
+/// Three states and not two: "asked, waiting" reads very differently
+/// from "asked, got nothing", and a pane that shows an empty box for
+/// both is a pane that looks broken while it is working.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReportState {
+    /// The command is running.
+    Loading,
+    /// It answered. May legitimately be empty text.
+    Ready(String),
+    /// It could not be asked, or it failed.
+    Failed(String),
+}
+
 /// One plug-in as the pane sees it.
 pub struct PluginPane {
     pub ext: DiscoveredExtension,
@@ -29,9 +44,29 @@ pub struct PluginPane {
     pub values: Vec<Option<SettingValue>>,
     /// Result of the last edit, shown next to the plug-in.
     pub status: Option<String>,
+    /// What each report control is showing, by control index. Absent
+    /// means it has not been asked yet — which is why it is a map and
+    /// not a vector of defaults: "never asked" and "asked, empty" are
+    /// different, and only one of them should send a command.
+    pub reports: std::collections::HashMap<usize, ReportState>,
 }
 
 impl PluginPane {
+    /// Which controls are reports that have not been asked yet.
+    ///
+    /// The pane asks on the way in rather than on every draw: a report
+    /// costs a process, and `view` runs on every frame.
+    pub fn unasked_reports(&self) -> Vec<usize> {
+        self.ext
+            .manifest
+            .pane
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| c.kind == ControlKind::Report && !self.reports.contains_key(i))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     /// Read the current values for one extension.
     ///
     /// `config_root` is the directory holding *per-application* config
@@ -64,6 +99,7 @@ impl PluginPane {
             config_path,
             values,
             status: None,
+            reports: std::collections::HashMap::new(),
         }
     }
 

@@ -78,10 +78,19 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
 
     for control in &m.pane {
         match control.kind {
-            ControlKind::Button => {
+            ControlKind::Button | ControlKind::Report => {
+                // Both name a command rather than a key. A report that
+                // pointed at a command nobody declared would render an
+                // empty box for ever, which reads as "nothing to say"
+                // rather than as the mistake it is.
                 if !m.commands.iter().any(|c| c.id == control.command) {
+                    let what = if control.kind == ControlKind::Button {
+                        "button"
+                    } else {
+                        "report"
+                    };
                     return Err(PluginError::BadPane(format!(
-                        "button {:?} refers to unknown command {:?}",
+                        "{what} {:?} refers to unknown command {:?}",
                         control.label, control.command
                     )));
                 }
@@ -98,6 +107,10 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
             ControlKind::Toggle | ControlKind::Text | ControlKind::Number => {
                 check_key(control.key.trim(), &control.label)?;
             }
+            // Nothing to check: we do not know what this control is, and
+            // refusing a manifest for containing one would defeat the
+            // point of tolerating it at all.
+            ControlKind::Unknown => {}
         }
     }
 

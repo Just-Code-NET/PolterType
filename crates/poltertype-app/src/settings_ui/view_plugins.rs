@@ -14,19 +14,29 @@
 //!   PolterType's config; they live in the plug-in's, and an edit here
 //!   is an edit to a file another program owns.
 
-use iced::widget::{Button, Checkbox, Column, Container, PickList, Row, Space, Text, TextInput};
+use iced::widget::{
+    Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
+};
 use iced::{Alignment, Element, Length};
 use poltertype_core::plugins::{ControlKind, SettingValue};
 
 use super::enums::*;
+use super::plugin_pane::ReportState;
 use super::state::*;
 use super::theme::FONT_BOLD;
+use super::theme::FONT_MONO;
 use super::view::section_title;
 
 /// Shown where a plug-in's config does not set a value. Not "0" and
 /// not an empty selection that looks chosen: the plug-in has a default
 /// and this pane does not know it.
 const PLUGIN_DEFAULT: &str = "(plug-in default)";
+
+/// How tall a report block may grow before it scrolls inside itself.
+/// Enough for a dozen lines — the pane has its own scrolling, and a
+/// report that pushed every other control off the screen would be a
+/// plug-in deciding the layout of somebody else's window.
+const REPORT_HEIGHT: f32 = 220.0;
 
 impl SettingsApp {
     pub(super) fn view_plugins(&self) -> Element<'_, Message> {
@@ -152,6 +162,18 @@ impl SettingsApp {
                     control.command.clone(),
                 ))
                 .into(),
+
+            ControlKind::Report => self.plugin_report(plugin, index, control),
+
+            // Said plainly, in place of the control. The alternative —
+            // rendering nothing — leaves a plug-in looking like it
+            // forgot half its settings.
+            ControlKind::Unknown => Text::new(format!(
+                "“{}” needs a newer version of PolterType.",
+                control.label
+            ))
+            .size(12)
+            .into(),
         };
 
         let mut row = Column::new().spacing(3).push(widget);
@@ -159,5 +181,60 @@ impl SettingsApp {
             row = row.push(Text::new(control.help.as_str()).size(11));
         }
         row.into()
+    }
+
+    /// A report: the plug-in's own answer, shown as text.
+    ///
+    /// Fixed-width and inside the plug-in's card on purpose. This is
+    /// the one place a plug-in's *output* reaches the settings window,
+    /// so it has to be unmistakably a quotation rather than something
+    /// PolterType is saying: no styling of its own, no controls drawn
+    /// from it, and a heading above it naming what produced it.
+    fn plugin_report<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        control: &'a poltertype_core::plugins::PaneControl,
+    ) -> Element<'a, Message> {
+        let state = self.plugins[plugin].reports.get(&index);
+        let body: Element<'a, Message> = match state {
+            None | Some(ReportState::Loading) => Text::new("Asking the plug-in…").size(12).into(),
+            Some(ReportState::Ready(text)) if text.trim().is_empty() => {
+                Text::new("The plug-in had nothing to report.")
+                    .size(12)
+                    .into()
+            }
+            Some(ReportState::Ready(text)) => Scrollable::new(
+                Text::new(text.as_str())
+                    .size(12)
+                    .font(FONT_MONO)
+                    .width(Length::Fill),
+            )
+            .height(Length::Fixed(REPORT_HEIGHT))
+            .into(),
+            // Said plainly rather than left as an empty box: a plug-in
+            // that cannot answer is worth seeing, and "nothing here"
+            // would read as "nothing to say".
+            Some(ReportState::Failed(why)) => {
+                Text::new(format!("Could not ask the plug-in: {why}"))
+                    .size(12)
+                    .into()
+            }
+        };
+
+        Column::new()
+            .spacing(6)
+            .push(
+                Row::new()
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(Text::new(control.label.as_str()).size(13).font(FONT_BOLD))
+                    .push(
+                        Button::new(Text::new("Refresh").size(12))
+                            .on_press(Message::PluginReportRefresh(plugin, index)),
+                    ),
+            )
+            .push(Container::new(body).padding(10).width(Length::Fill))
+            .into()
     }
 }

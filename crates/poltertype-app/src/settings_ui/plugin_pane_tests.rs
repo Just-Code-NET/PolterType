@@ -184,3 +184,70 @@ fn the_config_lives_beside_polterypes_own_not_inside_it() {
     );
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn reports_are_asked_for_once_and_not_on_every_draw() {
+    // `view` runs on every frame and a report costs a process, so the
+    // pane has to be able to say which ones it has already asked.
+    let root = scratch("reports");
+    let mut pane = PluginPane::load(
+        extension(vec![
+            control(ControlKind::Toggle, "a.b"),
+            PaneControl {
+                kind: ControlKind::Report,
+                label: "What it learned".to_owned(),
+                command: "report".to_owned(),
+                ..PaneControl::default()
+            },
+        ]),
+        &root,
+    );
+    assert_eq!(
+        pane.unasked_reports(),
+        vec![1],
+        "the report, not the toggle"
+    );
+
+    pane.reports.insert(1, ReportState::Loading);
+    assert!(
+        pane.unasked_reports().is_empty(),
+        "asking twice would run the command twice"
+    );
+
+    pane.reports
+        .insert(1, ReportState::Ready("42 episodes".to_owned()));
+    assert!(pane.unasked_reports().is_empty());
+    assert_eq!(
+        pane.reports.get(&1),
+        Some(&ReportState::Ready("42 episodes".to_owned()))
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_pane_with_no_report_asks_for_nothing() {
+    let root = scratch("noreports");
+    let pane = PluginPane::load(extension(vec![control(ControlKind::Toggle, "a.b")]), &root);
+    assert!(pane.unasked_reports().is_empty());
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_failed_report_is_remembered_rather_than_retried_forever() {
+    // A plug-in that cannot answer must not be asked again on every
+    // frame; the user asks again with the refresh button.
+    let root = scratch("failedreport");
+    let mut pane = PluginPane::load(
+        extension(vec![PaneControl {
+            kind: ControlKind::Report,
+            label: "Report".to_owned(),
+            command: "report".to_owned(),
+            ..PaneControl::default()
+        }]),
+        &root,
+    );
+    pane.reports
+        .insert(0, ReportState::Failed("it exited 1".to_owned()));
+    assert!(pane.unasked_reports().is_empty());
+    std::fs::remove_dir_all(&root).unwrap();
+}
