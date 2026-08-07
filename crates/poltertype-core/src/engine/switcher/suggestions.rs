@@ -35,7 +35,7 @@ use poltertype_types::WordKey;
 use tracing::{debug, warn};
 
 use crate::engine::buffer::WordBuffer;
-use crate::engine::enums::SwitcherEvent;
+use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
 use crate::engine::heuristics::is_submission_scancode;
 use crate::engine::types::{
     AcceptModifiers, Correction, FrozenScreen, PendingSuggestion, PlannedReplacement,
@@ -77,12 +77,7 @@ impl SwitcherEngine {
         }
         // The whitelist means "never touch this word" — that includes
         // not nagging about it.
-        if snap
-            .exceptions
-            .word_whitelist
-            .iter()
-            .any(|w| w.to_lowercase() == stripped)
-        {
+        if snap.exceptions.is_whitelisted(&stripped) {
             return;
         }
         if provider.is_known(current_layout, current_text) {
@@ -315,6 +310,7 @@ impl SwitcherEngine {
             let _ = self.out_tx.send(SwitcherEvent::AddToDictionary {
                 layout: pending.layout.clone(),
                 word: entry.text,
+                origin: DictionaryAddOrigin::Tooltip,
             });
             return;
         }

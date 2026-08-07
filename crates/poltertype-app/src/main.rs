@@ -72,7 +72,9 @@ use anyhow::{Context, Result};
 use crossbeam_channel::{bounded, unbounded};
 use global_hotkey::GlobalHotKeyManager;
 use poltertype_core::audio::AudioPlayer;
-use poltertype_core::engine::{EngineCommand, EngineDeps, SwitcherEngine, SwitcherEvent};
+use poltertype_core::engine::{
+    DictionaryAddOrigin, EngineCommand, EngineDeps, SwitcherEngine, SwitcherEvent,
+};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::SettingsStore;
 use poltertype_detect::Detector;
@@ -882,9 +884,24 @@ fn main() -> Result<()> {
                     // the replacement text stays out of the logs.
                     info!("suggestion applied");
                 }
-                SwitcherEvent::AddToDictionary { layout, word } => {
-                    if let Err(e) = add_word_to_user_overlay(&layout, &word, &dict_reload_handle) {
-                        warn!(?e, "could not add the word to the user wordlist overlay");
+                SwitcherEvent::AddToDictionary {
+                    layout,
+                    word,
+                    origin,
+                } => {
+                    match add_word_to_user_overlay(&layout, &word, &dict_reload_handle) {
+                        // Only the implicit route announces itself —
+                        // see `spawn_dictionary_add_notification`.
+                        Ok(()) => {
+                            if origin == DictionaryAddOrigin::UndoneCorrection
+                                && settings_for_loop.snapshot().general.show_notifications
+                            {
+                                spawn_dictionary_add_notification(&layouts, &layout, &word);
+                            }
+                        }
+                        Err(e) => {
+                            warn!(?e, "could not add the word to the user wordlist overlay");
+                        }
                     }
                 }
                 other => handle_engine_event(

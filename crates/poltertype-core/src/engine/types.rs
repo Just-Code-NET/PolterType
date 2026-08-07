@@ -228,6 +228,15 @@ pub struct LastWord {
     /// pressing those would submit a line / move focus.
     pub boundary_scancode: u32,
     pub boundary_shift: bool,
+    /// The layout the engine's own auto-correction moved this word
+    /// to, once it has actually landed on screen. `None` while the
+    /// word still reads the way the user typed it.
+    ///
+    /// This is what lets the manual switch-last hotkey tell its two
+    /// situations apart: with `None` the word was left alone and the
+    /// hotkey applies the switch the engine declined, with `Some` the
+    /// engine already switched it and the hotkey undoes that.
+    pub corrected_to: Option<LayoutId>,
 }
 
 /// Result of one non-blocking sweep over the key channel during a

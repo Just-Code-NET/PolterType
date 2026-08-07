@@ -18,7 +18,7 @@ mod types;
 
 pub use buffer::{WordBoundary, WordBuffer};
 pub use decision::DecisionPolicy;
-pub use enums::{EngineCommand, SwitcherEvent};
+pub use enums::{DictionaryAddOrigin, EngineCommand, SwitcherEvent};
 pub use switcher::{EngineDeps, SwitcherEngine};
 pub use types::{AcceptModifiers, Chord, KeystreamHotkeys, SuggestionAction, SuggestionEntry};
 

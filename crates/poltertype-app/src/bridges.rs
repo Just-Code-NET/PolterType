@@ -117,6 +117,48 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
         .ok();
 }
 
+/// "Added <word> to your Ukrainian dictionary."
+///
+/// Fires only for the implicit route into the dictionary — undoing a
+/// correction — and only when the user has notifications on. The
+/// tooltip's own "Add to dictionary" row stays silent: pressing a
+/// button that says what it does needs no announcement, while a word
+/// that joined the dictionary as a side effect of a different gesture
+/// does. A dictionary quietly growing behind the user's back is how
+/// "why did it stop correcting this?" starts.
+///
+/// The word itself is in the body on purpose. It never reaches the
+/// log — `logsafe` sees to that — but this is the user's own text on
+/// the user's own screen, and "a word was added" without saying which
+/// one is not something anyone can act on.
+///
+/// Same worker-thread + swallow-failures contract as
+/// [`spawn_layout_change_notification`].
+pub(crate) fn spawn_dictionary_add_notification(
+    layouts: &Arc<LayoutDb>,
+    layout: &LayoutId,
+    word: &str,
+) {
+    let pretty = layouts
+        .get(layout)
+        .map(|m| m.name.clone())
+        .unwrap_or_else(|| layout.as_str().to_owned());
+    let body = format!("Added “{word}” to your {pretty} dictionary — it won't be corrected again.");
+    std::thread::Builder::new()
+        .name("poltertype-notify-dict".into())
+        .spawn(move || {
+            let mut n = notify_rust::Notification::new();
+            n.summary(APP_NAME)
+                .body(&body)
+                .appname(APP_NAME)
+                .timeout(notify_rust::Timeout::Milliseconds(4000));
+            if let Err(e) = n.show() {
+                warn!(?e, "could not show dictionary-add notification");
+            }
+        })
+        .ok();
+}
+
 /// Tell the user that a tray action they just clicked did not happen.
 ///
 /// Deliberately NOT gated by `[general].show_notifications`: that

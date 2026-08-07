@@ -4,6 +4,47 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed — teaching PolterType a word, three ways it didn't stick
+
+- **`word_whitelist` now actually blocks auto-correction.** The
+  setting is documented as "words that should never be auto-corrected"
+  and was read in exactly one place: the suggestion tooltip. So a word
+  listed there stopped being *flagged* and went on being *corrected* —
+  the one thing the setting exists to prevent. It is now the first of
+  the pre-decision filters, ahead of every heuristic, because it is
+  the only one of them that is a statement of intent rather than a
+  guess. Entries are matched on letters only and case-insensitively,
+  so `Just-Code.net` in the config answers for the buffer's
+  `justcodenet`.
+
+- **The correction path has a way into the dictionary at last.** "Add
+  to dictionary" lives on the suggestion tooltip, and the tooltip only
+  appears for words the engine *keeps* — so for the words it wrongly
+  *corrected*, the ones that actually cost you something, there was no
+  way to teach it anything. `Ctrl+Shift+Backspace` on a word
+  PolterType just corrected now undoes that correction and adds the
+  word to your dictionary. It used to re-apply the same correction:
+  same keys, same target layout, the word deleted and retyped
+  identically — the gesture you reach for when a correction is wrong
+  did visibly nothing. The word joining the dictionary is announced
+  with a notification (when you have those on), because unlike
+  clicking a button labelled "Add to dictionary", it is a side effect
+  of asking for something else.
+
+- **One word, not twelve.** A word added to the dictionary now also
+  answers for its other grammatical forms: teach it `деплой` and
+  `деплою`, `деплоїмо`, `деплоїти` stop being flagged too. In an
+  inflected language a single piece of jargon otherwise costs a dozen
+  trips through the tooltip — measured against one real user's
+  wordlist, 11 of 75 entries were forms of a word already in it. The
+  rule is deliberately narrow (a shared five-character opening, at
+  most four characters of ending on either side) and applies to the
+  suggestion tooltip only: detection still runs on exact membership,
+  because being lenient there would mean corrections silently not
+  happening.
+
 ## [0.14.1] — domains stay domains
 
 ### Fixed — typing a domain flipped the layout back and forth

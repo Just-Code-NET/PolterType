@@ -1051,3 +1051,78 @@ fn plausibility_no_keep_veto_for_stray_current() {
     ];
     assert_no_opinion(&d, &ctx(&en, &cands));
 }
+
+// ─── Inflections of a word the user already taught us ─────────────
+
+/// Adding `деплой` must answer for `деплою`, `деплоїмо`, `деплоїти`
+/// too. This is the whole reason the rule exists: an inflected
+/// language turns one piece of jargon into a dozen tooltip prompts,
+/// and a user who has answered once should not be asked again for
+/// every ending.
+#[test]
+fn overlay_entry_covers_its_own_inflections() {
+    let uk = LayoutId::from("uk-UA");
+    let overlay: HashSet<String> = ["деплой", "тулбар", "змержу"]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+    let s = suggester_for(&uk, &[], overlay, HashSet::new(), uk_geometry());
+
+    for form in [
+        "деплой",
+        "деплою",
+        "деплоїмо",
+        "деплоїти",
+        "тулбарі",
+        "змержимо",
+    ] {
+        assert!(
+            s.is_known(&uk, form),
+            "`{form}` is the same word the user already added"
+        );
+    }
+}
+
+/// …but only the same word. A shared opening is not a shared stem:
+/// four characters of `реалм` also open `реальний`, and a rule that
+/// swallowed those would silence the tooltip across half the
+/// language.
+#[test]
+fn overlay_entry_does_not_cover_merely_similar_words() {
+    let uk = LayoutId::from("uk-UA");
+    let overlay: HashSet<String> = ["реалм", "скрол"].iter().map(|s| (*s).to_owned()).collect();
+    let s = suggester_for(&uk, &[], overlay, HashSet::new(), uk_geometry());
+
+    for other in ["реальний", "реалізація", "скринька", "документ"]
+    {
+        assert!(
+            !s.is_known(&uk, other),
+            "`{other}` is a different word and must still be offered suggestions"
+        );
+    }
+}
+
+/// The rule lives on the suggestion path only. Detection keeps
+/// working off exact membership: being lenient there would stop
+/// corrections for words the user never taught us, which is a
+/// correction silently not happening — far worse than one extra
+/// tooltip.
+#[test]
+fn inflection_coverage_does_not_reach_the_detector() {
+    let uk = LayoutId::from("uk-UA");
+    let overlay: HashSet<String> = ["деплой"].iter().map(|s| (*s).to_owned()).collect();
+    let dict = LayoutDictionary::from_overlay_only(overlay, HashSet::new(), HashSet::new());
+    let mut dicts = HashMap::new();
+    dicts.insert(uk.clone(), dict);
+    let d = DictionaryDetector::new(dicts);
+
+    assert!(d.is_word(&uk, "деплой"), "the exact word is in the overlay");
+    assert!(
+        !d.is_word(&uk, "деплоїмо"),
+        "an inflection is not a dictionary member"
+    );
+    assert!(
+        d.overlay_covers_inflection(&uk, "деплоїмо"),
+        "…though the suggestion path can still see the family"
+    );
+}

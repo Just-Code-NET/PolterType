@@ -198,6 +198,22 @@ pub struct ExceptionSettings {
     pub word_whitelist: Vec<String>,
 }
 
+impl ExceptionSettings {
+    /// True iff `stripped` — a typed word already canonicalised with
+    /// [`poltertype_detect::letters_only_lower`] — is on the
+    /// never-touch list.
+    ///
+    /// Entries are canonicalised the same way on the fly, so a config
+    /// line can be written the way the word is actually spelled
+    /// (`NGINX`, `just-code.net`, `ім'я`) and still match the buffer's
+    /// letters-only rendering (`nginx`, `justcodenet`, `імя`).
+    pub fn is_whitelisted(&self, stripped: &str) -> bool {
+        self.word_whitelist
+            .iter()
+            .any(|w| poltertype_detect::letters_only_lower(w) == stripped)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct HotkeySettings {

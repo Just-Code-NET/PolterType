@@ -48,11 +48,28 @@ pub enum SwitcherEvent {
         original: String,
         replacement: String,
     },
+    /// A word should join the user's dictionary. The engine owns no
+    /// files — the app appends `word` to the user's wordlist overlay
+    /// for `layout` and hot-swaps the dictionaries, after which the
+    /// word stops being flagged (and stops being auto-corrected).
+    AddToDictionary {
+        layout: LayoutId,
+        word: String,
+        origin: DictionaryAddOrigin,
+    },
+}
+
+/// Why a word is being added to the user's dictionary. The app shows
+/// the user a notification for the implicit route and stays quiet for
+/// the explicit one — pressing a button labelled "Add to dictionary"
+/// is its own confirmation, undoing a correction is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DictionaryAddOrigin {
     /// The user picked "add to dictionary" on a suggestion offer.
-    /// The engine owns no files — the app appends `word` to the
-    /// user's wordlist overlay for `layout` and hot-swaps the
-    /// dictionaries, after which the word stops being flagged.
-    AddToDictionary { layout: LayoutId, word: String },
+    Tooltip,
+    /// The user took back a correction the engine had made, which
+    /// says the word was right as typed.
+    UndoneCorrection,
 }
 
 /// Commands sent into the engine from the app loop.

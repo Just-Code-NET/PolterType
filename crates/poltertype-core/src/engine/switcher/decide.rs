@@ -2,7 +2,7 @@
 //! lookup, the pre-decision filters, and the detector pipeline.
 
 use crossbeam_channel::Receiver;
-use poltertype_detect::{Verdict, looks_like_code_token};
+use poltertype_detect::{Verdict, letters_only_lower, looks_like_code_token};
 use poltertype_input::{KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
 use poltertype_types::{SwitchAction, logsafe};
@@ -133,6 +133,10 @@ impl SwitcherEngine {
             boundary_char,
             boundary_scancode,
             boundary_shift,
+            // Filled in by `apply_correction` if this word ends up
+            // being corrected — the stash is written before the
+            // decision is even made.
+            corrected_to: None,
         });
 
         // ---- Smart commands (text triggers) ----
@@ -194,6 +198,32 @@ impl SwitcherEngine {
         // we stay quiet by default in code / URL / path contexts,
         // but if the user explicitly hits the hotkey we always do
         // the switch.
+
+        // Filter 0: the user said "never touch this word".
+        //
+        // First of the filters because it is the only one that is a
+        // direct statement rather than a heuristic: everything below
+        // guesses at intent from shape and context, `word_whitelist`
+        // *is* the intent. It used to be read in exactly one place —
+        // the suggestion tooltip — so a setting documented as "words
+        // that should never be auto-corrected" silenced the tooltip
+        // and then let the correction happen anyway.
+        if snap
+            .exceptions
+            .is_whitelisted(&letters_only_lower(&current_text))
+        {
+            debug!(
+                token = %logsafe::redact_word(&current_text),
+                "skipping auto-switch: word on the whitelist"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "{} is on the word whitelist",
+                    logsafe::redact_word(&current_text)
+                ),
+            });
+            return;
+        }
 
         // Filter 0a: submission / navigation boundary (Enter, Tab).
         // Re-emitting one of these as part of the correction replay
