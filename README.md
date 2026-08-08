@@ -309,6 +309,16 @@ Portuguese (PT) · Portuguese (BR)**
 PolterType only loads the ones your OS actually has enabled, so
 bundling fifteen costs a two-keyboard user nothing at runtime.
 
+**On Windows the bundled table is only a starting point.** A Windows
+layout is named after a *language*, but a language is not a keyboard —
+Bulgarian alone ships in three genuinely different arrangements. Since
+v0.14.3 PolterType asks Windows what each of your installed keyboards
+actually produces and uses that answer, so variants and even custom
+layouts we have never heard of come out right. Linux and macOS read
+the bundled tables, and a TOML of your own in
+`<config-dir>/poltertype/layouts/` still outranks everything,
+everywhere.
+
 Two are worth a footnote rather than a surprise:
 
 - **Polish** gets no Polish↔English correction, and can't. The layout
