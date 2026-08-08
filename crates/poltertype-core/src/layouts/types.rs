@@ -117,17 +117,26 @@ impl LayoutMapping {
     /// in Wayland-native / terminal apps. Linear over the ~48-key
     /// table; callers do this a handful of times per accepted word.
     /// Unshifted match wins when a character appears in both columns.
+    ///
+    /// Ties break on the lowest scancode, which matters more than it
+    /// looks: a real keyboard puts the same character on two keys
+    /// often enough — en-US carries `\` on both `0x2B` and the extra
+    /// ISO key `0x56` — and iterating a `HashMap` would otherwise pick
+    /// a different one run to run. The low scancode is also the key
+    /// that exists on every board, ISO or ANSI.
     pub fn key_for_char(&self, ch: char) -> Option<(u32, bool)> {
-        let mut shifted_hit = None;
+        let mut plain_hit: Option<u32> = None;
+        let mut shifted_hit: Option<u32> = None;
         for (&sc, &(plain, shift)) in &self.keys {
             if plain == ch {
-                return Some((sc, false));
-            }
-            if shift == Some(ch) && shifted_hit.is_none() {
-                shifted_hit = Some((sc, true));
+                plain_hit = Some(plain_hit.map_or(sc, |best| best.min(sc)));
+            } else if shift == Some(ch) {
+                shifted_hit = Some(shifted_hit.map_or(sc, |best| best.min(sc)));
             }
         }
-        shifted_hit
+        plain_hit
+            .map(|sc| (sc, false))
+            .or(shifted_hit.map(|sc| (sc, true)))
     }
 
     /// Translate an entire word buffer into a string under this layout.
@@ -190,4 +199,11 @@ pub struct LoadOptions<'a> {
     pub user_layout_dir: Option<&'a Path>,
     /// `<config-dir>/poltertype/wordlists/` — user wordlist overlays.
     pub user_wordlist_dir: Option<&'a Path>,
+    /// What the OS says the user's keyboards actually produce —
+    /// typically `LayoutSwitcher::describe_keymaps()`. Each entry
+    /// replaces the key table of the layout it names, because a
+    /// [`LayoutId`] is a language and a language is not a keyboard.
+    /// `None` (or an empty slice) leaves the bundled tables alone.
+    /// See [`super::os_keymap`].
+    pub os_keymaps: Option<&'a [poltertype_types::OsKeymap]>,
 }

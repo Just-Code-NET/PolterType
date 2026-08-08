@@ -25,6 +25,15 @@
 //! loading ~7-15 MB of fr-FR / es-ES / de-DE FST data they'd never
 //! query.
 //!
+//! ## OS keymaps
+//!
+//! [`LoadOptions::os_keymaps`] carries what the platform backend says
+//! the user's keyboards actually produce. Where a language has more
+//! than one keyboard — Windows ships three Bulgarian ones under the
+//! single id `bg-BG` — a bundled table can only be right for one of
+//! them, so the OS's answer replaces it. See [`os_keymap`] for the
+//! precedence chain and what it deliberately does not fix.
+//!
 //! ## User extensions
 //!
 //! Two override paths layered on top of the bundled set:
@@ -40,6 +49,7 @@ mod db;
 mod enums;
 mod files;
 mod helpers;
+mod os_keymap;
 mod plugins;
 mod types;
 
