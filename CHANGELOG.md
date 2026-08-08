@@ -4,6 +4,47 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.14.3] — the keyboard you actually have
+
+### Fixed — a language is not a keyboard
+
+- **Windows keyboard mappings are now read from the OS instead of
+  assumed.** Windows identifies a layout by its *language*, so every
+  Bulgarian keyboard arrives as `bg-BG` — and Windows ships three that
+  are genuinely different. PolterType bundled one mapping per language
+  and handed it to whoever asked, which meant a user on Bulgarian
+  (Phonetic) got a table wrong on **45 of its 48 keys**. Nothing
+  errored and nothing appeared in the interface: corrections were
+  simply built from a keyboard they do not own, and the detector was
+  reasoning about a word they never typed.
+  PolterType now asks Windows what each installed keyboard actually
+  produces and uses that in place of the bundled table. This fixes
+  every variant at once — including the ones we never bundled, and
+  custom layouts we have never heard of — rather than the handful
+  somebody remembered to describe. Turkish Q vs F and Ukrainian
+  standard vs Enhanced carried the same risk and are covered by the
+  same change.
+
+- **Ukrainian `ґ` is on the right key on Windows.** The bundled
+  mapping puts it where xkb does; Windows puts it on the extra key
+  next to the left Shift and gives the old position to `\`. One TOML
+  cannot be right for both, so Windows users had one key wrong in a
+  layout that was otherwise exact. They now get the Windows answer
+  while Linux keeps the xkb one, with no change to the data. The
+  Ukrainian apostrophe and the hryvnia sign — absent from the bundled
+  table entirely — came along with it.
+
+- **Accepting a suggestion picks the same key every time.** Where a
+  layout carries one character on two keys, the reverse lookup
+  iterated a hash map and could pick either, run to run. It now takes
+  the lower scancode, which is also the key that exists on keyboards
+  that don't have the extra ISO one.
+
+Nothing changes for Linux or macOS: the bundled TOMLs are untouched
+and a backend that cannot describe its keyboards simply keeps using
+them. A layout TOML in `<config-dir>/poltertype/layouts/` still
+outranks everything, including the OS.
+
 ## [0.14.2] — it stops going quiet on you
 
 ### Fixed — teaching PolterType a word, three ways it didn't stick

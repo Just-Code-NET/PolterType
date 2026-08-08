@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use poltertype_types::{LayoutId, WordKey};
+use poltertype_types::{LayoutId, OsKeymap, WordKey};
 
 use super::consts::*;
 use super::helpers::*;
@@ -803,4 +803,176 @@ fn overlay_is_freshly_read_on_each_build() {
         !second_dict.contains(first_token),
         "old overlay must not leak into the fresh load"
     );
+}
+
+// ─── OS keymaps: a language is not a keyboard (issue #20) ─────────
+
+/// A keyboard the OS could plausibly describe: `n` keys from scancode
+/// `0x10` up, each producing a distinct character from `base` on, so a
+/// test can tell an adopted table from a bundled one at a glance.
+fn os_keymap(id: &str, variant: &str, n: u32, base: char) -> OsKeymap {
+    let keys = (0..n)
+        .map(|i| {
+            let ch = char::from_u32(base as u32 + i).expect("test alphabet stays in range");
+            (0x10 + i, ch, None)
+        })
+        .collect();
+    OsKeymap {
+        id: LayoutId::from(id),
+        variant: variant.to_owned(),
+        keys,
+    }
+}
+
+fn plain(scancode: u32) -> WordKey {
+    WordKey {
+        scancode,
+        shift: false,
+        timestamp_ms: 0,
+    }
+}
+
+/// The whole point of #20: when the OS describes the keyboard the user
+/// actually has, that description wins over the one we guessed.
+#[test]
+fn an_os_keymap_replaces_the_bundled_key_table() {
+    let want = [LayoutId::from("bg-BG")];
+    let maps = [os_keymap("bg-BG", "00040402", 40, 'а')];
+    let db = LayoutDb::load(LoadOptions {
+        active_filter: Some(&want),
+        os_keymaps: Some(&maps),
+        ..Default::default()
+    })
+    .expect("load with OS keymaps");
+
+    let bg = db.get(&LayoutId::from("bg-BG")).expect("bg-BG present");
+    assert_eq!(
+        bg.keys.len(),
+        40,
+        "the OS table describes the whole keyboard, so it replaces rather than merges"
+    );
+    assert_eq!(
+        bg.translate_key(plain(0x10)),
+        Some('а'),
+        "0x10 should come from the OS ('а'), not from bg_bg.toml (',')"
+    );
+
+    // Identity is per-*language* and has to survive: the name, the
+    // script and the dictionary all describe Bulgarian, not a
+    // particular Bulgarian keyboard.
+    assert_eq!(bg.name, "Български");
+    assert!(
+        bg.dictionary.is_some(),
+        "adopting a keymap must not cost the layout its dictionary"
+    );
+}
+
+/// A key table without a dictionary detects nothing, so a language we
+/// ship no mapping for is left alone rather than half-invented.
+#[test]
+fn an_os_keymap_for_a_language_we_do_not_ship_is_ignored() {
+    let maps = [os_keymap("kk-KZ", "0000043f", 40, 'а')];
+    let db = LayoutDb::load(LoadOptions {
+        os_keymaps: Some(&maps),
+        ..Default::default()
+    })
+    .expect("load with an unknown-language keymap");
+
+    assert!(db.get(&LayoutId::from("kk-KZ")).is_none());
+    assert_eq!(db.len(), BUNDLED_LAYOUT_STEMS.len());
+}
+
+/// The floor under a query that went wrong. A mapping that is right
+/// for the wrong variant still beats one missing half its alphabet.
+#[test]
+fn a_sparse_os_keymap_is_refused() {
+    let want = [LayoutId::from("bg-BG")];
+    let sparse = MIN_OS_KEYMAP_KEYS as u32 - 1;
+    let maps = [os_keymap("bg-BG", "00040402", sparse, 'а')];
+    let db = LayoutDb::load(LoadOptions {
+        active_filter: Some(&want),
+        os_keymaps: Some(&maps),
+        ..Default::default()
+    })
+    .expect("load with a sparse OS keymap");
+
+    let bg = db.get(&LayoutId::from("bg-BG")).expect("bg-BG present");
+    assert_eq!(
+        bg.translate_key(plain(0x10)),
+        Some(','),
+        "bg_bg.toml should still be in charge"
+    );
+}
+
+/// Two keyboards for one language collapse to one `LayoutId` and only
+/// one table can be held. The backend puts the keyboard currently in
+/// effect first; the loader keeps that one.
+#[test]
+fn only_the_first_keyboard_per_language_is_adopted() {
+    let want = [LayoutId::from("bg-BG")];
+    let maps = [
+        os_keymap("bg-BG", "00030402", 40, 'а'),
+        os_keymap("bg-BG", "00040402", 40, 'ѐ'),
+    ];
+    let db = LayoutDb::load(LoadOptions {
+        active_filter: Some(&want),
+        os_keymaps: Some(&maps),
+        ..Default::default()
+    })
+    .expect("load with two keyboards for one language");
+
+    let bg = db.get(&LayoutId::from("bg-BG")).expect("bg-BG present");
+    assert_eq!(bg.translate_key(plain(0x10)), Some('а'));
+}
+
+/// The escape hatch. If this mechanism ever reads a keyboard wrong,
+/// a user TOML is how someone takes back control — so it has to
+/// outrank the OS, not the other way round.
+#[test]
+fn a_user_toml_still_outranks_an_os_keymap() {
+    let layout_tmp = TmpDir::new("os-keymap-user-wins");
+    layout_tmp.write(
+        "en_us.toml",
+        &minimal_layout_toml("en-US", "USER-OVERRIDE-EN", "Latin"),
+    );
+
+    let want = [LayoutId::from("en-US")];
+    let maps = [os_keymap("en-US", "00000409", 40, 'а')];
+    let db = LayoutDb::load(LoadOptions {
+        active_filter: Some(&want),
+        user_layout_dir: Some(&layout_tmp.0),
+        os_keymaps: Some(&maps),
+        ..Default::default()
+    })
+    .expect("load with a user TOML and an OS keymap");
+
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US present");
+    assert_eq!(en.name, "USER-OVERRIDE-EN");
+    assert_eq!(
+        en.translate_key(plain(0x10)),
+        Some('x'),
+        "the user's own table must survive the OS overlay intact"
+    );
+}
+
+/// `key_for_char` iterates a `HashMap`, and an OS-derived table really
+/// does put one character on two keys — en-US carries `\` on both
+/// `0x2B` and the extra ISO key `0x56`. Without a tie-break the
+/// suggestion-accept path would pick a different key run to run.
+#[test]
+fn key_for_char_breaks_ties_on_the_lowest_scancode() {
+    let toml = r#"
+id     = "zz-ZZ"
+name   = "Ambiguous"
+script = "Latin"
+
+[keys]
+0x2B = { plain = "\\", shift = "|" }
+0x56 = { plain = "\\", shift = "|" }
+"#;
+    let mapping = LayoutMapping::from_toml_str(toml).expect("parse");
+    for _ in 0..32 {
+        assert_eq!(mapping.key_for_char('\\'), Some((0x2B, false)));
+        assert_eq!(mapping.key_for_char('|'), Some((0x2B, true)));
+    }
 }

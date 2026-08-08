@@ -10,6 +10,7 @@ use super::consts::BUNDLED_LAYOUT_STEMS;
 use super::enums::LayoutLoadError;
 use super::files::*;
 use super::helpers::{compute_letter_scancodes, peek_layout_id};
+use super::os_keymap::apply_os_keymaps;
 use super::plugins::load_plugin_packs;
 use super::types::{LayoutMapping, LoadOptions};
 
@@ -105,6 +106,16 @@ impl LayoutDb {
         // i.e. a user can still override a plug-in by dropping a TOML
         // with the same id under `<config-dir>/poltertype/layouts/`.
         load_plugin_packs(data_dir, opts.user_wordlist_dir, &mut by_id);
+
+        // ── What the OS says these keyboards really do ────────────
+        //
+        // Applied over everything we shipped and under the user's own
+        // TOMLs. A bundled mapping describes *a* keyboard for the
+        // language; this describes *the* keyboard on this machine.
+        // See `os_keymap` for why that distinction has teeth.
+        if let Some(keymaps) = opts.os_keymaps {
+            apply_os_keymaps(keymaps, &mut by_id);
+        }
 
         // ── User-side TOMLs (always loaded, never filtered) ───────
         if let Some(dir) = opts.user_layout_dir {

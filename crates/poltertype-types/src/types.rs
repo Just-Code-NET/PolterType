@@ -32,6 +32,31 @@ impl From<&str> for LayoutId {
     }
 }
 
+/// One keyboard **as the OS itself describes it**, produced by the
+/// platform layout backend and consumed by the layout DB.
+///
+/// [`LayoutId`] names a *language*, which is all the OS layout APIs
+/// agree on — but a language is not a keyboard. Bulgarian alone ships
+/// three genuinely different Windows keyboards under the single id
+/// `bg-BG`, and the bundled mapping can only describe one of them.
+/// Asking the OS what its keys actually produce is the only way to
+/// know which one is installed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OsKeymap {
+    /// The language id this keyboard reports as — the same namespace
+    /// `LayoutSwitcher::current()` and `list_active()` speak in.
+    pub id: LayoutId,
+    /// Opaque per-OS name for the *variant*: which of that language's
+    /// keyboards this is. A Windows KLID (`"00030402"`), free-form
+    /// elsewhere. Logged for diagnosis, never matched on.
+    pub variant: String,
+    /// `(scancode, unshifted, shifted)` for every key that produced a
+    /// printable character. This is the **complete** character table
+    /// for the keyboard: a scancode missing here produces nothing,
+    /// which is why the layout DB replaces rather than merges.
+    pub keys: Vec<(u32, char, Option<char>)>,
+}
+
 /// A raw keyboard event captured by the per-OS listener.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyEvent {

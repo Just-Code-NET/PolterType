@@ -228,6 +228,31 @@ fn main() -> Result<()> {
         }
     };
 
+    // `list_active` names languages, which is all the OS layout APIs
+    // agree on — but a language is not a keyboard. Bulgarian alone has
+    // three genuinely different ones under `bg-BG`, and a bundled
+    // mapping can only describe one. Ask the backend what the
+    // installed keyboards actually produce and let the DB correct
+    // itself; a backend that can't answer returns nothing and the
+    // bundled tables stand.
+    let os_keymaps = match layout_switcher.describe_keymaps() {
+        Ok(maps) => {
+            info!(
+                count = maps.len(),
+                described = ?maps.iter().map(|m| (&m.id, &m.variant)).collect::<Vec<_>>(),
+                "OS keyboard descriptions"
+            );
+            maps
+        }
+        Err(e) => {
+            warn!(
+                ?e,
+                "could not describe OS keyboards; using bundled mappings as-is"
+            );
+            Vec::new()
+        }
+    };
+
     let user_wordlist_dir = poltertype_core::layouts::user_wordlist_dir();
     let user_layout_dir = poltertype_core::layouts::user_layout_dir();
     let layouts = Arc::new(
@@ -236,6 +261,7 @@ fn main() -> Result<()> {
             active_filter: active_os_layouts.as_deref(),
             user_layout_dir: user_layout_dir.as_deref(),
             user_wordlist_dir: user_wordlist_dir.as_deref(),
+            os_keymaps: Some(&os_keymaps),
         })
         .context("load layout DB")?,
     );

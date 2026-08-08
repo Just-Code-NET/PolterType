@@ -85,6 +85,22 @@ loaded user layout layout=pl-PL keys=46 dict=false stem=pl_pl
 If `keys=` is too low, you missed entries. If the layout doesn't
 appear, look for a parse error in the log.
 
+**On Windows, expect the OS to disagree with you — and win.** A
+bundled or plug-in mapping there is replaced by whatever the installed
+keyboard actually produces, because a Windows layout names a language
+and a language is not a keyboard. You will see it happen:
+
+```
+adopted the OS keymap for this keyboard layout=pl-PL variant=00000415 keys=48 replaced=2
+```
+
+That is working as intended, and it means Windows is not the place to
+check a hand-written table — the value you typed into the TOML may
+never be used. A **user** TOML in your config dir still outranks the
+OS, so that is how you test one deliberately. To see exactly which
+keys the OS overruled, run with `RUST_LOG=poltertype_core=debug` and
+read the `keys the OS disagreed on` line.
+
 ---
 
 ## 2. Wordlists (so the dictionary detector recognises the language)

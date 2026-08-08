@@ -244,10 +244,22 @@ profile set never switches there.
 Order of precedence at load time (last writer wins on `id` collision):
 
 ```
-bundled  ←  plug-ins  ←  user-overlay
+bundled  ←  plug-ins  ←  OS keymaps  ←  user-overlay
 ```
 
 So a user can override a bundled mapping, a plug-in can override a
 bundled one, and a user can override a plug-in. The override is
 explicit — you put a TOML with the same `id` in your config dir and
 restart.
+
+**OS keymaps** are the odd one out: nothing on disk, and only on
+platforms whose layout backend can answer
+`LayoutSwitcher::describe_keymaps()` — today that is Windows alone.
+There a layout is identified by its *language*, so all three of
+Windows' different Bulgarian keyboards arrive as `bg-BG` and a
+bundled table can only be right for one of them. We therefore ask the
+OS what each installed keyboard really produces and replace the key
+table with the answer, keeping the layout's name, script, vowels and
+dictionary — those describe the language, not the keyboard. A user
+TOML still wins, which is the escape hatch if a keyboard is ever read
+wrong. See `docs/DECISIONS.md`, 2026-08-08.

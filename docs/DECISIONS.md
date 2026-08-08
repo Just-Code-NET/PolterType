@@ -6,6 +6,67 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-08 — Windows keymaps are read from the OS, not declared in a TOML
+
+Closing #20. A Windows layout is identified by its language, so all
+three of Windows' genuinely different Bulgarian keyboards arrive as
+`bg-BG`, and `bg_bg.toml` can only describe one of them. Measured
+through the shipping code path: the bundled table matches Phonetic
+Traditional exactly, differs from Typewriter on 7 keys, and from
+Phonetic on **45 of 48**. Nothing errored — the wrong answer was a
+perfectly well-formed mapping that belonged to somebody else's
+keyboard.
+
+**Decision:** ask the OS. `LayoutSwitcher::describe_keymaps()` is a
+new extension point, defaulting to an empty list; the Windows backend
+implements it with `MapVirtualKeyExW` + `ToUnicodeEx` over each active
+`HKL`, and `LayoutDb` lays the result over the bundled tables.
+
+*Alternative considered — and it is the one the issue itself
+proposed:* an optional `windows_klid` in each TOML, matched against
+the high word of the `HKL`. Rejected. It needs a hand-authored file
+per variant per language, it only ever fixes variants somebody
+remembered to describe, and it leaves custom and third-party layouts
+exactly as broken as before. Querying the OS fixes all of them at
+once and adds no data to maintain. The audit that produced the numbers
+above is also the argument that it is safe: asking Windows reproduces
+the hand-curated `bg_bg.toml` key for key, so the mechanism was
+validated against known-good data before it was trusted with anything.
+
+**Replace, not merge.** `describe_keymaps` promises a *complete*
+table for a fixed block of 48 scancodes, so a scancode asked about and
+missing from the answer is evidence that the key produces nothing —
+not evidence that we failed to ask. Merging would preserve exactly the
+stale rows the whole exercise exists to remove. A floor of 30 keys
+guards against a query that went wrong rather than a keyboard that is
+unusual.
+
+**Precedence: bundled ← plug-ins ← OS ← user.** The OS outranks
+anything we shipped because it is describing the machine rather than
+guessing at it. A user TOML still outranks the OS: it is an explicit
+statement of intent, and it is the escape hatch if this ever reads a
+keyboard wrong.
+
+**Two `ToUnicodeEx` traps, both already paid for once.** It answers
+`-1` for a dead key *and still writes the character*, so reading that
+as "produces nothing" loses every accented key — that mistake was 22
+of the 35 apparent differences in the original audit. And it mutates
+keyboard state, so a pending dead key would compose itself into
+whatever the user types next; we pass the "don't change state" flag
+and drain by hand anyway, because older builds ignore the flag.
+
+**What this does not fix.** Two keyboards for one language still
+collapse to one `LayoutId` and only one table can be held — we keep
+the one currently in effect, else the first the OS lists, which is the
+one Windows activates by default for that language. A user who keeps
+two keyboards for a language *and* types on the second one gets the
+first one's table. Fixing it properly means making `LayoutId` carry
+the variant, which reaches config, the UI, dictionary stems and
+`switch_to`; the user TOML override is the answer until somebody
+actually hits it.
+
+---
+
 ## 2026-08-08 — Undoing a correction teaches the dictionary; the tooltip covers a word's other forms
 
 Three separate holes in "teach PolterType this word", found while
