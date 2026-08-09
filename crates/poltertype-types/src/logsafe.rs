@@ -1,13 +1,11 @@
 //! Redaction of user-typed text in logs and decision reasons.
 //!
-//! The privacy contract (README § Quiet, `docs/PERMISSIONS.md`) is
-//! that PolterType never logs what the user types. Decision
-//! diagnostics naturally want to talk about the word they judged —
-//! every such site must route the word through [`redact_word`], which
-//! only ever reveals it in a **debug build** where the developer has
-//! **explicitly opted in** by setting `POLTERTYPE_UNSAFE_LOG_WORDS=1`.
-//! Release builds redact unconditionally, at compile time — no
-//! configuration can reveal typed text there.
+//! The privacy contract is that PolterType never logs what the user
+//! types, so every diagnostic that wants to name a word routes it
+//! through [`redact_word`]. That only ever reveals it in a **debug
+//! build** where the developer set `POLTERTYPE_UNSAFE_LOG_WORDS=1`;
+//! release builds redact at compile time, and no configuration can
+//! reveal typed text there.
 
 use std::sync::OnceLock;
 

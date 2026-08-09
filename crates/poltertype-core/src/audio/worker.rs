@@ -24,14 +24,10 @@ pub(crate) fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
             match rx.recv_timeout(STREAM_IDLE_REFRESH) {
                 Ok(cmd) => cmd,
                 Err(RecvTimeoutError::Timeout) => {
-                    // No plays for a whole refresh window — release
-                    // the stream. A long-lived open CoreAudio output
-                    // on an HDMI / DisplayPort device keeps
-                    // coreaudiod's power assertion alive, which on
-                    // macOS blocks display sleep and system sleep.
-                    // Dropping the stream hands the device back and
-                    // costs only a ~20-50 ms reopen on the next sound
-                    // (cushioned by LEAD_SILENCE_MS).
+                    // No plays for a whole refresh window — hand the
+                    // device back, so a long-lived output cannot keep
+                    // macOS awake. Costs one ~20-50 ms reopen, cushioned
+                    // by the lead silence.
                     debug!("audio: idle timeout — releasing output stream");
                     state.invalidate();
                     continue;

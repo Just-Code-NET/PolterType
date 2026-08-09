@@ -1,13 +1,12 @@
 //! Parsed semver data.
 
 /// Versioned identifier as we use them: `MAJOR.MINOR.PATCH` plus an
-/// optional pre-release suffix `-<word>.<counter>`. This is a
-/// **subset** of full SemVer — we don't accept multiple suffix
-/// components (`-alpha.1.beta`), arbitrary build metadata
-/// (`+build.42`), or non-numeric counters (`-rc-final`). That's
-/// fine: every poltertype release we've ever cut fits the subset,
-/// and rejecting weirder shapes catches typos that a permissive
-/// parser would silently accept.
+/// optional `-<word>.<counter>` suffix.
+///
+/// A deliberate **subset** of SemVer — no multiple suffix components,
+/// no build metadata, no non-numeric counters. Every release we have
+/// cut fits it, and rejecting weirder shapes catches typos a permissive
+/// parser would accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Version {
     pub(crate) major: u64,

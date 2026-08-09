@@ -17,15 +17,14 @@ pub fn current_version() -> &'static str {
 }
 
 /// Check GitHub for a newer release and, if there is one, leave a
-/// verified installer in the staging directory.
+/// verified installer in the staging directory. `None` when we are
+/// already current.
 ///
-/// Returns the staged update, or `None` when we are already current.
-/// Nothing is installed and no process is spawned — that is [`crate::apply`],
-/// and it only ever runs at a moment the user chose.
+/// Nothing is installed and no process is spawned — that is
+/// [`crate::apply`], which only runs at a moment the user chose.
 ///
 /// Safe to call repeatedly: an artifact already staged for the version
-/// the manifest names is reused rather than re-downloaded, so a laptop
-/// that wakes up hourly doesn't re-pull 30 MB each time.
+/// the manifest names is reused rather than re-downloaded.
 pub fn check_and_stage() -> Result<Option<PendingUpdate>, UpdateError> {
     let current = current_version();
     let manifest = manifest::fetch()?;

@@ -50,9 +50,8 @@ fn an_unknown_sender_yields_no_pid() {
 /// # …then focus an a11y-capable window (kate, a GTK app, a browser)
 /// ```
 ///
-/// Ignored by default because it needs a session, a window manager and
-/// something to move focus — none of which CI has. Verified by hand on
-/// 2026-08-01: reported `exe=chrome` 272 ms after the activation.
+/// Ignored by default: it needs a session, a window manager and
+/// something to move focus, none of which CI has.
 #[test]
 #[ignore = "needs a live desktop and a focus change"]
 fn names_the_application_that_takes_focus() {

@@ -1,13 +1,9 @@
-//! Per-OS keyboard layout switcher.
+//! Per-OS keyboard layout switcher: the [`LayoutSwitcher`] trait and
+//! the [`create_switcher`] factory that picks a backend at runtime.
 //!
-//! Public surface:
-//! * [`LayoutSwitcher`] — trait every per-OS implementation satisfies.
-//! * [`create_switcher`] — runtime factory that picks the right backend.
-//!
-//! Layout-mapping tables (which key maps to which character per layout)
-//! live in `data/layout-mappings/` and are loaded by `poltertype-detect` /
-//! `poltertype-core`, not by this crate. We deliberately keep this crate small
-//! and OS-focused.
+//! Layout-mapping tables live in `data/layout-mappings/` and are loaded
+//! by `poltertype-core`, not by this crate — which stays small and
+//! OS-focused.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 

@@ -1,13 +1,11 @@
 //! Per-OS quirks of the system tray.
 //!
-//! `tray-icon` covers the tray itself on all three platforms, so this
-//! crate is deliberately not a tray abstraction — the binary still
-//! builds its `TrayIcon` directly. What lives here is the platform
-//! *noise* around that: things one OS's tray stack does that the
-//! others don't, and that would otherwise put `#[cfg(target_os)]` in
-//! `poltertype-app`, which by project rule holds none.
-//!
-//! Today that is exactly one thing, on Linux — see [`quiet_gtk_tray_logs`].
+//! `tray-icon` covers the tray itself everywhere, so this is
+//! deliberately not a tray abstraction — the binary still builds its
+//! `TrayIcon` directly. What lives here is the platform *noise* around
+//! that, which would otherwise put `#[cfg(target_os)]` in
+//! `poltertype-app`. Today that is one thing, on Linux — see
+//! [`quiet_gtk_tray_logs`].
 
 #![deny(unsafe_op_in_unsafe_fn)]
 

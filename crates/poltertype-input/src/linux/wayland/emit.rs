@@ -90,12 +90,10 @@ pub(crate) fn ascii_hex_to_keycode(c: char) -> Option<KeyCode> {
 
 /// Linux evdev keycode → Win SC Set-1 scancode.
 ///
-/// For the alphanumeric / number / boundary rows we care about,
-/// Linux's evdev `KEY_*` codes coincide with SC Set-1 (e.g. evdev
-/// 1 = Esc = SC1 0x01, evdev 30 = A = SC1 0x1E). Extended keys
-/// (arrows, NumLock area) diverge — they're discarded by the
-/// engine's word-buffer classifier so we don't bother re-mapping
-/// them yet. Phase 6.x can add the table when X11 fallback lands.
+/// For the alphanumeric, number and boundary rows we care about the two
+/// coincide (evdev 1 = Esc = SC1 0x01, evdev 30 = A = SC1 0x1E).
+/// Extended keys diverge, but the word-buffer classifier discards them
+/// anyway.
 ///
 /// Reference: https://www.kernel.org/doc/Documentation/input/event-codes.txt
 pub(crate) fn evdev_to_sc1(evdev: u32) -> u32 {

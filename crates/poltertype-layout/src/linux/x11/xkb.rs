@@ -43,14 +43,13 @@ pub(crate) fn read_layouts(
     Ok(parse_rules_names(&prop.value))
 }
 
-/// Pull the layout list out of a raw `_XKB_RULES_NAMES` value.
+/// Pull the layout list out of a raw `_XKB_RULES_NAMES` value:
+/// NUL-separated Latin-1, of which only the `layout` field interests us
+/// (`us,ua` → `[en-US, uk-UA]`).
 ///
-/// The property is NUL-separated Latin-1: `rules\0model\0layout\0variant\0options`.
-/// Only the `layout` field interests us — `us,ua` → `[en-US, uk-UA]`.
-/// Layouts with no BCP-47 mapping in [`xkb_to_bcp47`] are passed
-/// through under their raw XKB code rather than dropped, so an exotic
-/// layout still shows up (and can still be switched to) even before
-/// anyone adds it to the table.
+/// Layouts with no BCP-47 mapping in [`xkb_to_bcp47`] pass through
+/// under their raw XKB code rather than being dropped, so an exotic
+/// layout still shows up and can still be switched to.
 pub(crate) fn parse_rules_names(raw: &[u8]) -> Vec<LayoutId> {
     let text = String::from_utf8_lossy(raw);
     let Some(layouts) = text.split('\0').nth(LAYOUT_FIELD) else {

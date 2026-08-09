@@ -29,14 +29,12 @@ pub(crate) const HOLD_HANDSHAKE: Duration = Duration::from_millis(40);
 /// release.
 pub(crate) const RECENT_USE_WINDOW: Duration = Duration::from_secs(30);
 
-/// How long `release()` waits for the device thread to confirm the
-/// grab is gone. Bounds the blur between "held, we must type it out"
-/// and "through on its own" to one poll of the read loop.
+/// How long `release()` waits for the device thread to confirm the grab
+/// is gone, bounding the blur between "held, we must type it out" and
+/// "through on its own" to one poll of the read loop.
 ///
-/// Generous on purpose: giving a device back is a 13-25 ms syscall
-/// each, and the cost of giving up early is not a slow release but a
-/// *wrong* one — a grab that outlives its correction makes the next
-/// one count held keystrokes as though they were on screen and delete
-/// text that was never there. The wait costs the user nothing; their
-/// text is already on screen by this point.
+/// Generous on purpose: giving a device back costs 13–25 ms each, and
+/// giving up early is not a slow release but a *wrong* one — a grab
+/// that outlives its correction makes the next one count held
+/// keystrokes as on-screen and delete text that was never there.
 pub(crate) const RELEASE_HANDSHAKE: Duration = Duration::from_millis(250);

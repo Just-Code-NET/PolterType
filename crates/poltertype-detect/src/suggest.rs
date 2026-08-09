@@ -176,12 +176,11 @@ fn weighted_osa(typed: &[char], cand: &[char], geo: Option<&KeyboardGeometry>) -
 /// Adapter: drive an [`fst`] set search with a
 /// [`levenshtein_automata`] DFA.
 ///
-/// Why not `fst`'s own `levenshtein` feature: its automaton mismatches
+/// Not `fst`'s own `levenshtein` feature: its automaton mismatches
 /// multibyte queries entirely — even `слово` within distance 1 of
-/// itself streams zero results — which rules it out for a Cyrillic-
-/// first product. The tantivy crate handles UTF-8 correctly and
-/// counts adjacent transpositions as single edits, which is also the
-/// better model of how humans actually mistype.
+/// itself streams zero results — which rules it out for a
+/// Cyrillic-first product. The tantivy crate also counts adjacent
+/// transpositions as one edit, a better model of how humans mistype.
 struct LevAutomaton(DFA);
 
 impl fst::Automaton for LevAutomaton {

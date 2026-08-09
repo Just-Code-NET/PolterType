@@ -37,10 +37,9 @@ impl From<&str> for LayoutId {
 ///
 /// [`LayoutId`] names a *language*, which is all the OS layout APIs
 /// agree on — but a language is not a keyboard. Bulgarian alone ships
-/// three genuinely different Windows keyboards under the single id
-/// `bg-BG`, and the bundled mapping can only describe one of them.
-/// Asking the OS what its keys actually produce is the only way to
-/// know which one is installed.
+/// three genuinely different Windows keyboards under `bg-BG`, and
+/// asking the OS what its keys produce is the only way to know which
+/// one is installed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OsKeymap {
     /// The language id this keyboard reports as — the same namespace

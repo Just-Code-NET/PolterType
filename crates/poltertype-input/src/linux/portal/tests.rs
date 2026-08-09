@@ -1,14 +1,10 @@
 //! What can honestly be tested without a RemoteDesktop portal.
 //!
 //! There is none on the machine this was written on, so nothing here
-//! exercises the protocol. What these do check is the part that would
-//! be wrong in a way no compositor could forgive: that probing is
-//! safe on a session with no portal, that the keycodes are the evdev
-//! numbers the spec asks for rather than X11's, and that the option
-//! values match the constants in the specification.
-//!
-//! The protocol itself stays unverified until someone runs this on
-//! GNOME or KDE. Said plainly in the module docs and in `CLAUDE.md`.
+//! exercises the protocol. What is checked is the part no compositor
+//! could forgive: that probing is safe with no portal present, that
+//! the keycodes are evdev numbers rather than X11's, and that the
+//! option values match the specification's constants.
 
 use super::consts::*;
 use super::*;

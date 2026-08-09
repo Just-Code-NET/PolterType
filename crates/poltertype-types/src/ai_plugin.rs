@@ -1,12 +1,11 @@
 //! Declaration of one AI plug-in, as it appears in `config.toml`.
 //!
-//! Lives here rather than in `poltertype-ai` because two crates that
-//! cannot see each other both need it: `poltertype-core` parses it as
-//! part of the settings file, and `poltertype-ai` turns it into a
-//! detector. `poltertype-types` is the only place both already depend
-//! on — and keeping the schema out of the optional crate means a build
+//! Here rather than in `poltertype-ai` because two crates that cannot
+//! see each other both need it: `poltertype-core` parses it as part of
+//! the settings file, and `poltertype-ai` turns it into a detector.
+//! Keeping the schema out of the optional crate also means a build
 //! *without* the `ai` feature still parses an `[[ai.plugins]]` entry
-//! instead of rejecting the user's config file.
+//! instead of rejecting the user's config.
 
 use serde::{Deserialize, Serialize};
 

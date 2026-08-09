@@ -38,15 +38,12 @@ pub(crate) fn classify(
         // "ended" with numpad-Enter silently continued into the next
         // one, corrupting the next correction.
         0x60 => return KeyKind::Boundary,
-        // Linux evdev navigation cluster: KEY_HOME=102, KEY_UP=103,
-        // KEY_PAGEUP=104, KEY_LEFT=105, KEY_RIGHT=106, KEY_END=107,
-        // KEY_DOWN=108, KEY_PAGEDOWN=109, KEY_INSERT=110,
-        // KEY_DELETE=111. These previously fell through to Discard —
-        // the caret moved but the buffer kept accumulating, and the
-        // next correction rewrote a word that was no longer in one
-        // piece on screen. (On Windows these SC-1 codes sit in the
-        // exotic F16+ range, which never occurs in normal typing, so
-        // classifying them as nav is safe cross-platform.)
+        // Linux evdev navigation cluster, KEY_HOME=102 … KEY_DELETE=111.
+        // These used to fall through to Discard: the caret moved but the
+        // buffer kept accumulating, and the next correction rewrote a
+        // word that was no longer in one piece on screen. On Windows the
+        // same SC-1 codes sit in the exotic F16+ range, which never
+        // occurs in normal typing, so this is safe cross-platform.
         0x66..=0x6F => return KeyKind::EndAndDiscard,
         // Pointer button (mouse click / touchpad tap) — the listener
         // reports it with this pseudo-scancode. Caret / focus moved.

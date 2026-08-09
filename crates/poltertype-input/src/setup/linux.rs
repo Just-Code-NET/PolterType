@@ -71,14 +71,11 @@ fn wayland_report() -> SetupReport {
 fn step(title: &str, detail: &str, works: Option<bool>, group: GroupState) -> SetupStep {
     let (state, action) = match (works, group) {
         (Some(true), _) => (StepState::Done, None),
-        // The trap this whole state exists for: `usermod -aG input`
-        // updated the group database and cannot touch the credentials
-        // of an already-running session. Everything looks configured,
-        // nothing works, and re-running the script changes nothing —
-        // so telling the user to re-run it would waste their evening.
-        // No button: the fix is "log out", which we cannot do for
-        // them and a link cannot explain better than the one sentence
-        // the pane prints once for every step in this state.
+        // The trap this state exists for: `usermod -aG input` updates
+        // the group database and cannot touch the credentials of an
+        // already-running session. Everything looks configured, nothing
+        // works, and re-running the script changes nothing. No button —
+        // the fix is "log out", which we cannot do for them.
         (Some(false), GroupState::InDatabaseOnly) => (StepState::NeedsRelogin, None),
         (Some(false), _) => (
             StepState::Todo,

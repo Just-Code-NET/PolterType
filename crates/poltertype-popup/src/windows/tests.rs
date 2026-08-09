@@ -29,15 +29,14 @@ fn model() -> PopupModel {
     }
 }
 
-/// The whole Win32 path, end to end, without eyes on it: create the
-/// layered window, render a real model, and hand the surface to
+/// The whole Win32 path end to end without eyes on it: create the
+/// layered window, render a real model, hand the surface to
 /// `UpdateLayeredWindow`.
 ///
-/// This is the test that would have caught a wrong `BITMAPINFOHEADER`,
-/// a DC leaked on an error path, or a premultiplied-alpha mismatch —
-/// each of which fails the call rather than merely looking wrong. What
-/// it deliberately does not claim is that the result is *legible*: only
-/// a person can say that, and `docs/` says who has looked.
+/// This is what would catch a wrong `BITMAPINFOHEADER`, a DC leaked on
+/// an error path, or a premultiplied-alpha mismatch — each of which
+/// fails the call rather than merely looking wrong. It does not claim
+/// the result is *legible*: only a person can say that.
 #[test]
 fn the_layered_window_accepts_a_rendered_tooltip() {
     let Some(win) = PopupWindow::create() else {

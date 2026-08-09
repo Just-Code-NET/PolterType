@@ -56,18 +56,14 @@ pub fn derive_vowels(id: &LayoutId, script: Script) -> Vec<char> {
     }
 }
 
-/// Cheap pre-parse: extract the `id = "..."` line from a layout TOML
-/// without paying for the full `toml::from_str`. Returns `None` if
-/// the file is malformed in a way that obviously won't parse later
-/// either — caller can skip noisily.
+/// Cheap pre-parse: pull the `id = "..."` line out of a layout TOML
+/// without paying for a full `toml::from_str`. `None` when the file is
+/// malformed in a way that would not parse later either.
 ///
-/// We accept either single- or double-quoted strings, optional
-/// surrounding whitespace, and skip `#` comments. This is pure
-/// regex-with-discipline territory; the trade-off is that a
-/// pathological TOML with `id` inside a multi-line string would
-/// confuse us, but every real layout TOML has the id on a top-level
-/// line and we'd rather pay 50µs of grep-ish parsing than full TOML
-/// parse + clone for layouts we're going to skip anyway.
+/// Accepts either quote style, tolerates whitespace and skips `#`
+/// comments. An `id` inside a multi-line string would confuse it, but
+/// every real layout TOML has it on a top-level line, and this runs on
+/// layouts we are about to skip anyway.
 pub fn peek_layout_id(toml: &str) -> Option<String> {
     for line in toml.lines() {
         let line = line.trim();

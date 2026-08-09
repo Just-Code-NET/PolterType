@@ -1,13 +1,12 @@
-//! Persistent settings stored as TOML in the platform's standard
-//! per-user config dir.
+//! Persistent settings, stored as TOML in the platform's per-user
+//! config directory:
 //!
-//! Path:
-//!   * Windows : `%APPDATA%\poltertype\config.toml`
-//!   * macOS   : `~/Library/Application Support/poltertype/config.toml`
-//!   * Linux   : `$XDG_CONFIG_HOME/poltertype/config.toml`
+//! * Windows — `%APPDATA%\poltertype\config.toml`
+//! * macOS — `~/Library/Application Support/poltertype/config.toml`
+//! * Linux — `$XDG_CONFIG_HOME/poltertype/config.toml`
 //!
-//! Schema is versioned (`schema_version`) so future migrations can
-//! tell old configs apart without breaking the user's file.
+//! The schema is versioned so migrations can tell old configs apart
+//! without breaking the user's file.
 
 mod consts;
 mod enums;

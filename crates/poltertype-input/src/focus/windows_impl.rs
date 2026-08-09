@@ -2,10 +2,9 @@
 //!
 //! `GetForegroundWindow` → `GetWindowThreadProcessId` →
 //! `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` →
-//! `QueryFullProcessImageNameW` → take the basename. Standard
-//! sequence — needs no special permission and works for
-//! cross-elevation foreground apps (LIMITED_INFORMATION is the
-//! reduced-privilege variant designed exactly for this).
+//! `QueryFullProcessImageNameW` → basename. Needs no special
+//! permission and works across elevation levels, which is what
+//! `LIMITED_INFORMATION` exists for.
 
 use std::path::Path;
 

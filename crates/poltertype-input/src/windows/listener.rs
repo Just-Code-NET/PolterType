@@ -226,16 +226,14 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 }
             }
 
-            // The swallow decision, last: the engine has already been
-            // told about the keystroke, so a held key is still replayed
-            // behind the correction. Returning non-zero here is what
-            // keeps it from reaching the focused application.
+            // Last, so the engine has already been told about the
+            // keystroke and a held key is still replayed behind the
+            // correction; returning non-zero is what keeps it from the
+            // focused application.
             //
-            // Two atomic loads and a comparison — nothing that could
-            // approach the low-level-hook timeout. Deliberately no
-            // logging on this path: it runs per keystroke, and the one
-            // thing worse than a slow hook is a slow hook that writes
-            // to disk.
+            // Two atomic loads and a comparison, and deliberately no
+            // logging: this runs per keystroke, and the one thing worse
+            // than a slow hook is a slow hook that writes to disk.
             let swallow = GATE
                 .get()
                 .and_then(|slot| slot.read().as_ref().map(|g| g.swallow(ours)))

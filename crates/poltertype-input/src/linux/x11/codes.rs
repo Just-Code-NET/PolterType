@@ -31,13 +31,11 @@ pub(crate) fn keycode_is_down(keys: &[u8; 32], keycode: u8) -> bool {
 
 /// Is this XInput2 button number a caret-moving click?
 ///
-/// Buttons 1/2/3 are left/middle/right and 8/9 are back/forward — all
-/// of them can move the text cursor, which the engine must know about
-/// or its word buffer silently diverges from what's on screen. Buttons
-/// 4–7 are the scroll wheel's four directions: scrolling doesn't move
-/// the caret, so reporting them would abandon the word buffer for no
-/// reason. (The evdev backend gets this for free — the kernel reports
-/// scroll as `REL_WHEEL`, not a button.)
+/// Buttons 1/2/3 and 8/9 can all move the text cursor, which the engine
+/// must know about or its buffer silently diverges from the screen.
+/// Buttons 4–7 are the scroll wheel: scrolling moves no caret, so
+/// reporting them would abandon the buffer for nothing. The evdev
+/// backend gets this free — the kernel reports scroll as `REL_WHEEL`.
 pub(crate) fn is_caret_jump_button(button: u32) -> bool {
     matches!(button, 1..=3 | 8 | 9)
 }

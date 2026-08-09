@@ -2,10 +2,9 @@
 //! tracker.
 //!
 //! The socket helpers are a trimmed copy of `poltertype-layout`'s
-//! Hyprland transport (`poltertype-layout/src/linux/hyprland/ipc.rs`) —
-//! those are `pub(crate)` to that crate, and a shared "Linux IPC" crate
-//! for ~40 lines isn't worth the dependency edge yet. Keep the two in
-//! sync if the socket protocol ever changes.
+//! Hyprland transport — those are `pub(crate)` to that crate, and a
+//! shared IPC crate for ~40 lines is not worth the dependency edge.
+//! Keep the two in sync if the protocol changes.
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;

@@ -1,11 +1,10 @@
 //! Point-in-shape tests, all in design units.
 //!
-//! Every shape is a plain predicate rather than a path: rounded
-//! rectangles for the keycap, a superellipse and an outline for the
-//! ghost, discs for the eyes, a stroked polyline for the smile —
-//! and "is this point inside?" is all the sampler in `render` ever
-//! asks of them. That keeps the whole icon a few lines of arithmetic:
-//! no path flattener, no rasteriser crate.
+//! Every shape is a plain predicate rather than a path — rounded
+//! rectangles, a superellipse, discs, a stroked polyline — because "is
+//! this point inside?" is all the sampler in `render` ever asks. That
+//! keeps the whole icon a few lines of arithmetic: no path flattener,
+//! no rasteriser crate.
 
 use super::*;
 

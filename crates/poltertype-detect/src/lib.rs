@@ -1,12 +1,12 @@
 //! Language detection pipeline.
 //!
-//! Pluggable: the engine holds `Vec<Box<dyn Detector>>` and runs them
-//! in priority order. The first verdict whose confidence clears the
-//! engine's threshold wins.
+//! Pluggable: the engine holds `Vec<Box<dyn Detector>>` and runs them in
+//! priority order, stopping at the first verdict that is not
+//! `NoOpinion` and clears the engine's confidence threshold.
 //!
-//! v0.1 ships [`WordPlausibilityDetector`]. Real n-gram / dictionary /
-//! ML detectors arrive with the AI subsystem (Phase 7) without any
-//! trait change.
+//! Two detectors ship here — [`DictionaryDetector`] first, then
+//! [`WordPlausibilityDetector`] as the fallback. `poltertype-ai` adds a
+//! third behind a feature flag, through the same trait.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]

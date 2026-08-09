@@ -10,14 +10,12 @@ use crate::traits::SuggestionPopup;
 /// Create the tooltip backend for this platform. `events` receives
 /// clicks and timeouts; the caller routes them to the engine.
 ///
-/// Selection on Linux mirrors the input-listener probe order, and it
-/// is a *probe*, not a lookup of desktop names — which matters,
+/// Linux selection mirrors the input-listener probe order, and it is a
+/// *probe* rather than a lookup of desktop names — which matters,
 /// because the names in the docs were wrong for two releases while the
-/// probe was right. Wayland session → layer-shell (wlroots
-/// compositors and KWin; Mutter has none, detected at connect time).
-/// Then `DISPLAY` → override-redirect window, which on a GNOME Wayland
-/// session means XWayland and still produces a visible tooltip.
-/// Nothing left → noop.
+/// probe was right. Wayland → layer-shell, then `DISPLAY` →
+/// override-redirect (XWayland still produces a visible tooltip on
+/// GNOME), then noop.
 pub fn create_popup(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
     let popup = create_for_platform(events);
     info!(backend = popup.backend_name(), "suggestion popup backend");

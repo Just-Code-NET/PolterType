@@ -46,14 +46,10 @@ fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
     if sources.is_empty() {
         return None;
     }
-    // Populated is still not the same as read. Cinnamon populates
-    // this schema and drives the layout from somewhere else entirely,
-    // so `gsettings set … current` there lands in dconf and stops:
-    // no layout change, no indicator change, and the read-back of our
-    // own write convinces the engine the switch happened (#26).
-    // Cinnamon is probed before this backend and has already had its
-    // chance by the time we get here; this is the guard for the paths
-    // that reach us anyway.
+    // Populated is still not the same as read: Cinnamon populates this
+    // schema and drives the layout elsewhere (#26). It is probed before
+    // this backend and has already had its chance by now — this is the
+    // guard for the paths that reach us anyway.
     if matches!(unread, UnreadSchema::StandDown) && crate::linux::cinnamon::session_is_cinnamon() {
         debug!(
             "input-sources schema is populated but Cinnamon does not read it; \

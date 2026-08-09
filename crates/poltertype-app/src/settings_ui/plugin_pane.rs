@@ -85,14 +85,12 @@ impl PluginPane {
             .collect()
     }
 
-    /// The rows of a list control: `id`, its label, and a line of
-    /// detail under it.
+    /// The rows of a list control: `id`, its label, and a line of detail.
     ///
-    /// Tab-separated, and tolerant in the same way the state protocol
-    /// is: a line with no tab is an id that is its own label, anything
-    /// past the third field is ignored, and a blank line is skipped.
-    /// A plug-in should be able to print something a human can read
-    /// without it becoming a parsing contract.
+    /// Tab-separated and tolerant in the same way the state protocol is
+    /// — a line with no tab is an id that is its own label, extra fields
+    /// are ignored, blank lines skipped. A plug-in should be able to
+    /// print something readable without it becoming a parsing contract.
     pub fn list_rows(&self, index: usize) -> Vec<ListRow> {
         let Some(CommandOutput::Ready(text)) = self.outputs.get(&index) else {
             return Vec::new();
