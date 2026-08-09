@@ -6,19 +6,14 @@ use poltertype_types::LayoutId;
 use crate::enums::{RewriteVerdict, Verdict};
 use crate::types::{DetectionContext, RewriteRequest, Suggestion};
 
-/// A detector judges which keyboard layout the user *intended*.
+/// A detector judges which keyboard layout the user *intended*: it
+/// defers with `NoOpinion`, vetoes a switch with `Keep`, or requests
+/// one with `Switch` (see [`Verdict`]).
 ///
-/// Three possible outcomes (see [`Verdict`]):
-///
-/// * `NoOpinion` — defer to the next detector in the pipeline.
-/// * `Keep` — actively veto a switch (used by the dictionary when
-///   the current text is already a valid word).
-/// * `Switch` — request a layout change.
-///
-/// The engine runs detectors in priority order and stops at the
-/// first non-`NoOpinion`. This is the load-bearing change that lets
-/// the dictionary detector say "this is fine, don't ask anyone else"
-/// — vital for avoiding false positives on real prose words.
+/// The engine runs detectors in priority order and stops at the first
+/// non-`NoOpinion`, which is what lets the dictionary detector say
+/// "this is fine, don't ask anyone else" and keeps real prose words
+/// from being switched.
 pub trait Detector: Send + Sync {
     fn name(&self) -> &'static str;
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict;
@@ -39,17 +34,16 @@ pub trait WordRewriter: Send + Sync {
     fn rewrite(&self, req: &RewriteRequest<'_>) -> RewriteVerdict;
 }
 
-/// A suggestion provider proposes replacements for a token that is
-/// *not* a wrong-layout word (those get auto-corrected) but also not
-/// a dictionary word — i.e. a plain typo. The engine shows the
-/// results in the suggestion tooltip and types the chosen one back.
+/// Proposes replacements for a token that is neither a wrong-layout
+/// word nor a dictionary word — a plain typo. The engine shows the
+/// results in the tooltip and types the chosen one back.
 ///
-/// Same seam philosophy as [`Detector`]: the built-in implementation
-/// ([`crate::Suggester`]) is dictionary-driven; the AI subsystem can
-/// plug a smarter provider here without any engine change.
+/// Same seam as [`Detector`]: the built-in [`crate::Suggester`] is
+/// dictionary-driven, and the AI subsystem can plug a smarter provider
+/// in with no engine change.
 ///
-/// `typed_rendering` is the token as rendered under `layout` (original
-/// capitalisation preserved). Implementations must never log it.
+/// `typed_rendering` is the token as rendered under `layout`, original
+/// capitalisation preserved. Implementations must never log it.
 pub trait SuggestionProvider: Send + Sync {
     /// Is the token a known word of `layout`'s language? The engine
     /// gates the offer on this — a valid word never gets a tooltip.

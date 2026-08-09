@@ -1,37 +1,24 @@
 //! macOS: a per-user LaunchAgent, registered with `launchctl`.
 //!
-//! ## Why this never calls `bootout`
+//! **This never calls `bootout`.** `launchctl bootout gui/<uid>/<label>`
+//! does not merely forget a job spec — it terminates the job's running
+//! processes, and when launchd started us at login *we are that job*.
+//! The first draft did it on both paths, and both were reachable from a
+//! single click: enable/startup booted us out and bootstrapped, so
+//! launchd killed us and the replacement hit our own still-held
+//! instance lock and exited, leaving nothing running; and disable
+//! terminated the app on the spot when the user unticked the box.
 //!
-//! `launchctl bootout gui/<uid>/<label>` does not just forget a job
-//! spec — it terminates the job's running processes. When launchd
-//! started us at login, *we are that job*, so booting the label out
-//! sends us `SIGTERM`. The first draft of this code did exactly that
-//! on both paths, and both were reachable from a single click:
+//! Neither shows up when the app is launched from Finder, because then
+//! it is not a launchd job and bootout has no process to kill — which
+//! is why hardware testing missed it.
 //!
-//! * **enable / every startup** — bootout, then bootstrap. launchd
-//!   kills us and starts a replacement; the replacement calls
-//!   `SingleInstance` while the dying process still holds the lock
-//!   file, decides another instance is running, and exits. Net result
-//!   after login: nothing running at all.
-//! * **disable** — bootout, then delete the plist. Unticking "Start
-//!   automatically when I sign in" would terminate the app on the
-//!   spot.
-//!
-//! Neither shows up when the app is launched from Finder, because
-//! then the process is not a launchd job and bootout has no process
-//! to kill. That is why hardware testing missed it.
-//!
-//! So: we write and delete the plist, and we `bootstrap` only when
-//! launchd does not already know the label. Nothing here can stop a
-//! running app.
-//!
-//! The cost is one deliberate gap: if the plist *contents* drift
-//! while the label is already loaded — an update moved the
-//! executable — launchd keeps the old spec until the next login,
-//! because reloading it would mean booting it out. The file on disk
-//! is corrected immediately, so the next login is right. Trading a
-//! stale path for one session against killing the user's running app
-//! is not a close call.
+//! So this writes and deletes the plist, and `bootstrap`s only when
+//! launchd does not already know the label. The cost is one deliberate
+//! gap: if the plist *contents* drift while the label is loaded — an
+//! update moved the executable — launchd keeps the old spec until the
+//! next login. The file on disk is corrected immediately, so the next
+//! login is right.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

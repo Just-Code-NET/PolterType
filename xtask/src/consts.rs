@@ -11,22 +11,16 @@ pub(crate) const UK_README_URL: &str =
 
 /// The Hunspell-derived bundled languages, one [`HunspellSource`] each.
 ///
-/// We download the `.dic` (word stems with flags) AND the matching
-/// `.aff` (affix rules), then run them through `hunspell::Aff::expand`
-/// to get full inflected surface forms. Without this, ~70 % of common
-/// verb / declension forms are missing — see DECISIONS.md
-/// (2026-05-07) and `xtask/src/hunspell/` for the full story.
+/// Both the `.dic` (stems with flags) and the `.aff` (affix rules) are
+/// downloaded and run through `hunspell::Aff::expand`; without the
+/// expansion ~70 % of common verb and declension forms are missing —
+/// see DECISIONS.md (2026-05-07).
 ///
-/// The source stem is the upstream file name (`de_DE_frami`, `fr`);
-/// the output keeps our snake_case layout-stem convention so it lines
-/// up with `data/layout-mappings/<stem>.toml`. Keep this list in
-/// lock-step with `poltertype-core/build.rs::LAYOUTS` — a language
-/// with a layout but no entry here simply gets an empty FST and
-/// plausibility-only detection, which is legal but rarely intended.
-///
-/// URLs are spelled out in full rather than assembled from a base:
-/// `concat!` only takes literals, and a const-fn helper would obscure
-/// what is really just a list of file paths.
+/// The source stem is the upstream file name; the output keeps our
+/// snake_case layout-stem convention. Keep in lock-step with
+/// `poltertype-core/build.rs::LAYOUTS` — a language with a layout but
+/// no entry here gets an empty FST and plausibility-only detection,
+/// which is legal but rarely intended.
 pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
     HunspellSource {
         base: "uk_UA",

@@ -8,19 +8,16 @@ use tracing::{debug, warn};
 
 pub struct IBusSwitcher;
 
-/// Is an IBus daemon up and answering?
+/// Is an IBus daemon up and answering? `ibus engine` returns 1 with no
+/// message when it is not running, and the spawn fails outright when
+/// `ibus` is not installed.
 ///
-/// `ibus engine` returns 1 with no message when the daemon is not
-/// running (and the spawn fails outright when `ibus` is not
-/// installed); success → we have a usable IBus.
-///
-/// Note what this deliberately is *not* used for: deciding that IBus
-/// owns the layout somewhere else. A great many desktops run an IBus
-/// daemon for CJK input while switching layouts by another route
-/// entirely — Cinnamon activates an `xkb:…` engine on every switch
-/// purely so XIM clients keep working, and those engines echo symbols
-/// rather than change any layout. "A daemon is up" answers only
-/// whether *this* backend can work if it is chosen.
+/// Deliberately **not** used to decide that IBus owns the layout. Many
+/// desktops run an IBus daemon for CJK input while switching layouts by
+/// another route entirely — Cinnamon activates an `xkb:…` engine on
+/// every switch purely so XIM clients keep working, and those engines
+/// echo symbols rather than change a layout. This answers only whether
+/// *this* backend can work if it is chosen.
 pub fn daemon_is_running() -> bool {
     Command::new("ibus")
         .arg("engine")

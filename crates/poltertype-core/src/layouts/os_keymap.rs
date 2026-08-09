@@ -1,29 +1,27 @@
 //! Correcting bundled mappings against the keyboards the OS reports.
 //!
-//! A [`LayoutId`] names a *language*, because that is all the OS
-//! layout APIs agree on — but a language is not a keyboard. Windows
-//! ships three genuinely different Bulgarian keyboards under the one
-//! id `bg-BG`, and `bg_bg.toml` can only describe one of them: for a
-//! user on Bulgarian (Phonetic) it is wrong at 79 of 94 key
-//! positions. Nothing errors. The corrections are simply built from a
-//! keyboard they do not have.
+//! A [`LayoutId`] names a *language*, because that is all the OS layout
+//! APIs agree on — but a language is not a keyboard. Windows ships
+//! three genuinely different Bulgarian keyboards under the one id
+//! `bg-BG`, and `bg_bg.toml` can only describe one: for a user on
+//! Bulgarian (Phonetic) it is wrong at 79 of 94 key positions, and
+//! nothing errors — the corrections are simply built from a keyboard
+//! they do not have.
 //!
 //! So we ask. `LayoutSwitcher::describe_keymaps` reports what the
-//! installed keyboards actually produce, and this module lays that
-//! over the bundled tables. The mapping keeps its identity — id, name,
-//! script, vowels, dictionary are all per-*language* and stay — and
-//! only the key table, which is per-*keyboard*, is replaced.
-//!
-//! Where this sits in the precedence chain matters:
+//! installed keyboards actually produce, and this module lays that over
+//! the bundled tables. The mapping keeps its identity — id, name,
+//! script, vowels, dictionary are per-*language* — and only the key
+//! table, which is per-*keyboard*, is replaced.
 //!
 //! ```text
 //! bundled  ←  plug-in packs  ←  OS keymaps  ←  user TOMLs
 //! ```
 //!
-//! The OS outranks anything we shipped, because it is describing the
+//! The OS outranks anything we shipped, because it describes the
 //! machine rather than guessing at it. A user TOML still outranks the
-//! OS: it is an explicit "I know what my keyboard does", and it is the
-//! escape hatch if this ever reads a keyboard wrong.
+//! OS: it is an explicit "I know what my keyboard does", and the escape
+//! hatch if this ever reads a keyboard wrong.
 
 use std::collections::{HashMap, HashSet};
 

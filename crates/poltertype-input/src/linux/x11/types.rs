@@ -60,21 +60,19 @@ impl ModState {
 
     /// Reconcile the latched flags against the server's own view of
     /// which keys are physically down, as `XQueryKeymap` reports it.
-    /// Returns whether anything actually changed.
+    /// Returns whether anything changed.
     ///
     /// Tracking modifiers off press/release edges is only correct while
-    /// we see every edge, and we do not: any client holding an active
-    /// keyboard grab stops XInput2 raw events reaching us for as long
-    /// as it holds one. A modifier pressed just before such a grab and
-    /// released inside it stays latched here forever — and because
-    /// `Modifiers::is_command()` is true whenever Ctrl/Alt/Meta is
-    /// held, the engine then reads every later keystroke as a shortcut
-    /// and abandons the word buffer. The app goes quiet with no error
-    /// and stays quiet until it is restarted (issue #26).
+    /// we see every edge, and any client holding a keyboard grab stops
+    /// XInput2 raw events reaching us. A modifier pressed just before
+    /// such a grab and released inside it stays latched for ever, and
+    /// `Modifiers::is_command()` then makes the engine read every later
+    /// keystroke as a shortcut — the app goes quiet with no error until
+    /// restarted (issue #26).
     ///
     /// Caps Lock is deliberately untouched: `XQueryKeymap` reports the
-    /// physical key, not the lock state, so folding it in here would
-    /// clear the latch every time the user let go of the key.
+    /// physical key, not the lock state, so folding it in would clear
+    /// the latch every time the user let go of the key.
     pub(crate) fn resync(&mut self, keys: &[u8; 32]) -> bool {
         let held = |left: u32, right: u32| {
             [left, right]

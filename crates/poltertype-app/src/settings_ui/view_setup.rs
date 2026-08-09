@@ -1,18 +1,17 @@
 //! The Setup pane: what still has to be granted, and how.
 //!
-//! Everything on screen comes from `poltertype_input::setup::probe`
-//! — this file only decides how a [`SetupStep`] looks. The split is
-//! deliberate: "is the user in the `input` group" is platform code and
-//! belongs in the input crate, while "what does an unresolved step
-//! look like" is a design question and belongs here.
+//! Everything on screen comes from `poltertype_input::setup::probe`;
+//! this file only decides how a [`SetupStep`] looks. "Is the user in
+//! the `input` group" is platform code and belongs in the input crate,
+//! while "what does an unresolved step look like" is a design question
+//! and belongs here.
 //!
-//! Tone matters more than usual on this pane. It is the screen a user
-//! reaches when the app they just installed does nothing, and the two
-//! failure modes are equally bad: sounding alarmed about something
-//! that is fine (X11 needs no permissions at all, and most people
-//! expect the worst), or being vague about something that is broken.
-//! So every row states what the capability is *for*, and a step we
-//! cannot verify says so instead of guessing.
+//! Tone matters more than usual: this is the screen a user reaches when
+//! the app they just installed does nothing, and the two failure modes
+//! are equally bad — sounding alarmed about something that is fine, or
+//! vague about something that is broken. So every row states what the
+//! capability is *for*, and a step we cannot verify says so instead of
+//! guessing.
 
 use iced::widget::{Button, Column, Container, Row, Space, Text};
 use iced::{Alignment, Element, Length, Padding};

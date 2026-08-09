@@ -1,21 +1,18 @@
 //! Best-effort "does the OS prefer a dark UI?" detection.
 //!
-//! iced's `auto-detect-theme` feature answers this through the
-//! `dark-light` crate (v1.x), which is broken in two ways on Linux:
-//! its XDG-portal probe deserialises the D-Bus reply as a bare `u32`
-//! while the portal wraps the value in a nested variant (so the probe
-//! *always* fails even when the portal answers correctly), and its
-//! fallback only knows GNOME/KDE-family desktops — on anything else
-//! (Hyprland, sway, …) it reports "light". Windows and macOS paths
-//! work fine.
+//! iced's `auto-detect-theme` answers through `dark-light` 1.x, which
+//! is broken twice on Linux: its XDG-portal probe deserialises the
+//! D-Bus reply as a bare `u32` while the portal wraps the value in a
+//! nested variant, so the probe always fails even when the portal
+//! answers; and its fallback knows only GNOME/KDE-family desktops, so
+//! anything else reports "light". Windows and macOS are fine.
 //!
 //! So: trust `Theme::default()` when it says dark, and when it says
-//! light — which is also what a failed detection looks like — double-
-//! check the freedesktop portal ourselves, then the GNOME gsettings
-//! key. Both probes shell out to canonical CLI tools (`busctl`,
-//! `gsettings`) per the workspace convention of avoiding a zbus
-//! dependency; on Windows/macOS the binaries simply don't exist and
-//! both probes return `None`, keeping this module free of
+//! light — which is also what a failed detection looks like — check the
+//! freedesktop portal ourselves, then the GNOME gsettings key. Both
+//! probes shell out to canonical CLI tools rather than adding a zbus
+//! dependency; on Windows and macOS those binaries do not exist and
+//! both return `None`, which keeps this module free of
 //! `#[cfg(target_os)]`.
 
 use std::process::Command;

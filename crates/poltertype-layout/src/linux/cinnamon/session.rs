@@ -1,14 +1,10 @@
 //! Are we in a Cinnamon session?
 //!
 //! Cinnamon's `.desktop` files carry no `DesktopNames=`, so which
-//! variable ends up set is the display manager's business: LightDM
-//! and GDM fill `XDG_CURRENT_DESKTOP` from distro packaging (Debian
-//! and Mint patch in `X-Cinnamon`), logind fills
-//! `XDG_SESSION_DESKTOP`, and `DESKTOP_SESSION` has been carrying the
-//! session-file name since before either existed. We ask all three
-//! rather than pick a favourite — a session that answers to any of
-//! them is Cinnamon, and being wrong in the other direction means
-//! handing the session back to the backend that cannot switch it.
+//! variable ends up set is the display manager's business. All three
+//! candidates are asked rather than one picked: a session that answers
+//! to any of them is Cinnamon, and being wrong the other way hands the
+//! session back to a backend that cannot switch it.
 
 use super::*;
 
@@ -25,12 +21,10 @@ const CINNAMON_NAMES: [&str; 4] = ["cinnamon", "x-cinnamon", "cinnamon2d", "x-ci
 
 /// Does this variable's value name Cinnamon?
 ///
-/// The value is a colon-separated list (`X-Cinnamon:Cinnamon`), each
-/// entry of which some display managers write as a full path to the
-/// session file (`/usr/share/xsessions/cinnamon`). Entries are matched
-/// whole rather than by substring: a substring test would also claim a
-/// hypothetical `Cinnamon-something` fork whose input stack we have
-/// never seen.
+/// The value is a colon-separated list, and some display managers write
+/// each entry as a full path to the session file. Entries are matched
+/// whole rather than by substring, which would also claim a
+/// `Cinnamon-something` fork whose input stack we have never seen.
 pub(crate) fn names_cinnamon(value: &str) -> bool {
     value.split(':').any(|entry| {
         let entry = entry.trim().rsplit('/').next().unwrap_or_default();

@@ -42,16 +42,13 @@ fn event_source() -> Result<CGEventSource, InputError> {
 
 /// Build one keyboard event, stamped as ours and stripped of modifiers.
 ///
-/// Both halves matter. The stamp is what lets the listener tag the
-/// echo `injected`. The stripping is the macOS-specific half of
-/// [`KeyEmitter::release_modifiers`]: an event created from a
-/// `HIDSystemState` source inherits the *current hardware* modifier
-/// flags, so with the user still holding the keys of an accept chord
-/// our backspaces would post as ⌘⌫ ("delete to start of line") and our
-/// replay as a burst of ⌃-shortcuts. Clearing the event's own flags
-/// makes what the focused app receives independent of what the user's
-/// fingers are doing, whether or not the flags-changed posts below
-/// landed.
+/// Both halves matter. The stamp is what lets the listener tag the echo
+/// `injected`. The stripping is the macOS half of
+/// [`KeyEmitter::release_modifiers`]: an event from a `HIDSystemState`
+/// source inherits the *current hardware* modifier flags, so with the
+/// user still holding an accept chord our backspaces would post as ⌘⌫
+/// and the replay as a burst of ⌃-shortcuts. Clearing the event's own
+/// flags makes what the app receives independent of the user's fingers.
 fn keyboard_event(
     src: &CGEventSource,
     keycode: CGKeyCode,
@@ -94,15 +91,14 @@ impl KeyEmitter for MacosEmitter {
     }
 
     fn release_modifiers(&self, held: Modifiers) -> Result<(), InputError> {
-        // macOS has no key-up for a modifier: the press and the release
-        // are both `kCGEventFlagsChanged` events whose *flags* say what
-        // is down afterwards. So we post one per modifier, each
-        // carrying the picture that remains once that key is up, and
-        // the last one carries an empty set.
+        // macOS has no key-up for a modifier: press and release are
+        // both `kCGEventFlagsChanged` events whose *flags* say what is
+        // down afterwards. So post one per modifier, each carrying the
+        // picture that remains once that key is up, the last one empty.
         //
         // Left-hand keycodes only, like the X11 emitter: the
-        // device-independent flag bits don't distinguish sides, and the
-        // flags — not the keycode — are what the receiving app reads.
+        // device-independent flag bits do not distinguish sides, and the
+        // flags are what the receiving app reads.
         let mut remaining = 0u64;
         let mut releases: Vec<(CGKeyCode, u64)> = Vec::new();
         for (down, bit, keycode) in [

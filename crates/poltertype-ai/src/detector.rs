@@ -1,24 +1,20 @@
 //! `LlmDetector` — the socket a user plugs their own model into.
 //!
-//! PolterType ships no model, no vendor client and no default
-//! endpoint. This detector knows how to ask a question and read an
-//! answer; *what* answers is whatever the user pointed it at and, if
-//! the endpoint needs one, a key only they hold.
+//! It knows how to ask a question and read an answer; *what* answers is
+//! whatever the user pointed it at, with a key only they hold.
 //!
 //! Three properties the rest of this file exists to hold up:
 //!
-//! * **Off unless asked for, twice.** `[ai].enabled` builds it;
-//!   pointing it at a non-loopback host additionally needs
-//!   `[ai].allow_remote`. A detector that may not run returns no
-//!   opinion rather than failing to construct, so flipping a setting
-//!   takes effect on restart without editing the plug-in entry.
+//! * **Off unless asked for, twice.** `[ai].enabled` builds it, and a
+//!   non-loopback host additionally needs `[ai].allow_remote`. A
+//!   detector that may not run returns no opinion rather than failing
+//!   to construct.
 //! * **It cannot slow typing down.** The default mode never waits: it
-//!   answers from the cache and queues the miss. `blocking` exists,
-//!   is capped, and is the user putting a model in the path of their
-//!   own keystrokes on purpose.
-//! * **It never logs what was typed.** Every word that reaches a
-//!   `tracing` call goes through `redact_word` first, exactly like
-//!   the rest of the engine.
+//!   answers from the cache and queues the miss. `blocking` exists, is
+//!   capped, and is the user putting a model in the path of their own
+//!   keystrokes on purpose.
+//! * **It never logs what was typed** — every word reaching a `tracing`
+//!   call goes through `redact_word` first.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "remote")]

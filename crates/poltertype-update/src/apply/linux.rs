@@ -10,18 +10,17 @@ use crate::types::PendingUpdate;
 
 /// Path of the AppImage we are running from.
 ///
-/// The AppImage runtime exports `$APPIMAGE` — the absolute path of the
-/// `.AppImage` file itself, as opposed to `current_exe()`, which points
-/// inside the temporary FUSE mount and is gone the moment we exit.
-/// There is no other way to learn it.
+/// The AppImage runtime exports `$APPIMAGE`, the absolute path of the
+/// `.AppImage` file itself — as opposed to `current_exe()`, which
+/// points inside the temporary FUSE mount and is gone the moment we
+/// exit. There is no other way to learn it.
 ///
 /// Its absence is the honest signal that this build did not come from
-/// an AppImage: a `cargo run` dev binary, or a distro package, or a
-/// bare binary someone dropped in `~/.local/bin`. None of those are
-/// ours to overwrite — a distro package in particular is the package
-/// manager's file, and replacing it behind `apt`'s back is how you
-/// corrupt a system. So we refuse, and the caller falls back to telling
-/// the user where to download the release.
+/// an AppImage: a dev binary, a distro package, or a bare binary in
+/// `~/.local/bin`. None of those are ours to overwrite — replacing a
+/// packaged file behind the package manager's back is how you corrupt a
+/// system — so we refuse and the caller points the user at the release
+/// page instead.
 fn running_appimage() -> Result<PathBuf, UpdateError> {
     match std::env::var_os("APPIMAGE") {
         Some(p) if !p.is_empty() => Ok(PathBuf::from(p)),

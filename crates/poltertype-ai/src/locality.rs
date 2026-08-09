@@ -1,18 +1,15 @@
 //! Deciding whether an endpoint keeps the request on this machine.
 //!
-//! `[ai].allow_remote` gates typed text *leaving the computer*. A
-//! query to a model listening on loopback does not leave it, so this
-//! module is what lets an offline Ollama run without the user
-//! enabling network access they are not actually using.
+//! `[ai].allow_remote` gates typed text *leaving the computer*, and a
+//! query to a model on loopback does not leave it — which is what lets
+//! an offline Ollama run without enabling network access nobody is
+//! using.
 //!
-//! The rule is deliberately strict and syntactic: only literal
-//! loopback addresses and the name `localhost` count. We do not
-//! resolve DNS to find out where a host really points — a resolver
-//! answer can change between the check and the request, and a
-//! `local.mycompany.net` that resolves to 127.0.0.1 today is exactly
-//! the kind of thing that should still require the user to say yes.
-//! Anything we are not certain about is [`Locality::Remote`], which
-//! is the answer that asks permission.
+//! The rule is deliberately strict and syntactic: only literal loopback
+//! addresses and the name `localhost` count. No DNS is resolved, since
+//! a resolver answer can change between the check and the request.
+//! Anything uncertain is [`Locality::Remote`], the answer that asks
+//! permission.
 
 use crate::enums::Locality;
 

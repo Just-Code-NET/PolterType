@@ -16,12 +16,12 @@ user.
 - [Smart commands: why text triggers, not hotkeys](#smart-commands-why-text-triggers-not-hotkeys)
 - [The correction path](#the-correction-path)
 - [Key gate: holding keystrokes back](#key-gate-holding-keystrokes-back)
-- [Detector pipeline](#detector-pipeline)
-- [Layout tables and their precedence](#layout-tables-and-their-precedence)
-- [Focus tracking](#focus-tracking)
-- [Suggestion tooltip](#suggestion-tooltip)
 - [Plug-ins](#plug-ins)
-- [Updater](#updater)
+
+Subsystems not listed here keep their reasoning in the module header,
+because it is short enough to live next to the code. Add a section when
+a header starts growing a second argument — that is the signal it has
+outgrown the source.
 
 ## Settings UI: why a separate process
 

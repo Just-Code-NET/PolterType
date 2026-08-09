@@ -1,17 +1,14 @@
 //! Wayland backend: a `wlr-layer-shell` overlay surface with
 //! `keyboard_interactivity = None`, so the popup can never steal the
-//! keys it exists to fix. Works on wlroots compositors (Hyprland,
-//! Sway) **and on KWin** — KDE has implemented `zwlr_layer_shell_v1`
-//! for years and hands it to third-party clients; verified against
-//! KWin 6.7.3 (2026-07-31), where the surface configures and maps
-//! exactly as it does on Hyprland. Mutter is the holdout
-//! (GNOME/mutter#973, open since 2019), and its absence is detected at
-//! connect time so the factory can fall through to X11/noop.
+//! keys it exists to fix. Works on wlroots compositors **and on KWin**,
+//! which has implemented `zwlr_layer_shell_v1` for years. Mutter is the
+//! holdout (GNOME/mutter#973), detected at connect time so the factory
+//! falls through to X11/noop.
 //!
 //! All Wayland state lives on one dedicated thread; the public handle
-//! only pushes commands into a channel. The thread parks on the
-//! channel while hidden (zero CPU) and ticks at ~16 ms while a surface
-//! is mapped, manually pumping the queue (no calloop).
+//! only pushes commands into a channel. The thread parks on that
+//! channel while hidden and ticks at ~16 ms while a surface is mapped,
+//! pumping the queue manually.
 
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -213,20 +210,17 @@ fn run(
 
 /// Run one command, round-tripping the queue before a `Show`.
 ///
-/// Placement needs the outputs' names, logical sizes and scales, and
-/// those arrive as *events*, not with the globals — while
-/// `registry_queue_init` has answered by the time this thread starts,
-/// the `wl_output`/`xdg_output` replies to `OutputState`'s own binds
-/// have not. Between popups the thread is parked on the command
-/// channel and reads nothing from the socket, so without this the
-/// first popup of every session was placed against an empty output
-/// list: no bounds to clamp against, and `output: None` on the layer
-/// surface, which hands the compositor the choice of monitor. (The
-/// second popup onwards worked, because the tick loop had pumped the
-/// queue by then — which is exactly why the bug looked intermittent.)
+/// Placement needs the outputs' names, logical sizes and scales, which
+/// arrive as *events* rather than with the globals. Between popups the
+/// thread is parked on the command channel and reads nothing from the
+/// socket, so without this the first popup of every session was placed
+/// against an empty output list — no bounds to clamp against and
+/// `output: None`, handing the compositor the choice of monitor. From
+/// the second popup on the tick loop had pumped the queue, which is
+/// exactly why the bug looked intermittent.
+///
 /// Refreshing per show also picks up hotplugs and mode changes that
-/// happened while parked. One round-trip per popup, on a thread that
-/// has nothing else to do.
+/// happened while parked.
 fn serve(
     state: &mut WlState,
     queue: &mut EventQueue<WlState>,

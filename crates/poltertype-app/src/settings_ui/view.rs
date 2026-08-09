@@ -1,11 +1,9 @@
 //! Widget tree construction: the `view` half of the iced loop.
 //!
-//! Visual language mirrors poltertype.com: a surface-coloured sidebar
-//! with the GhostMark + wordmark, content grouped into hairline
-//! cards, hotkeys rendered as physical keycap chips, brand-indigo
-//! primary actions. All colours come from
-//! [`theme::BrandPalette`](super::theme::BrandPalette) via
-//! `self.brand()` so every pane re-themes with the window.
+//! The visual language mirrors poltertype.com — surface-coloured
+//! sidebar, hairline cards, keycap chips, brand-indigo primary actions.
+//! All colours come from [`theme::BrandPalette`](super::theme::BrandPalette)
+//! via `self.brand()`, so every pane re-themes with the window.
 
 use iced::widget::{
     Button, Canvas, Checkbox, Column, Container, Row, Scrollable, Space, Text, TextInput,
@@ -150,14 +148,10 @@ impl SettingsApp {
 
     pub(super) fn view_languages(&self) -> Element<'_, Message> {
         let b = self.brand();
-        // "Effective active" — the answer the engine would give if
-        // asked right now: an empty allow-list means "every OS layout
-        // is active", a non-empty list means "only the listed ones".
-        // The earlier UI displayed the raw list, which is why a
-        // freshly-installed user with no edits saw zero ticked boxes
-        // even though every OS layout was being considered. Now we
-        // render this *effective* answer so the checkbox state always
-        // matches the engine's decision rule.
+        // The answer the engine would give if asked right now: an
+        // empty allow-list means every OS layout is active. Displaying
+        // the raw list is why a freshly-installed user saw zero ticked
+        // boxes while every layout was in fact being considered.
         let allow_list = &self.settings.languages.active;
         let implicit_all = allow_list.is_empty();
 

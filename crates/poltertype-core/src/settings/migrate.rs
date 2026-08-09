@@ -1,16 +1,12 @@
-//! Migrations that run against an existing user config: adoption of
-//! the legacy `kb-switcher` config directory, and retiring the
-//! default app skip-list that v0.4.1 and earlier wrote into every
-//! `config.toml`.
+//! Migrations against an existing user config: adopting the legacy
+//! `kb-switcher` directory, and retiring the default app skip-list that
+//! v0.4.1 and earlier wrote into every `config.toml`.
 //!
-//! The 0.1.x releases shipped under the old name and kept user data
-//! in the ProjectDirs tree for `dev.opensource.kb-switcher`
-//! (`~/.config/kb-switcher` on Linux). The rebrand moved the app id
-//! to `dev.opensource.poltertype`, which would silently reset every
-//! existing user's settings and orphan their custom wordlist /
-//! layout overlays. On first launch — no `config.toml` in the new
-//! location yet — we copy the legacy tree across. The legacy
-//! directory itself is left untouched as a backup.
+//! The 0.1.x releases kept user data under `dev.opensource.kb-switcher`.
+//! The rebrand moved the app id, which would have silently reset every
+//! existing user's settings and orphaned their overlays, so on first
+//! launch the legacy tree is copied across. The legacy directory is
+//! left untouched as a backup.
 
 use super::consts::LEGACY_DEFAULT_DISABLED_APPS;
 use super::types::Settings;
@@ -84,28 +80,24 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
 }
 
 /// Clear `[exceptions].disabled_apps` when it is still, verbatim, the
-/// list PolterType used to ship as a default. Returns `true` when the
-/// settings were changed and the caller should persist them.
+/// list PolterType used to ship. Returns `true` when the caller should
+/// persist the change.
 ///
-/// Why an existing config needs touching at all: the old default was
-/// not a suggestion the user could ignore — it was *written into their
-/// file* on first launch, all 69 entries of it. Shipping an empty
-/// default in the binary therefore fixes nothing for anyone who
-/// already ran an older build; their `config.toml` still spells out
-/// the list, and PolterType would go on being mute in their editor
-/// forever. The fix has to reach into the file.
+/// An existing config has to be touched at all because the old default
+/// was not a suggestion — all 69 entries were *written into the user's
+/// file* on first launch. Shipping an empty default fixes nothing for
+/// anyone who ran an older build; their file still spells the list out,
+/// and PolterType would go on being mute in their editor for ever.
 ///
-/// Why only on an exact match: a skip-list somebody curated is a
-/// deliberate statement about where they don't want us typing, and
-/// clobbering it would be a far worse bug than the one we're fixing.
-/// Set equality (order- and duplicate-insensitive — TOML round-trips
-/// don't promise order) against the frozen historical list is the
-/// narrowest test that catches every untouched config and no touched
-/// one. Remove a single entry by hand and we leave you alone.
+/// Only on an exact match, because a curated skip-list is a deliberate
+/// statement about where the user does not want us typing. Set equality
+/// against the frozen historical list — order- and
+/// duplicate-insensitive, since TOML round-trips do not promise order —
+/// is the narrowest test that catches every untouched config and no
+/// touched one.
 ///
-/// Idempotent by construction: once cleared, the list is empty and can
-/// never match a 69-element set again, so there is no migration flag to
-/// keep and no schema bump to coordinate.
+/// Idempotent by construction: once cleared the list can never match a
+/// 69-element set again, so there is no migration flag to keep.
 pub(crate) fn retire_default_skip_list(settings: &mut Settings) -> bool {
     let current: std::collections::BTreeSet<&str> = settings
         .exceptions

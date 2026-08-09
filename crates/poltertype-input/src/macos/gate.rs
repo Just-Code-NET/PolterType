@@ -12,17 +12,14 @@ use tracing::{debug, info};
 
 use crate::hold::HoldState;
 
-/// Environment override for the key gate, read once at startup.
+/// Environment override for the key gate, read once at startup:
+/// `POLTERTYPE_HOLD_KEYS=1` on, `=0` off.
 ///
-/// `POLTERTYPE_HOLD_KEYS=1` turns it on, `=0` off. The **default on
-/// macOS is off — same as Windows, and for the same current reason:
-/// not fear, but latency.** Held keys are withheld from the
-/// application for the length of the flush (engine-side:
-/// `HELD_FLUSH_QUIET_PROBES × POST_EMIT_LAG`, ceiling `HELD_FLUSH`),
-/// which reads as the caret lagging behind your typing after every
-/// correction. Switch it on if you type fast enough to hit the race;
-/// `docs/PERMISSIONS.md` states the trade. See
-/// `windows/consts::HOLD_KEYS_ENV`.
+/// **Default off on macOS, as on Windows, and for the same reason: not
+/// fear, but latency.** Held keys are withheld from the application for
+/// the length of the flush, which reads as the caret lagging behind
+/// your typing after every correction. Switch it on if you type fast
+/// enough to hit the race; `docs/PERMISSIONS.md` states the trade.
 pub(crate) const HOLD_KEYS_ENV: &str = "POLTERTYPE_HOLD_KEYS";
 
 pub struct MacosGate {
@@ -120,16 +117,15 @@ mod tests {
     use super::*;
 
     /// Every test here drives the gate through the same process-global
-    /// environment variable, and the harness runs them on separate
+    /// environment variable and the harness runs them on separate
     /// threads: without serialising, one test's `remove_var` lands
-    /// between another's `set_var` and its `MacosGate::new()`, and the
-    /// wrong gate gets built. That failure is intermittent and only
-    /// ever appears on the macOS CI job — the most expensive kind to
-    /// chase — so the lock is cheaper than the flake.
+    /// between another's `set_var` and its `MacosGate::new()`. That
+    /// failure is intermittent and only ever appears on the macOS CI
+    /// job — the most expensive kind to chase.
     ///
-    /// Poisoning is stepped over deliberately (`into_inner`): if one
-    /// test fails while holding the lock, the others should report
-    /// their own verdict rather than a cascade of poisoning panics.
+    /// Poisoning is stepped over deliberately: if one test fails while
+    /// holding the lock, the others should report their own verdict
+    /// rather than a cascade of panics.
     static ENV: Mutex<()> = Mutex::new(());
 
     #[test]

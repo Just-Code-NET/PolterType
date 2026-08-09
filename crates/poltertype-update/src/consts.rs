@@ -1,16 +1,15 @@
 //! Endpoints, limits and on-disk names for the updater.
 
-/// The release manifest. `releases/latest/download/<asset>` is
-/// GitHub's own redirector to the newest **published, non-prerelease**
-/// release — it skips drafts and pre-releases for us, which is exactly
-/// the gate we want between "CI built it" and "users get it".
+/// The release manifest. `releases/latest/download/<asset>` is GitHub's
+/// own redirector to the newest **published, non-prerelease** release,
+/// which is exactly the gate we want between "CI built it" and "users
+/// get it".
 ///
-/// Not configurable at runtime, on purpose: a settings knob pointing
-/// the updater at an arbitrary host would turn a hand-edited
-/// `config.toml` into a code-execution vector.
-/// Public so the Settings window can show the user the exact URL the
-/// app talks to. "It phones home" is a claim the user should be able
-/// to check, not take on faith.
+/// Not configurable at runtime, on purpose: a knob pointing the updater
+/// at an arbitrary host would turn a hand-edited `config.toml` into a
+/// code-execution vector. Public so the Settings window can show the
+/// exact URL the app talks to — "it phones home" should be checkable
+/// rather than taken on faith.
 pub const MANIFEST_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/releases/latest/download/latest.json";
 
@@ -70,22 +69,19 @@ pub(crate) const PAYLOAD_HEADER: &str = "poltertype-manifest-v1";
 
 /// Whether a manifest without a signature is refused.
 ///
-/// **The staged rollout, in two releases.** Signing and verifying land
-/// together, but they cannot become mandatory in the same release: a
-/// user running 0.7.0 would be checking a manifest published before
-/// anyone signed one. So:
+/// Signing and verifying land together but cannot become mandatory in
+/// the same release, since a user on that release would be checking a
+/// manifest published before anyone signed one. So the rollout is two
+/// releases:
 ///
-/// 1. **`false` (now).** A signature that is *present* must verify — a
-///    wrong one is refused, loudly. A missing one is accepted with a
-///    warning. This is the release in which signed manifests start
-///    being published.
-/// 2. **`true` (a later release).** Flip this the moment the manifest
-///    that `releases/latest/download/latest.json` resolves to is
-///    signed, and has been for a full release cycle. From then on an
-///    unsigned manifest is an error, and an attacker who can publish a
-///    GitHub release can no longer publish an update.
+/// 1. **`false` (now)** — a signature that is *present* must verify,
+///    and a wrong one is refused loudly; a missing one warns. This is
+///    when signed manifests start being published.
+/// 2. **`true` (later)** — flip once the manifest that
+///    `releases/latest/download/latest.json` resolves to has been
+///    signed for a full release cycle. From then on an attacker who can
+///    publish a GitHub release can no longer publish an update.
 ///
-/// Flipping it early strands every user on a "cannot update" error
-/// until the next release is published *and* signed. Flipping it never
-/// means the signature is decorative.
+/// Flipping early strands every user on "cannot update" until the next
+/// signed release. Flipping never makes the signature decorative.
 pub(crate) const REQUIRE_SIGNATURE: bool = false;

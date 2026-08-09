@@ -1,19 +1,13 @@
 //! PolterType branding for the Settings window.
 //!
 //! The two palettes are a token-for-token port of the landing page's
-//! design system (`poltertype-web/src/styles/global.css`) so the app
-//! and poltertype.com read as one product: same indigo brand colour,
-//! same ink/muted text pair, same "ecto" green for success and
-//! "garble" pink for danger, same hairline colour for borders.
+//! design system (`poltertype-web/src/styles/global.css`), so the app
+//! and the site read as one product.
 //!
-//! Layout of the module:
-//!
-//! * [`types`] — the [`BrandPalette`] struct (one field per token).
-//! * [`consts`] — the `LIGHT` / `DARK` palette values + mark colours.
-//! * [`themes`] — building the two custom [`iced::Theme`]s and
-//!   mapping a `&Theme` back to its brand palette.
-//! * [`styles`] — widget style fns (sidebar, cards, buttons, chips).
-//! * [`ghost_mark`] — the keycap-ghost logo as a `canvas` program.
+//! [`types`] holds the [`BrandPalette`] struct, [`consts`] the light
+//! and dark values, [`themes`] the two custom [`iced::Theme`]s and the
+//! mapping back to a palette, [`styles`] the widget style functions,
+//! and [`ghost_mark`] the keycap-ghost logo as a `canvas` program.
 
 mod consts;
 mod ghost_mark;

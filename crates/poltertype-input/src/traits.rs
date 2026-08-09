@@ -38,17 +38,16 @@ pub trait KeyEmitter: Send + Sync {
 
     /// Replay raw scancodes against whatever layout the OS is now in.
     ///
-    /// This is the only correction path that works reliably on
-    /// Wayland: the GTK/Qt "Ctrl+Shift+U <hex> Space" Unicode-compose
-    /// trick that `send_text` falls back to is silently swallowed (or
-    /// — worse — typed literally) by most terminals and Wayland-native
-    /// apps. Replaying the original scancodes after `switch_to(new)`
-    /// lets the compositor's xkb mapping produce the right glyphs.
+    /// The only correction path that works reliably on Wayland: the
+    /// Unicode-compose trick `send_text` falls back to is silently
+    /// swallowed — or typed literally — by most terminals and
+    /// Wayland-native apps, whereas replaying the original scancodes
+    /// after `switch_to` lets the compositor's xkb mapping produce the
+    /// right glyphs.
     ///
-    /// Platforms that have a real Unicode-emit API (`KEYEVENTF_UNICODE`
-    /// on Windows, `CGEventKeyboardSetUnicodeString` on macOS) override
-    /// the default to return `Unsupported` so the engine falls back to
-    /// `send_text`, which is more robust there.
+    /// Platforms with a real Unicode-emit API override this to return
+    /// `Unsupported`, so the engine falls back to `send_text`, which is
+    /// more robust there.
     fn send_keys(&self, _keys: &[ReplayKey]) -> Result<(), InputError> {
         Err(InputError::Unsupported(
             "this backend has no scancode-replay path; use send_text".into(),
@@ -59,14 +58,13 @@ pub trait KeyEmitter: Send + Sync {
     /// type anything.
     ///
     /// Our injected keys travel the same path to the application as
-    /// theirs, so a held `Ctrl` turns a replay into a burst of
-    /// shortcuts and nothing is typed at all — which is exactly what
-    /// happens when a correction is triggered *by* a chord: accepting
-    /// a suggestion with `Ctrl+Meta+<digit>`, or the manual
-    /// switch-last hotkey. The user's own release lands on an
-    /// already-up key later and is ignored; we deliberately do not
-    /// press them back, since re-pressing a modifier the user has
-    /// meanwhile let go of would leave it stuck down.
+    /// theirs, so a held `Ctrl` turns a replay into a burst of shortcuts
+    /// and nothing is typed — exactly what happens when a correction is
+    /// triggered *by* a chord.
+    ///
+    /// They are deliberately not pressed back: re-pressing a modifier
+    /// the user has meanwhile let go of would leave it stuck down. Their
+    /// own release lands on an already-up key and is ignored.
     ///
     /// Backends that cannot do this keep the default no-op — they just
     /// have the bug.

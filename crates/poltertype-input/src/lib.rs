@@ -1,17 +1,12 @@
-//! Per-OS global keyboard listener.
+//! Per-OS global keyboard listener: the [`InputListener`] trait, the
+//! [`create_listener`] factory that picks a backend at runtime, and
+//! [`KeyEvent`] re-exported from `poltertype-types`.
 //!
-//! Public surface:
-//! * [`InputListener`] — trait every per-OS implementation satisfies.
-//! * [`create_listener`] — runtime factory that picks the right backend.
-//! * [`KeyEvent`] — re-exported from `poltertype-types`.
-//!
-//! ## Threading model
-//!
-//! `InputListener::start` may spawn its own dedicated thread (Windows
-//! does, because `WH_KEYBOARD_LL` requires an OS message loop on the
-//! installing thread). The listener pushes events into a
-//! [`crossbeam_channel::Sender`] supplied by the caller — never blocking
-//! and never doing any non-trivial work in the OS hook callback.
+//! `InputListener::start` may spawn its own thread — Windows does,
+//! because `WH_KEYBOARD_LL` needs an OS message loop on the installing
+//! thread. Events go into a caller-supplied
+//! [`crossbeam_channel::Sender`]; the OS hook callback never blocks and
+//! never does non-trivial work.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 

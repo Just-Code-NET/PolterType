@@ -1,18 +1,14 @@
 //! The Plug-ins pane: what is installed, and its own settings.
 //!
-//! Every control on this pane is drawn by us from a static
-//! declaration. A plug-in never renders anything — which is what stops
-//! a third-party pane from imitating a system prompt, PolterType's own
-//! dialogs, or another plug-in.
+//! Every control is drawn by us from a static declaration. A plug-in
+//! never renders anything, which is what stops a third-party pane
+//! imitating a system prompt, PolterType's own dialogs, or another
+//! plug-in.
 //!
-//! Two things the pane says out loud rather than hiding:
-//!
-//! * **where a plug-in came from.** One that was found in a checkout
-//!   or on `POLTERTYPE_PLUGIN_PATH` rather than installed is running
-//!   code nobody installed, and the user should be able to see that.
-//! * **which file is being edited.** These settings do not live in
-//!   PolterType's config; they live in the plug-in's, and an edit here
-//!   is an edit to a file another program owns.
+//! Two things the pane says out loud: **where a plug-in came from**, so
+//! one found in a checkout or on `POLTERTYPE_PLUGIN_PATH` is visibly
+//! code nobody installed; and **which file is being edited**, since
+//! these settings live in the plug-in's config, not ours.
 
 use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
@@ -248,15 +244,11 @@ impl SettingsApp {
                     .on_toggle(move |on| Message::PluginListToggled(plugin, index, id.clone(), on)),
             );
             if !row.detail.is_empty() {
-                // Indented under its own box, so a row that says what
-                // was measured about an application reads as belonging
-                // to that application rather than to the next one.
-                //
-                // `Length::Fill` so the sentence wraps instead of
-                // running under the scrollbar. It is the sentence that
-                // matters most on the row — what the autopilot could
-                // actually do in that application — and the first
-                // screenshot of this list had it cut off mid-word.
+                // Indented under its own box, so a row saying what was
+                // measured about an application reads as belonging to
+                // it rather than to the next one. `Length::Fill` so the
+                // sentence wraps instead of running under the
+                // scrollbar — it is the most important text on the row.
                 entry = entry.push(
                     Row::new()
                         .push(Space::with_width(Length::Fixed(26.0)))

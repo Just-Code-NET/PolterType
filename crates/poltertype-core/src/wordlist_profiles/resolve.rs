@@ -2,20 +2,17 @@
 
 use super::*;
 
-/// Pick the active profile id for a focused app's exe basename,
-/// or `None` to fall through to the global overlay. Resolution
-/// order:
+/// Pick the active profile id for a focused app's exe basename, or
+/// `None` to fall through to the global overlay:
 ///
-/// 1. First profile whose `apps` list contains a case-insensitive
-///    match for `focused_basename` wins.
-/// 2. Otherwise, [`WordlistSettings::default_profile`] if it names
-///    a known profile.
-/// 3. Otherwise, `None` (caller uses the global overlay only).
+/// 1. the first profile whose `apps` list matches `focused_basename`,
+///    case-insensitively;
+/// 2. otherwise [`WordlistSettings::default_profile`], if it names a
+///    known profile;
+/// 3. otherwise `None`.
 ///
-/// `focused_basename` should already be just the basename — the
-/// caller usually has it after `Path::new(exe).file_name()`. We
-/// don't strip a path here because the function is also called
-/// from tests with synthetic data.
+/// `focused_basename` should already be a basename. Nothing is stripped
+/// here, because this is also called from tests with synthetic data.
 pub fn resolve_active_profile<'a>(
     settings: &'a WordlistSettings,
     focused_basename: Option<&str>,

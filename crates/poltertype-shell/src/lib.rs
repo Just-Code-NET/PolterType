@@ -1,13 +1,11 @@
 //! Per-OS quirks of the desktop app shell.
 //!
-//! Three unrelated things live here for one reason: each is a place
-//! where an operating system disagrees with the others about
-//! something the binary would otherwise have to know, and
-//! `poltertype-app` holds no `#[cfg(target_os)]` (see
-//! `CONTRIBUTING.md`). They are not an abstraction — there is nothing
-//! common between a lock file, a Dock policy and a keycap glyph. They
-//! are the app shell's platform surface, collected so the binary can
-//! stay platform-blind.
+//! These live together for one reason: each is a place where an
+//! operating system disagrees with the others about something the
+//! binary would otherwise have to know, and `poltertype-app` holds no
+//! `#[cfg(target_os)]` (see `CONTRIBUTING.md`). They are not an
+//! abstraction — there is nothing common between a lock file, a Dock
+//! policy and a keycap glyph.
 //!
 //! | What | Diverges because |
 //! |---|---|

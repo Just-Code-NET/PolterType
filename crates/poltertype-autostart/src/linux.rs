@@ -1,16 +1,12 @@
 //! Linux: an XDG autostart entry.
 //!
 //! `$XDG_CONFIG_HOME/autostart/<id>.desktop` (falling back to
-//! `~/.config`) is the one autostart mechanism every desktop
-//! environment we care about honours — GNOME, KDE, XFCE, Cinnamon,
-//! and the wlroots compositors via their own session handling. No
-//! DE-specific branch is needed, which is a pleasant change from
-//! layout switching.
+//! `~/.config`) is the one mechanism every desktop we care about
+//! honours, so no DE-specific branch is needed.
 //!
-//! There is nothing to register: the file *is* the registration, read
-//! at session start. So unlike macOS this backend has no "load it now
-//! so the user need not log out" step, and no way to kill the running
-//! app either.
+//! There is nothing to register — the file *is* the registration, read
+//! at session start. So unlike macOS this backend has no "load it now"
+//! step, and no way to kill the running app either.
 
 use std::path::{Path, PathBuf};
 

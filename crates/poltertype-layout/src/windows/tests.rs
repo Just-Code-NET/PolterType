@@ -87,13 +87,12 @@ fn installed_keyboards_describe_a_full_character_block() {
 /// The measurement behind #20, taken through the shipping code path.
 ///
 /// Windows ships three genuinely different Bulgarian keyboards under
-/// one LCID, so all three arrive as `bg-BG` and only one of them can
-/// match `bg_bg.toml`. This is the test that says we can now tell them
-/// apart at all — and prints each table so the numbers in #20 can be
-/// re-derived by diffing against the bundled TOML.
+/// one LCID, so all three arrive as `bg-BG` and only one can match
+/// `bg_bg.toml`. This test says we can tell them apart at all, and
+/// prints each table so the numbers in #20 can be re-derived.
 ///
 /// Ignored by default: it loads keymap DLLs into the process and needs
-/// those three keyboards to exist on the machine.
+/// those three keyboards installed.
 ///
 /// ```text
 /// cargo test -p poltertype-layout -- --ignored --nocapture bulgarian

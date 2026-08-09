@@ -10,21 +10,17 @@ use tracing::{info, warn};
 use super::files::build_dictionary;
 use super::types::{LayoutMapping, PluginManifest};
 
-/// Enumerate `<data_dir>/plugins/*/` and merge each pack's layouts
-/// into `by_id`. Loud-but-graceful at every level — a single broken
-/// pack never takes down the rest of the load.
+/// Enumerate `<data_dir>/plugins/*/` and merge each pack's layouts into
+/// `by_id`. Loud but graceful at every level — one broken pack never
+/// takes down the rest of the load.
 ///
-/// **v1 surface is data-only.** A pack ships:
+/// **The v1 surface is data-only.** A pack ships `manifest.toml`
+/// (required), `layout-mappings/*.toml` in the same schema as bundled
+/// layouts, and `wordlists/<stem>.fst` plus an optional stop list in
+/// the same shape as `<data_dir>/wordlists/`.
 ///
-///   * `manifest.toml` — required; missing → skip pack.
-///   * `layout-mappings/*.toml` — keyboard maps; same TOML schema as
-///     bundled / user layouts.
-///   * `wordlists/<stem>.fst` + optional `<stem>-stop.txt` — same
-///     shape as the bundled `<data_dir>/wordlists/`.
-///
-/// Native code, network calls, and settings injection are explicitly
-/// out of scope (see `docs/DATA_LAYOUT.md` § "What plug-ins won't be").
-/// Until those land, the loader can stay this small and reviewable.
+/// Native code, network calls and settings injection are explicitly out
+/// of scope — see `docs/DATA_LAYOUT.md`.
 pub fn load_plugin_packs(
     data_dir: &Path,
     user_wordlist_dir: Option<&Path>,
@@ -124,15 +120,11 @@ pub fn load_one_pack(
             }
         };
 
-        // Plug-in's own FST + optional stop-word txt sit alongside
-        // its TOML, in the pack's `wordlists/` directory. We reuse
-        // `build_dictionary` with `pack_dir` standing in for
-        // `data_dir` — the function only looks at `<data_dir>/wordlists/`,
-        // so this is exactly the right shape.
-        //
-        // User-side wordlist overlay still applies on top, so a user
-        // can extend a plug-in's vocabulary the same way they extend
-        // the bundled one.
+        // A plug-in's FST and stop list sit in its own `wordlists/`, so
+        // `build_dictionary` is reused with `pack_dir` standing in for
+        // `data_dir`. The user-side overlay still applies on top, so a
+        // user can extend a plug-in's vocabulary as they extend the
+        // bundled one.
         let dictionary = build_dictionary(pack_dir, &stem, user_wordlist_dir);
         match LayoutMapping::from_parts(&body, dictionary) {
             Ok(layout) => {

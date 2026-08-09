@@ -11,13 +11,11 @@ use crate::types::{Artifact, Manifest};
 
 /// Which artifact in the manifest belongs to the running build.
 ///
-/// These strings are the manifest's map keys — they must match what
-/// `.github/workflows/release.yml` writes. Deliberately coarse: we ship
-/// two AppImages (x86_64, aarch64), one universal DMG and one MSI
-/// (x86_64), so the key space is exactly as wide as the release matrix
-/// and no wider. An architecture we don't publish for resolves to a key
-/// that simply isn't in the map, and the check ends with "no update for
-/// you" rather than a wrong download.
+/// These strings are the manifest's map keys and must match what
+/// `.github/workflows/release.yml` writes. Deliberately as coarse as
+/// the release matrix and no wider: an architecture we do not publish
+/// for resolves to a key that is not in the map, and the check ends
+/// with "no update for you" rather than a wrong download.
 pub fn platform_key() -> String {
     let os = if cfg!(target_os = "windows") {
         "windows"
@@ -46,11 +44,9 @@ pub fn platform_key() -> String {
 /// `GET` the release manifest.
 ///
 /// The whole privacy surface of the updater is this request: a plain
-/// HTTPS GET of a static asset, carrying no query string, no cookies
-/// and no body. GitHub necessarily sees the connecting IP and the
-/// User-Agent (which names our version) — that is unavoidable for any
-/// update check, and it is what `[updates].enabled = false` switches
-/// off.
+/// HTTPS GET of a static asset, no query string, no cookies, no body.
+/// GitHub necessarily sees the connecting IP and a User-Agent naming
+/// our version, which is what `[updates].enabled = false` switches off.
 pub(crate) fn fetch() -> Result<Manifest, UpdateError> {
     let agent = ureq::AgentBuilder::new()
         .timeout(Duration::from_secs(MANIFEST_TIMEOUT_SECS))

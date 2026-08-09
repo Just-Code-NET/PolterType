@@ -139,33 +139,24 @@ pub(crate) fn play_tone(
     Ok(())
 }
 
-/// Build a single-channel `SamplesBuffer` for the given tone. Layout:
+/// Build a single-channel `SamplesBuffer` for the given tone:
 ///
 /// ```text
 ///   [LEAD silence] [fade-in] [body] [fade-out] [TAIL silence]
 ///   |----30ms----| |--10ms--|       |--25ms--| |----60ms----|
 /// ```
 ///
-/// Why both ramp envelopes AND silence padding:
+/// Ramps and padding do different jobs. The **ramps** avoid the
+/// sample-level discontinuity of cutting a sine mid-cycle, which a
+/// speaker reproduces as a click. **Lead silence** absorbs OS audio
+/// warmup on a freshly opened stream, without which the fade-in is
+/// partly eaten by device init. **Tail silence** lets the OS buffer
+/// flush the last real samples before the sink drops.
 ///
-/// * **Ramp envelopes** (10 ms in, 25 ms out) prevent sample-level
-///   discontinuity at sine wave start / end. Cutting a sine mid-cycle
-///   is a hard-edge step the speaker reproduces as a click.
-/// * **Lead silence** absorbs OS audio-stack warmup the *first* time
-///   we hand audio to a freshly-opened `OutputStream` (or to one
-///   that's been idle long enough to have unrouted itself on some
-///   platforms). Without it, the fade-in is partly eaten by device
-///   init and the user hears a tone that begins mid-rise.
-/// * **Tail silence** gives the OS audio buffer time to flush the
-///   final real samples before `sleep_until_end` returns and the
-///   sink drops; with the long-lived stream design that flush time
-///   is short, but the cushion costs nothing audible.
-///
-/// Why we render the envelope by hand instead of using rodio's
-/// chainable `fade_in` / `fade_out`: rodio 0.20's `Source::fade_out`
-/// starts ramping at sample 0 and reaches silence at `duration` —
-/// the opposite of what the name suggests. Computing the envelope
-/// ourselves is safer and locks the behaviour into our own tests.
+/// The envelope is computed by hand rather than through rodio's
+/// `fade_in` / `fade_out` because 0.20's `fade_out` starts ramping at
+/// sample 0 and reaches silence at `duration` — the opposite of what
+/// the name suggests.
 pub(crate) fn synthesise_blip(
     freq: f32,
     ms: u64,

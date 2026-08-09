@@ -1,33 +1,20 @@
-//! `cargo xtask` — internal helper commands.
+//! `cargo xtask` — internal helper commands. Each subcommand's own
+//! module carries the detail; this is the index.
 //!
-//! ## `cargo xtask wordlists fetch`
+//! * `wordlists fetch` — re-download and re-process the embedded
+//!   dictionaries. Sources in `data/wordlists/CREDITS.md`.
+//! * `hooks install` / `uninstall` — wire the versioned git hooks under
+//!   `.githooks/`.
+//! * `assets icon-png <path> [--size N]` — render the app icon for the
+//!   release installers.
+//! * `manifest [keygen | sign | verify | payload]` — sign `latest.json`
+//!   so the updater can prove the manifest came from us and not merely
+//!   from whoever can publish a GitHub release.
+//! * `version [bump | set <X.Y.Z>] [--dry-run]` — bump the workspace
+//!   version in lock-step across `Cargo.toml`, `CHANGELOG.md` and
+//!   `Cargo.lock`.
 //!
-//! Re-downloads and re-processes the embedded language dictionaries.
-//! Sources are documented in `data/wordlists/CREDITS.md`.
-//!
-//! ## `cargo xtask hooks install` / `cargo xtask hooks uninstall`
-//!
-//! Wires (or unwires) the versioned git hooks under `.githooks/`.
-//! See `.githooks/README.md` for what each hook enforces.
-//!
-//! ## `cargo xtask assets icon-png <path> [--size N]`
-//!
-//! Renders the app icon — the PolterType mark, drawn to match the
-//! site's `favicon.svg` — to a PNG for the release installers. See
-//! `assets/mod.rs` for the rationale on why this is procedural.
-//!
-//! ## `cargo xtask manifest [keygen | sign | verify | payload]`
-//!
-//! Signs `latest.json` with the release key so the in-app updater can
-//! prove the manifest came from us and not merely from whoever can
-//! publish a GitHub release. See `manifest.rs` for why the key stays
-//! off CI, and `docs/RELEASING.md` for where this fits in the flow.
-//!
-//! ## `cargo xtask version [bump | set <X.Y.Z>] [--dry-run]`
-//!
-//! Bumps the workspace version in lock-step across `Cargo.toml`,
-//! `CHANGELOG.md`, and `Cargo.lock`. See `version.rs` for the
-//! auto-bump rule and the rationale for the small action surface.
+//! `docs/RELEASING.md` has the flow the last two fit into.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)] // build/dev tool
 

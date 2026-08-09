@@ -1,8 +1,9 @@
 # Contributing to PolterType
 
 Thanks for the interest! This document covers the practical bits;
-the architecture lives in [docs/PLAN.md](docs/PLAN.md) and
-[docs/DECISIONS.md](docs/DECISIONS.md).
+the architecture lives in [docs/PLAN.md](docs/PLAN.md),
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (why the pieces are shaped
+the way they are) and [docs/DECISIONS.md](docs/DECISIONS.md).
 
 Two short documents worth knowing about before you start:
 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) applies to the issue tracker,
@@ -324,9 +325,12 @@ clean-up pass.
 
 | Kind | Budget |
 |---|---|
-| `//!` module header | 1–3 lines: what lives here, and the one constraint a reader must not break |
-| `///` on a public item | 1–3 lines: contract, units, error conditions, panics. Add a line only when a caller can get it wrong |
-| `//` inside a body | only where the reason is not visible locally — a workaround, an ordering constraint, an OS quirk |
+| `//!` module header | a short paragraph: what lives here, and the one or two constraints a reader must not break. Longer only for a module whose whole point is a rule (`commands/shell.rs`, `plugins/validate.rs`) |
+| `///` on a public item | the contract — units, error conditions, panics — then one paragraph of *why* if a caller can get it wrong. Two paragraphs means the second one belongs in `docs/` |
+| `//` inside a body | only where the reason is not visible locally: a workaround, an ordering constraint, an OS quirk |
+
+The test is whether a reader who deletes the comment would then write
+the bug. If not, the comment is decoration.
 
 Keep out of the source and put in a document instead:
 

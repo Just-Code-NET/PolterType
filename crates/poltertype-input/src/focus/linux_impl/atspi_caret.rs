@@ -1,21 +1,18 @@
-//! AT-SPI2 caret watcher — the suggestion tooltip's only source of
-//! true caret coordinates on Linux.
+//! AT-SPI2 caret watcher — the suggestion tooltip's only source of true
+//! caret coordinates on Linux.
 //!
-//! No Wayland protocol or X11 property exposes "where is the text
-//! caret on screen"; the accessibility stack is the one API that
-//! does. Toolkit a11y backends (GTK, Qt, Chromium/Electron, …) emit
-//! `object:text-caret-moved` on the dedicated a11y bus whenever the
-//! caret moves, and their `org.a11y.atspi.Text` objects answer
-//! `GetCharacterExtents` with the glyph rect at a given offset —
-//! screen-global when asked with `ATSPI_COORD_TYPE_SCREEN`.
+//! No Wayland protocol or X11 property exposes where the text caret is;
+//! the accessibility stack is the one API that does. Toolkit a11y
+//! backends emit `object:text-caret-moved` on the a11y bus, and their
+//! `org.a11y.atspi.Text` objects answer `GetCharacterExtents` with the
+//! glyph rect, screen-global under `ATSPI_COORD_TYPE_SCREEN`.
 //!
-//! A background thread (`poltertype-atspi-caret`) owns a *blocking*
-//! zbus connection to the a11y bus and folds every caret event into a
-//! single mutex slot holding the freshest [`CaretSample`]; trackers
-//! read it once per tooltip show via [`AtspiCaretWatcher::latest`].
-//! A missing bus or registry (headless session, a11y stack disabled)
-//! fails [`AtspiCaretWatcher::try_new`] — callers log once and fall
-//! back to window anchoring.
+//! A background thread owns a *blocking* zbus connection and folds
+//! every caret event into one mutex slot holding the freshest
+//! [`CaretSample`], read once per tooltip show via
+//! [`AtspiCaretWatcher::latest`]. A missing bus or registry fails
+//! [`AtspiCaretWatcher::try_new`], and callers fall back to window
+//! anchoring.
 //!
 //! PRIVACY: this module must never read or log *text*. Offsets and
 //! glyph rectangles only — no `GetText` / `GetTextAtOffset`, ever.
@@ -143,20 +140,17 @@ impl AtspiCaretWatcher {
         )
         .map_err(AtspiCaretError::Register)?;
 
-        // Raise `org.a11y.Status.IsEnabled` (best-effort): toolkits
-        // consult it at startup and keep their accessibility bridge
-        // dormant while it is false — on a desktop without a screen
-        // reader NOTHING emits caret events until an AT client sets
-        // this flag, and we are one. Session-scoped; real ATs (Orca)
-        // raise it the same way, and clearing it on exit would break
-        // one that arrived while we ran, so we never unset it.
+        // Raise `org.a11y.Status.IsEnabled`, best-effort: toolkits keep
+        // their accessibility bridge dormant while it is false, so on a
+        // desktop without a screen reader nothing emits caret events
+        // until an AT client sets it — and we are one. Session-scoped,
+        // and never unset, since clearing it on exit would break a real
+        // AT that arrived while we ran.
         //
-        // Deliberately AFTER the a11y-bus round-trips above: a Set
+        // Deliberately after the a11y-bus round-trips above: a Set
         // fired while `at-spi-bus-launcher` is still activating gets
-        // overwritten by the launcher's own initial state (observed
-        // live — the flag read back `false` moments later). By the
-        // time RegisterEvent has answered, the service is fully up
-        // and the write sticks.
+        // overwritten by the launcher's own initial state. Once
+        // RegisterEvent has answered, the write sticks.
         if let Err(e) = session.call_method(
             Some("org.a11y.Bus"),
             "/org/a11y/bus",

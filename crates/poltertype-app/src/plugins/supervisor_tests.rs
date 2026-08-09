@@ -10,15 +10,12 @@ use super::*;
 /// take a command string.
 ///
 /// Chosen at runtime rather than with `#[cfg(target_os)]`: what differs
-/// is a *value* — which program, which flag — not an API, and this
-/// crate holds no platform conditionals (see `CONTRIBUTING.md`).
+/// is a *value*, not an API, and this crate holds no platform
+/// conditionals.
 ///
-/// Getting this wrong is not a failing test but a **passing** one: half
+/// Getting it wrong is not a failing test but a **passing** one: half
 /// this suite asserts that something is *not* running, which is
-/// trivially true when the process never started. The fixture was
-/// `/bin/sh` for everyone until PolterType was first run on Windows,
-/// and the three tests that assert a positive were the only ones that
-/// noticed.
+/// trivially true when the process never started.
 fn shell() -> (PathBuf, &'static str) {
     if cfg!(windows) {
         (PathBuf::from("cmd.exe"), "/C")
@@ -249,22 +246,17 @@ fn the_fixture_can_actually_start_a_process() {
 /// A plug-in that declares `stop` is asked before it is killed.
 ///
 /// The observable is a file the stop command creates: nothing else
-/// proves the command actually ran in the plug-in's own program rather
-/// than being decided about and skipped.
-///
-/// This is the whole graceful-shutdown path on Windows, where there is
-/// no signal to fall back to — see `STOP_COMMAND`.
+/// proves the command ran in the plug-in's own program rather than
+/// being decided about and skipped. This is the whole graceful-shutdown
+/// path on Windows — see `STOP_COMMAND`.
 #[test]
 fn a_declared_stop_command_is_run_before_the_kill() {
     let (_, flag) = shell();
-    // `std::process::id()` alone is unique enough: this test never runs
-    // twice concurrently against itself. It used to also fold in
-    // `{:?}` on a `ThreadId`, which renders as e.g. `ThreadId(2)` — an
+    // `std::process::id()` alone is unique enough here. It used to also
+    // fold in a `ThreadId`, which renders as `ThreadId(2)` — an
     // unquoted `(` is a subshell to `/bin/sh -c`, so the marker path
-    // broke the very shell command meant to write it, on every run.
-    // Dropping it removes the one character class this string can
-    // never safely contain, rather than trying to quote it correctly
-    // for two shell dialects (`/bin/sh -c` and `cmd.exe /C`) at once.
+    // broke the very command meant to write it. Dropping it removes the
+    // one character class this string can never safely contain.
     let marker =
         std::env::temp_dir().join(format!("poltertype-stop-{}.marker", std::process::id()));
     let _ = std::fs::remove_file(&marker);

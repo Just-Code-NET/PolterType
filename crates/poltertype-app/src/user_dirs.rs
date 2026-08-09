@@ -14,14 +14,12 @@ pub(crate) fn open_path(path: &std::path::Path, what: &str) {
     }
 }
 
-/// Resolve the user wordlists directory, create it if missing, and
-/// drop a `README.txt` on first creation so a user opening the
-/// folder for the first time can immediately see what files are
-/// recognised. Returns the directory path on success.
+/// Resolve the user wordlists directory, creating it if missing and
+/// seeding a `README.txt` on first creation so the folder explains
+/// which files are recognised.
 ///
-/// We seed only on actual creation — once the user has the folder,
-/// we never touch the README again, so users can delete it / rename
-/// it / replace it without our re-overwriting their changes.
+/// Seeded only on actual creation, so a user may delete, rename or
+/// replace the README without it coming back.
 pub(crate) fn ensure_user_wordlist_dir() -> anyhow::Result<PathBuf> {
     let dir = poltertype_core::layouts::user_wordlist_dir()
         .context("could not determine user-config directory")?;
@@ -39,14 +37,9 @@ pub(crate) fn ensure_user_wordlist_dir() -> anyhow::Result<PathBuf> {
     Ok(dir)
 }
 
-/// Resolve the user layouts directory, create it if missing, and
-/// drop a `README.txt` on first creation so a user opening it for
-/// the first time can immediately see the TOML schema and pick up
-/// an embedded mapping as a starting point. Returns the directory
-/// path on success.
-///
-/// Same single-shot behaviour as the wordlists README — once the
-/// directory exists we never touch the README again.
+/// Resolve the user layouts directory, creating it if missing and
+/// seeding a `README.txt` with the TOML schema on first creation.
+/// Same single-shot behaviour as the wordlists README.
 pub(crate) fn ensure_user_layout_dir() -> anyhow::Result<PathBuf> {
     let dir = poltertype_core::layouts::user_layout_dir()
         .context("could not determine user-config directory")?;

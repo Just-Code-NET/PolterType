@@ -26,14 +26,12 @@ pub(crate) fn pending_path() -> Result<PathBuf, UpdateError> {
 
 /// The staged update, if there is one *and* its artifact still exists.
 ///
-/// A `pending.json` whose artifact has been deleted (user cleaned their
-/// cache, a disk tool swept the staging dir) is treated as no pending
-/// update at all, and the stale record is removed. The alternative —
-/// reporting a pending update we can't install — would show the user a
-/// "Restart to update" item that does nothing.
+/// A `pending.json` whose artifact has been deleted counts as no
+/// pending update, and the stale record is removed — the alternative is
+/// a "Restart to update" item that does nothing.
 ///
-/// Returns `None` rather than an error for anything malformed: a
-/// corrupt bookkeeping file must not be able to break app startup.
+/// `None` rather than an error for anything malformed: a corrupt
+/// bookkeeping file must not be able to break app startup.
 pub fn read_pending() -> Option<PendingUpdate> {
     let path = pending_path().ok()?;
     let raw = match fs::read_to_string(&path) {
@@ -97,11 +95,9 @@ pub fn clear_pending() {
 /// Record that we are about to hand the staged artifact to the OS
 /// installer, and say whether it is still worth trying.
 ///
-/// The counter is bumped *before* the attempt, not after: an installer
-/// that hard-kills our process (or a machine that loses power mid
-/// install) would never reach an after-the-fact increment, and the
-/// broken artifact would be retried on every single quit. Counting the
-/// attempt up front means each try costs one, whatever happens next.
+/// The counter is bumped *before* the attempt: an installer that
+/// hard-kills our process would never reach an after-the-fact
+/// increment, and the broken artifact would be retried on every quit.
 pub(crate) fn note_install_attempt(pending: &PendingUpdate) -> bool {
     let attempts = pending.attempts + 1;
     if attempts > MAX_INSTALL_ATTEMPTS {

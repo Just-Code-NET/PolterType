@@ -23,17 +23,14 @@ pub fn try_init() -> Option<HyprlandSwitcher> {
 
 impl LayoutSwitcher for HyprlandSwitcher {
     fn current(&self) -> Result<LayoutId, LayoutError> {
-        // Parse `hyprctl devices` and ask `choose_current_keymap`
-        // which keyboard actually reflects the user's typing layout
-        // (remapper virtual keyboard > `main: yes` > first; our own
-        // emitter is never eligible). Trusting `main` alone is not
-        // enough: Hyprland re-elects `main` when devices appear, and
-        // right after our emitter registers it often *is* the
-        // emitter — whose keymap only tracks `switchxkblayout all`,
-        // never the user's per-device Alt+Shift toggle. Reading it
-        // desyncs the engine from the real keystream, which kills
-        // exactly one direction of correction (the "uk→en works but
-        // en→uk never fires" report).
+        // `choose_current_keymap` decides which keyboard reflects the
+        // user's typing layout (remapper virtual keyboard > `main: yes`
+        // > first; our own emitter never). Trusting `main` alone is not
+        // enough: Hyprland re-elects it when devices appear, and right
+        // after our emitter registers it often *is* the emitter — whose
+        // keymap tracks `switchxkblayout all` but never the user's
+        // per-device toggle, which killed exactly one direction of
+        // correction.
         let out = request(&["devices"])?;
         let keyboards = parse_keyboards(&out);
         choose_current_keymap(&keyboards)
@@ -70,16 +67,13 @@ impl LayoutSwitcher for HyprlandSwitcher {
         let Some(idx) = layouts.iter().position(|l| l == id) else {
             return Err(LayoutError::NotActive(id.clone()));
         };
-        // Use `all` rather than `main-keyboard`: in setups with
-        // `keyd` (or any input remapper that creates its own uinput
-        // device), the physical keystroke stream actually reaches
-        // the compositor through the remapper's virtual keyboard,
-        // which Hyprland sees as a separate xkb context. Switching
-        // only `main-keyboard` would flip our own virtual device
-        // and leave the keyd-proxied one on the old layout — at
-        // which point a replay through uinput re-types the
-        // original Latin glyphs and you get the "blink and stay the
-        // same" symptom. `all` keeps every device in lock-step.
+        // `all`, not `main-keyboard`: behind an input remapper the
+        // physical keystrokes reach the compositor through the
+        // remapper's virtual keyboard, which Hyprland treats as a
+        // separate xkb context. Switching only `main-keyboard` flips
+        // our own device and leaves the proxied one on the old layout,
+        // so a replay re-types the original glyphs — the "blink and stay
+        // the same" symptom.
         let _ = request(&["switchxkblayout", "all", &idx.to_string()])?;
         debug!(layout = %id, idx, "Hyprland layout switched (all devices)");
         Ok(())

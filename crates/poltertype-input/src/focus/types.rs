@@ -23,17 +23,14 @@ pub struct FocusedWindowGeometry {
 
 /// A recent caret position, in coordinates **relative to the caret's
 /// toplevel window** — compose with [`FocusedWindowGeometry`] for the
-/// screen position. (Window-relative on purpose: native-Wayland
+/// screen position. Window-relative on purpose: native-Wayland
 /// toolkits report screen coordinates against the window's *initial*
-/// placement, which goes stale on every re-tile; window-relative
-/// extents plus the compositor's live rect stay correct.)
+/// placement, which goes stale on every re-tile.
 ///
 /// Produced by the AT-SPI watcher on Linux. `height` is the caret's
-/// line height — may legitimately be 0 (kate answers width-only
-/// rects), so never divide by it. `age` is how long ago the
-/// underlying caret event fired — callers should distrust stale
-/// samples, because a sample stops updating the moment focus lands
-/// in an app without a11y support.
+/// line height and may legitimately be 0, so never divide by it. `age`
+/// is how long ago the underlying event fired — samples stop updating
+/// the moment focus lands in an app without a11y support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CaretHint {
     pub x: i32,

@@ -4,13 +4,11 @@ use std::time::Duration;
 
 /// X11 keycodes are evdev codes plus a fixed offset of 8.
 ///
-/// The X protocol reserves keycodes 0–7 (0 is "no key"; the rest are
-/// historical), so every XKB keymap built by `xkeyboard-config` on
-/// Linux shifts the kernel's evdev codes up by 8. This one constant is
-/// the whole bridge between the X11 backend and the rest of poltertype:
-/// the engine speaks Win SC Set-1 scancodes, which on Linux coincide
-/// with evdev codes for every row we buffer (see `wayland::evdev_to_sc1`,
-/// which is the identity function for exactly this reason).
+/// The X protocol reserves keycodes 0–7, so every XKB keymap built by
+/// `xkeyboard-config` shifts the kernel's evdev codes up by 8. This one
+/// constant is the whole bridge between the X11 backend and the rest of
+/// PolterType: the engine speaks Win SC Set-1, which on Linux coincides
+/// with evdev codes for every row we buffer.
 ///
 /// Reference: <https://www.x.org/wiki/Development/Documentation/XKB/>
 pub(crate) const EVDEV_OFFSET: u32 = 8;
@@ -35,15 +33,13 @@ pub(crate) const EV_RIGHTMETA: u32 = 126;
 /// large enough that an idle keyboard doesn't spin a core.
 pub(crate) const POLL_IDLE: Duration = Duration::from_millis(2);
 
-/// Shortest gap between two `XQueryKeymap` round-trips when
-/// reconciling a modifier we believe is held (`ModState::resync`).
+/// Shortest gap between two `XQueryKeymap` round-trips when reconciling
+/// a modifier we believe is held (`ModState::resync`).
 ///
 /// The check runs only on idle rounds and only while some modifier is
-/// believed down, so on an idle keyboard it never runs at all. This
-/// bounds the one case where it would otherwise run at `POLL_IDLE`
-/// rate: a user genuinely holding Alt through a chord. A fifth of a
-/// second is far below noticing a correction is missing, and five
-/// round-trips a second against the local socket is nothing.
+/// believed down, so an idle keyboard never asks. This bounds the one
+/// case where it would otherwise run at `POLL_IDLE` rate: a user
+/// genuinely holding Alt through a chord.
 pub(crate) const MOD_RESYNC_INTERVAL: Duration = Duration::from_millis(200);
 
 /// Pacing between the press and release edges of a synthetic key.

@@ -1,22 +1,20 @@
 //! Reading and writing one setting in a plug-in's own config file.
 //!
-//! A plug-in's settings pane edits the plug-in's config, not ours. That
-//! file belongs to the plug-in and, in the one case this was written
-//! for, is mostly prose: comments explaining what each switch means and
+//! That file belongs to the plug-in and is mostly prose in the case
+//! this was written for: comments explaining what each switch means and
 //! what turning it on costs. Parsing it into a struct and serialising
-//! it back would silently delete all of that the first time a user
-//! touched a toggle — so edits go through `toml_edit`, which keeps the
-//! document as written and changes only the value asked for.
+//! it back would delete all of that the first time a user touched a
+//! toggle, so edits go through `toml_edit`, which keeps the document as
+//! written and changes only the value asked for.
 //!
-//! Everything here works on strings rather than paths, so it is pure:
-//! the file IO belongs to the caller, and the interesting behaviour is
-//! testable without a filesystem.
+//! Everything works on strings rather than paths, so the file IO
+//! belongs to the caller and the interesting behaviour is testable
+//! without a filesystem.
 //!
-//! Missing tables are created, because a plug-in's config file is
-//! allowed to omit anything it has a default for — the pane should
-//! still be able to set it. Nothing else is invented: a key that does
-//! not exist reads back as `None`, and the pane shows its own default
-//! rather than pretending to know the plug-in's.
+//! Missing tables are created, because a plug-in's config may omit
+//! anything it has a default for. Nothing else is invented: an absent
+//! key reads back as `None` and the pane shows its own default rather
+//! than pretending to know the plug-in's.
 
 use toml_edit::{Document, Item, Value};
 
@@ -64,14 +62,13 @@ pub fn read_setting(text: &str, key: &str) -> Option<SettingValue> {
 /// Read an array of strings at a dotted key.
 ///
 /// Separate from [`read_setting`] rather than another [`SettingValue`]
-/// variant, because an array is not a value a control *holds* — it is
-/// a set a control adds itself to or removes itself from. The pane
-/// renders one checkbox per candidate and each one asks the same
-/// question: is this name in there?
+/// variant, because an array is not a value a control *holds* — it is a
+/// set a control adds itself to or removes itself from, one checkbox
+/// per candidate asking the same question.
 ///
 /// A missing key is an empty list, not an error: a plug-in whose
-/// allow-list is absent allows nothing, which is exactly what the
-/// unticked boxes will say.
+/// allow-list is absent allows nothing, which is what the unticked
+/// boxes will say.
 pub fn read_string_array(text: &str, key: &str) -> Vec<String> {
     let Ok(doc) = text.parse::<Document>() else {
         return Vec::new();
@@ -94,16 +91,15 @@ pub fn read_string_array(text: &str, key: &str) -> Vec<String> {
 
 /// Add `member` to the array at `key`, or take it out.
 ///
-/// The array is created if it is missing, and left exactly as written
-/// otherwise — including its comments, which in the file this was
-/// written for explain why each entry is there and, more importantly,
-/// why certain applications are deliberately *absent*. An edit that
-/// reformatted the list would delete the reasoning along with it.
+/// The array is created if missing and left exactly as written
+/// otherwise, comments included — in the file this was written for they
+/// explain why each entry is there and, more importantly, why certain
+/// applications are deliberately *absent*.
 ///
 /// Adding something already there, or removing something that is not,
-/// is a no-op rather than an error: the pane's checkbox and the file
-/// can disagree for a moment, and the honest resolution is the state
-/// the user just asked for.
+/// is a no-op rather than an error: the checkbox and the file can
+/// disagree for a moment, and the honest resolution is what the user
+/// just asked for.
 pub fn set_array_member(
     text: &str,
     key: &str,

@@ -2,23 +2,16 @@
 //!
 //! Everything here happens on static text read from disk, before the
 //! plug-in's program is launched — which is the whole reason the
-//! contribution model is declarative. A plug-in that had to run in
-//! order to describe itself would already be running by the time the
-//! user saw what it wanted.
+//! contribution model is declarative.
 //!
-//! The checks are about what PolterType would otherwise be tricked
-//! into doing on the plug-in's behalf, not about the plug-in being
-//! well-written:
-//!
-//! * it may only ask us to run a program **out of its own `bin/`**, by
-//!   plain file name — never a path, so a manifest cannot point at
-//!   `/usr/bin/env`, at something in the user's home, or at a sibling
-//!   pack;
-//! * every button and tray entry must name a command that exists, so a
-//!   click cannot fall through to nothing (or to whatever a later
-//!   version of the manifest puts under that name);
-//! * every stored control must name the config key it stores into, and
-//!   every choice must offer something to choose.
+//! The checks are about what PolterType would otherwise be tricked into
+//! doing on the plug-in's behalf, not about the plug-in being
+//! well-written: it may only ask us to run a program **out of its own
+//! `bin/`**, by plain file name, so a manifest cannot point at
+//! `/usr/bin/env` or a sibling pack; every button and tray entry must
+//! name a command that exists, so a click cannot fall through to
+//! nothing; and every stored control must name its config key, every
+//! choice offer something to choose.
 
 use super::enums::{ControlKind, PluginError};
 use super::types::ExtensionManifest;

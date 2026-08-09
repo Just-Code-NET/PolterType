@@ -1,16 +1,13 @@
 //! What a macOS user has to grant, and whether they have.
 //!
-//! Two separate permissions that people routinely confuse, because
-//! macOS shows them in adjacent rows of the same pane and neither
-//! name says "keyboard":
+//! Two permissions people routinely confuse, because macOS shows them
+//! in adjacent rows and neither name says "keyboard":
+//! **Accessibility**, required to create the `CGEventTap` and post
+//! corrected keys back, and **Input Monitoring**, required to
+//! *receive* events from the tap. Grant one without the other and the
+//! app looks half-alive.
 //!
-//! * **Accessibility** — required to create the `CGEventTap` we read
-//!   keys with, and to post the corrected ones back.
-//! * **Input Monitoring** — required to *receive* key events from the
-//!   tap. Grant one without the other and the app looks half-alive.
-//!
-//! Both are checked without prompting. `AXIsProcessTrustedWithOptions`
-//! shows the system dialog when asked to, and a guide that throws a
+//! Both are checked without prompting: a guide that throws a system
 //! dialog every time the user presses *Check again* is a guide they
 //! close.
 
@@ -39,10 +36,9 @@ unsafe extern "C" {
 // because rustdoc generates nothing for an extern block and `-D
 // warnings` rejects a doc comment that documents nothing.
 //
-// The request type we care about is `kIOHIDRequestTypeListenEvent`
-// (1) — "may this process observe keystrokes", i.e. Input Monitoring.
-// The returned `IOHIDAccessType` is 0 granted, 1 denied, 2 unknown,
-// and we keep that third value rather than folding it into "denied":
+// The request type we care about is `kIOHIDRequestTypeListenEvent` (1)
+// — Input Monitoring. The returned access type is 0 granted, 1 denied,
+// 2 unknown, and the third is kept rather than folded into "denied":
 // unknown means the system has not decided, which is a different
 // sentence to write on screen.
 #[link(name = "IOKit", kind = "framework")]

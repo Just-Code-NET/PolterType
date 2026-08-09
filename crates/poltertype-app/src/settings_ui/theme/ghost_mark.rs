@@ -35,26 +35,19 @@ impl<Message> canvas::Program<Message> for GhostMark {
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<Geometry> {
-        // NOT the idiomatic `Frame::new(renderer, bounds.size())` —
-        // that stores the frame's clip rectangle in canvas-LOCAL
-        // coordinates (`0, 0, w, h`), and iced 0.13's tiny-skia
-        // compositor applies that rectangle as a window-GLOBAL mask
-        // region. Any canvas away from the window's top-left corner
-        // gets its fills masked out (whether one survives depends on
-        // exact-f32 bounds equality — the keycap rectangles rendered
-        // while the ghost vanished). An infinite clip was tried first
-        // and fixes the masking, but infinite rectangles then poison
-        // the damage tracker: after a full-palette change the window
-        // stops compositing repaints and blinks between stale buffers.
+        // NOT the idiomatic `Frame::new(renderer, bounds.size())`: that
+        // stores the clip rectangle in canvas-local coordinates, and
+        // iced 0.13's tiny-skia compositor applies it as a
+        // window-global mask, so any canvas away from the window's
+        // top-left has its fills masked out. An infinite clip fixes the
+        // masking but poisons the damage tracker, and the window then
+        // blinks between stale buffers after a palette change.
         //
-        // Instead, build the renderer's raw frame with the clip set to
-        // the widget's real (window-global) bounds, then cancel the
-        // translation the frame bakes into its transform — the canvas
-        // widget already positions the geometry group at
-        // `bounds.position()`, so the paths themselves must stay
-        // local. Mask lands on the widget, damage stays finite.
-        // Upstream reworked the pipeline in iced 0.14; drop this when
-        // the workspace moves.
+        // So build the raw frame with the clip set to the widget's real
+        // window-global bounds, then cancel the translation the frame
+        // bakes in — the canvas widget already positions the geometry
+        // group, so the paths stay local. Mask lands on the widget,
+        // damage stays finite. Drop this at iced 0.14.
         let mut frame = RawFrame::with_clip(bounds);
         frame.translate(Vector::new(-bounds.x, -bounds.y));
         // Author coordinates below are the SVG's 64×64 viewBox.
