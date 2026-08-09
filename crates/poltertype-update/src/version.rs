@@ -6,12 +6,11 @@ use crate::enums::UpdateError;
 
 /// Is `candidate` a version we should move *to* from `current`?
 ///
-/// Strict semver ordering, which gives us pre-release handling for
-/// free: `0.4.0-rc.1 < 0.4.0`, so a user running an rc gets offered
-/// the final, and a user on the final is never dragged back to an rc.
-/// A tag that isn't valid semver is an error, not a "probably fine" —
-/// we would rather skip an update than install something whose version
-/// we cannot reason about.
+/// Strict semver ordering, which gives pre-release handling for free:
+/// `0.4.0-rc.1 < 0.4.0`, so an rc user is offered the final and a final
+/// user is never dragged back. A tag that is not valid semver is an
+/// error rather than "probably fine" — better to skip an update than
+/// install something whose version we cannot reason about.
 pub fn is_newer(candidate: &str, current: &str) -> Result<bool, UpdateError> {
     let candidate_v = parse(candidate)?;
     let current_v = parse(current)?;

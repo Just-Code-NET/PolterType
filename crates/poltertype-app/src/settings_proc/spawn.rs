@@ -60,14 +60,10 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
         }
     };
 
-    // Wait for the child in a worker thread so the tray doesn't
-    // block. On exit we run the three refresh steps documented on
-    // the function. We do all three regardless of whether the user
-    // clicked Save — the GUI also has an "Open config.toml" button
-    // and a Wordlists pane Save that writes files outside the
-    // GUI's own state, so reload-on-close gives the most
-    // predictable contract: "everything you did in the GUI applies
-    // now."
+    // Waited on in a worker thread so the tray does not block. All
+    // three refresh steps run whether or not the user clicked Save: the
+    // GUI also writes files outside its own state, so reload-on-close
+    // is the predictable contract.
     std::thread::Builder::new()
         .name("poltertype-settings-waiter".into())
         .spawn(move || {

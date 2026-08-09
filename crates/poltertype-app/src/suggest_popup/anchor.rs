@@ -56,11 +56,10 @@ pub(super) fn resolve_anchor(
 /// The caret's screen position for `g`, or `None` — with a line saying
 /// why — when the tooltip has to settle for the window anchor.
 ///
-/// The hint is window-relative (see [`CaretHint`]), so it composes with
-/// the live window rect; the composed point is then checked against
-/// that rect, because a nonsense answer from a broken a11y bridge must
-/// not fling the tooltip across the screen. Coordinates only — this
-/// path never sees, and must never log, typed text.
+/// The hint is window-relative, so it composes with the live rect, and
+/// the composed point is checked against that rect: a nonsense answer
+/// from a broken a11y bridge must not fling the tooltip across the
+/// screen. Coordinates only; this path must never log typed text.
 fn caret_point(caret: Option<CaretHint>, g: &FocusedWindowGeometry) -> Option<(i32, i32, u32)> {
     let Some(hint) = caret else {
         debug!("no caret sample yet — anchoring the tooltip to the window");

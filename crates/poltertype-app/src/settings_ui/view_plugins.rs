@@ -190,11 +190,8 @@ impl SettingsApp {
     /// A list: one checkbox per row the plug-in supplied, each ticking
     /// its own name into an array in the plug-in's config.
     ///
-    /// The rows cannot come from the manifest — they are whatever is
-    /// installed on this machine — so the plug-in supplies them and
-    /// PolterType draws the boxes. It still draws only boxes: a row
-    /// contributes a name, a label and a line of detail, and nothing
-    /// about how any of it looks.
+    /// It still draws only boxes — a row contributes a name, a label
+    /// and a line of detail, and nothing about how any of it looks.
     fn plugin_list<'a>(
         &'a self,
         plugin: usize,

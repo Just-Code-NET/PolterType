@@ -1,11 +1,10 @@
 //! `SwitcherEngine` — the state machine that turns key events into
 //! layout-switch actions.
 //!
-//! Lives on a worker thread; receives [`KeyEvent`]s from the OS hook
-//! and emits [`SwitcherEvent`]s back to the application (so the tray
-//! / UI / audio can react). Effecting the actual switch + key replay
-//! happens in `poltertype-app` via the [`poltertype_input::KeyEmitter`] +
-//! [`poltertype_layout::LayoutSwitcher`] passed in.
+//! Lives on a worker thread, receives [`KeyEvent`]s from the OS hook and
+//! emits [`SwitcherEvent`]s back to the application. The actual switch
+//! and key replay happen in `poltertype-app`, through the emitter and
+//! switcher passed in.
 
 pub mod buffer;
 pub mod decision;

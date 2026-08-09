@@ -31,14 +31,12 @@ pub use process::{configure_child, request_stop};
 
 /// Keep a tray-only app out of the Dock and the app switcher.
 ///
-/// `LSUIElement` in the bundle's `Info.plist` is not enough on its
-/// own: `tao` applies `ActivationPolicy::Regular` at startup and
-/// overrides it, so a tray app shows a Dock icon anyway. Must be
-/// called before the event loop runs — afterwards the policy is fixed
-/// for the process.
+/// `LSUIElement` in the bundle's `Info.plist` is not enough on its own:
+/// `tao` applies `ActivationPolicy::Regular` at startup and overrides
+/// it. Must be called before the event loop runs — afterwards the
+/// policy is fixed for the process.
 ///
-/// Nothing to do anywhere else: no other platform we ship has a Dock,
-/// and the tray icon is the whole UI surface on all of them.
+/// A no-op elsewhere: no other platform we ship has a Dock.
 pub fn keep_out_of_dock<T>(event_loop: &mut tao::event_loop::EventLoop<T>) {
     #[cfg(target_os = "macos")]
     {

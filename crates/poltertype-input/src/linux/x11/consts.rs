@@ -44,12 +44,11 @@ pub(crate) const MOD_RESYNC_INTERVAL: Duration = Duration::from_millis(200);
 
 /// Pacing between the press and release edges of a synthetic key.
 ///
-/// XTest injects straight into the server's event queue, so we do not
-/// have the libinput/keyd zero-duration-tap coalescing problem the
-/// uinput emitter has to work around. We still pace the stream a
-/// little: some toolkits derive auto-repeat and key-held state from
-/// event timestamps, and a burst arriving in the same millisecond has
-/// been known to confuse them.
+/// XTest injects straight into the server's event queue, so there is no
+/// zero-duration-tap coalescing to work around as with uinput. The
+/// pacing is still there because some toolkits derive auto-repeat and
+/// key-held state from event timestamps, and a burst inside one
+/// millisecond has been known to confuse them.
 pub(crate) const KEY_STEP: Duration = Duration::from_millis(2);
 
 // The wait for a locked XKB group to reach focused clients

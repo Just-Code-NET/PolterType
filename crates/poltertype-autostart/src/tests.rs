@@ -1,12 +1,10 @@
 //! Unit tests for the pure parts of each backend.
 //!
 //! Only the string building is testable off-platform, and it is also
-//! where the bugs live: an unescaped `&` in a home directory name
-//! produces a plist macOS silently refuses, and an unquoted space in
-//! `Exec=` produces an autostart entry the desktop environment
-//! silently ignores. Both fail quietly, which is exactly why they are
-//! worth pinning down. Each module compiles only on its own target, so
-//! these run across the three CI platforms rather than all at once.
+//! where the bugs live: an unescaped `&` in a home directory produces a
+//! plist macOS silently refuses, and an unquoted space in `Exec=`
+//! produces an entry the desktop silently ignores. Both fail quietly,
+//! which is why they are worth pinning down.
 
 #[cfg(target_os = "macos")]
 mod macos {

@@ -1,15 +1,11 @@
 //! Windows: a value under the per-user run key.
 //!
-//! `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` is the
-//! lowest-ceremony mechanism that needs no elevation and no installer
-//! cooperation: the value is ours, per user, and Explorer runs it at
-//! sign-in.
+//! `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` needs no
+//! elevation and no installer cooperation: the value is ours, per user,
+//! and Explorer runs it at sign-in.
 //!
-//! We drive it through `reg.exe` rather than a registry binding — see
-//! the note in `lib.rs` for why. The child is spawned with
-//! `CREATE_NO_WINDOW`; without it a console window flashes on screen
-//! at every login, which is precisely the sort of thing a tray app
-//! must not do.
+//! Driven through `reg.exe` rather than a registry binding — see
+//! `lib.rs`. `CREATE_NO_WINDOW`, or a console flashes at every login.
 
 use std::os::windows::process::CommandExt;
 use std::path::Path;

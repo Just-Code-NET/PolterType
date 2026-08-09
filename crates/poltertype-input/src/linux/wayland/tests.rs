@@ -1,12 +1,10 @@
 //! Unit tests for the evdev backend's decision-making: the key gate
 //! and the rescan bookkeeping.
 //!
-//! Neither can be exercised against real hardware from a test — one
-//! grabs keyboards, the other watches `/dev/input` — so both are driven
-//! through the seams they were given for it: [`GateDevice`] for the
-//! gate, and a pure path-diff for the rescan. Every case here is a
-//! regression: each one cost real text on a real machine before it was
-//! understood.
+//! Neither can be exercised against real hardware from a test, so both
+//! are driven through the seams they were given for it — [`GateDevice`]
+//! for the gate, a pure path-diff for the rescan. Every case here is a
+//! regression that cost real text on a real machine.
 
 use super::*;
 

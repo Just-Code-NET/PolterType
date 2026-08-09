@@ -25,14 +25,11 @@ impl SoundEvent {
         }
     }
 
-    /// Synthesised fallback tone parameters: `(frequency_Hz,
-    /// duration_ms)`. Used when the user's theme dir doesn't ship a
-    /// matching `.ogg` file. Generating tones at runtime instead of
-    /// shipping audio assets keeps the binary small and avoids
-    /// per-platform decoder quirks.
-    ///
-    /// Distinct pitches per event give the user audible feedback
-    /// without having to look at the tray.
+    /// Synthesised fallback tone, `(frequency_Hz, duration_ms)`, used
+    /// when the user's theme ships no matching `.ogg`. Generating tones
+    /// at runtime keeps the binary small and avoids per-platform decoder
+    /// quirks; distinct pitches per event give audible feedback without
+    /// looking at the tray.
     pub(crate) fn synth_tone(self) -> (f32, u64) {
         match self {
             // Bright "ping" — a correction was applied.

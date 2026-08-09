@@ -14,13 +14,11 @@ pub struct ReplayKey {
 
 /// One synthetic keystroke an emitter actually put on the wire.
 ///
-/// On backends where injected events echo back through the listener
-/// indistinguishable from real typing (Linux/uinput behind an input
-/// remapper like keyd), the engine collects these via
-/// [`KeyEmitter::take_emitted`] and match-and-consumes the echoes off
-/// the key stream instead of blindly suppressing everything for a
-/// fixed time window (which used to eat the first characters the user
-/// typed right after a correction).
+/// Where injected events echo back indistinguishable from real typing
+/// — Linux/uinput behind a remapper — the engine collects these via
+/// [`KeyEmitter::take_emitted`] and match-and-consumes the echoes,
+/// rather than suppressing everything for a fixed window, which used to
+/// eat the first characters typed after a correction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmittedKey {
     pub scancode: u32,

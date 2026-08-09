@@ -37,17 +37,13 @@ fn extension(id: &str, entries: &[(&str, &str)]) -> DiscoveredExtension {
     }
 }
 
-// Five tests below construct a real `muda::Menu` to exercise routing
-// against it — the thing worth testing is which command a click
-// resolves to, and a fake menu would just be re-asserting our own
-// mock. On macOS that construction calls into AppKit, which
-// `objc2_foundation::thread::MainThreadMarker` refuses off the main
-// thread — and `cargo test` never runs a `#[test]` there, by design of
-// the harness, not a flag we can pass. `#[ignore]`d there rather than
-// faked: ignoring is honest about not being exercised, a fake would
-// silently claim coverage the process doesn't have. Not a gap in
-// `PluginMenu` itself — the same build+route logic runs for real every
-// time the tray menu is drawn, which is on the main thread.
+// The five tests below build a real `muda::Menu`: what is worth
+// testing is which command a click resolves to, and a fake menu would
+// only re-assert our own mock. On macOS that construction calls into
+// AppKit, which refuses off the main thread — where `cargo test` never
+// runs a `#[test]`. `#[ignore]`d there rather than faked, because
+// ignoring is honest about not being exercised. The same build+route
+// logic runs for real every time the tray menu is drawn.
 
 #[test]
 #[cfg_attr(

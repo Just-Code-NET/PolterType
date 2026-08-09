@@ -64,17 +64,14 @@ pub(crate) fn parse_keyboards(out: &str) -> Vec<KeyboardBlock> {
 }
 
 /// Pick the keyboard whose keymap reflects what the user is actually
-/// typing in. Our own uinput emitter is never eligible — it only
-/// receives `switchxkblayout all`, never the user's per-device
-/// Alt+Shift toggle, so trusting it desyncs the engine from the real
-/// keystream (the classic "uk→en works but en→uk never fires").
+/// typing in. Our own uinput emitter is never eligible — it only sees
+/// `switchxkblayout all`, never the user's per-device toggle, so
+/// trusting it desyncs the engine from the real keystream.
 ///
-/// Priority:
-/// 1. an input-remapper virtual keyboard (keyd / kanata / kmonad) —
-///    when present, the physical keystream and the layout toggle
-///    both flow through it;
-/// 2. the device Hyprland flags `main: yes`;
-/// 3. the first remaining keyboard with a keymap.
+/// In order: an input-remapper virtual keyboard (keyd, kanata,
+/// kmonad), through which both the keystream and the toggle flow; then
+/// the device Hyprland flags `main: yes`; then the first keyboard with
+/// a keymap.
 pub(crate) fn choose_current_keymap(keyboards: &[KeyboardBlock]) -> Option<&str> {
     let emitter = normalize_device_name(EMITTER_DEVICE_NAME);
     let eligible: Vec<&KeyboardBlock> = keyboards

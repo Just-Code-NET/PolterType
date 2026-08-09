@@ -1,13 +1,11 @@
 //! Paths, group names and the links the setup steps point at.
 
 /// The permissions guide, pinned to `main` for the same reason the
-/// tray's link is: it has to describe the current setup script, not
-/// the release the user happens to be running.
+/// tray's link is: it has to describe the current setup script, not the
+/// release the user happens to be running.
 ///
-/// Only the Linux probe hands this out. macOS steps point at the
-/// System Settings panes below instead, and Windows grants nothing at
-/// all — on both, this constant would be dead code rather than merely
-/// unused, which `-D warnings` treats as an error.
+/// Only the Linux probe hands this out — elsewhere it would be dead
+/// code, which `-D warnings` treats as an error.
 #[cfg(target_os = "linux")]
 pub(super) const PERMISSIONS_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";

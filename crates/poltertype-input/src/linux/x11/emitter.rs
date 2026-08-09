@@ -90,14 +90,13 @@ impl KeyEmitter for X11Emitter {
                 press(c, &self.emitted, EV_LEFTSHIFT)?;
                 thread::sleep(KEY_STEP);
             }
-            // The last key of a replay is the boundary the user typed —
-            // usually Space, and the key whose *press* triggered this
-            // correction milliseconds ago. Their finger is almost
-            // certainly still on it. Releasing it first guarantees the
-            // press that follows is a real down edge (and is a harmless
-            // no-op if they have already let go); without it, servers
-            // that collapse a press on an already-held key swallow the
-            // boundary character and the corrected words run together.
+            // The last key of a replay is the boundary the user typed,
+            // whose *press* triggered this correction milliseconds ago,
+            // so their finger is almost certainly still on it.
+            // Releasing first guarantees a real down edge, and is a
+            // harmless no-op if they let go; without it, servers that
+            // collapse a press on an already-held key swallow the
+            // boundary and the corrected words run together.
             if is_last {
                 release(c, &self.emitted, rk.scancode)?;
                 thread::sleep(KEY_STEP);

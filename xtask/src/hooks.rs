@@ -7,14 +7,12 @@ use std::process::Command;
 use std::{fs, path::Path};
 
 /// Wire the versioned `.githooks/` directory into the local clone by
-/// setting `core.hooksPath`. This is the entire install — Git itself
-/// runs every executable in that directory whose name matches a hook
-/// stage, so we don't need to touch `.git/hooks/` at all (and stay
-/// out of its way for users who already keep something there).
+/// setting `core.hooksPath`. That is the entire install — Git runs every
+/// executable in that directory itself, so `.git/hooks/` stays
+/// untouched and out of the way of anyone who keeps something there.
 ///
-/// We also re-`chmod +x` the scripts on POSIX after the config write,
-/// in case someone fetched the repo via a tool that didn't preserve
-/// the executable bit (rare but happens with raw zip downloads).
+/// The scripts are re-`chmod +x`ed on POSIX afterwards, in case the
+/// repo arrived by a route that dropped the executable bit.
 pub(crate) fn install_hooks() -> Result<()> {
     let root = repo_root()?;
     let hooks_dir = root.join(".githooks");

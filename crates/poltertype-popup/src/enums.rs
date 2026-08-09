@@ -2,12 +2,11 @@
 
 /// Where the tooltip should appear.
 ///
-/// No Wayland protocol or X11 property answers "where is the text
-/// caret"; the accessibility stack is the one API that does, and only
-/// for apps with a live a11y bridge. So the anchors run best-first:
-/// the AT-SPI caret when it is available and fresh, the focused
-/// window's bottom-centre otherwise (chat inputs and shell prompts
-/// live there), a screen edge when nothing is known.
+/// Best-first, because no Wayland protocol or X11 property answers
+/// "where is the caret" and the accessibility stack only does so for
+/// apps with a live bridge: the AT-SPI caret when fresh, the focused
+/// window's bottom-centre otherwise, a screen edge when nothing is
+/// known.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PopupAnchor {
     /// A point of interest in global compositor coordinates — the

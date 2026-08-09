@@ -21,13 +21,14 @@ pub trait FocusTracker: Send + Sync {
     }
 
     /// Last known on-screen caret position, when a caret source is
-    /// running (the AT-SPI watcher on Linux). Same caveats as
-    /// [`Self::focused_window_geometry`]: bonus data — many apps
-    /// expose it, none guarantee it — queried once per
-    /// suggestion-tooltip show, never on the keystroke path. Check
-    /// [`CaretHint::age`] before trusting it: a stale sample means the
-    /// focused app emits no a11y caret events, and anchoring the
-    /// tooltip to the window is the better answer.
+    /// running. Bonus data with the same caveats as
+    /// [`Self::focused_window_geometry`] — many apps expose it, none
+    /// guarantee it — queried once per tooltip show, never on the
+    /// keystroke path.
+    ///
+    /// Check [`CaretHint::age`] first: a stale sample means the focused
+    /// app emits no a11y caret events, and anchoring to the window is
+    /// then the better answer.
     fn caret_hint(&self) -> Option<CaretHint> {
         None
     }

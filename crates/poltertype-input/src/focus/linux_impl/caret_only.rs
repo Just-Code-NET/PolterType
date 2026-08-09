@@ -29,12 +29,11 @@ use super::atspi_focus::AtspiFocusWatcher;
 
 /// How long a focus observation stays trustworthy.
 ///
-/// Generous, because the events are sparse: a user can sit in one
+/// Generous, because the events are sparse — a user can sit in one
 /// window for hours and the last `window:activate` is still correct.
-/// What this bounds is the other case — the user moved to an app with
-/// no a11y bridge, nothing was emitted, and the previous answer is
-/// now a lie. Five minutes keeps the common case working while
-/// ensuring a wrong answer expires rather than persisting all session.
+/// What this bounds is the other case: they moved to an app with no
+/// a11y bridge, nothing was emitted, and the previous answer is now a
+/// lie.
 const FOCUS_MAX_AGE: Duration = Duration::from_secs(300);
 
 pub(crate) struct CaretOnlyFocusTracker {

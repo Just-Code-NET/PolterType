@@ -185,14 +185,12 @@ fn wordlist_buffer_is_compatible_with_loader_parser() {
     assert!(!words.contains(""));
 }
 
-/// `save_overlay_file` terminates the buffer with a newline
-/// regardless of whether the user did. Keeps `git diff` quiet
-/// for users who keep their config dir under version control,
-/// and matches the convention of the bundled lists. We can't
-/// easily call `save_overlay_file` without a real
-/// `user_wordlist_dir`, but the normalisation logic is small
-/// and isolated — we mirror it here so any future divergence
-/// gets caught.
+/// `save_overlay_file` terminates the buffer with a newline whether or
+/// not the user did — keeps `git diff` quiet for config dirs under
+/// version control, and matches the bundled lists.
+///
+/// Calling it needs a real `user_wordlist_dir`, so the normalisation is
+/// mirrored here; any future divergence gets caught.
 #[test]
 fn save_overlay_appends_trailing_newline() {
     fn normalise(text: &str) -> String {

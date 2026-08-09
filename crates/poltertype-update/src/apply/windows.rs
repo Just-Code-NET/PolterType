@@ -18,16 +18,14 @@ pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<(), Updat
     let exe = running_exe()?;
     let staging = crate::staging::staging_dir()?;
 
-    // `/qb` (basic UI) rather than `/qn` (silent): the user asked for
-    // this restart and a progress bar for the few seconds it takes is
-    // reassurance, not noise. `/norestart` because an MSI has no
-    // business rebooting a machine to update a tray app.
+    // `/qb` rather than `/qn`: the user asked for this restart, and a
+    // progress bar for the few seconds it takes is reassurance.
+    // `/norestart` because an MSI has no business rebooting a machine
+    // to update a tray app.
     //
-    // Our MSI is a per-user install (see `installers/wix/main.wxs`), so
-    // msiexec needs no elevation and the user gets no UAC prompt they
-    // did not ask for. If that ever changes to a per-machine install,
-    // this backend has to start asking for consent explicitly instead
-    // of springing a UAC dialog on someone who clicked Quit.
+    // Our MSI is a per-user install, so msiexec needs no elevation. If
+    // that ever becomes per-machine, this backend must ask for consent
+    // rather than spring a UAC dialog on someone who clicked Quit.
     let relaunch_line = if relaunch {
         format!("Start-Process -FilePath {}\n", ps_quote(&exe))
     } else {

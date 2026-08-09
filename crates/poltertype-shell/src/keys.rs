@@ -1,10 +1,9 @@
 //! How the platform writes the names of keys.
 //!
-//! `config.toml` always stores portable names (`Ctrl`, `Alt`,
-//! `Meta`, `Backspace`), and the parser only ever sees those. This is
-//! purely what the Settings window *shows*: a Mac keyboard has ⌃ ⌥ ⇧ ⌘
-//! printed on it and nothing that says "Meta", so a hotkey rendered in
-//! portable names is a small puzzle for the user to solve. Windows and
+//! `config.toml` always stores portable names and the parser only ever
+//! sees those. This is purely what the Settings window *shows*: a Mac
+//! keyboard has ⌃ ⌥ ⇧ ⌘ printed on it and nothing that says "Meta", so
+//! a hotkey in portable names is a puzzle for the user. Windows and
 //! Linux keyboards print the words, so there the words are right.
 
 /// The glyph a platform prints on this key, if it prints one.

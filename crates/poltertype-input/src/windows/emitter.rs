@@ -59,16 +59,14 @@ impl KeyEmitter for WindowsEmitter {
 
     fn release_modifiers(&self, held: Modifiers) -> Result<(), InputError> {
         // Both sides of each: `read_modifiers` reports "shift is down",
-        // not which shift, and `SendInput` of a key-up for a key that
-        // is already up is a no-op.
+        // not which shift, and a key-up for an already-up key is a
+        // no-op.
         //
         // This clears the *logical* modifier state applications read
-        // from the message queue, which is what decides whether our
-        // replay arrives as text or as a burst of shortcuts. The user's
-        // physical key stays down; their own release lands on an
-        // already-up key and is ignored, and we deliberately do not
-        // press the modifiers back — re-pressing one they have
-        // meanwhile let go of would leave it stuck down.
+        // from the message queue, which decides whether our replay
+        // arrives as text or as shortcuts. The modifiers are
+        // deliberately not pressed back — re-pressing one the user has
+        // meanwhile released would leave it stuck down.
         let mut events: Vec<INPUT> = Vec::new();
         for (down, keys) in [
             (held.control, [VK_LCONTROL, VK_RCONTROL].as_slice()),

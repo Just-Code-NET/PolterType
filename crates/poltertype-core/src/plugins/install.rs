@@ -12,14 +12,12 @@ use crate::layouts::PluginManifest;
 
 /// Install the pack in `src` into `<data_dir>/plugins/<id>/`.
 ///
-/// Replaces an existing pack of the same id — that is the update
-/// path, and it is deliberately the same code: an update that behaved
-/// differently from a fresh install is an update that gets tested
-/// half as often.
+/// Replaces an existing pack of the same id — that is the update path,
+/// deliberately the same code, because an update that behaved
+/// differently would get tested half as often.
 ///
-/// The copy is staged in a sibling directory and renamed into place,
-/// so an interrupted install leaves the previous pack intact rather
-/// than a half-written one.
+/// Staged in a sibling directory and renamed into place, so an
+/// interrupted install leaves the previous pack intact.
 pub fn install(src: &Path, data_dir: &Path) -> Result<InstalledPack, PluginError> {
     if !src.is_dir() {
         return Err(PluginError::NotADirectory(src.to_path_buf()));

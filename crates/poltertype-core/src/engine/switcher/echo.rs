@@ -46,14 +46,12 @@ impl SwitcherEngine {
         if ev.direction != KeyDirection::Press {
             return false;
         }
-        // Where the key gate can run, our emitter is unproxied — which
-        // is exactly the condition under which the listener can tag our
-        // own events. An untagged press there is the user's, and
-        // matching it against this queue would eat a real keystroke
-        // that shares a scancode with something we just replayed. That
-        // used to be survivable (the key still reached the screen, we
-        // just lost track of it); with keystrokes held back during a
-        // burst it would delete them outright.
+        // Where the gate can run, our emitter is unproxied — exactly
+        // the condition under which the listener can tag our own
+        // events. An untagged press there is the user's, and matching
+        // it against this queue would eat a real keystroke sharing a
+        // scancode with something we just replayed. Survivable before
+        // the gate; with keystrokes held back it deletes them outright.
         if self.key_gate.available() && !ev.injected {
             return false;
         }

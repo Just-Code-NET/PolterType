@@ -1,12 +1,10 @@
 //! Registry of the `/dev/input/event*` nodes this process created.
 //!
-//! The gate must never grab our own uinput emitter — a self-grab
-//! redirects our correction output back into this process and takes
-//! the whole session's input with it. The exclusion used to rest on a
-//! kernel-name comparison alone; the emitter now also records the
-//! node path the kernel assigned at creation, so device discovery can
-//! match by identity and a name drift (kernel truncation, a renamed
-//! emitter, a second instance's device) can never re-open the hole.
+//! The gate must never grab our own uinput emitter: a self-grab
+//! redirects our correction output back into this process and takes the
+//! session's input with it. The exclusion used to rest on a kernel-name
+//! comparison alone; recording the node path the kernel assigned lets
+//! discovery match by identity, so a name drift cannot re-open the hole.
 
 use std::path::{Path, PathBuf};
 

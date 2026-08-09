@@ -1,14 +1,10 @@
-//! Tray icon rendering.
+//! Tray icon rendering: a 16×16 RGBA icon showing a 2-letter layout
+//! code on a tinted background.
 //!
-//! Renders a 16×16 RGBA icon showing a 2-letter layout code (e.g.
-//! `EN`, `UK`) on a tinted background. The font is a tiny built-in
-//! 4×6-pixel bitmap covering A–Z + 0–9 — small enough to embed
-//! inline (~340 bytes), big enough to read at 16×16 in the system
-//! tray.
-//!
-//! No font crate, no `tiny-skia` dep — keeps the binary lean and
-//! lets the tray icon update on every layout change without GPU
-//! roundtrips.
+//! The font is a built-in 4×6-pixel bitmap covering A–Z and 0–9 — ~340
+//! bytes, small enough to embed inline and big enough to read at 16×16.
+//! No font crate and no `tiny-skia`, so the icon can be redrawn on
+//! every layout change without GPU round-trips.
 
 mod consts;
 mod render;
