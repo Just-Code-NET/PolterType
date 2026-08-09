@@ -1,36 +1,22 @@
-//! poltertype application entry point.
+//! poltertype application entry point: wires the tray, global
+//! keyboard listener, layout switcher and `SwitcherEngine` together,
+//! registers the two built-in hotkeys, and spawns the focus-driven
+//! wordlist-profile watcher.
 //!
-//! Wires the tray + global keyboard listener + layout switcher +
-//! `SwitcherEngine` together, registers the two built-in global
-//! hotkeys (pause / switch-last), and spawns the focus-driven
-//! wordlist-profile watcher when the user has profiles configured.
-//!
-//! The Settings GUI is a **separate process** spawned via
-//! `poltertype --settings` — see `settings_ui.rs` for the
-//! rationale (macOS main-thread contention, crash isolation).
-//! User-defined "smart commands" (`[[commands]]` in `config.toml`)
-//! are NOT wired here as global hotkeys; they're text triggers
-//! consulted by the engine on every word boundary. See
-//! `poltertype_core::commands` for the design.
+//! The Settings GUI is a separate process (`poltertype --settings`).
+//! Smart commands are text triggers, not hotkeys — neither is wired
+//! here. See `docs/ARCHITECTURE.md`.
 
-// A tray-only app must not own a console. Without this, Windows links
-// the binary as a CUI image and allocates a conhost for it the moment
-// it is started by anything that is not already a console — which is
-// every way a user actually launches it: the Start Menu shortcut, the
-// autostart run key, Explorer. The result was a black window sitting
-// behind the tray icon for the life of the process, and a second one
-// for the settings subprocess.
+// A tray-only app must not own a console: without this Windows links
+// the binary as a CUI image and allocates a conhost the moment it is
+// started by anything that is not already a console — which is every
+// way a user launches it.
 //
-// Set unconditionally rather than under `not(debug_assertions)`, so the
-// shape we test is the shape we ship: the subsystem also decides
-// whether a spawned plug-in inherits our console or allocates its own,
-// and a dev build that quietly differed there would hide exactly the
-// bug `poltertype_shell::configure_child` exists to prevent.
-//
-// Diagnostics do not depend on the console: `init_tracing` writes a
-// daily-rotating file under `<data_dir>/poltertype/logs/`, and a GUI
-// image still inherits standard handles, so `poltertype.exe > log 2>&1`
-// keeps working from a shell. Ignored on every other platform.
+// Unconditional rather than `not(debug_assertions)`, so the shape we
+// test is the shape we ship: the subsystem also decides whether a
+// spawned plug-in inherits our console. Diagnostics do not depend on
+// it — `init_tracing` writes to a file, and a GUI image still inherits
+// standard handles. Ignored on every other platform.
 #![windows_subsystem = "windows"]
 #![forbid(unsafe_code)]
 
@@ -92,29 +78,20 @@ use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
 
 /// How often a plug-in that reports state is re-asked while the user is
-/// not touching the menu. Slow on purpose: this exists so a change made
-/// elsewhere is not invisible indefinitely, not so the tray is a live
-/// dashboard, and every tick costs one subprocess per reporting plug-in.
+/// not touching the menu. Slow on purpose: every tick costs one
+/// subprocess per reporting plug-in.
 const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 fn main() -> Result<()> {
-    // CLI dispatch: `poltertype --settings` opens the Settings GUI
-    // and exits when the window closes. Anything else falls through
-    // to the tray. We do this BEFORE `init_tracing` / single-instance
-    // because:
-    //
-    // * The settings UI is a short-lived child process spawned by the
-    //   tray. Hitting the single-instance lock would kill it on
-    //   startup; logging would steal the tray's log file rotation.
-    // * `--help` / `--version` need to be cheap and side-effect-free.
+    // Before `init_tracing` / single-instance on purpose: the settings
+    // UI is a child process that would hit the lock and steal the
+    // tray's log rotation, and `--help` / `--version` must stay cheap.
     let mut args = std::env::args().skip(1);
     if let Some(arg) = args.next() {
         match arg.as_str() {
             "--settings" | "-s" | "settings" => return settings_ui::run(false),
-            // Same window, opened on the Setup pane. The tray uses
-            // this when the keyboard hooks failed to start, so the
-            // user lands on the one screen that can help instead of
-            // hunting for it.
+            // The tray uses this when the keyboard hooks failed to
+            // start, so the user lands on the one screen that helps.
             "--setup" => return settings_ui::run(true),
             "--plugins" => {
                 return settings_ui::run_on(settings_ui::Pane::Plugins);
@@ -147,11 +124,8 @@ fn main() -> Result<()> {
     let Some(_instance) = poltertype_shell::acquire_instance_lock(APP_ID, &config_dir)
         .context("create single-instance lock")?
     else {
-        // Named rather than merely stated: the commonest cause after a
-        // crash used to be a plug-in that outlived us still holding the
-        // lock, and "another instance is already running" gave nobody
-        // anything to act on. That leak is fixed, but the hint costs a
-        // line and the next cause will not be one we predicted either.
+        // Named rather than merely stated: "another instance is already
+        // running" gave nobody anything to act on.
         warn!(
             "another instance is already running, exiting — if no PolterType window or tray \
              icon exists, look for a leftover PolterType or plug-in process"
@@ -193,20 +167,11 @@ fn main() -> Result<()> {
     };
 
     // ─── Layouts ───────────────────────────────────────────────────
-    // We now ship layout mappings + FST wordlists as plain files in
-    // a `data/` directory next to the executable (Windows MSI),
-    // inside `Contents/Resources/data/` (macOS .app), or
-    // `usr/share/poltertype/data/` (Linux AppImage). The runtime
-    // resolver in `poltertype_core::data_dir` figures out which path is
-    // live; in dev mode it falls back to `target/dist/data/` where
-    // `poltertype-core/build.rs` writes prepared assets.
-    //
-    // We then ask the OS which layouts the user has actually
-    // enabled (`list_active`) and only load **those** wordlists into
-    // memory. A user with `en-US / uk-UA / ru-RU` saves the FST RAM
-    // for the four other bundled languages they'd never query — and
-    // the detector can no longer pick an unreachable layout (the
-    // root cause of the original `http ` bug).
+    // Mappings and FST wordlists ship as plain files; the runtime
+    // resolver in `poltertype_core::data_dir` finds the live path (see
+    // `docs/DATA_LAYOUT.md`). Only the layouts the OS reports as
+    // enabled are loaded, which saves the FST RAM for everything else
+    // and stops the detector picking an unreachable layout.
     let data_dir = poltertype_core::resolve_data_dir().context("resolve data directory")?;
     info!(?data_dir, "data directory resolved");
 
@@ -216,10 +181,8 @@ fn main() -> Result<()> {
             Some(list)
         }
         Err(e) => {
-            // Fail-open: we can't decide what's reachable, so load
-            // every bundled layout (the previous baked-in behaviour).
-            // The detector + apply_correction pre-flight guard will
-            // still catch any unreachable target at runtime.
+            // Fail-open: load every bundled layout. The detector and
+            // the `apply_correction` pre-flight still guard the target.
             warn!(
                 ?e,
                 "could not query active OS layouts; loading every bundled layout"
@@ -228,13 +191,11 @@ fn main() -> Result<()> {
         }
     };
 
-    // `list_active` names languages, which is all the OS layout APIs
-    // agree on — but a language is not a keyboard. Bulgarian alone has
-    // three genuinely different ones under `bg-BG`, and a bundled
-    // mapping can only describe one. Ask the backend what the
-    // installed keyboards actually produce and let the DB correct
-    // itself; a backend that can't answer returns nothing and the
-    // bundled tables stand.
+    // `list_active` names languages, but a language is not a keyboard —
+    // Bulgarian alone has three under `bg-BG` and a bundled mapping can
+    // describe only one. Ask the backend what the installed keyboards
+    // produce; one that cannot answer returns nothing and the bundled
+    // tables stand.
     let os_keymaps = match layout_switcher.describe_keymaps() {
         Ok(maps) => {
             info!(
@@ -282,11 +243,9 @@ fn main() -> Result<()> {
             Arc::from(noop_emitter()) as Arc<dyn poltertype_input::KeyEmitter>
         }
     };
-    // Holds the user's keystrokes back while a correction is typed, so
-    // nothing of theirs lands in the middle of it. Created before the
-    // listener because on Linux/evdev the two share the thread that
-    // owns the devices; whether it can do anything is decided once the
-    // listener starts (see `KeyGate::available`).
+    // Created before the listener because on Linux/evdev the two share
+    // the thread that owns the devices. Whether it can do anything is
+    // decided once the listener starts — see `KeyGate::available`.
     let key_gate = create_key_gate();
 
     let audio = Arc::new(AudioPlayer::new());
@@ -298,19 +257,13 @@ fn main() -> Result<()> {
         "focus tracker ready"
     );
 
-    // Detector pipeline: dictionary first (highest signal — catches
-    // single-letter prepositions and tie-breaks "both look plausible"
-    // tokens), word-plausibility second as a fallback for tokens that
-    // aren't in either dictionary. Both are pure functions; engine
-    // runs them in order and stops at the first non-NoOpinion verdict.
+    // Dictionary first (highest signal, and it tie-breaks tokens that
+    // look plausible either way), word-plausibility as the fallback.
+    // The engine stops at the first non-NoOpinion verdict.
     let dictionary = build_dictionary_detector(&layouts);
-    // Cloned handle — shares the inner Arc<RwLock> with the
-    // detector that lives inside the engine. Used by the
-    // "Reload Settings" path to swap in fresh dictionaries
-    // (re-reading user-overlay files) without restarting, AND by
-    // the focus-driven wordlist profile watcher below to swap
-    // per-app overlays as the user moves between editors / chat /
-    // browser / IDE.
+    // Shares the inner `Arc<RwLock>` with the detector inside the
+    // engine, so "Reload Settings" and the profile watcher below can
+    // swap dictionaries without a restart.
     let dict_reload_handle = dictionary.handle();
     // The suggester shares the same hot-swappable dict set through
     // another handle clone — per-app profile swaps and settings
@@ -327,21 +280,13 @@ fn main() -> Result<()> {
 
     // ── Wordlist profile cache + focus watcher ───────────────────────
     //
-    // Build one dictionary set per configured `[[wordlists.profiles]]`
-    // entry up front. The FSTs are already Arc-shared inside
-    // LayoutDictionary, so this is "rebuild the user-overlay HashSets
-    // once per profile" — milliseconds, even for 5+ profiles.
+    // One dictionary set per configured profile, built up front: the
+    // FSTs are already Arc-shared, so this only rebuilds the user
+    // overlays. The watcher thread polls `focused_exe()` every ~250 ms
+    // and swaps the set under a single `RwLock::write()`.
     //
-    // The focus watcher thread (spawned right after the engine is
-    // running) polls `focus_tracker.focused_exe()` every ~250 ms,
-    // resolves the active profile via `wordlist_profiles::resolve`,
-    // and atomically swaps the dictionary set when it changes. The
-    // swap is a single `RwLock::write()` — same primitive the manual
-    // "Reload Settings" path uses.
-    // Profile cache is shared (Arc<RwLock>) so the close-handler in
-    // `spawn_settings_ui` can rebuild it from disk when the user
-    // saves wordlist edits via the GUI; without that, per-profile
-    // wordlist edits would only apply after a tray restart.
+    // Shared so the settings close-handler can rebuild it from disk;
+    // without that, per-profile edits would need a tray restart.
     let profile_dict_cache: ProfileDictCache = Arc::new(RwLock::new(build_full_profile_cache(
         &layouts,
         &data_dir,
@@ -353,12 +298,10 @@ fn main() -> Result<()> {
         "wordlist profile cache built (including global baseline)"
     );
 
-    // Force-reapply flag: set by the close-handler after rebuilding
-    // the cache so the watcher re-applies on its next tick (~250 ms)
-    // even though the resolved profile didn't change. Without this
-    // the watcher only swaps on profile transitions, which means a
-    // user editing words while focused on a profiled app would see
-    // no effect until they alt-tabbed away and back.
+    // Set by the close-handler after a rebuild so the watcher re-applies
+    // on its next tick even though the resolved profile did not change.
+    // Otherwise editing words while focused on a profiled app has no
+    // effect until the user alt-tabs away and back.
     let profile_force_reapply: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
     // ─── Engine ────────────────────────────────────────────────────
@@ -389,11 +332,9 @@ fn main() -> Result<()> {
         .context("spawn engine thread")?;
 
     // ─── Input listener ────────────────────────────────────────────
-    // A failure here means the app's whole reason to exist is off —
-    // so besides the log line we keep the error text and surface it
-    // as an onboarding alert: tooltip suffix, a "Setup Guide" tray
-    // menu entry, and a one-shot notification. A log file the user
-    // has never heard of is not a user interface.
+    // A failure here turns off the app's whole reason to exist, so the
+    // error text is kept and surfaced as an onboarding alert. A log
+    // file the user has never heard of is not a user interface.
     let mut input_alert: Option<String> = None;
     let mut input_listener = match create_listener(&key_gate) {
         Ok(l) => Some(l),
@@ -420,12 +361,10 @@ fn main() -> Result<()> {
         }
     }
 
-    // On the Wayland/evdev backend the OS-level `global-hotkey` grab
-    // never sees native input (it can only bind through Xwayland, which
-    // Hyprland & friends don't route real keystrokes into). The evdev
-    // listener, however, observes every key — so we detect the hotkey
-    // chords straight off that stream instead. We never run both paths
-    // for one backend, so there's no double-fire.
+    // On Wayland/evdev the OS-level `global-hotkey` grab never sees
+    // native input, but the evdev listener observes every key — so the
+    // chords are detected off that stream instead. Never both paths for
+    // one backend, so no double-fire.
     let use_keystream_hotkeys = input_listener
         .as_ref()
         .is_some_and(|l| l.backend_name() == "linux-wayland-evdev");
@@ -438,11 +377,8 @@ fn main() -> Result<()> {
     poltertype_shell::keep_out_of_dock(&mut event_loop);
 
     let menu = Menu::new();
-    // Onboarding alert entry — present only when keyboard hooks
-    // failed to start (Wayland without the `input` group, X11 connect
-    // refused, macOS without Accessibility). Clicking opens the
-    // Settings window on its Setup pane, which probes this machine and
-    // says what is actually missing.
+    // Present only when the keyboard hooks failed to start. Opens the
+    // Settings window on its Setup pane, which probes this machine.
     let item_setup = input_alert
         .as_ref()
         .map(|_| MenuItem::new("⚠ Keyboard hooks unavailable — Setup…", true, None));
@@ -458,18 +394,14 @@ fn main() -> Result<()> {
     let item_reload = MenuItem::new("Reload Settings", true, None);
     let item_pause = MenuItem::new("Pause auto-switch", true, None);
 
-    // Updates. A single dual-purpose entry: while nothing is staged it
-    // reads "Check for updates…" and forces a check; once the worker has
-    // downloaded and verified a release it becomes "⟳ Restart to update
-    // — v0.4.0" and installing is one click. Present only when
-    // `[updates].enabled` — a user who turned updates off should not
-    // have to keep looking at the machinery they switched off.
+    // One dual-purpose entry: "Check for updates…" until the worker has
+    // staged a release, then "⟳ Restart to update". Hidden entirely
+    // when `[updates].enabled` is off.
     //
-    // A staged update may already exist at this point: the user could
-    // have downloaded it in a previous session and then closed the app
-    // without quitting through the menu (logout, reboot, `pkill`).
-    // `pending_for_this_build` is what recovers it — and what throws it
-    // away if it turns out to be the update this very process *is*.
+    // A staged update may already exist — downloaded in a previous
+    // session that never quit through the menu.
+    // `pending_for_this_build` recovers it, and throws it away if it
+    // turns out to be the update this process already is.
     let updates_enabled = settings.snapshot().updates.enabled;
     let mut update_pending = if updates_enabled {
         pending_for_this_build()
@@ -555,10 +487,8 @@ fn main() -> Result<()> {
         .build()
         .context("build tray icon")?;
 
-    // One-shot startup notification for the same failure. Uses the
-    // error-notification path (NOT gated by `show_notifications`):
-    // without hooks the app silently does nothing, which is exactly
-    // the "user waits for something that never happens" case.
+    // Deliberately on the error path, not gated by
+    // `show_notifications`: without hooks the app silently does nothing.
     if let Some(reason) = input_alert.as_deref() {
         spawn_error_notification(format!(
             "Keyboard hooks are unavailable — automatic layout switching is off.\n\
@@ -567,25 +497,18 @@ fn main() -> Result<()> {
         ));
     }
 
-    // Cloned reference into the event loop so we can flip the menu
-    // item's text between "⏸ Pause auto-switch" and "▶ Resume
-    // auto-switch" when the engine reports a state change. MenuItem
-    // is internally Arc-shared, so this clone bumps a refcount.
+    // Cloned into the event loop to flip the item's text on a state
+    // change. `MenuItem` is internally Arc-shared, so this is a refcount.
     let item_pause_for_loop = item_pause.clone();
 
-    // Global hotkeys — strings come from `[hotkeys]` in config.toml.
-    // We parse them with `global-hotkey`'s `FromStr` (see
-    // `parse_hotkey_or_default`); on a malformed entry we fall back to
-    // the documented default so the user never ends up with a tray app
-    // that silently lost its hotkeys after a typo.
+    // Strings come from `[hotkeys]`. A malformed entry falls back to the
+    // documented default, so a typo cannot silently cost the user their
+    // hotkeys.
     let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
-    // Pause default is backend-dependent for the same reason
-    // switch-last is, one platform over: on macOS `Ctrl+Space` and
-    // `Ctrl+Shift+Space` belong to the system input-source switcher,
-    // so registering the default globally would take the user's
-    // layout-switching shortcut away from them. Keyed off the live
-    // backend rather than a build target, so a config written on one
-    // OS still means what it says on another.
+    // Backend-dependent default: on macOS `Ctrl+Space` and
+    // `Ctrl+Shift+Space` belong to the system input-source switcher.
+    // Keyed off the live backend rather than the build target, so a
+    // config written on one OS means the same on another.
     let configured_pause = settings.snapshot().hotkeys.pause_toggle;
     let on_macos_tis = layout_switcher.backend_name() == "macos-tis";
     let pause_src = if on_macos_tis && configured_pause == DEFAULT_PAUSE_TOGGLE {
@@ -598,15 +521,12 @@ fn main() -> Result<()> {
         &configured_pause
     };
     let hk_pause = parse_hotkey_or_default(pause_src, DEFAULT_PAUSE_TOGGLE);
-    // Switch-last default is backend-dependent. The cross-platform
-    // default `Ctrl+Shift+Backspace` is fine where the OS *consumes* the
-    // hotkey (Windows/X11), but on the Wayland keystream path we can
-    // only *observe* keys — the Backspace also reaches the focused app,
-    // where `Ctrl+Backspace` means "delete the previous word" and
-    // corrupts the very text we're about to correct. So when the user
-    // hasn't moved off that default, rebind to a key with no
-    // destructive in-app effect. An explicit custom binding is honoured
-    // as-is.
+    // Backend-dependent default. `Ctrl+Shift+Backspace` is fine where
+    // the OS *consumes* the hotkey, but on the Wayland keystream path we
+    // only observe — the Backspace also reaches the focused app, where
+    // `Ctrl+Backspace` deletes the previous word and corrupts the text
+    // we are about to correct. Only rebound when the user is still on
+    // the default; an explicit binding is honoured as-is.
     let configured_switch = settings.snapshot().hotkeys.manual_switch_last;
     let switch_src = if use_keystream_hotkeys && configured_switch == DEFAULT_SWITCH_LAST {
         info!(
@@ -645,11 +565,8 @@ fn main() -> Result<()> {
     let pause_hotkey_id = hk_pause.id();
     let switch_hotkey_id = hk_switch.id();
 
-    // User-defined "smart commands" (text triggers like `anrl ` →
-    // `Anatomical Reference List`) are NOT registered as global
-    // hotkeys — they're consulted by the engine on every word
-    // boundary. See `poltertype_core::commands` for the architecture and
-    // `SwitcherEngine::decide` for the dispatch path.
+    // Smart commands are text triggers consulted on every word
+    // boundary, never global hotkeys — see `poltertype_core::commands`.
 
     spawn_event_bridges(event_loop.create_proxy(), engine_event_rx.clone())?;
 
@@ -661,11 +578,9 @@ fn main() -> Result<()> {
     spawn_popup_bridge(event_loop.create_proxy(), popup_event_rx)?;
     let focus_for_popup = Arc::clone(&focus_tracker);
 
-    // Background updates. The worker owns every network call this app
-    // makes; the event loop only ever sees the result. `check_now_tx`
-    // is how the tray's "Check for updates…" click cuts the worker's
-    // sleep short — bounded at 1 because a user clicking twice wants one
-    // check, not a queue of them.
+    // The worker owns every network call this app makes; the event loop
+    // only sees results. `check_now_tx` cuts its sleep short, bounded at
+    // 1 because a double click wants one check, not a queue.
     let (check_now_tx, check_now_rx) = bounded::<()>(1);
     if updates_enabled {
         spawn_update_worker(
@@ -677,11 +592,9 @@ fn main() -> Result<()> {
         info!("automatic updates are disabled in config.toml; no update checks will be made");
     }
 
-    // Layout poller: the engine emits LayoutChanged for switches it
-    // performs itself, but we miss user-driven manual switches (Win+
-    // Space / Alt+Shift / language bar / ibus / kde-keyboard). Polling
-    // the OS-level current-layout query every ~250 ms catches those
-    // cheaply and keeps the tray icon in sync.
+    // The engine emits `LayoutChanged` only for its own switches, so
+    // user-driven ones (Win+Space, language bar, ibus…) are caught by
+    // polling the OS every ~250 ms.
     spawn_layout_poller(Arc::clone(&layout_switcher), engine_event_tx_for_poller)?;
 
     // Focus-driven wordlist profile watcher: same cadence as the
@@ -713,18 +626,14 @@ fn main() -> Result<()> {
 
     info!("entering event loop");
     // A slow heartbeat, so a mode changed from the command line — or an
-    // authority that expired on its own — reaches the menu without the
-    // user having to click something first.
+    // authority that expired on its own — reaches the menu without a
+    // click. A thread and the event-loop proxy rather than
+    // `ControlFlow::WaitUntil`, because the GTK backend never delivers
+    // the timed wake-up and the timer version silently never fired.
     //
-    // A thread and the event-loop proxy rather than `ControlFlow::
-    // WaitUntil`: the GTK backend does not deliver a timed wake-up, so
-    // the timer version compiled, ran, and silently never fired. This
-    // is also how every other background producer in this app talks to
-    // the loop.
-    //
-    // Only armed when there is a plug-in to watch — stock PolterType
-    // stays fully idle. A service counts even if it reports no state:
-    // this heartbeat is also the only thing that notices one dying.
+    // Armed only when there is a plug-in to watch, so stock PolterType
+    // stays idle. A service counts even if it reports no state: this is
+    // also the only thing that notices one dying.
     if plugin_menu.reports_state() || supervisor.has_services() {
         let proxy = event_loop.create_proxy();
         std::thread::Builder::new()
@@ -741,10 +650,9 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::PluginState) => {
-                // Before the menu is refreshed, not after: a plug-in's
-                // state command answers the same whether its service is
-                // alive or dead, so the tray would otherwise keep
-                // showing a mode nothing is enforcing.
+                // Before the menu refresh, not after: a plug-in's state
+                // command answers the same dead or alive, so the tray
+                // would keep showing a mode nothing is enforcing.
                 announce_departed(supervisor.reap());
                 plugin_menu.refresh();
             }
@@ -763,14 +671,9 @@ fn main() -> Result<()> {
                     // service still running through an update would be
                     // a process whose binary moved under it.
                     supervisor.stop_all();
-                    // Quit is the moment we have been waiting for: the
-                    // user is done typing, the hook is down, and nothing
-                    // we replace can be in use. This is what "installs
-                    // on restart" actually means — the install happens
-                    // now, and the version they launch next is the new
-                    // one. No relaunch: they asked for the app to go
-                    // away, and an updater that reopens it would be
-                    // overriding a direct instruction.
+                    // The one safe moment: the user is done typing, the
+                    // hook is down, and nothing we replace is in use. No
+                    // relaunch — they asked for the app to go away.
                     if let Some(pending) = update_pending.as_ref() {
                         apply_now(pending, false);
                     }
@@ -818,31 +721,23 @@ fn main() -> Result<()> {
                         warn!("log directory unknown");
                     }
                 } else if id == wordlists_id {
-                    // First-run: the directory typically doesn't
-                    // exist yet — ensure_user_wordlist_dir creates
-                    // it (and seeds a tiny README so the user knows
-                    // what files are recognised) before we open it.
+                    // First run: create the directory and seed a README
+                    // naming the files that are recognised.
                     match ensure_user_wordlist_dir() {
                         Ok(dir) => open_path(&dir, "user wordlists folder"),
                         Err(e) => warn!(?e, "could not prepare user wordlists folder"),
                     }
                 } else if id == layouts_id {
-                    // Same first-run treatment as wordlists: ensure
-                    // the directory exists and drop a README that
-                    // explains the TOML schema so the user can copy
-                    // an embedded mapping from the repo as a starting
-                    // point. New layouts in this folder are picked up
-                    // on app restart.
+                    // Same first-run treatment, with a README for the
+                    // TOML schema. New layouts here are picked up on
+                    // app restart.
                     match ensure_user_layout_dir() {
                         Ok(dir) => open_path(&dir, "user layouts folder"),
                         Err(e) => warn!(?e, "could not prepare user layouts folder"),
                     }
                 } else if id == reload_id {
-                    // Reload `config.toml` AND re-read user-overlay
-                    // wordlists (`<config-dir>/wordlists/<stem>.txt`).
-                    // The latter is what lets users add tech vocab
-                    // like `kubectl` / `terraform` and have it pick
-                    // up without restarting the app.
+                    // Also re-reads the user overlays, which is what
+                    // lets added vocabulary apply without a restart.
                     let reloaded_dicts = reload_user_dictionaries(&dict_reload_handle);
                     match settings_for_loop.reload() {
                         Ok(changed) => {
@@ -860,12 +755,9 @@ fn main() -> Result<()> {
                 } else if id == pause_id {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
                 } else if Some(&id) == setup_id.as_ref() {
-                    // The Settings window on its Setup pane, not a
-                    // browser tab. The pane says what is missing *on
-                    // this machine* and re-checks after the user has
-                    // fixed it; a markdown file can do neither. It
-                    // still links out to the same guide for anything
-                    // it cannot say in two sentences.
+                    // The Setup pane, not a browser tab: it says what is
+                    // missing *on this machine* and re-checks after the
+                    // user has fixed it. A markdown file can do neither.
                     spawn_setup_ui(SettingsCloseDeps {
                         settings: Arc::clone(&settings_for_loop),
                         layouts: Arc::clone(&layouts),
@@ -955,10 +847,8 @@ fn main() -> Result<()> {
             Event::UserEvent(UserEvent::Update(outcome)) => {
                 match outcome {
                     UpdateOutcome::Staged(pending) => {
-                        // Announce it once, on the transition. The worker
-                        // only stages a given version once, so a user
-                        // sitting on 0.4.0 for a week is told about it on
-                        // the day it lands and never nagged again.
+                        // Once, on the transition — the worker stages a
+                        // given version only once, so nobody is nagged.
                         let already_known = update_pending
                             .as_ref()
                             .is_some_and(|p| p.version == pending.version);
@@ -970,11 +860,9 @@ fn main() -> Result<()> {
                         }
                     }
                     UpdateOutcome::UpToDate | UpdateOutcome::Cleared => update_pending = None,
-                    // Already logged by the worker. The tray entry stays
-                    // as it was: a failed check is not news, and a user
-                    // who has an update staged shouldn't lose the button
-                    // to install it just because the *next* check
-                    // couldn't reach GitHub.
+                    // Already logged by the worker. A failed check is not
+                    // news, and it must not cost a user the button to
+                    // install an update that is already staged.
                     UpdateOutcome::Failed => {}
                 }
                 if let Some(item) = item_update.as_ref() {
@@ -988,16 +876,13 @@ fn main() -> Result<()> {
 
 /// Tell the user a plug-in service is gone, once, as it happens.
 ///
-/// A plug-in that stops is invisible by construction: it contributes
-/// tray entries that keep working (they are one-shot commands), so the
-/// menu looks exactly the same whether the service behind it is running
-/// or dead. Nothing else in this app would say otherwise, and a
-/// background service silently doing nothing is the failure people only
-/// discover much later — a capture daemon here did it for ten hours.
+/// A stopped plug-in is invisible by construction: its tray entries are
+/// one-shot commands that keep working, so the menu looks identical
+/// whether the service behind it is running or dead.
 ///
-/// Uses the error-notification path for the same reason the startup
-/// input alert does: it is not gated by `show_notifications`, because
-/// this is not chatter about something that worked.
+/// On the error-notification path, so it is not gated by
+/// `show_notifications` — this is not chatter about something that
+/// worked.
 fn announce_departed(gone: Vec<plugins::Departed>) {
     for d in gone {
         spawn_error_notification(format!(

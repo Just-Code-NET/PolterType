@@ -1,24 +1,18 @@
 //! `EvdevGate` — holds the user's keystrokes back from applications
 //! while a correction burst is on the wire.
 //!
-//! A correction is a burst of injected keys, and the compositor
-//! interleaves whatever the user types into it. Counting cannot undo
-//! that afterwards, so the only real fix is to stop the user's keys
-//! from reaching applications until our burst has landed —
-//! `EVIOCGRAB`, the evdev equivalent of what a Windows low-level hook
-//! does by swallowing events. We keep reading the grabbed devices, so
-//! the engine still sees every keystroke and replays them behind the
-//! correction, in order.
+//! The compositor interleaves whatever the user types into our burst
+//! and counting cannot undo that afterwards, so the only real fix is
+//! `EVIOCGRAB` — the evdev equivalent of a Windows low-level hook
+//! swallowing events. The grabbed devices are still read, so the engine
+//! sees every keystroke and replays them behind the correction, in
+//! order.
 //!
-//! Two things make this safe enough to enable by default:
-//!
-//! * **The device thread owns the grab, not the caller.** It drops the
-//!   hold once [`MAX_HOLD`] elapses whatever the engine is doing, so a
-//!   hung or panicking correction cannot leave the keyboard dead. A
-//!   crashed process is safe by construction — the kernel releases the
-//!   grab when the descriptors close.
-//! * **It refuses to run where it would gag us instead.** See
-//!   [`EvdevGate::probe_availability`].
+//! Two things make this safe enough to enable by default: **the device
+//! thread owns the grab**, dropping it after [`MAX_HOLD`] whatever the
+//! engine is doing, and the kernel releases it if the process dies; and
+//! it **refuses to run where it would gag us instead**, see
+//! [`EvdevGate::probe_availability`].
 
 use super::*;
 
@@ -118,21 +112,18 @@ impl EvdevGate {
 
     /// Decide whether grabbing can work on this stack at all.
     ///
-    /// The hazard is an input remapper (keyd & friends). Those hold
-    /// every keyboard exclusively — including our own uinput device —
-    /// and re-emit everything through one virtual keyboard. That
-    /// virtual keyboard is then the only grabbable source of the user's
-    /// keys, but it also carries *our* injected keys, so grabbing it
-    /// would block the very correction we are trying to protect. The
-    /// symptom would be corrections that silently do nothing.
+    /// The hazard is an input remapper. Those hold every keyboard
+    /// exclusively — ours included — and re-emit through one virtual
+    /// keyboard, which then carries *our* injected keys too, so
+    /// grabbing it would block the very correction we are protecting.
+    /// The symptom is corrections that silently do nothing.
     ///
-    /// The tell is precise and cheap: if we can grab our own emitter
-    /// device, nobody is proxying it and our keys reach applications
-    /// directly, so grabbing the user's keyboards is safe. If it comes
-    /// back `EBUSY`, something sits between us and the compositor and
-    /// the gate stays off. (Users of such a remapper can exclude our
-    /// device in its config — `docs/PERMISSIONS.md` spells out the keyd
-    /// one-liner — and the probe then flips to available on restart.)
+    /// The tell is cheap: if we can grab our own emitter, nobody is
+    /// proxying it and grabbing the user's keyboards is safe. `EBUSY`
+    /// means something sits between us and the compositor and the gate
+    /// stays off. Excluding our device in the remapper's config flips
+    /// the probe on restart — `docs/PERMISSIONS.md` has the keyd
+    /// one-liner.
     pub(crate) fn probe_availability(&self) {
         let found = evdev::enumerate().find(|(_, dev)| dev.name() == Some(EMITTER_DEVICE_NAME));
         let ok = match found {
@@ -198,12 +189,10 @@ impl EvdevGate {
         false
     }
 
-    /// Stop holding, and wait for the device thread to confirm the
-    /// grab is actually gone. Waiting matters: everything the caller
-    /// reads off the key stream before this returns was held back and
-    /// must be typed out, everything after it reaches the application
-    /// by itself. Returning early would blur that line and lose
-    /// keystrokes on the wrong side of it.
+    /// Stop holding, and wait for the device thread to confirm the grab
+    /// is gone. The wait draws the line: everything read off the key
+    /// stream before this returns was held back and must be typed out,
+    /// everything after reaches the application by itself.
     pub(crate) fn release(&self) {
         self.want.store(false, Ordering::Release);
         let until = Instant::now() + RELEASE_HANDSHAKE;
@@ -226,19 +215,15 @@ impl EvdevGate {
 
         if want {
             let epoch = self.epoch.load(Ordering::Acquire);
-            // Once per hold, before grabbing anything: re-verify that
-            // our own emitter is still unproxied. The startup probe
-            // races the remapper's asynchronous grab of a freshly
-            // created device, and losing that race is catastrophic —
-            // with keyd proxying our emitter, holding the remapper's
-            // virtual keyboard funnels every input path (the user's
-            // keys AND our own corrections) into this process, and the
-            // session's input dies until the watchdog blinks. That is
-            // not a theoretical hazard; it took a real session down on
-            // 2026-07-31. EBUSY here turns the gate off for good
-            // (until restart), exactly like the startup probe would
-            // have. No emitter in the list means it hasn't been picked
-            // up by a rescan yet — proceed on the startup verdict.
+            // Once per hold, re-verify that our own emitter is still
+            // unproxied. The startup probe races the remapper's
+            // asynchronous grab of a freshly created device, and losing
+            // that race is catastrophic: with keyd proxying our emitter,
+            // holding its virtual keyboard funnels every input path into
+            // this process and the session's input dies until the
+            // watchdog blinks. `EBUSY` turns the gate off until restart.
+            // No emitter in the list yet means no rescan has picked it
+            // up — proceed on the startup verdict.
             if self.verified_epoch.swap(epoch, Ordering::AcqRel) != epoch {
                 if let Some(own) = devices.iter_mut().find(|d| d.state().is_ours) {
                     match own.grab() {
@@ -273,12 +258,11 @@ impl EvdevGate {
                 if od.state().is_ours || od.state().tried_epoch == epoch {
                     continue;
                 }
-                // Only keyboards, and only ones in recent use. Giving a
-                // device back costs 13-25 ms of `EVIOCGRAB(0)` here, so
-                // holding the mouse, the lid switch and three idle HID
-                // endpoints turned a correction into a ~100 ms stall in
-                // the thread that has to notice the user typing — the
-                // very keystrokes the hold exists to catch.
+                // Only keyboards, and only ones in recent use: giving a
+                // device back costs 13–25 ms, so holding the mouse, the
+                // lid switch and three idle HID endpoints turned a
+                // correction into a ~100 ms stall in the very thread
+                // that has to notice the user typing.
                 if !od.state().is_keyboard || !recently_used(od.state()) {
                     continue;
                 }

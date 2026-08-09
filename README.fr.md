@@ -8,6 +8,8 @@ poltergeist bienveillant qui hante votre clavier.
 Pour la documentation complète, les notes de développement et les mises en
 garde détaillées, voir le [README en anglais](README.md).
 
+L'IA a été mise à contribution durant le développement.
+
 ## Installation
 
 Les binaires sont publiés sur la [page Releases](../../releases). Chaque

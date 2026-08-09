@@ -196,6 +196,8 @@ Three caveats worth stating plainly:
   (`cargo build`, no flags) still contains none of it.
   See [docs/AI.md](docs/AI.md).
 
+AI was involved in the development process.
+
 See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 
 ## Hotkeys

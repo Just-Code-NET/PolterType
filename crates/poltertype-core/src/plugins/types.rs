@@ -22,13 +22,11 @@ pub struct ManifestHeader {
 /// to run a plug-in and show it, without the plug-in running any code
 /// to describe itself.
 ///
-/// That last part is the point. A plug-in that had to be *started* in
-/// order to say what it contributes would have to run before the user
-/// had seen what it wants — so all of this is static, readable from
-/// disk, and shown before anything is launched.
-///
-/// Every field defaults, so a manifest that omits a section simply
-/// contributes nothing there.
+/// That is the point — a plug-in that had to be *started* to say what
+/// it contributes would run before the user had seen what it wants. All
+/// of this is static, readable from disk, and shown before anything is
+/// launched. Every field defaults, so an omitted section simply
+/// contributes nothing.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct ExtensionManifest {
@@ -53,16 +51,14 @@ pub struct ExtensionManifest {
     pub pane: Vec<PaneControl>,
 
     /// Arguments to a command that prints the plug-in's current state,
-    /// one `key=value` per line. Empty means the plug-in reports
-    /// nothing and its tray entries are plain commands.
+    /// one `key=value` per line. Empty means it reports nothing and its
+    /// tray entries are plain commands.
     ///
-    /// Asking the plug-in, rather than reading its config file, is the
-    /// only answer that can be right: the config holds what a plug-in
-    /// *starts* as, and anything a user changes at runtime — a mode
-    /// armed from the command line, an authority that has since expired
-    /// — lives elsewhere or nowhere. A menu showing the config value
-    /// would confidently display the wrong thing, which is worse than
-    /// the blank menu it replaced.
+    /// Asking the plug-in rather than reading its config file is the
+    /// only answer that can be right: the config holds what it *starts*
+    /// as, while anything changed at runtime lives elsewhere or nowhere.
+    /// A menu showing the config value would confidently display the
+    /// wrong thing.
     pub state_args: Vec<String>,
 }
 
@@ -91,16 +87,12 @@ pub struct TrayItem {
 
     /// Which key of the plug-in's reported state this entry reflects.
     ///
-    /// Empty — the entry is a plain command with no state, and renders
-    /// exactly as before.
-    ///
-    /// Set, **with** [`Self::state_value`] — the entry gets a tick when
-    /// the reported value matches, so a group of them reads as a set of
-    /// alternatives with the live one marked.
-    ///
-    /// Set, **without** [`Self::state_value`] — the entry is a disabled
-    /// status line showing the value in its label. Menus that draw
-    /// ticks faintly, or not at all, still say what is in force.
+    /// Empty — a plain command with no state. Set **with**
+    /// [`Self::state_value`] — the entry is ticked when the reported
+    /// value matches, so a group reads as alternatives with the live one
+    /// marked. Set **without** it — the entry is a disabled status line
+    /// showing the value in its label, so menus that draw ticks faintly
+    /// or not at all still say what is in force.
     pub state_key: String,
 
     /// The value of [`Self::state_key`] that ticks this entry.
@@ -210,14 +202,13 @@ pub struct InstalledPack {
     /// Files copied in.
     pub files: usize,
     pub bytes: u64,
-    /// Entries found in the source and deliberately not copied,
-    /// relative to the source root.
+    /// Entries found in the source and deliberately not copied, relative
+    /// to the source root.
     ///
-    /// Surfaced rather than silently dropped: a pack author who put a
-    /// file somewhere unexpected should learn that it was ignored,
-    /// and a user installing someone else's pack should see that it
-    /// tried to ship something a language pack has no business
-    /// shipping.
+    /// Surfaced rather than silently dropped: a pack author should learn
+    /// that a misplaced file was ignored, and a user installing someone
+    /// else's pack should see that it tried to ship something a language
+    /// pack has no business shipping.
     pub skipped: Vec<String>,
     /// Whether this replaced an existing pack of the same id.
     pub replaced: bool,

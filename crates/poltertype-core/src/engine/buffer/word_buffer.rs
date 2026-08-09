@@ -103,17 +103,15 @@ impl WordBuffer {
     }
 
     /// The caret context is gone (shortcut fired, idle gap, focus
-    /// change). Drops all stashes; if a word was in progress its
-    /// remainder is untracked on screen, so the *next* completion is
+    /// change). Drops all stashes; a word in progress leaves an
+    /// untracked remainder on screen, so the *next* completion is
     /// tainted.
     ///
-    /// Deliberately does NOT touch `context_clean`: an *idle* abandon
-    /// is buffer hygiene — the user paused to think and the caret is
-    /// almost certainly still where it was, so the next word must
-    /// stay suggestion-eligible. Callers whose trigger actually moves
-    /// the caret (clicks, nav, Esc, shortcuts) pair this with
-    /// [`Self::mark_context_unclean`] — the click/nav classify path
-    /// does it internally.
+    /// Deliberately does not touch `context_clean`: an *idle* abandon is
+    /// buffer hygiene — the user paused to think and the caret is almost
+    /// certainly where it was, so the next word stays
+    /// suggestion-eligible. Callers whose trigger really moves the caret
+    /// pair this with [`Self::mark_context_unclean`].
     pub fn abandon(&mut self) {
         if !self.keys.is_empty() {
             self.poisoned = true;
@@ -138,18 +136,16 @@ impl WordBuffer {
         self.boundary_run.clear();
     }
 
-    /// Feed a [`KeyEvent`] together with the character it produces
-    /// under the **currently active** OS layout, plus a hint of
-    /// whether the same scancode is a *letter* under any of the
-    /// engine's known layouts. The hint catches the
-    /// "user is typing a Cyrillic word while the en-US layout is
-    /// active" case: scancode `0x27` is `;` in en-US (a boundary)
-    /// but `ж` in uk-UA (a word character). Without
-    /// `letter_in_any_layout` the buffer would split mid-word at
-    /// every such position.
+    /// Feed a [`KeyEvent`] with the character it produces under the
+    /// **currently active** OS layout, plus a hint of whether the same
+    /// scancode is a *letter* under any known layout.
     ///
-    /// Pass `produced = None` if the scancode has no mapping at all
-    /// (control / function keys).
+    /// The hint catches typing a Cyrillic word while en-US is active:
+    /// scancode `0x27` is `;` in en-US (a boundary) but `ж` in uk-UA (a
+    /// word character), and without it the buffer would split mid-word
+    /// at every such position.
+    ///
+    /// `produced = None` for scancodes with no mapping at all.
     pub fn feed(
         &mut self,
         ev: KeyEvent,

@@ -91,19 +91,13 @@ impl SettingsApp {
             }
 
             Message::LanguageToggled(id, active) => {
-                // The "Active" checkbox renders the *effective* state,
-                // not the raw `[languages].active` list — empty list
-                // means "consider every OS layout", so all checkboxes
-                // start ticked. When the user unticks one of them in
-                // that implicit-all mode, we materialise the list as
-                // "every OS layout EXCEPT this one" so the user's
-                // intent ("don't use this one") survives a save.
-                //
-                // The opposite — re-ticking the same box — appends it
-                // back. We don't auto-collapse the list back to empty
-                // even if it ends up containing every OS-active layout
-                // again, because the effective behaviour is identical
-                // and a future OS-layout add should still be honoured.
+                // The checkbox renders the *effective* state: an empty
+                // `[languages].active` means "every OS layout", so all
+                // boxes start ticked. Unticking one in that implicit-all
+                // mode materialises the list as everything-except-this,
+                // so the intent survives a save. Re-ticking appends;
+                // the list is never auto-collapsed back to empty, so a
+                // layout added later is still honoured.
                 let list = &mut self.settings.languages.active;
                 let was_implicit_all = list.is_empty();
                 if active {
@@ -243,15 +237,11 @@ impl SettingsApp {
 
             // ── Wordlists ────────────────────────────────────────
             //
-            // All three selectors below auto-flush the editor to
-            // disk before switching context. Without this, a user
-            // who typed words and clicked another layout/profile/kind
-            // button to "see what's there" would silently lose the
-            // unsaved content — the next handler unconditionally
-            // overwrites the buffer with the freshly-loaded file.
-            // Flushing first is friendlier than an unsaved-changes
-            // dialog and matches what most editors do on file
-            // switch.
+            // All three selectors auto-flush the editor to disk before
+            // switching context: the next handler overwrites the buffer
+            // with the freshly-loaded file, so without this a user who
+            // clicked another layout to "see what's there" would
+            // silently lose unsaved content.
             Message::WordlistProfileSelected(profile_id) => {
                 let outcome = self.flush_wordlist_to_disk();
                 self.wordlist_profile = profile_id;
@@ -324,14 +314,10 @@ impl SettingsApp {
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
                     self.settings = fresh.snapshot();
-                    // Also re-read the current wordlist file into the
-                    // editor — keeps footer Reload's contract uniform:
-                    // "reset every on-disk-backed view to what's on
-                    // disk right now". Discards unsaved editor content
-                    // by design, just like the old per-pane Reload
-                    // button did. Auto-save on layout/profile/kind
-                    // switch usually means there's nothing unsaved to
-                    // lose here anyway.
+                    // Also re-read the current wordlist file, so
+                    // Reload means one thing everywhere: reset every
+                    // on-disk-backed view to what is on disk. Discards
+                    // unsaved editor content by design.
                     if let Some(id) = self.wordlist_layout.clone() {
                         let text = read_overlay_file_or_empty(
                             &self.wordlist_profile,
@@ -355,18 +341,13 @@ impl SettingsApp {
                 }
             },
             Message::Save => {
-                // Footer "Save" saves EVERYTHING — config.toml AND
-                // any unsaved edits in the Wordlists pane. Without
-                // this, a user who typed a word, hit the prominent
-                // footer Save (more visually weighted than the
-                // per-pane Save), and closed the window would lose
-                // their wordlist edit silently — exactly the bug
-                // report that prompted this fix.
+                // Footer Save saves EVERYTHING — `config.toml` and any
+                // unsaved Wordlists edit. It carries more visual weight
+                // than the per-pane Save, so a user who used it and
+                // closed the window used to lose the edit silently.
                 //
-                // We flush the wordlist FIRST so the pane's own
-                // banner reflects what happened (per-pane state
-                // wins), then save config.toml and update the
-                // global save banner.
+                // Wordlist first, so the pane's own banner reflects what
+                // happened before the global one is set.
                 let wordlist_outcome = self.flush_wordlist_to_disk();
                 if !matches!(wordlist_outcome, WordlistFlushOutcome::Nothing) {
                     self.wordlist_status = Some(banner_for_wordlist_save(wordlist_outcome));
@@ -474,12 +455,9 @@ impl SettingsApp {
             }
 
             Message::WindowCloseRequested(id) => {
-                // Last chance to flush any unsaved wordlist edit
-                // before the window goes away. Failures are logged
-                // (already done inside flush) but don't block the
-                // close — leaving a window the user explicitly
-                // asked to close in some half-closed state would be
-                // worse than losing one save.
+                // Last chance to flush an unsaved wordlist edit.
+                // Failures are logged but do not block the close: a
+                // half-closed window is worse than one lost save.
                 let _ = self.flush_wordlist_to_disk();
                 return iced::window::close(id);
             }
@@ -487,26 +465,17 @@ impl SettingsApp {
         Task::none()
     }
 
-    /// Write the current wordlist editor buffer to its resolved
-    /// overlay file. Returns an outcome describing what happened so
-    /// the caller can pick the right banner phrasing.
+    /// Write the current wordlist editor buffer to its resolved overlay
+    /// file, returning an outcome so the caller can pick the banner
+    /// phrasing.
     ///
-    /// This is the single shared "save the wordlist now" path,
-    /// called by:
+    /// The single shared "save the wordlist now" path — explicit
+    /// per-pane Save, footer Save, and the auto-save before a
+    /// profile / layout / kind switch all land here.
     ///
-    /// * `Message::WordlistSave` — explicit per-pane Save click.
-    /// * `Message::Save` — footer Save click (must save everything,
-    ///   not just `config.toml`).
-    /// * `Message::WordlistProfileSelected` /
-    ///   `WordlistLayoutSelected` / `WordlistKindSelected` —
-    ///   auto-save before switching context, so a user who typed
-    ///   words and toggled to "see another layout" doesn't lose
-    ///   their edit.
-    ///
-    /// On success, clears the dirty flag. Doesn't touch
-    /// `wordlist_status` — the caller picks the banner text via
-    /// `banner_for_wordlist_save` / `banner_for_auto_save` so the
-    /// phrasing matches the trigger ("Saved." vs "Auto-saved.").
+    /// Clears the dirty flag on success but does not touch
+    /// `wordlist_status`: the caller phrases it ("Saved." vs
+    /// "Auto-saved.") so the banner matches the trigger.
     /// What the window has to do the moment it exists, before anybody
     /// clicks anything.
     pub(super) fn startup_task(&mut self) -> Task<Message> {
@@ -538,12 +507,9 @@ impl SettingsApp {
     }
 
     /// Run one report command off the UI thread and deliver the answer
-    /// as a message.
-    ///
-    /// A plain thread rather than anything cleverer: the work is one
-    /// blocking wait on a child process, the runtime underneath iced is
-    /// not ours to assume, and a oneshot channel bridges the two
-    /// without either of them having to know about the other.
+    /// as a message. A plain thread rather than anything cleverer: the
+    /// work is one blocking wait on a child process, and the runtime
+    /// under iced is not ours to assume.
     pub(super) fn load_output(&mut self, plugin: usize, control: usize) -> Task<Message> {
         let Some(pane) = self.plugins.get_mut(plugin) else {
             return Task::none();

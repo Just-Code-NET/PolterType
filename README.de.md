@@ -8,6 +8,8 @@ in deiner Tastatur wohnt.
 Die vollständige Dokumentation, die Entwicklungsnotizen und die ausführlichen
 Vorbehalte stehen im [englischen README](README.md).
 
+Bei der Entwicklung kam KI zum Einsatz.
+
 ## Installation
 
 Die Binaries werden auf der [Releases-Seite](../../releases) veröffentlicht.

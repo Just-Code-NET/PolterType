@@ -1,13 +1,9 @@
 //! Apple keycodes and modifier-flag rules — plain data, no Apple API.
 //!
-//! Kept free of `core-graphics` on purpose: `core-foundation` and
-//! `core-graphics` are macOS-only dependencies, so anything that touches
-//! them can never be exercised by `cargo test` on a Linux or Windows
-//! host. The rules below are the part most likely to be wrong (a wrong
-//! scancode silently kills a word, and the modifier direction rules are
-//! new), so they live here and their tests run everywhere — see
-//! `super::tests`. The FFI in `listener.rs` / `emitter.rs` is verified
-//! by CI's `macos-latest` job.
+//! Kept free of `core-graphics` so it can be exercised by `cargo test`
+//! on any host: these rules are the part most likely to be wrong, since
+//! a wrong scancode silently kills a word. The FFI in `listener.rs` and
+//! `emitter.rs` is verified by CI's `macos-latest` job instead.
 
 use crate::KeyDirection;
 
@@ -43,14 +39,12 @@ pub(crate) const FLAG_COMMAND: u64 = 0x0010_0000;
 /// The `CGEventFlags` bit a modifier keycode owns, or `None` for keys
 /// that are not modifiers *we track*.
 ///
-/// Deliberately excludes `kVK_Function` (0x3F) and the media/eject keys:
+/// Deliberately excludes `kVK_Function` (0x3F) and the media keys:
 /// macOS reports them through the same `FlagsChanged` stream, they have
 /// no SC Set-1 equivalent, and the identity fallback in
-/// [`mac_keycode_to_sc1`] would land Fn on SC-1 0x3F — inside the
-/// classifier's `0x3B..=0x53` "nav, end and discard" range. A user
-/// holding Fn to reach an arrow key would silently lose the word they
-/// were typing. Returning `None` makes the listener drop the event
-/// instead, which is what every other backend effectively does.
+/// [`mac_keycode_to_sc1`] would land Fn inside the classifier's
+/// "nav, end and discard" range — so holding Fn to reach an arrow key
+/// would silently lose the word being typed.
 fn modifier_flag(kvk: u16) -> Option<u64> {
     match kvk {
         KVK_SHIFT | KVK_RIGHT_SHIFT => Some(FLAG_SHIFT),
@@ -66,15 +60,13 @@ fn modifier_flag(kvk: u16) -> Option<u64> {
 ///
 /// macOS does not tell us the direction: it delivers one event type for
 /// "the modifier picture changed" and expects the reader to diff it.
-/// Since the event's flags describe the state *after* the change, the
-/// bit belonging to the keycode that moved is set exactly when that key
-/// went down.
+/// The flags describe the state *after* the change, so the bit
+/// belonging to the keycode that moved is set exactly when it went
+/// down.
 ///
-/// Caps Lock is a latch, not a held key — the "press" is the event that
-/// turns the light on and the "release" the one that turns it off. That
-/// is the shape the engine wants anyway: SC-1 0x3A classifies as
-/// `Discard`, so both edges keep the word alive without contributing a
-/// character.
+/// Caps Lock is a latch: the "press" is the event turning the light on.
+/// That is the shape the engine wants anyway — SC-1 0x3A classifies as
+/// `Discard`, so both edges keep the word alive.
 ///
 /// `None` means "not a modifier we mirror" — see [`modifier_flag`].
 pub(crate) fn flags_changed_direction(kvk: u16, flags: u64) -> Option<KeyDirection> {
@@ -89,13 +81,10 @@ pub(crate) fn flags_changed_direction(kvk: u16, flags: u64) -> Option<KeyDirecti
 // ─── Apple → Win SC Set-1 keycode mapping ────────────────────────────
 //
 // The engine's buffer classifier is written against Windows SC-1
-// scancodes (0x2A = LShift, 0x36 = RShift, 0x39 = Space, 0x0E =
-// Backspace, …). Apple virtual keycodes overlap that range with
-// DIFFERENT meanings — e.g. Apple 0x39 is Caps Lock but SC-1 0x39 is
-// Space, Apple 0x3C (RShift) lands in the classifier's F-row
-// "end and discard" range. Every key the classifier pattern-matches
-// must therefore be translated explicitly; an identity fallback is
-// only safe for keys outside all of the classifier's ranges.
+// scancodes, and Apple virtual keycodes overlap that range with
+// different meanings — Apple 0x39 is Caps Lock where SC-1 0x39 is
+// Space. Every key the classifier pattern-matches must be translated
+// explicitly; the identity fallback is safe only outside its ranges.
 
 pub(crate) fn mac_keycode_to_sc1(kvk: u16) -> u32 {
     match kvk {
@@ -156,14 +145,11 @@ pub(crate) fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x32 => 0x29,       // backtick
         0x18 => 0x0D,       // =
         0x1B => 0x0C,       // -
-        // Modifiers — mapped onto the SC-1 modifier slots the
-        // classifier recognises as "discard, stay inside the word".
-        // Live since 0.7.0: the tap subscribes to `FlagsChanged`, so
-        // these arrive on macOS exactly as they do on Windows and
-        // Linux. Without the mapping, Apple 0x3C (RShift) / 0x3B
-        // (LControl) would land in the classifier's F-row range and
-        // KILL any word typed with them, and Apple 0x39 (Caps Lock)
-        // would alias onto SC-1 Space.
+        // Modifiers, mapped onto the SC-1 slots the classifier reads as
+        // "discard, stay inside the word". Live since 0.7.0, when the
+        // tap subscribed to `FlagsChanged`. Unmapped, Apple 0x3C
+        // (RShift) would land in the F-row range and kill any word
+        // typed with it, and Apple 0x39 would alias onto SC-1 Space.
         KVK_SHIFT => 0x2A,         // LShift
         KVK_RIGHT_SHIFT => 0x36,   // RShift
         KVK_CONTROL => 0x1D,       // LControl

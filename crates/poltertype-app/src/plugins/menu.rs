@@ -3,37 +3,21 @@
 //! A plug-in declares menu entries in its manifest; this turns them
 //! into real items and remembers which item means which command. The
 //! app's own menu handling stays a list of `if id == …` comparisons
-//! against items it created itself, and asks this one question at the
-//! end: "was that one of the plug-ins'?"
+//! and asks this module one question at the end: "was that one of the
+//! plug-ins'?"
 //!
-//! Routing by the menu item's own id — rather than by label, or by
-//! position — is what keeps two plug-ins that both call an entry
-//! "Settings…" from being confused with each other, and keeps either
-//! of them from ever matching one of ours.
+//! Routing by the item's own id — never by label or position — keeps
+//! two plug-ins that both call an entry "Settings…" apart, and keeps
+//! either from matching one of ours.
 //!
-//! ## Showing what is in force
-//!
-//! A menu of alternatives that does not say which one is active is a
-//! menu you have to guess at: you pick a mode and nothing on screen
-//! changes, so you cannot tell whether the click landed, and you cannot
-//! tell later what you left it set to. For a plug-in that decides how
-//! much authority it has over the keyboard, that is the most important
-//! thing on the screen.
-//!
-//! So an entry may declare which key of the plug-in's state it
-//! reflects, and the menu is refreshed from the plug-in itself — never
-//! from its config file, which holds only what it *starts* as. Both
-//! renderings are used together, deliberately:
-//!
-//! * a **tick** on the live alternative, which is what a native menu
-//!   is for; and
-//! * a **status line** naming it in words, because a tick is small, is
-//!   drawn differently by every tray backend, and is sometimes not
-//!   drawn at all.
-//!
-//! One of those is redundant on any given desktop. Which one is
-//! redundant is not knowable from here, which is the argument for
-//! keeping both.
+//! An entry may declare which key of the plug-in's state it reflects,
+//! and the menu is refreshed from the plug-in itself, never from its
+//! config file, which holds only what it *starts* as. The live value is
+//! shown twice on purpose — a **tick** on the active alternative and a
+//! **status line** naming it in words — because a tick is small, drawn
+//! differently by every tray backend, and sometimes not drawn at all.
+//! One of the two is redundant on any given desktop and which one is
+//! not knowable from here.
 
 use std::collections::HashMap;
 
@@ -76,8 +60,7 @@ impl PluginMenu {
     ///
     /// A plug-in with nothing to contribute adds nothing — no empty
     /// section, no separator, no evidence it is there. The tray belongs
-    /// to the user, and a plug-in earns space in it by having something
-    /// to put there.
+    /// to the user.
     pub fn build(extensions: Vec<DiscoveredExtension>, menu: &Menu) -> Result<Self> {
         let mut routes = HashMap::new();
         let mut stateful: Vec<(usize, StateItem)> = Vec::new();
@@ -152,11 +135,8 @@ impl PluginMenu {
     }
 
     /// Re-read every plug-in's state and redraw the entries that show
-    /// it.
-    ///
-    /// Cheap when nothing declares state — no subprocess is run for a
-    /// plug-in that reports none — and skipped entirely when no entry
-    /// would change as a result.
+    /// it. No subprocess runs for a plug-in that reports none, and the
+    /// whole pass is skipped when no entry would change.
     pub fn refresh(&mut self) {
         if self.stateful.is_empty() {
             return;
@@ -208,12 +188,9 @@ impl PluginMenu {
         true
     }
 
-    /// Does any plug-in report state worth re-reading?
-    ///
-    /// The caller uses this to decide whether to run a heartbeat at
-    /// all: with no reporting plug-in there is nothing to refresh, and
-    /// an app that wakes on a timer to do nothing is worse than one
-    /// that sleeps.
+    /// Does any plug-in report state worth re-reading? The caller uses
+    /// this to decide whether to run a heartbeat at all — an app that
+    /// wakes on a timer to do nothing is worse than one that sleeps.
     pub fn reports_state(&self) -> bool {
         !self.stateful.is_empty()
     }
@@ -227,10 +204,9 @@ impl PluginMenu {
 /// state.
 ///
 /// A menu click spawns the command without waiting, so reading back
-/// immediately races it and would show the value the user just replaced.
-/// This is on the UI thread, so it is bounded to something no one
-/// perceives as a hang — and the periodic refresh corrects it anyway if
-/// the command was slower than this.
+/// immediately races it and shows the value the user just replaced.
+/// Bounded to something nobody perceives as a hang, since this is on
+/// the UI thread; the periodic refresh corrects a slower command anyway.
 const REFRESH_SETTLE: std::time::Duration = std::time::Duration::from_millis(250);
 
 #[cfg(test)]

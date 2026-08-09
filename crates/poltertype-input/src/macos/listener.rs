@@ -25,13 +25,12 @@ use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
 
 // ─── Accessibility permission prompt ─────────────────────────────────
 //
-// `CGEventTapCreate` fails *silently* when the app lacks Accessibility
-// rights — no system dialog. The supported way to ask is
-// `AXIsProcessTrustedWithOptions({ kAXTrustedCheckOptionPrompt: true })`,
-// which drops the app into System Settings → Privacy & Security →
-// Accessibility and shows the "PolterType would like to control this
-// computer" alert. We call it when the tap fails to attach so a
-// first-launch user gets the prompt instead of a dead tray icon.
+// `CGEventTapCreate` fails *silently* without Accessibility rights — no
+// system dialog. The supported way to ask is
+// `AXIsProcessTrustedWithOptions` with the prompt option, which opens
+// System Settings and shows the alert. Called when the tap fails to
+// attach, so a first-launch user gets the prompt instead of a dead tray
+// icon.
 
 use core_foundation::dictionary::CFDictionaryRef;
 use core_foundation::string::CFStringRef;
@@ -177,17 +176,15 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
 }
 
 /// The tap's mach port, stashed after creation so the callback can
-/// re-enable the tap if the OS disables it (`kCGEventTapDisabledByTimeout`
-/// arrives when a callback overruns its budget — ours is a few atomic
-/// loads, but an OS under load can still decide; coming back to life
-/// beats staying deaf).
+/// re-enable the tap when the OS disables it
+/// (`kCGEventTapDisabledByTimeout` can arrive under load even though
+/// our callback is a few atomic loads).
 ///
-/// One tap per process, by construction: `listener.start()` is called
-/// once (main.rs), so the silent first-wins of `OnceLock::set` is
-/// never observed. The set also runs after `tap.enable()` — a tap the
-/// OS managed to disable inside that gap would re-enable against a
-/// stale port, which fails toward keys reaching the application, the
-/// safe direction.
+/// One tap per process by construction — `listener.start()` is called
+/// once — so `OnceLock::set`'s silent first-wins is never observed. The
+/// set runs after `tap.enable()`; a tap disabled inside that gap would
+/// re-enable against a stale port, which fails toward keys reaching the
+/// application, the safe direction.
 static TAP_PORT: OnceLock<usize> = OnceLock::new();
 
 fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), String>>) {
@@ -237,14 +234,13 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                     }
                 }
 
-                // The key gate: while a correction burst is on the
-                // wire, the user's keystrokes are swallowed here (the
-                // engine already has them — it replays them behind the
-                // correction). Our own emissions are stamped and must
-                // always pass, or the correction swallows itself.
-                // `FlagsChanged` events never get swallowed: holding a
-                // modifier edge but not its counterpart would leave the
-                // system modifier state stuck.
+                // While a correction burst is on the wire the user's
+                // keystrokes are swallowed here — the engine already has
+                // them and replays them behind the correction. Our own
+                // emissions are stamped and must always pass, or the
+                // correction swallows itself. `FlagsChanged` is never
+                // swallowed: holding one modifier edge and not its
+                // counterpart leaves the system state stuck.
                 if let Some(g) = gate_for_callback.as_ref() {
                     if matches!(ev_type, CGEventType::KeyDown | CGEventType::KeyUp) {
                         let ours = event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA)

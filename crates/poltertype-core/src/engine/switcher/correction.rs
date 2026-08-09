@@ -29,30 +29,16 @@ const MIN_LEARNED_LETTERS: usize = 3;
 
 impl SwitcherEngine {
     /// Type out keystrokes the key gate held back, by whichever emit
-    /// path this backend actually has.
+    /// path this backend has.
     ///
-    /// `send_keys` replays raw scancodes — what Wayland needs, and what
-    /// the gate was written against, since it was born on evdev.
-    /// Windows and macOS answer `Unsupported` on purpose: their
-    /// Unicode-emit API is the more robust path there, and replaying
-    /// scancodes would race the layout switch we have just asked for.
-    /// The correction itself has fallen back to `send_text` for that
-    /// reason since the beginning; **this path had not**, so on those
-    /// platforms the gate swallowed the user's keystrokes from the
-    /// application and then failed to give them back.
+    /// `send_keys` replays raw scancodes; backends that answer
+    /// `Unsupported` fall back to `send_text`. **Never give up here** —
+    /// these keys were already swallowed from the application, so
+    /// dropping them loses the user's typing outright. See
+    /// `docs/ARCHITECTURE.md` § Key gate.
     ///
-    /// Held-and-dropped is strictly worse than never held: it is the
-    /// one way this feature can *lose* typing rather than merely
-    /// scramble it, which is why the gate stays off by default until a
-    /// platform is known to come back from here. Found the first time
-    /// the Windows gate ran on real hardware (2026-08-04): every burst
-    /// logged `no scancode-replay path` and the characters were gone.
-    ///
-    /// What the fallback cannot reproduce is a keystroke that is not a
-    /// character — Backspace, the arrows, Esc translate to nothing in
-    /// any layout and are dropped. That is the same narrow loss the
-    /// mid-correction shortcut already carries, and it is bounded by
-    /// the length of one burst.
+    /// Keystrokes that are not characters (Backspace, arrows, Esc) have
+    /// no rendering in any layout and are dropped; bounded by one burst.
     fn emit_held_keys(&self, keys: &[ReplayKey], to: &LayoutId) -> Result<(), InputError> {
         let sent = self.key_emitter.send_keys(keys);
         self.push_echoes(self.key_emitter.take_emitted());
@@ -66,10 +52,9 @@ impl SwitcherEngine {
         let mut dropped = 0usize;
 
         for k in keys {
-            // Backspace is not text. It has to go out as a keypress,
-            // and in its place in the sequence — the user pressed it to
-            // delete what they typed just before it, so emitting it
-            // after the rest would eat the wrong character.
+            // Backspace goes out as a keypress, and in its place in
+            // the sequence — emitting it after the rest would eat the
+            // wrong character.
             if k.scancode == SC_BACKSPACE {
                 self.flush_text(&mut text)?;
                 let sent = self.key_emitter.send_backspaces(1);
@@ -77,15 +62,13 @@ impl SwitcherEngine {
                 sent?;
                 continue;
             }
-            // Space before the overlay, because no overlay has it: a
-            // layout describes the 46 character keys, so the spacebar
-            // translates to nothing and used to be dropped. It is also
-            // the single most likely key to be held, being the boundary
+            // Space is handled before the overlay because no overlay
+            // has it: a layout describes the 46 character keys. It is
+            // also the likeliest key to be held, being the boundary
             // that triggers most corrections.
             //
-            // Enter and Tab are deliberately *not* here: replaying them
-            // submits a line or moves focus, which `is_submission_scancode`
-            // already refuses to do anywhere else in a correction.
+            // Enter and Tab are deliberately absent — replaying them
+            // submits a line or moves focus.
             let c = if k.scancode == SC_SPACE {
                 Some(' ')
             } else {
@@ -158,28 +141,19 @@ impl SwitcherEngine {
             "applying correction"
         );
 
-        // A same-layout replacement (spelling suggestion) has no
-        // layout to flip and no pre-flight to run — everything below
-        // that is switch-related is keyed off this.
+        // A same-layout replacement (spelling suggestion) has no layout
+        // to flip; everything switch-related below is keyed off this.
         let switching = from != to;
 
         // When the layout flip happened — the replay must not outrun
         // the compositor's xkb propagation. See `LAYOUT_SETTLE`.
         let mut switched_at: Option<Instant> = None;
 
-        // Pre-flight: confirm the target layout is currently active in
-        // the OS BEFORE we touch the user's text.
-        //
-        // The candidate filter inside `decide()` should already make
-        // this impossible for auto-decisions, but keeping the check
-        // here closes two more holes:
-        //   * `force_switch_last` (manual hotkey) bypasses the
-        //     candidate filter and can target any layout in `LayoutDb`.
-        //   * Race: settings reload / OS layout list change between
-        //     `decide()` and the actual key emission.
-        //
-        // On query failure we fall through and let `switch_to` surface
-        // the original error (still safe — no keystrokes sent yet).
+        // Pre-flight the target layout BEFORE touching the user's text.
+        // `decide()` already filters candidates, but `force_switch_last`
+        // bypasses that filter, and settings or the OS layout list can
+        // change in between. On query failure fall through and let
+        // `switch_to` surface the error — still safe, nothing sent yet.
         if switching {
             match self.layout_switcher.list_active() {
                 Ok(list) if !list.contains(to) => {
@@ -199,13 +173,8 @@ impl SwitcherEngine {
                 _ => {} // active list contains target — proceed.
             }
 
-            // Switch the layout FIRST. Flipping the layout doesn't touch
-            // existing text, so if it fails we abort with the user's word
-            // fully intact (the old order — backspaces, then switch —
-            // destroyed the word whenever the switch failed). It also
-            // overlaps the compositor's xkb propagation with the backspace
-            // burst, and means any keystrokes the user lands mid-correction
-            // already produce glyphs in the layout they intended.
+            // Layout first: a failed switch then leaves the word
+            // intact. See `docs/ARCHITECTURE.md` § The correction path.
             if let Err(e) = self.layout_switcher.switch_to(to) {
                 warn!(?e, target = %to, "layout switch failed; aborting correction before any keystrokes");
                 return false;
@@ -215,27 +184,12 @@ impl SwitcherEngine {
 
         // ── Absorb: wait for the user's fingers to lift ─────────────
         //
-        // Keystrokes the user lands while our backspaces / replay are
-        // on the wire physically interleave with them at the
-        // compositor — the result is a scrambled word (`рприивіт`)
-        // that no amount of after-the-fact counting can fix. So
-        // before deleting anything, watch the key stream: as long as
-        // presses keep arriving, keep absorbing them into the plan
-        // (they are the start of the user's next word — on screen
-        // already, in the layout we just switched to). Only once the
-        // stream has come back empty three times running (~60 ms of
-        // silence, past a fast typist's inter-key gap) do we start
-        // emitting. The absorbed tail is deleted together with the
-        // word and re-typed after the boundary, preserving order.
-        //
-        // If a *boundary* arrives while absorbing, the user finished
-        // their next word too — stop there, include it, and re-process
-        // it after the correction so the next word gets its own
-        // decision. If Enter/Tab (submission) or anything murkier
-        // (Backspace, nav, shortcut) arrives, abort the whole
-        // correction — nothing has been emitted yet, so the user's
-        // text is untouched; we just leave the layout switched and
-        // taint the buffer.
+        // Keystrokes landing while our burst is on the wire interleave
+        // with it at the compositor, and counting cannot fix that. So
+        // fold arriving presses into the plan until the stream has been
+        // empty three times running, then emit. A boundary means the
+        // user finished their next word too — include it and re-process
+        // it. A submission or anything murkier aborts, untouched.
         let mut live = live;
         let mut click_allowance = pointer_click_allowance;
         let mut tail: Vec<KeyEvent> = Vec::new();
@@ -263,19 +217,13 @@ impl SwitcherEngine {
                     quiet_probes = 0;
                 } else {
                     quiet_probes += 1;
-                    // Three empty probes, two 30 ms sleeps between
-                    // them: ~60 ms of silence. A fast typist's
-                    // inter-key gap is ~45-60 ms plus listener lag, so
-                    // two probes can land inside a single gap.
-                    //
-                    // A correction fired by a chord waits for that
-                    // chord to come up as well. Our replay reaches the
-                    // application the same way the user's keys do, so
-                    // typing under their held `Ctrl` produces
-                    // shortcuts and nothing lands — telling the
-                    // emitter to release the modifiers is not enough
-                    // where a remapper keeps its own idea of what is
-                    // down. The deadline below bounds the wait.
+                    // Three empty probes, two 30 ms sleeps: ~60 ms,
+                    // past a fast typist's inter-key gap. A correction
+                    // fired by a chord waits for that chord to come up
+                    // as well — under a held `Ctrl` our replay produces
+                    // shortcuts, and releasing on our side is not
+                    // enough where a remapper keeps its own idea of
+                    // what is down. The deadline below bounds the wait.
                     if quiet_probes >= 3 && !self.modifiers_held() {
                         break;
                     }
@@ -288,9 +236,8 @@ impl SwitcherEngine {
         }
 
         if suspicious {
-            // Nothing emitted yet — bail out with the text untouched.
-            // The buffer can't vouch for the screen any more, though:
-            // taint it and drop the manual-switch stash.
+            // Nothing emitted — bail out untouched. The buffer can no
+            // longer vouch for the screen: taint it and drop the stash.
             debug!("uncertain keystrokes while preparing correction — aborting untouched");
             if let Some((_, buffer)) = live.as_mut() {
                 self.seed_buffer(&tail, buffer);
@@ -303,10 +250,9 @@ impl SwitcherEngine {
             return false;
         }
 
-        // Wait out the compositor's xkb propagation before touching
-        // anything — here rather than just before the replay, so it
-        // can't widen the gap between our last look at the key stream
-        // and our first emitted key. Normally already elapsed.
+        // Wait out xkb propagation here rather than just before the
+        // replay, so it cannot widen the gap between our last look at
+        // the key stream and our first emitted key.
         if let Some(t) = switched_at {
             let since = t.elapsed();
             if since < LAYOUT_SETTLE {
@@ -316,26 +262,11 @@ impl SwitcherEngine {
 
         // ── Emit: delete → replay ───────────────────────────────────
         //
-        // Erase the on-screen characters, then retype the corrected
-        // word plus everything the user typed while we were preparing.
-        //
-        // A keystroke that lands *inside* that burst is ordered against
-        // our emitted events by the compositor, and no after-the-fact
-        // counting can undo it: `зтзь ш ` came out as `ipnpm ` because
-        // the `i` reached the app between our deletion and our replay,
-        // and `pinpm ` / `pnpmi ` when it reached it mid-replay.
-        //
-        // So we hold the user's keys back for exactly as long as the
-        // burst takes. Held keys still reach us — they just queue up
-        // instead of landing in our text, and we type them out
-        // ourselves once the correction is down. Where the gate can't
-        // run (no evdev, or a remapper in the way) we fall back to
-        // probing for an intrusion afterwards and re-emitting.
-        // Let go of anything the user is holding before typing. A
-        // chord-triggered correction (suggestion accept, manual
-        // switch-last) fires with its own modifiers still down, and a
-        // replay under a held Ctrl produces shortcuts, not text — the
-        // user sees the correction simply not happen.
+        // The gate holds the user's keys back for the length of the
+        // burst; where it cannot run we probe for an intrusion
+        // afterwards instead. Release whatever the user is holding
+        // first — a replay under a held Ctrl produces shortcuts, not
+        // text, and the correction appears not to happen.
         let holding = *self.held_modifiers.read();
         if holding.control || holding.shift || holding.alt || holding.meta {
             debug!(?holding, "releasing held modifiers before emitting");
@@ -354,12 +285,10 @@ impl SwitcherEngine {
         loop {
             // ── Delete: word + boundary + absorbed tail ─────────────
             //
-            // A bounded compensation loop catches the stragglers that
-            // still manage to land during the burst itself: each one
-            // both soaked up one of our backspaces and must be deleted
-            // and re-typed, so it costs exactly one extra backspace
-            // either way. The loop exits on a probe that comes back
-            // empty, and the replay follows immediately after it.
+            // Bounded compensation loop: a straggler landing during the
+            // burst both soaks up one backspace and needs deleting, so
+            // it costs exactly one extra either way. Exits on an empty
+            // probe, with the replay immediately after.
             for round in 0..3 {
                 let sent = self.key_emitter.send_backspaces(to_delete);
                 self.push_echoes(self.key_emitter.take_emitted());
@@ -368,10 +297,8 @@ impl SwitcherEngine {
                     return false;
                 }
                 let Some((rx, _)) = live.as_ref() else { break };
-                // With the keyboard held, nothing of the user's can
-                // have reached the screen, so there is nothing to
-                // compensate for — what they typed is waiting for us
-                // and gets typed out after the replay instead.
+                // Held keyboard: nothing of the user's reached the
+                // screen, so there is nothing to compensate for.
                 if held.active() {
                     break;
                 }
@@ -404,12 +331,10 @@ impl SwitcherEngine {
 
             // ── Replay: word + boundary + tail (+ resume boundary) ──
             //
-            // Prefer replaying the original scancodes against the
-            // freshly switched layout (the only path that works in
-            // Wayland-native / terminal apps). Backends that have a
-            // real Unicode-emit API (`KEYEVENTF_UNICODE`,
-            // `CGEventKeyboardSetUnicodeString`) return `Unsupported`;
-            // we fall back to `send_text` for them.
+            // Original scancodes against the freshly switched layout —
+            // the only path that works in Wayland-native and terminal
+            // apps. Unicode-emit backends answer `Unsupported` and get
+            // `send_text`.
             let extra_keys: Vec<ReplayKey> = tail
                 .iter()
                 .chain(resume.iter())
@@ -465,18 +390,14 @@ impl SwitcherEngine {
 
             // ── Flush: type out what the gate held back ─────────────
             //
-            // These keys never reached the application, so there is
-            // nothing on screen to delete and nothing to disentangle —
-            // they simply go on the end, in the order they were
-            // pressed. Keep going while the user keeps typing, up to a
-            // bound; whatever they press after we let go reaches the
-            // application by itself.
+            // These keys never reached the application, so they simply
+            // go on the end in press order. Keep going while the user
+            // keeps typing, up to a bound.
             if held.active() {
                 let flush_deadline = Instant::now() + HELD_FLUSH;
-                // One empty sweep is not "the user stopped" — it is
-                // shorter than an inter-key gap, and letting go on it
-                // drops whatever they press a moment later into the
-                // hole between our last sweep and the actual ungrab.
+                // One empty sweep is shorter than an inter-key gap;
+                // letting go on it drops whatever is pressed in the hole
+                // between the sweep and the actual ungrab.
                 let mut quiet = 0u8;
                 loop {
                     std::thread::sleep(POST_EMIT_LAG);
@@ -502,13 +423,11 @@ impl SwitcherEngine {
                             resume = Some(r);
                         }
                     }
-                    // Backspace / arrows / Esc were swallowed too. They
-                    // are the user editing, so they have to be typed
-                    // out — after our text, which is where they would
-                    // have landed had we not been in the way. A
-                    // shortcut needs modifiers we cannot reproduce and
-                    // arrives here as `None`; all we can do is stop
-                    // holding immediately so the next one gets through.
+                    // Backspace / arrows / Esc were swallowed too, and
+                    // they are the user editing — type them out after
+                    // our text, where they would have landed. A shortcut
+                    // needs modifiers we cannot reproduce and arrives as
+                    // `None`; all we can do is stop holding at once.
                     if let Some(s) = w.stopper {
                         pending.push(ReplayKey {
                             scancode: s.scancode,
@@ -535,11 +454,10 @@ impl SwitcherEngine {
                         break;
                     }
                 }
-                // Letting go is synchronous, so the moment it returns
-                // the line is drawn: everything already on the stream
-                // was held back and is ours to type out, everything
-                // after it reaches the application by itself. One last
-                // sweep collects the stragglers on our side of it.
+                // Letting go is synchronous: everything already on the
+                // stream is ours to type out, everything after reaches
+                // the application by itself. One last sweep for the
+                // stragglers on our side of that line.
                 held.release();
                 let w = self.drain_correction_window(rx, &mut click_allowance);
                 let mut last: Vec<ReplayKey> = w
@@ -571,12 +489,7 @@ impl SwitcherEngine {
                 }
                 if !last.is_empty() {
                     debug!(count = last.len(), "typing out the last held keystrokes");
-                    // Not `send_keys` directly: on macOS and Windows
-                    // that is `Unsupported`, and these keystrokes were
-                    // already swallowed from the application — dropping
-                    // them here would lose them outright. Same fix as
-                    // the main flush path; the second call site was
-                    // missed when `emit_held_keys` got its fallback.
+                    // Not `send_keys` directly — see `emit_held_keys`.
                     if let Err(e) = self.emit_held_keys(&last, to) {
                         warn!(?e, "flushing the last held keystrokes failed");
                     }
@@ -586,20 +499,11 @@ impl SwitcherEngine {
 
             // ── Intrusion probe (gate unavailable) ──────────────────
             //
-            // Anything on the wire now was pressed while the replay was
-            // going out (the deletion loop left the stream quiet
-            // moments ago), so it is on screen somewhere *inside* the
-            // text we just typed. We can't tell where — but we know
-            // exactly how many characters we put down, so erasing that
-            // many plus the intruders and retyping puts everything back
-            // in typed order.
-            //
-            // The repair is another burst, though, and firing it while
-            // the user is still mid-word just hands the next keystroke
-            // the same race to win. So wait for a pause first, and if
-            // one never comes, leave the screen exactly as it is and
-            // stop vouching for it — a scrambled word the user can fix
-            // beats a correction chasing their fingers across the line.
+            // Anything on the wire now landed inside the text we just
+            // typed. The position is unknown, the character count is
+            // not, so erase that many plus the intruders and retype.
+            // The repair is itself a burst, so wait for a pause; if none
+            // comes, leave the screen as it is and stop vouching for it.
             if suspicious {
                 break;
             }
@@ -639,9 +543,8 @@ impl SwitcherEngine {
                 break;
             }
             if suspicious || repairs_left == 0 || quiet < INTRUSION_QUIET_PROBES {
-                // Spent the budget, or the user never paused. The
-                // screen holds something we did not put there and
-                // cannot place — track nothing, correct nothing.
+                // Budget spent, or no pause ever came. The screen holds
+                // something we cannot place — track nothing.
                 suspicious = true;
                 break;
             }
@@ -656,9 +559,8 @@ impl SwitcherEngine {
         if play_sound {
             self.audio.play(SoundEvent::Correct);
         }
-        // `Corrected` / `LayoutChanged` are layout-correction events;
-        // a same-layout replacement announces itself via
-        // `SuggestionApplied` from its own caller instead.
+        // Layout-correction events only; a same-layout replacement
+        // announces itself via `SuggestionApplied` from its own caller.
         if switching {
             let _ = self.out_tx.send(SwitcherEvent::Corrected {
                 from_layout: from.clone(),
@@ -668,13 +570,10 @@ impl SwitcherEngine {
                 reason: reason.to_owned(),
             });
             let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
-            // The stashed word now reads differently on screen than
-            // the user typed it, so record where we took it — the
-            // manual hotkey undoes a correction rather than re-
-            // applying one. Here rather than in `decide`, because
-            // only this far in is the correction actually on screen;
-            // and before the settle-and-seed below, which can run a
-            // later word through the pipeline and stash its own.
+            // The stashed word now reads differently than it was typed,
+            // so record where we took it — the manual hotkey undoes a
+            // correction rather than re-applying one. Here rather than
+            // in `decide`, because only now is it actually on screen.
             if let Some(last) = self.last_word.write().as_mut() {
                 last.corrected_to = Some(to.clone());
             }
@@ -682,19 +581,11 @@ impl SwitcherEngine {
 
         // ── Settle & seed ───────────────────────────────────────────
         if let Some((rx, buffer)) = live {
-            // Wait out our own echoes before letting the run loop
-            // resume. Rationale: consume_echo matches by scancode, so
-            // while the queue is non-empty a REAL user press of the
-            // same scancode we just replayed would be swallowed as an
-            // echo (very possible right after a correction — the next
-            // word often starts with the same letters). Draining here,
-            // while the user is still inside the pause the absorb gate
-            // verified, empties the queue in one keyd round-trip;
-            // anything the user types afterwards can't be mistaken for
-            // an echo. Bounded: backends whose echoes never come back
-            // through the listener (Windows / macOS tag them injected
-            // instead) just wait out the deadline once — after
-            // emission, so the user never sees the latency.
+            // Drain our own echoes before the run loop resumes:
+            // `consume_echo` matches by scancode, so a real press of a
+            // scancode we just replayed would be swallowed while the
+            // queue is non-empty. Bounded, because backends that tag
+            // echoes injected never send them back at all.
             let mut post_tail: Vec<KeyEvent> = Vec::new();
             let mut post_resume: Option<KeyEvent> = None;
             let settle_deadline = Instant::now() + Duration::from_millis(400);
@@ -716,19 +607,16 @@ impl SwitcherEngine {
             }
 
             if suspicious {
-                // Something we couldn't attribute cleanly landed
-                // mid-correction. The screen state is uncertain until
-                // the next boundary — track nothing, correct nothing.
+                // Something unattributable landed mid-correction. The
+                // screen is uncertain until the next boundary.
                 buffer.abandon();
                 buffer.poison();
                 *self.last_word.write() = None;
             } else {
-                // Chronological re-assembly of everything the user
-                // typed while we were busy: the absorbed tail (word
-                // in progress), its boundary (routed through the
-                // normal pipeline so that word gets its own decision
-                // — usually "keep", it was typed post-switch), then
-                // whatever arrived after the replay.
+                // Chronological re-assembly of what the user typed
+                // while we were busy: absorbed tail, its boundary
+                // (through the normal pipeline, so that word gets its
+                // own decision), then whatever arrived after the replay.
                 self.seed_buffer(&tail, buffer);
                 if let Some(r) = resume {
                     self.handle_key(r, buffer, rx);
@@ -758,13 +646,11 @@ impl SwitcherEngine {
         }
     }
 
-    /// Drain everything currently pending on the listener channel,
-    /// swallowing our own echoes. Collects the plain word-key presses
-    /// the user managed to type while a correction was in flight;
-    /// stops at the first boundary press (`resume` — the user finished
-    /// their next word too). Anything murkier (Backspace, nav, click,
-    /// shortcut) sets `suspicious`. `click_allowance` pointer presses
-    /// are swallowed benignly — see `apply_correction`.
+    /// Drain everything pending on the listener channel, swallowing our
+    /// own echoes. Collects the plain word-key presses the user managed
+    /// to type during a correction and stops at the first boundary
+    /// press (`resume`). Anything murkier sets `suspicious`;
+    /// `click_allowance` pointer presses are swallowed benignly.
     fn drain_correction_window(
         &self,
         rx: &Receiver<KeyEvent>,
@@ -777,8 +663,8 @@ impl SwitcherEngine {
             }
             if !ev.injected {
                 // Releases are dropped below, but they are the only
-                // sign that the chord which triggered this correction
-                // has been let go of — see `modifiers_held`.
+                // sign the triggering chord has been let go of — see
+                // `modifiers_held`.
                 *self.held_modifiers.write() = ev.modifiers;
             }
             if ev.injected || ev.direction != KeyDirection::Press {
@@ -795,9 +681,9 @@ impl SwitcherEngine {
                 *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
             }
             if ev.modifiers.is_command() {
-                // A shortcut needs its modifiers held to mean anything,
-                // and the emitter only speaks Shift — no faithful
-                // re-emit, so it is deliberately left as `None`.
+                // A shortcut needs its modifiers held to mean anything
+                // and the emitter only speaks Shift, so no faithful
+                // re-emit is possible.
                 out.suspicious = true;
                 break;
             }
@@ -834,19 +720,14 @@ impl SwitcherEngine {
 
     /// The manual switch-last hotkey, in both of its situations.
     ///
-    /// **The engine left the word alone** — the usual case, and the
-    /// one the hotkey was built for: switch it to the other layout,
-    /// bypassing every pre-decision filter, because the user asking
-    /// outranks our guesses.
+    /// **The engine left the word alone**: switch it, bypassing every
+    /// pre-decision filter, because the user asking outranks our
+    /// guesses.
     ///
-    /// **The engine already switched the word** — the hotkey puts it
-    /// back. It used to re-apply the same correction: same keys, same
-    /// target layout, so the word was deleted and retyped identically
-    /// and the one gesture a user reaches for when a correction is
-    /// wrong did visibly nothing. Undoing also teaches: a user who
-    /// takes a correction back has told us, as plainly as the tooltip
-    /// button does, that this word is right as typed — see
-    /// [`Self::learn_undone_word`].
+    /// **The engine already switched it**: put it back. Re-applying the
+    /// same correction made the one gesture a user reaches for when a
+    /// correction is wrong do visibly nothing. Undoing also teaches —
+    /// see [`Self::learn_undone_word`].
     pub(super) fn force_switch_last(
         &self,
         last: LastWord,
@@ -857,10 +738,9 @@ impl SwitcherEngine {
         let (from, target) = match last.corrected_to.clone() {
             Some(applied) => (applied, last.layout.clone()),
             None => {
-                // Pick the most plausible alternate layout — in v0.1
-                // with two layouts, "the other one" is fine.
-                // Generalisation will re-run the detector pipeline
-                // with `min_advantage = 0`.
+                // Most plausible alternate layout. With two layouts
+                // "the other one" is fine; generalising means re-running
+                // the detector pipeline with `min_advantage = 0`.
                 let Some(other) = self.layouts.ids().find(|id| **id != last.layout).cloned() else {
                     warn!("only one layout known; can't force-switch");
                     return;
@@ -889,9 +769,8 @@ impl SwitcherEngine {
         let restored = target_mapping.translate_buffer(&last.keys);
         let mut corrected = restored.clone();
         corrected.push(last.boundary_char);
-        // Replay the boundary the user actually typed — except
-        // Enter/Tab, where a re-press would submit the line / move
-        // focus; substitute a space for those.
+        // Replay the boundary the user typed — except Enter/Tab, where
+        // a re-press would submit the line or move focus.
         let (boundary_sc, boundary_shift) = match last.boundary_scancode {
             0x1C | 0x0F | 0x60 => (0x39, false),
             sc => (sc, last.boundary_shift),
@@ -934,18 +813,14 @@ impl SwitcherEngine {
 
     /// Remember a word the user just rescued from a correction.
     ///
-    /// The alternative was leaving the auto-correction path with no
-    /// escape hatch at all: the "Add to dictionary" row only exists
-    /// on the suggestion tooltip, and the tooltip only appears for
-    /// words the engine *kept*. Words it corrected — the ones that
-    /// actually cost the user something when the engine is wrong —
-    /// could be undone one at a time, for ever, and the app never
-    /// learned a thing.
+    /// Without this the auto-correction path has no escape hatch at
+    /// all: "Add to dictionary" lives on the suggestion tooltip, and
+    /// the tooltip only appears for words the engine *kept*.
     ///
-    /// Short tokens are skipped. Below three letters the dictionary
-    /// runs on the curated short-stop lists rather than the FST (see
-    /// `LayoutDictionary`), and a stray one- or two-letter entry
-    /// there disables correction for a whole class of real words.
+    /// Short tokens are skipped — below three letters the dictionary
+    /// runs on the curated short-stop lists rather than the FST, and a
+    /// stray entry there disables correction for a whole class of real
+    /// words.
     fn learn_undone_word(&self, layout: &LayoutId, word: &str) {
         let letters = poltertype_detect::letters_only_lower(word);
         if letters.chars().count() < MIN_LEARNED_LETTERS {

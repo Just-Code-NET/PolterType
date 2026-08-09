@@ -315,6 +315,33 @@ parent as `#[cfg(test)] mod tests;`. Existing examples to copy from:
 `crates/poltertype-core/src/engine/`, `crates/poltertype-core/src/layouts/`,
 `crates/poltertype-detect/src/`, `crates/poltertype-app/src/settings_ui/`.
 
+## Comments
+
+Comments answer **why**, never **what** — the code already says what.
+A comment that paraphrases the line under it is noise that goes stale
+on the next edit, and we had enough of it to be worth a dedicated
+clean-up pass.
+
+| Kind | Budget |
+|---|---|
+| `//!` module header | 1–3 lines: what lives here, and the one constraint a reader must not break |
+| `///` on a public item | 1–3 lines: contract, units, error conditions, panics. Add a line only when a caller can get it wrong |
+| `//` inside a body | only where the reason is not visible locally — a workaround, an ordering constraint, an OS quirk |
+
+Keep out of the source and put in a document instead:
+
+- **Design rationale and rejected alternatives** →
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), or
+  [docs/DECISIONS.md](docs/DECISIONS.md) when it is a dated decision.
+- **Incident history** ("this broke on hardware in August, here is the
+  story") → `docs/DECISIONS.md` and `CHANGELOG.md`. A one-line
+  `// keep X, else Y breaks` in the code is the part worth keeping.
+- **Feature catalogues** (every pane of a window, every field of a
+  config) → the user docs. They drift the moment a field is added.
+
+Link rather than restate: `see docs/ARCHITECTURE.md § Key gate` beats
+forty lines of the same argument copied into a module header.
+
 ## Commits
 
 Imperative mood, scope prefix when useful (`engine:`, `win:`, `ui:`,

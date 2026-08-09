@@ -1,12 +1,5 @@
 //! Make the OS start PolterType at login, or stop it.
 //!
-//! `[general].autostart` shipped as a setting long before anything
-//! honoured it: the Settings checkbox wrote `config.toml` and no code
-//! ever read the value, on any platform. This crate is where the
-//! checkbox becomes real.
-//!
-//! ## Platform coverage
-//!
 //! | Platform | Mechanism | Entry |
 //! |---|---|---|
 //! | macOS | per-user LaunchAgent + `launchctl` | `~/Library/LaunchAgents/<id>.plist` |
@@ -14,32 +7,20 @@
 //! | Linux | XDG autostart entry | `$XDG_CONFIG_HOME/autostart/<id>.desktop` |
 //! | other | noop | — |
 //!
-//! This crate is one of the platform-code islands (see
-//! `CONTRIBUTING.md`): `#[cfg(target_os)]` is allowed here, and
-//! `poltertype-app` holds none. It is deliberately *not* a trait +
-//! factory like `poltertype-layout` — there is no backend for the
-//! caller to hold, just one idempotent operation, so the seam is a
-//! single function in the shape `poltertype-tray` uses.
+//! One of the platform-code islands (see `CONTRIBUTING.md`), and
+//! deliberately *not* a trait + factory like `poltertype-layout`: there
+//! is no backend for the caller to hold, just one idempotent operation.
 //!
-//! ## Why no registry binding and no `unsafe`
+//! Each backend drives the mechanism the OS already ships — two
+//! `launchctl` calls, one `reg.exe` call, or a file write — which buys
+//! a crate with no per-OS dependency and `#![forbid(unsafe_code)]`, at
+//! the cost of a short-lived process at most twice per app start. On
+//! Windows the child is spawned with `CREATE_NO_WINDOW`, or a console
+//! would flash at every login.
 //!
-//! Each backend talks to the mechanism the OS already ships: two
-//! `launchctl` calls, one `reg.exe` call, or a file write. That buys
-//! a crate with no per-OS dependency and `#![forbid(unsafe_code)]`,
-//! at the cost of spawning a short-lived process on two platforms —
-//! which happens at most twice per app start. A typed registry
-//! binding would be faster and add a dependency, a feature-gated
-//! `windows` build and an `unsafe` block to save microseconds in code
-//! that runs once. (On Windows the child is spawned with
-//! `CREATE_NO_WINDOW`, or a console would flash at every login.)
-//!
-//! ## What this crate does not do
-//!
-//! It never *reads* the OS to discover intent — `config.toml` is the
-//! single source of truth, and [`sync`] only pushes that truth
-//! outwards. If a user deletes the LaunchAgent by hand, the next
-//! launch puts it back. That is the intended direction: the setting
-//! owns the entry, not the other way round.
+//! It never *reads* the OS to discover intent: `config.toml` is the
+//! single source of truth and [`sync`] only pushes it outwards. Delete
+//! the LaunchAgent by hand and the next launch puts it back.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]

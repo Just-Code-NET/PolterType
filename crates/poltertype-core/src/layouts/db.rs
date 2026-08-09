@@ -26,14 +26,12 @@ pub struct LayoutDb {
 }
 
 impl LayoutDb {
-    /// Top-level loader. Resolves the data directory if not supplied,
-    /// scans bundled stems and (optionally) user-side TOMLs, and
-    /// returns a populated `LayoutDb`. Filter rules:
+    /// Top-level loader: resolves the data directory if not supplied,
+    /// scans bundled stems and optionally user-side TOMLs.
     ///
-    /// * Bundled layouts whose id is **not** in `active_filter` (when
-    ///   set) are skipped — their FSTs never enter memory.
-    /// * User layouts always load (the user dropping a TOML in
-    ///   `<config-dir>/layouts/` is an explicit "I want this").
+    /// Bundled layouts outside `active_filter` are skipped and their
+    /// FSTs never enter memory. User layouts always load — dropping a
+    /// TOML in `<config-dir>/layouts/` is an explicit request.
     pub fn load(opts: LoadOptions<'_>) -> Result<Self, LayoutLoadError> {
         let resolved_data_dir;
         let data_dir: &Path = match opts.data_dir {
@@ -98,21 +96,16 @@ impl LayoutDb {
             }
         }
 
-        // ── Plug-in packs (read-only data drops next to bundled
-        //                  set — see docs/DATA_LAYOUT.md) ───────────
-        //
-        // Loaded BEFORE user-side TOMLs so the precedence chain is:
-        //   bundled  ←  plug-ins  ←  user-overlay
-        // i.e. a user can still override a plug-in by dropping a TOML
-        // with the same id under `<config-dir>/poltertype/layouts/`.
+        // Loaded before user-side TOMLs, so precedence runs
+        // bundled ← plug-ins ← user-overlay and a user can still
+        // override a plug-in with a TOML of the same id.
+        // See docs/DATA_LAYOUT.md.
         load_plugin_packs(data_dir, opts.user_wordlist_dir, &mut by_id);
 
-        // ── What the OS says these keyboards really do ────────────
-        //
-        // Applied over everything we shipped and under the user's own
-        // TOMLs. A bundled mapping describes *a* keyboard for the
-        // language; this describes *the* keyboard on this machine.
-        // See `os_keymap` for why that distinction has teeth.
+        // What the OS says these keyboards really do: applied over
+        // everything we shipped and under the user's own TOMLs. A
+        // bundled mapping describes *a* keyboard for the language, this
+        // describes *the* one on this machine — see `os_keymap`.
         if let Some(keymaps) = opts.os_keymaps {
             apply_os_keymaps(keymaps, &mut by_id);
         }
@@ -148,15 +141,13 @@ impl LayoutDb {
         })
     }
 
-    /// Convenience: load every bundled layout from the auto-resolved
-    /// data dir, with no user overlay and no active filter. Mainly
-    /// for tests and tooling — production code uses [`Self::load`]
-    /// with the OS active-layouts list.
+    /// Convenience: every bundled layout from the auto-resolved data
+    /// dir, no user overlay, no active filter. For tests and tooling;
+    /// production uses [`Self::load`] with the OS active-layouts list.
     ///
-    /// Panics on data-dir resolution failure: if the convenience
-    /// path can't find data, there's nothing useful to do without
-    /// it. Production code that wants to recover should call
-    /// [`Self::load`] directly and handle the `Result`.
+    /// Panics on data-dir resolution failure — there is nothing useful
+    /// to do without it. Callers that want to recover use
+    /// [`Self::load`] and handle the `Result`.
     #[allow(clippy::panic, clippy::missing_panics_doc)]
     pub fn load_embedded() -> Self {
         match Self::load(LoadOptions::default()) {
@@ -201,30 +192,21 @@ impl LayoutDb {
         self.by_id.keys()
     }
 
-    /// Build a profile-specific dictionary set — the same shape
-    /// `DictionaryDetector::replace_dicts` accepts — using the
-    /// overlay files in `profile_overlay_dir` instead of the
-    /// global one.
+    /// Build a profile-specific dictionary set — the shape
+    /// `DictionaryDetector::replace_dicts` accepts — from the overlay
+    /// files in `profile_overlay_dir` rather than the global one.
     ///
-    /// Each entry uses the layout's existing bundled FST (cheap —
-    /// `LayoutDictionary` already shares the FST through `Arc`) but
-    /// reads the user-overlay text files from the profile directory.
-    /// The result is callers can build a per-profile dictionary set
-    /// at startup, cache it, and atomically swap on focus change
-    /// without rebuilding any FSTs.
+    /// Each entry reuses the layout's bundled FST through the `Arc` in
+    /// `LayoutDictionary`, so a caller can build every profile's set at
+    /// startup, cache it, and swap atomically on focus change without
+    /// rebuilding any FST.
     ///
-    /// Layouts that have no FST in the data dir (user-supplied
-    /// layouts that came in via `<config-dir>/layouts/`) get an
-    /// overlay-only dictionary if any of the profile's overlay
-    /// files mention them, or are skipped if not.
+    /// Layouts with no FST in the data dir get an overlay-only
+    /// dictionary if the profile mentions them, and are skipped if not.
     ///
-    /// ## Why not `&self`-only
-    ///
-    /// We need the data dir for the FST path; resolving it
-    /// internally would lose the explicit-config-dir test path. The
-    /// caller already has the resolved dir from `LoadOptions` so we
-    /// take it as a parameter — same convention as the rest of
-    /// this module's public API.
+    /// Takes the data dir as a parameter rather than resolving it:
+    /// resolving internally would lose the explicit-config-dir test
+    /// path, and the caller already has it from `LoadOptions`.
     pub fn build_profile_dictionaries(
         &self,
         data_dir: &Path,
@@ -232,13 +214,11 @@ impl LayoutDb {
     ) -> HashMap<LayoutId, poltertype_detect::LayoutDictionary> {
         let mut out = HashMap::new();
         for (id, mapping) in &self.by_id {
-            // Stem inference for bundled layouts is "lowercase the
-            // BCP-47 id, replace `-` with `_`" — same convention the
-            // bundled FST file names follow. For user layouts the
-            // stem is whatever the TOML's filename was, which we
-            // don't track here; fall back to the same lowercased-id
-            // shape so user layouts that follow the convention
-            // (most do) pick up profile overlays automatically.
+            // Bundled stems are the BCP-47 id lowercased with `-` → `_`,
+            // the same convention the FST file names follow. User
+            // layouts' real stem is their TOML filename, which is not
+            // tracked here, so they fall back to the same shape — which
+            // most of them follow, so profile overlays still apply.
             let stem = mapping.id.as_str().to_lowercase().replace('-', "_");
             if let Some(dict) = build_dictionary(data_dir, &stem, Some(profile_overlay_dir)) {
                 out.insert(id.clone(), dict);

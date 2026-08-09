@@ -40,12 +40,10 @@ fn assert_no_opinion(detector: &impl Detector, ctx: &DetectionContext<'_>) {
     assert!(matches!(detector.judge(ctx), Verdict::NoOpinion));
 }
 
-/// Regression: `kubectl` is a real word a developer types in
-/// EN but isn't in `dwyl/english-words`. With the old
-/// "any-advantage-switches" rule the engine helpfully replaced
-/// it with `лгиусед` (UK render of the same scancodes). With
-/// `keep_threshold = 0.7` the plausibility detector vetoes the
-/// switch because `kubectl` reads perfectly plausibly under en-US.
+/// Regression: `kubectl` is a word developers type but is not in
+/// `dwyl/english-words`, and the old any-advantage rule replaced it
+/// with `лгиусед`. At `keep_threshold = 0.7` plausibility vetoes the
+/// switch, because `kubectl` reads perfectly plausibly under en-US.
 #[test]
 fn plausibility_keeps_real_looking_uncommon_word() {
     let en = LayoutId::from("en-US");
@@ -103,12 +101,11 @@ fn does_not_switch_for_short_buffer() {
     assert_no_opinion(&detector(), &ctx(&en, &cands));
 }
 
-/// Regression: a domain typed correctly under en-US used to be
-/// "corrected" into Cyrillic. `.` is `ю` in uk-UA, so the buffer
-/// keeps the whole host together and the two renderings are
-/// asymmetric: uk-UA gets clean letters, en-US keeps the dots and
-/// paid two stray-punctuation penalties, scoring **0.00** against
-/// uk-UA's 0.75. Scoring the compound segment-wise is what fixes it.
+/// Regression: a domain typed correctly under en-US was "corrected"
+/// into Cyrillic. `.` is `ю` in uk-UA, so the host stays one token and
+/// the renderings are asymmetric — en-US keeps the dots and paid two
+/// stray-punctuation penalties, scoring 0.00 against 0.75. Scoring the
+/// compound segment-wise is the fix.
 #[test]
 fn plausibility_keeps_hostname_typed_in_its_own_layout() {
     let en = LayoutId::from("en-US");
@@ -237,12 +234,10 @@ fn dict_handles_single_letter_prepositions() {
     assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
 }
 
-/// Regression: 2-letter `ці` (uk-UA, valid) ↔ `ws` (en-US, accidentally
-/// in the FST as a noise word). Old logic switched. New logic only
-/// trusts the curated short-stop list at this length, so the fact
-/// that `ws` is in the EN FST doesn't matter — it's not in
-/// `en_stop`, so neither side claims `Keep` from `ws`, while `ці`
-/// IS in `uk_stop` → the engine keeps the user's input alone.
+/// Regression: 2-letter `ці` (uk-UA, valid) ↔ `ws` (en-US, in the FST
+/// as noise). At this length only the curated short-stop lists are
+/// trusted, so `ws` claims nothing while `ці` is in `uk_stop` — the
+/// user's input is left alone.
 #[test]
 fn dict_keeps_short_uk_demonstrative() {
     let en = LayoutId::from("en-US");
@@ -266,14 +261,11 @@ fn dict_switches_to_short_uk_demonstrative_from_en() {
     assert_switches_to(&dict_detector(), &ctx(&en, &cands), &uk);
 }
 
-/// Regression: 2-letter English acronyms (`AI`, `ML`, `UI`, …)
-/// typed under uk-UA render as Cyrillic uppercase noise (`ФШ`,
-/// `ЬД`, `ГШ`). The DictionaryDetector must short-Switch on
-/// strength of the alt-side stop hit — assuming `ai` lives in
-/// the en-US short stop list, which `build.rs` arranges by
-/// mirroring ≤2-letter entries from `en_us-extras.txt` into
-/// `<dist>/wordlists/en_us-stop.txt`. This test fakes that
-/// arrangement by putting `ai` directly in the en stop list.
+/// Regression: 2-letter English acronyms typed under uk-UA render as
+/// Cyrillic noise (`AI` → `ФШ`). The detector must switch on the
+/// alt-side stop hit, which assumes `ai` is in the en-US short stop
+/// list — `build.rs` arranges that by mirroring ≤2-letter entries from
+/// `en_us-extras.txt`. This test fakes the arrangement directly.
 #[test]
 fn dict_switches_short_en_acronym_from_uk_layout() {
     let mut m = HashMap::new();
@@ -301,15 +293,14 @@ fn dict_switches_short_en_acronym_from_uk_layout() {
     assert_switches_to(&det, &ctx(&uk, &cands), &en);
 }
 
-/// Regression: Hunspell expanded `туча` (Ukrainian "thundercloud")
-/// into every grammatical form, including the vocative `туче`
-/// ("O cloud!") — virtually never typed in modern Ukrainian.
-/// That same token is the uk-UA rendering of the en-US scancodes
-/// for `next`, so the user typing `next` under uk-UA used to
-/// land on `туче`, the dict detector saw a real uk word, and
-/// Kept it. With `туче` flagged in the uk weak list (see
-/// `data/wordlists/uk_ua-weak.txt`), the detector defers to the
-/// strong en-US `next` hit and switches.
+/// Regression: Hunspell expanded `туча` into every form, including the
+/// vocative `туче`, which is also the uk-UA rendering of the en-US
+/// scancodes for `next` — so typing `next` under uk-UA landed on a real
+/// uk word and was kept. Flagging `туче` weak makes the detector defer
+/// to the strong en-US hit.
+///
+/// A user genuinely typing `туче` with no en-US match must still not be
+/// switched to gibberish.
 #[test]
 fn dict_weak_current_defers_to_strong_alt() {
     // Both `next` and `туче` live in their respective EMBEDDED
@@ -345,12 +336,9 @@ fn dict_weak_current_defers_to_strong_alt() {
 /// for the buffer must NOT get auto-switched to gibberish.
 #[test]
 fn dict_weak_current_keeps_when_no_alt_in_dict() {
-    // Same shape as the previous test but the en-US side
-    // intentionally has no FST entry that matches the alt
-    // rendering — so Phase 2 finds current is weak but no alt
-    // is in dict, and the weak-but-no-strong-alt branch must
-    // still Keep (the weak list never blocks a switch by
-    // itself).
+    // Same shape as the previous test, but with no en-US FST entry
+    // matching the alt rendering: current is weak and no alt is in
+    // dict, so the weak-but-no-strong-alt branch must still Keep.
     let mut m = HashMap::new();
     let uk_weak: HashSet<String> = ["туче"].iter().map(|s| (*s).to_owned()).collect();
     m.insert(
@@ -393,12 +381,10 @@ fn dict_keeps_capitalised_words() {
     }
 }
 
-/// Regression: ≥3-letter words added to the curated stop list
-/// must also be honoured by the full-length lookup path. The
-/// Hunspell stems file has `чути` but not the 1-sg `чую`; the
-/// stop list is the easy fallback. The old `contains` only
-/// checked the FST + user-overlay and would mis-classify `чую`
-/// as "not a word" → switch to `xe.` under en-US.
+/// Regression: ≥3-letter words on the curated stop list must be
+/// honoured by the full-length lookup too. Hunspell has `чути` but not
+/// the 1-sg `чую`, and the old `contains` checked only FST + overlay,
+/// mis-classifying it as "not a word".
 #[test]
 fn dict_keeps_long_word_added_to_short_stop_list() {
     // Build a dict whose embedded FST is empty (simulating "this
@@ -459,14 +445,11 @@ fn dict_with_embedded_and_weak(
     LayoutDictionary::new(set, overlay, HashSet::new(), weak)
 }
 
-/// Regression: a user-supplied overlay entry on the *alt* layout
-/// must override a coincidental *embedded*-FST hit on the current
-/// layout. The motivating case: user adds `будь` to uk-UA extras,
-/// types it while still in en-US (scancodes `,elm`), the
-/// detector cleans the current rendering to `elm` — which happens
-/// to be a real English word in the embedded FST — and without
-/// overlay priority the engine declares "current is English,
-/// Keep" and never even consults the user's whitelist.
+/// Regression: a user overlay entry on the *alt* layout must override a
+/// coincidental embedded-FST hit on the current one. Adding `будь` to
+/// uk-UA extras and typing it under en-US gives `,elm`, which cleans to
+/// the real English word `elm` — without overlay priority the engine
+/// keeps it and never consults the whitelist.
 #[test]
 fn dict_overlay_alt_overrides_embedded_current() {
     let mut m = HashMap::new();
@@ -623,22 +606,13 @@ fn plausibility_keeps_short_uppercase_acronym() {
     }
 }
 
-/// Regression (2026-05-07): user types `має` under uk-UA, every
-/// candidate set:
+/// Regression: `має` typed under uk-UA was replaced by the German
+/// render `vfä`. Its 2/3 vowel ratio sat just outside the old
+/// `0.25..=0.55` plateau and scored 0.66, below `keep_threshold`, while
+/// `vfä` sat inside it and scored 1.0.
 ///
-///   en-US: `vf'`   uk-UA: `має` (current)   ru-RU: `маэ`
-///   de-DE: `vfä`   es-ES: `vf´`             fr-FR: `vfù`
-///
-/// Before the fix: `має` (2/3 vowel ratio = 0.667) sat just outside
-/// the old `0.25..=0.55` plateau and scored 0.66, *below* the 0.7
-/// `keep_threshold`. The German render `vfä` (1/3 vowel ratio =
-/// 0.333) sat *inside* the plateau and scored 1.0 — advantage 0.34
-/// over the current → auto-switch fired, deleting the user's
-/// Ukrainian word and replacing it with `vfä`.
-///
-/// After the fix: plateau widened to `0.25..=0.67`, so `має` itself
-/// scores 1.0 ≥ keep_threshold → Keep. The fact that German /
-/// French alts also score 1.0 is irrelevant — Keep wins.
+/// The plateau widened to `0.25..=0.67`, so `має` scores 1.0 and Keep
+/// wins — other alts scoring 1.0 too is irrelevant.
 #[test]
 fn plausibility_keeps_short_vcv_cyrillic_word() {
     let en = LayoutId::from("en-US");
@@ -942,9 +916,8 @@ fn surface_lower_folds_apostrophes_and_keeps_hyphens() {
 
 // ---- Stray-punctuation (cross-layout artifact) regressions ----
 //
-// The es–en scenario the landing page demos: typing `mañana` with
-// en-US active renders as `ma;ana` (scancode 0x27 is `ñ` in es-ES,
-// `;` in en-US). Its letters-only skeleton `maana` happens to be an
+// Typing `mañana` with en-US active renders as `ma;ana` (0x27 is `ñ` in
+// es-ES, `;` in en-US). Its letters-only skeleton `maana` is an
 // embedded en-US entry, and `espa;ol` scored a perfect vowel/script
 // fit — each detector had its own way of freezing the correction.
 

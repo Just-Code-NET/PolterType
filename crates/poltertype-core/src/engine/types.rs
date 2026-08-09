@@ -8,13 +8,10 @@ use poltertype_types::WordKey;
 /// One correction, described in full: what to delete, what to type in
 /// its place, and under which layout.
 ///
-/// This exists because the emitter took ten positional parameters —
-/// four of them `&str`/`&LayoutId` pairs that transpose silently. A
-/// swapped `from`/`to` or `original`/`corrected` compiles, passes
-/// every type check, and then deletes the wrong number of characters
-/// under the wrong layout. Named fields make that class of mistake
-/// visible at the call site, which is the whole point; the parameter
-/// count coming back under clippy's threshold is a side effect.
+/// Named fields because the emitter took ten positional parameters,
+/// four of them `&str`/`&LayoutId` pairs that transpose silently — a
+/// swapped `from`/`to` compiles, type-checks, and then deletes the
+/// wrong number of characters under the wrong layout.
 pub struct Correction<'a> {
     /// Layout the text was typed under. Equal to [`Self::to`] for a
     /// same-layout replacement (a spelling suggestion), and that
@@ -44,13 +41,10 @@ pub struct Correction<'a> {
 
 /// An accepted suggestion, worked out down to what the emitter needs.
 ///
-/// Separate from applying it because the two halves are different
-/// jobs: deciding *what* the replacement is — which layout, how much
-/// of the screen to delete, whether it can be replayed as scancodes or
-/// has to go out as text — is all judgement and early returns, while
-/// emitting it is one call plus bookkeeping. They were one function
-/// with eight parameters; splitting them is what makes each half
-/// readable, and neither needs a lint silenced to exist.
+/// Separate from applying it because the halves are different jobs:
+/// deciding *what* the replacement is — layout, deletion length,
+/// scancodes or text — is judgement and early returns, while emitting
+/// it is one call plus bookkeeping.
 pub struct PlannedReplacement {
     pub target_layout: LayoutId,
     /// On-screen characters to delete: the word, the separator run,
@@ -72,10 +66,9 @@ pub struct PlannedReplacement {
 
 /// A resolved hotkey chord matched against the raw key stream.
 ///
-/// `scancode` is Win SC Set-1 (the layout-independent identifier the
-/// listener already produces — see [`poltertype_types::KeyEvent::scancode`]).
-/// Modifier fields are matched exactly: extra held modifiers do *not*
-/// match, so `Ctrl+Shift+Space` never fires on `Ctrl+Shift+Alt+Space`.
+/// `scancode` is Win SC Set-1. Modifier fields match exactly: extra
+/// held modifiers do *not* match, so `Ctrl+Shift+Space` never fires on
+/// `Ctrl+Shift+Alt+Space`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Chord {
     pub ctrl: bool,
@@ -167,13 +160,11 @@ pub struct SuggestionEntry {
     pub action: SuggestionAction,
 }
 
-/// A suggestion offer awaiting the user's accept (digit chord or
-/// tooltip click). Mirrors [`LastWord`] — same screen-position
-/// caveats — plus everything needed to validate a late accept.
-/// Separators and any in-progress next word are NOT stored: the
-/// accept path reads them from the live [`WordBuffer`] at accept
-/// time, because they may legitimately change while the tooltip is
-/// up (a second space, the next word's first letters).
+/// A suggestion offer awaiting the user's accept. Mirrors [`LastWord`],
+/// with the same screen-position caveats, plus what a late accept needs
+/// to validate. Separators and any in-progress next word are read from
+/// the live [`WordBuffer`] at accept time instead, because they may
+/// legitimately change while the tooltip is up.
 ///
 /// [`WordBuffer`]: crate::engine::buffer::WordBuffer
 #[derive(Debug, Clone)]
@@ -196,15 +187,12 @@ pub struct PendingSuggestion {
 /// The buffer's screen model, captured *just before* a pointer press
 /// abandons it.
 ///
-/// Why this exists: a click lands in the key stream as
-/// `SC_POINTER_BUTTON` and rightly abandons the buffer (the caret
-/// usually moved). But a click *on the suggestion tooltip* never
-/// reaches the app below — the overlay swallows it — so the text and
-/// caret are exactly where they were. The tooltip's `Accepted` event
-/// races the evdev observation of the same physical click, so the
-/// engine freezes the deletion math here and honours an accept that
-/// arrives within the short grace window; any other keypress, or the
-/// window lapsing, voids it.
+/// A click arrives as `SC_POINTER_BUTTON` and rightly abandons the
+/// buffer, since the caret usually moved — but a click *on the tooltip*
+/// never reaches the app below, so the text and caret are exactly where
+/// they were. The tooltip's `Accepted` event races the evdev
+/// observation of that same click, so the deletion math is frozen here
+/// and honoured within a short grace window.
 #[derive(Debug, Clone)]
 pub struct FrozenScreen {
     /// Boundary keys after the offered word (`WordBuffer::boundary_run`).
@@ -228,14 +216,13 @@ pub struct LastWord {
     /// pressing those would submit a line / move focus.
     pub boundary_scancode: u32,
     pub boundary_shift: bool,
-    /// The layout the engine's own auto-correction moved this word
-    /// to, once it has actually landed on screen. `None` while the
-    /// word still reads the way the user typed it.
+    /// The layout the engine's own correction moved this word to, once
+    /// it has landed on screen; `None` while the word still reads as
+    /// typed.
     ///
-    /// This is what lets the manual switch-last hotkey tell its two
-    /// situations apart: with `None` the word was left alone and the
-    /// hotkey applies the switch the engine declined, with `Some` the
-    /// engine already switched it and the hotkey undoes that.
+    /// This is how the manual switch-last hotkey tells its two
+    /// situations apart: `None` means apply the switch the engine
+    /// declined, `Some` means undo the one it made.
     pub corrected_to: Option<LayoutId>,
 }
 
@@ -259,14 +246,13 @@ pub struct WindowDrain {
     pub saw_user_press: bool,
 }
 
-/// RAII hold on the user's keyboard for the length of one emission
-/// burst. Held keys are still delivered to the engine — they just do
-/// not reach the focused application until this is dropped, so nothing
-/// of the user's can land in the middle of the text we are typing.
+/// RAII hold on the user's keyboard for one emission burst. Held keys
+/// still reach the engine — they just do not reach the focused
+/// application until this is dropped.
 ///
-/// Dropping releases, on every path out of a correction including a
-/// panic. The backend enforces its own ceiling on top of that, so even
-/// a leak here cannot leave the keyboard dead.
+/// Dropping releases on every path out of a correction, panic included,
+/// and the backend enforces its own ceiling on top, so even a leak here
+/// cannot leave the keyboard dead.
 pub struct HeldKeys<'a> {
     gate: &'a poltertype_input::KeyGate,
     active: bool,

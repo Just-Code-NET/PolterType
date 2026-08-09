@@ -36,13 +36,10 @@ pub(crate) fn handle_engine_event(
             corrected_text: _,
             reason,
         } => {
-            // The typed text stays out of this line deliberately —
-            // this fires at INFO, which is the default log level, so
-            // anything here lands in the on-disk log of a release
-            // build. The layout transition plus the (already
-            // redacted) reason is the whole diagnostic story; the
-            // words themselves are only visible via
-            // `poltertype_types::logsafe` in an opted-in debug build.
+            // No typed text here: this fires at INFO, the default
+            // level, so it lands in a release build's on-disk log. The
+            // layout transition plus the already-redacted reason is the
+            // whole diagnostic story.
             info!(%from_layout, %to_layout, %reason, "correction applied");
             // System notification — the user explicitly opted into
             // these via `[general].show_notifications`. The body
@@ -75,18 +72,13 @@ pub(crate) fn handle_engine_event(
     }
 }
 
-/// Show a 2-second toast / notification that the engine just
-/// auto-switched to a new layout. Spawned on a worker thread because
-/// `notify-rust::Notification::show()` is synchronous and the time it
-/// takes varies per platform (DBus round-trip on Linux, NSUserNotification
-/// on macOS, Toast XML on Windows) — we don't want to add even a few ms
-/// to the tray's event-loop latency for a cosmetic side effect.
+/// Show a 2-second toast that the engine auto-switched layout.
 ///
-/// Failures are logged at warn level and swallowed: a missing notification
-/// daemon (Linux dev container, macOS sandbox quirks, Windows Focus
-/// Assist suppressing toasts) shouldn't propagate up to the tray. The
-/// auto-switch itself already happened — the notification is just the
-/// optional UX sugar layer on top.
+/// On a worker thread because `notify-rust`'s `show()` is synchronous
+/// and its cost varies per platform, and nothing cosmetic should add
+/// latency to the tray's event loop. Failures are logged at warn and
+/// swallowed — a missing notification daemon must not propagate up, and
+/// the switch itself already happened.
 pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layout: &LayoutId) {
     // Resolve the layout's display `name` if we have a mapping for it
     // (`English (United States)` for `en-US`, etc.). Falls back to the
@@ -120,20 +112,17 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
 /// "Added <word> to your Ukrainian dictionary."
 ///
 /// Fires only for the implicit route into the dictionary — undoing a
-/// correction — and only when the user has notifications on. The
-/// tooltip's own "Add to dictionary" row stays silent: pressing a
-/// button that says what it does needs no announcement, while a word
-/// that joined the dictionary as a side effect of a different gesture
-/// does. A dictionary quietly growing behind the user's back is how
-/// "why did it stop correcting this?" starts.
+/// correction — and only with notifications on. The tooltip's own "Add
+/// to dictionary" row stays silent: pressing a button that says what it
+/// does needs no announcement, while a word that joined as a side
+/// effect of a different gesture does. A dictionary quietly growing
+/// behind the user's back is how "why did it stop correcting this?"
+/// starts.
 ///
-/// The word itself is in the body on purpose. It never reaches the
-/// log — `logsafe` sees to that — but this is the user's own text on
-/// the user's own screen, and "a word was added" without saying which
-/// one is not something anyone can act on.
-///
-/// Same worker-thread + swallow-failures contract as
-/// [`spawn_layout_change_notification`].
+/// The word is in the body on purpose. It never reaches the log —
+/// `logsafe` sees to that — but this is the user's own text on their
+/// own screen, and "a word was added" without saying which is not
+/// something anyone can act on.
 pub(crate) fn spawn_dictionary_add_notification(
     layouts: &Arc<LayoutDb>,
     layout: &LayoutId,
@@ -161,16 +150,12 @@ pub(crate) fn spawn_dictionary_add_notification(
 
 /// Tell the user that a tray action they just clicked did not happen.
 ///
-/// Deliberately NOT gated by `[general].show_notifications`: that
-/// toggle governs the cosmetic "we switched your layout" chatter that
-/// fires during normal use. This one fires only when a menu click
-/// produced nothing — the user is sitting there waiting for a window
-/// that is never going to appear, and a `warn!` line in a log file
-/// they don't know about is not a user interface.
+/// Deliberately **not** gated by `[general].show_notifications`: that
+/// toggle governs the cosmetic "we switched your layout" chatter. This
+/// fires only when a menu click produced nothing, and the user is
+/// sitting there waiting for a window that will never appear.
 ///
-/// Same worker-thread + swallow-failures contract as
-/// [`spawn_layout_change_notification`]; a longer timeout because this
-/// text has to be read, not glanced at.
+/// Longer timeout than the others, because this text has to be read.
 pub(crate) fn spawn_error_notification(body: String) {
     std::thread::Builder::new()
         .name("poltertype-notify-error".into())
@@ -190,15 +175,11 @@ pub(crate) fn spawn_error_notification(body: String) {
 /// "PolterType 0.4.0 is ready — it will install when you restart."
 ///
 /// Not gated by `[general].show_notifications`, for the same reason the
-/// error notification isn't: that toggle governs the cosmetic
-/// per-correction chatter. This fires at most once per released version,
+/// error notification is not. Fires at most once per released version,
 /// and it is the only thing that tells a user who never opens the tray
-/// menu that an update is waiting for them. A silent update that
-/// installs on some future quit, with no announcement, is exactly the
-/// behaviour people mean when they complain that software updates
-/// itself behind their back.
-///
-/// Same worker-thread + swallow-failures contract as the others.
+/// menu that an update is waiting. A silent update that installs on
+/// some future quit is exactly what people mean when they complain that
+/// software updates itself behind their back.
 pub(crate) fn spawn_update_notification(version: &str) {
     let body = format!(
         "Version {version} is downloaded and ready.\n\
@@ -243,13 +224,10 @@ pub(crate) fn spawn_event_bridges(
         .spawn(move || {
             let rx = GlobalHotKeyEvent::receiver();
             while let Ok(ev) = rx.recv() {
-                // global-hotkey 0.6+ emits BOTH `Pressed` and
-                // `Released` events for the same chord. Forwarding
-                // both meant the pause-toggle handler ran twice per
-                // user keypress — net effect: pause flipped on
-                // press, then immediately back on release, so the
-                // user only saw "paused" while physically holding
-                // the chord. Filter to Pressed only.
+                // `global-hotkey` 0.6+ emits both `Pressed` and
+                // `Released` for one chord. Forwarding both ran the
+                // pause toggle twice per keypress, so pause only held
+                // while the chord was physically down.
                 if ev.state != HotKeyState::Pressed {
                     continue;
                 }

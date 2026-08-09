@@ -1,12 +1,11 @@
 //! The background update worker and the tray's side of updating.
 //!
-//! Policy lives here; mechanism lives in `poltertype-update`. The rule
-//! this module exists to enforce is that **an update is never installed
-//! while the app is running**. Checking and downloading happen quietly
-//! on a worker thread; installing happens only at a moment the user
-//! picked — they quit, or they clicked "Restart to update". Swapping the
-//! binary out from under a live keyboard hook, mid-sentence, is the one
-//! thing an app like this must never do.
+//! Policy here, mechanism in `poltertype-update`. The rule this module
+//! exists to enforce: **an update is never installed while the app is
+//! running.** Checking and downloading happen on a worker thread;
+//! installing happens only at a moment the user picked. Swapping the
+//! binary out from under a live keyboard hook is the one thing an app
+//! like this must never do.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -80,15 +79,13 @@ pub(crate) fn refresh_menu_item(item: &MenuItem, pending: Option<&PendingUpdate>
 
 /// Install the staged update and tell the caller whether to exit.
 ///
-/// `relaunch` distinguishes the two ways to get here: the user clicked
-/// "Restart to update" and expects the app back, or they clicked Quit
-/// and expect it gone. Either way the install itself happens *after* we
-/// exit — see `poltertype_update::apply`.
+/// `relaunch` distinguishes the two ways here: the user clicked
+/// "Restart to update" and expects the app back, or clicked Quit and
+/// expects it gone. Either way the install happens *after* we exit.
 ///
-/// A failure here is reported and swallowed. The user asked to quit (or
-/// to restart); refusing to do so because an installer could not be
-/// spawned would be holding their app hostage to our update mechanism.
-/// The staged artifact stays put and the next attempt will try again.
+/// A failure is reported and swallowed — refusing to quit because an
+/// installer could not be spawned would hold the user's app hostage to
+/// our update mechanism. The staged artifact stays for the next try.
 pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) {
     match poltertype_update::apply(pending, relaunch) {
         Ok(true) => info!(
@@ -122,15 +119,13 @@ pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) {
 
 /// Run the periodic check on its own thread.
 ///
-/// Everything about this loop is arranged so that the network is a
-/// thing that happens *to* a background thread and never to the tray:
-/// `ureq` is blocking, the download can take minutes on a bad link, and
-/// none of it can touch the event loop, which only ever receives a
-/// finished result through the proxy.
+/// Arranged so the network happens *to* a background thread and never
+/// to the tray: `ureq` is blocking, a download can take minutes on a
+/// bad link, and the event loop only ever receives a finished result
+/// through the proxy.
 ///
-/// `check_now` lets the tray's "Check for updates…" click interrupt the
-/// sleep, so a user who wants to know *right now* doesn't wait out the
-/// rest of a 24-hour timer.
+/// `check_now` lets "Check for updates…" interrupt the sleep, so a user
+/// who wants to know now does not wait out a 24-hour timer.
 pub(crate) fn spawn_update_worker(
     proxy: EventLoopProxy<UserEvent>,
     settings: Arc<SettingsStore>,

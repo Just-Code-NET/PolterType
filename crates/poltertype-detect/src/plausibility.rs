@@ -16,14 +16,11 @@ pub struct WordPlausibilityDetector {
     profiles: HashMap<LayoutId, LayoutProfile>,
     pub min_letters: usize,
     pub min_advantage: f32,
-    /// If the current text already scores at least this fit value
-    /// for its own layout, emit `Verdict::Keep` — don't auto-switch,
-    /// even if the alternate scores higher. Defends against false
-    /// positives on real-but-uncommon words that aren't in the FST
-    /// but read perfectly natural under their layout (think
-    /// `kubectl`, `terraform`, `docker`, `nginx`, surnames, …).
-    /// Default `0.7` — empirically a good cut between "plausibly a
-    /// real word" and "plausibly noise".
+    /// If the current text already scores at least this fit for its own
+    /// layout, emit `Verdict::Keep` even when an alternate scores
+    /// higher. Defends real-but-uncommon words that are not in the FST
+    /// yet read naturally (`kubectl`, `nginx`, surnames). Default `0.7`,
+    /// empirically the cut between "plausibly a word" and "noise".
     pub keep_threshold: f32,
 }
 
@@ -37,12 +34,9 @@ impl WordPlausibilityDetector {
         }
     }
 
-    /// 0.0..=1.0 — higher is "this looks like a real word in `layout`".
-    ///
-    /// A dot-separated compound (`games.just-code.net`) is scored one
-    /// segment at a time and takes its *worst* segment's score — see
-    /// [`dotted_compound`] for why the dots must not go through the
-    /// stray-punctuation term.
+    /// 0.0..=1.0 — higher means "this looks like a real word in
+    /// `layout`". A dot-separated compound is scored one segment at a
+    /// time and takes its *worst* segment; see [`dotted_compound`].
     pub fn fit(&self, layout: &LayoutId, text: &str) -> Option<f32> {
         let prof = self.profiles.get(layout)?;
         if let Some(segments) = dotted_compound(text) {
@@ -73,22 +67,12 @@ impl WordPlausibilityDetector {
             .count();
         let script_fit = script_hits as f32 / letters.len() as f32;
 
-        // (2) Vowel ratio: real words land in a fairly wide band — most
-        //     EN / UK / RU prose averages ~0.4 over long text, but
-        //     individual short words fan out either way. The plateau
-        //     reaches up to 2/3 to cover legitimate V-C-V patterns:
-        //     `має` / `оса` / `уса` (Cyrillic) and `eye` / `our` / `ear`
-        //     (English) all have vowel-ratio = 0.667 and would
-        //     otherwise miss the plateau by a hair, scoring just below
-        //     `keep_threshold` and getting auto-switched away —
-        //     exactly the regression `має` triggered after the de-DE /
-        //     fr-FR layouts joined the candidate set (the German render
-        //     `vfä` happens to score 1.0 plausibility because `ä`
-        //     lands the vowel-ratio at 1/3 = 0.333). The plateau
-        //     centred at 0.46 (midpoint of 0.25 / 0.67) with slope 2.5
-        //     matches the previous shape elsewhere — gibberish like
-        //     `руддщ` (1 vowel of 5 = 0.2) still falls off as before.
-        //     See DECISIONS.md (2026-05-07).
+        // (2) Vowel ratio: real words land in a wide band. The plateau
+        //     reaches 2/3 to cover V-C-V patterns — `має`, `оса`, `eye`,
+        //     `our` all sit at 0.667 and would otherwise score just
+        //     below `keep_threshold` and be switched away. Centred at
+        //     0.46 with slope 2.5, so gibberish like `руддщ` (0.2) still
+        //     falls off. See DECISIONS.md (2026-05-07).
         let vowels = letters.iter().filter(|c| prof.vowels.contains(c)).count();
         let vowel_ratio = vowels as f32 / letters.len() as f32;
         let vowel_fit: f32 = match vowel_ratio {
@@ -121,51 +105,39 @@ impl WordPlausibilityDetector {
             _ => 0.75,
         };
 
-        // (4) Stray punctuation: characters that can't be part of a
-        //     word in any layout (`;`, `]`, digits, …) — apostrophes
-        //     and hyphens exempt. Real prose never carries these
-        //     mid-token, and in the wrong-layout scenario they are
-        //     exactly the scancodes whose alt-layout rendering IS a
-        //     letter (0x27 → `;` in en-US, `ñ` in es-ES) — so the
+        // (4) Stray punctuation: characters that cannot be part of a
+        //     word in any layout (`;`, `]`, digits), apostrophes and
+        //     hyphens exempt. In the wrong-layout case these are exactly
+        //     the scancodes whose alt rendering *is* a letter, so the
         //     rendering that keeps them as punctuation cannot be the
-        //     layout the user meant. Before this term `espa;ol`
-        //     scored a perfect 1.0 en-US fit and the keep-veto froze
-        //     the correction the landing page demos. 0.4 per stray:
-        //     one drops a 1.0 fit under `keep_threshold` (0.7) while
-        //     leaving the clean candidate's advantage intact.
+        //     layout meant. Without this term `espa;ol` scored a perfect
+        //     1.0 en-US fit and froze the correction. 0.4 per stray: one
+        //     drops a 1.0 fit under `keep_threshold`.
         let stray_penalty = non_word_char_count(text) as f32 * 0.4;
 
         (script_fit * 0.5 + vowel_fit * 0.5 - cluster_penalty - stray_penalty).clamp(0.0, 1.0)
     }
 }
 
-/// Recognise a dot-separated compound — a hostname, a file name, a
-/// dotted identifier — and hand back its segments.
+/// Recognise a dot-separated compound — hostname, file name, dotted
+/// identifier — and hand back its segments.
 ///
-/// Why this exists. The `.` key is a *letter* in the Cyrillic layouts
-/// (scancode 0x34 is `ю` in uk-UA / ru-RU), so the buffer keeps a
-/// domain together as one token, and the two renderings of
-/// `games.just-code.net` are wildly asymmetric: uk-UA gets a clean
-/// run of Cyrillic letters, while en-US keeps literal dots and eats
-/// two stray-punctuation penalties. The correctly-typed domain scored
-/// **0.00** for its own layout against 0.75 for Cyrillic, so the
-/// detector "corrected" it into `пфьуіюогіе-сщвуютуе` — and then
-/// switched back on the next prose word, which is the "keeps
-/// switching several times" the bug report describes.
+/// The `.` key is a *letter* in the Cyrillic layouts (0x34 is `ю`), so
+/// the buffer keeps a domain together as one token and the two
+/// renderings are wildly asymmetric: uk-UA gets clean letters while
+/// en-US keeps literal dots and eats two stray penalties. The correctly
+/// typed domain scored 0.00 against 0.75 and was "corrected" into
+/// gibberish, then switched back on the next prose word.
 ///
-/// The dots in a compound are structure, not the cross-layout
-/// artifacts the stray term is aimed at, so they must not be scored
-/// as noise. Scoring each segment and keeping the **worst** one is
-/// what separates the two populations: every segment of a real
-/// hostname reads as a word, whereas a Cyrillic word that merely
-/// contains `ю` (`союз` → `cj.p`) leaves segments that read as
-/// nothing at all, and still gets corrected.
+/// Dots in a compound are structure, not the cross-layout artifacts the
+/// stray term targets. Scoring each segment and keeping the worst
+/// separates the populations: every segment of a real hostname reads as
+/// a word, whereas a Cyrillic word that merely contains `ю` (`союз` →
+/// `cj.p`) leaves segments that read as nothing.
 ///
-/// Returns `None` — leaving the caller on the ordinary path — unless
-/// the whole token is dots-plus-word-characters: any *other* stray
-/// character (`любов` → `k.,jd`) means this is a wrong-layout
-/// rendering rather than a compound, and empty segments (a leading,
-/// trailing or doubled dot) are not compound structure either.
+/// `None` — the ordinary path — unless the whole token is dots plus
+/// word characters. Any other stray character means a wrong-layout
+/// rendering, and an empty segment is not compound structure.
 fn dotted_compound(text: &str) -> Option<impl Iterator<Item = &str>> {
     if !text.contains('.') {
         return None;
@@ -197,14 +169,12 @@ impl Detector for WordPlausibilityDetector {
         let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
         let current_fit = self.fit(ctx.current_layout, current_text).unwrap_or(0.0);
 
-        // Acronym guard: a short all-uppercase token (`SQL`, `URL`,
-        // `JSON`) almost always reads as low-vowel "noise" under its
-        // own layout while the alt rendering coincidentally lands a
-        // vowel and looks Cyrillic-plausible (`SQL` ↔ `ІЙД`). The
-        // dict catches the well-known acronyms via the EN extras
-        // list; this is the safety net for the long tail. Capped at
-        // 5 letters so 6-letter words shouted in caps (`ПРИВІТ`,
-        // `HELLO`) still go through the normal scoring path.
+        // Acronym guard: a short all-uppercase token reads as low-vowel
+        // noise under its own layout while the alt rendering lands a
+        // vowel and looks plausible (`SQL` ↔ `ІЙД`). The dict catches
+        // the well-known ones through the EN extras; this is the long
+        // tail. Capped at 5 letters so shouted words (`ПРИВІТ`) still
+        // score normally.
         if looks_like_acronym(current_text) {
             return Verdict::Keep {
                 reason: format!(

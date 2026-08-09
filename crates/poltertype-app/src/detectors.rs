@@ -16,16 +16,12 @@ use tracing::{info, warn};
 
 use crate::types::*;
 
-/// Build one dictionary set per configured wordlist profile, ready
-/// to swap into [`poltertype_detect::DictionaryDetector`] when focus enters
-/// the matching app(s). Empty `wordlists.profiles` → empty cache;
-/// the focus watcher is then never spawned, so this is zero-cost
-/// for the common no-profile case.
+/// Build one dictionary set per configured wordlist profile, ready to
+/// swap in when focus enters the matching app. No profiles → empty
+/// cache and no watcher, so this costs nothing in the common case.
 ///
 /// Each profile reuses the bundled FSTs through the `Arc` inside
-/// `LayoutDictionary` — only the user-overlay HashSets are
-/// re-derived. So building 5 profiles takes 5 × (number-of-layouts)
-/// disk-cheap text-file reads, not 5 × FST decode.
+/// `LayoutDictionary`; only the user-overlay `HashSet`s are re-derived.
 pub(crate) fn build_profile_dictionary_cache(
     layouts: &Arc<LayoutDb>,
     data_dir: &std::path::Path,
@@ -53,29 +49,17 @@ pub(crate) fn build_profile_dictionary_cache(
     out
 }
 
-/// Poll `FocusTracker::focused_exe()` every ~250 ms; swap the
-/// dictionary set when the resolved profile changes OR when the
-/// `force_reapply` flag has been set. Same cadence as
-/// `spawn_layout_poller` so the two stay in lock-step at the human
-/// perception level (the user perceives "I focused VS Code, my code
-/// dictionary kicked in").
+/// Poll `FocusTracker::focused_exe()` every ~250 ms and swap the
+/// dictionary set when the resolved profile changes, or when
+/// `force_reapply` is set. Same cadence as `spawn_layout_poller`.
 ///
-/// The `force_reapply` flag exists because the watcher's normal
-/// "swap on profile change" rule misses the case where the cache
-/// itself was rebuilt while the user stayed on the same app. That
-/// happens when the user saves wordlist edits via the Settings UI
-/// while focused on a profiled app — the close-handler rebuilds the
-/// cache, but the resolved profile didn't change, so the watcher
-/// would otherwise sit on stale dicts until the user alt-tabbed.
-/// Setting the flag forces one re-apply on the next tick.
+/// `force_reapply` covers the case the "swap on change" rule misses:
+/// the cache was rebuilt while the user stayed on the same app, which
+/// is what happens when they save wordlist edits from the Settings UI.
 ///
-/// The poller swallows transient FocusTracker errors silently —
-/// a flaky Wayland tracker isn't worth log spam, and the next
-/// successful poll catches up. We log once per profile *transition*
-/// so the user can verify in the log file that swaps are happening.
-///
-/// Profile cache + dict_reload_handle are cloned cheaply (Arc
-/// internals); the thread owns its copies and runs forever.
+/// Transient tracker errors are swallowed — a flaky Wayland tracker is
+/// not worth log spam and the next poll catches up. Transitions are
+/// logged, so swaps can be verified from the log file.
 pub(crate) fn spawn_profile_watcher(
     focus_tracker: Arc<dyn poltertype_input::FocusTracker>,
     settings: Arc<SettingsStore>,
@@ -102,15 +86,10 @@ pub(crate) fn spawn_profile_watcher(
 
                 let forced = force_reapply.swap(false, Ordering::AcqRel);
                 if resolved != active || forced {
-                    // The cache always holds the empty-string ("")
-                    // key as the global baseline, so a profile
-                    // transition — including back to global — is
-                    // always a single map lookup + swap. `forced`
-                    // means the cache itself was rebuilt while the
-                    // resolved profile didn't change (e.g. user
-                    // saved wordlist edits via the GUI); we still
-                    // re-apply the same key so the engine sees the
-                    // fresh dicts.
+                    // The cache always holds the "" key as the global
+                    // baseline, so any transition — including back to
+                    // global — is one lookup and a swap. `forced`
+                    // re-applies the same key to pick up a rebuilt cache.
                     let dicts_opt = profile_cache.read().get(&resolved).cloned();
                     if let Some(dicts) = dicts_opt {
                         info!(
@@ -137,19 +116,13 @@ pub(crate) fn spawn_profile_watcher(
     Ok(())
 }
 
-/// Build the full per-profile dictionary cache including the
-/// global-baseline entry under the empty-string key. Called both
-/// at startup (initial cache) and from the Settings UI close
-/// handler (after user saves wordlist edits, to pick them up
-/// without a tray restart).
+/// Build the full per-profile cache, including the global baseline
+/// under the empty-string key. Called at startup and from the Settings
+/// UI close handler.
 ///
-/// The empty-string key is critical: without it, the watcher
-/// would have nowhere to swap back to when focus leaves a
-/// profiled app, so e.g. moving from VS Code (profile=`code`) to
-/// Chrome would keep the code overlay loaded forever — opposite
-/// of the user's intent. Adding it is cheap (just one more pass
-/// through the layouts) so we always include it once any profile
-/// is configured.
+/// The empty-string key is what the watcher swaps back to when focus
+/// leaves a profiled app; without it, moving from VS Code to Chrome
+/// would keep the code overlay loaded for ever.
 pub(crate) fn build_full_profile_cache(
     layouts: &Arc<LayoutDb>,
     data_dir: &Path,
@@ -178,10 +151,9 @@ pub(crate) fn build_dictionary_detector(layouts: &Arc<LayoutDb>) -> DictionaryDe
 }
 
 /// Build the spelling-suggestion provider. Shares the dictionary
-/// detector's hot-swappable dict set (so per-app wordlist profiles
-/// and "Reload Settings" swaps apply to suggestions instantly) and
-/// derives one keyboard geometry per layout — the ranking metric's
-/// "was this a finger slip?" signal.
+/// detector's hot-swappable set, so profile swaps and "Reload Settings"
+/// reach suggestions instantly, and derives one keyboard geometry per
+/// layout — the ranking metric's "was this a finger slip?" signal.
 pub(crate) fn build_suggester(
     layouts: &LayoutDb,
     dicts: DictionaryDetector,
@@ -210,18 +182,15 @@ pub(crate) fn collect_dicts(
         .collect()
 }
 
-/// Persist `word` into the user's global wordlist overlay for
-/// `layout` and make it live immediately: append to
-/// `<config-dir>/poltertype/wordlists/<stem>.txt` (created on first
-/// use; stem mirrors the bundled naming — `en-US` → `en_us.txt`) and
-/// insert into the running dictionary set in place. Deliberately NOT
-/// a full `reload_user_dictionaries` — that re-reads and re-leaks
-/// every FST blob, far too heavy per added word.
+/// Persist `word` into the user's global overlay for `layout` and make
+/// it live at once: append to `<config-dir>/poltertype/wordlists/
+/// <stem>.txt` and insert into the running set in place. Deliberately
+/// not a full `reload_user_dictionaries`, which re-reads and re-leaks
+/// every FST blob.
 ///
-/// Known edge: while a per-app wordlist *profile* is active, the next
-/// profile swap replaces the in-memory set with its startup-built
-/// cache, hiding the word until a restart / Reload Settings — the
-/// file keeps it durable either way.
+/// Known edge: while a per-app profile is active, the next profile swap
+/// replaces the in-memory set with its startup-built cache and hides
+/// the word until a restart. The file keeps it durable either way.
 pub(crate) fn add_word_to_user_overlay(
     layout: &poltertype_types::LayoutId,
     word: &str,
@@ -242,42 +211,21 @@ pub(crate) fn add_word_to_user_overlay(
     Ok(())
 }
 
-/// Re-read `<config-dir>/poltertype/wordlists/<stem>.txt` from disk
-/// and atomically swap the engine's dictionary set. Returns the
-/// number of dictionaries successfully loaded. Always rebuilds — even
-/// when the user added zero new entries — so the user gets a clear
-/// signal in the log that the reload took effect.
+/// Re-read the user's wordlist overlays from disk and atomically swap
+/// the engine's dictionary set; returns how many loaded. Always
+/// rebuilds, so the log carries a clear signal that it took effect.
 ///
-/// Scope of the reload:
+/// Only **global overlays for already-loaded layouts** are picked up
+/// live — the load-bearing case, adding vocabulary like `kubectl`.
+/// Brand-new user layouts, per-profile overlays, `[[wordlists.profiles]]`
+/// schema changes and hotkey rebinds all need a restart, because the
+/// engine holds a snapshot `Arc<LayoutDb>`, the profile cache is built
+/// once at startup, and the two built-in hotkeys are registered with
+/// the OS once. A new layout is logged loudly so the user knows.
 ///
-/// * **Global wordlist overlays** for already-loaded layouts →
-///   picked up immediately (this is the load-bearing case — adding
-///   tech vocab like `kubectl`, `terraform`, …).
-/// * **Brand-new user layouts** (a freshly-dropped TOML in
-///   `<config-dir>/poltertype/layouts/`) → require an app restart.
-///   The engine holds a snapshot `Arc<LayoutDb>`, so the new layout
-///   wouldn't be in its scancode-translation tables anyway. We log
-///   loud-and-clear if we see one, so the user knows.
-/// * **Per-profile wordlist overlays**
-///   (`<config-dir>/poltertype/wordlists/profiles/<id>/<stem>.txt`)
-///   → require an app restart. The profile dictionary cache built
-///   at startup isn't rebuilt by Reload Settings; the focus-watcher
-///   re-applies the cached set on the next focus transition. The
-///   Wordlists pane already tells users to restart for profile
-///   edits; this matches that contract.
-/// * **`[[wordlists.profiles]]` schema changes** → require an app
-///   restart. The profile cache is built once at startup; adding a
-///   new profile entry without restarting means the cache has no
-///   dictionary set for it and the focus-watcher can't activate it.
-/// * **`[[commands]]` schema changes** → live for text triggers,
-///   restart for hotkey rebinds. The engine reads the commands
-///   list from `settings.snapshot()` on every word boundary, so a
-///   text-trigger command added/removed via the Settings UI takes
-///   effect on the next typed word (the parent SettingsStore
-///   reloads config.toml when the GUI subprocess exits). The two
-///   built-in hotkeys (`[hotkeys].pause_toggle` /
-///   `manual_switch_last`) are registered with the OS once at
-///   startup, so rebinding them still needs a tray restart.
+/// `[[commands]]` text triggers are the exception: the engine reads
+/// them from `settings.snapshot()` on every word boundary, so they take
+/// effect on the next typed word.
 pub(crate) fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
     let wordlist_dir = poltertype_core::layouts::user_wordlist_dir();
     let layout_dir = poltertype_core::layouts::user_layout_dir();
@@ -299,26 +247,18 @@ pub(crate) fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
 
 /// Detectors declared under `[[ai.plugins]]`, or nothing at all.
 ///
-/// This is the seam that made `[ai].enabled` mean something: before it,
-/// the setting parsed and no code read it, and `poltertype-ai` compiled
-/// without a single caller. Three gates stand between a config file and
-/// a detector actually voting, and all three must be open:
-///
-/// 1. the binary was built with `--features ai` (otherwise this
-///    function is the `#[cfg]`-ed-out version below and returns
-///    nothing at all);
-/// 2. `[ai].enabled = true`;
-/// 3. the individual entry builds — see
-///    `poltertype_ai::build_detectors`, which skips a bad one rather
-///    than losing the others.
-///
-/// Remote plug-ins carry a fourth: `[ai].allow_remote`, checked per
-/// judgement inside the detector so that flipping it needs no config
-/// edit.
+/// Three gates stand between a config file and a detector voting, and
+/// all three must be open: the binary was built with `--features ai`
+/// (otherwise this is the `#[cfg]`-ed-out version below),
+/// `[ai].enabled = true`, and the individual entry builds — see
+/// `poltertype_ai::build_detectors`, which skips a bad entry rather
+/// than losing the others. Remote plug-ins carry a fourth,
+/// `[ai].allow_remote`, checked per judgement so flipping it needs no
+/// config edit.
 ///
 /// The result is *appended* to the built-in detectors, never
-/// substituted for them: an AI voice is added to the decision, and the
-/// offline pipeline keeps working exactly as before if it says nothing.
+/// substituted: the offline pipeline keeps working exactly as before if
+/// the AI voice says nothing.
 #[cfg(feature = "ai")]
 pub(crate) fn build_ai_detectors(
     ai: &poltertype_core::settings::AiSettings,

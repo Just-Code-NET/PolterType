@@ -1,12 +1,8 @@
 //! `cargo xtask version` — bump or set the workspace version.
 //!
-//! Edits the three files that need to stay in lock-step on every
-//! release (`Cargo.toml`, `CHANGELOG.md`, `Cargo.lock`) so the
-//! release-cutter doesn't have to remember the order or the exact
-//! patterns. See `docs/RELEASING.md` for the full release flow this
-//! command fits into.
-//!
-//! ## Surface
+//! Edits the three files that must stay in lock-step on a release
+//! (`Cargo.toml`, `CHANGELOG.md`, `Cargo.lock`), so the release-cutter
+//! need not remember the order. `docs/RELEASING.md` has the full flow.
 //!
 //! ```text
 //! cargo xtask version                    # print current
@@ -15,37 +11,19 @@
 //! cargo xtask version <subcommand> --dry-run
 //! ```
 //!
-//! "Auto-bump" rule: if the current version has a pre-release suffix
-//! shaped like `-<word>.<N>` (e.g. `-beta.5`), increment the
-//! trailing counter (`-beta.6`). Otherwise, increment the patch
-//! component (`1.2.3` → `1.2.4`). This matches the project's actual
-//! lifecycle — every poltertype release so far has been a bump of
-//! the `alpha.<N>` / `beta.<N>` counter, with the major/minor/patch
-//! transitions ("alpha → beta", "beta → rc", "drop suffix on 1.0")
-//! happening rarely enough that they're worth doing explicitly with
-//! `set` rather than guessing in the script.
+//! Auto-bump increments a trailing pre-release counter (`-beta.5` →
+//! `-beta.6`) when there is one, and the patch component otherwise.
+//! The rarer transitions — alpha → beta, dropping the suffix at 1.0 —
+//! are worth doing explicitly with `set` rather than guessing.
 //!
-//! ## What the bump touches
+//! A missing or differently-shaped `## [Unreleased]` heading is a
+//! warning, not an error, so `CHANGELOG.md` need not exist.
 //!
-//! 1. `Cargo.toml` — `[workspace.package].version = "..."`
-//! 2. `CHANGELOG.md` — top-level `## [Unreleased] — <ver>` heading
-//!    if present (skipped with a warning if it isn't, so the file
-//!    isn't required to exist or follow a particular shape).
-//! 3. `Cargo.lock` — refreshed via `cargo check --workspace`.
-//!
-//! ## What it deliberately does NOT do
-//!
-//! * Commit, tag, or push. Release commits should be reviewed
-//!   manually — that's the moment to catch a wrong bump or a
-//!   missing changelog entry, not after the tag has hit CI. The
-//!   doc at `docs/RELEASING.md` walks through the commit + tag
-//!   step explicitly.
-//! * Talk to the network. Pre-release validation (does this version
-//!   already exist as a tag?) is the user's job — `git tag -l` is
-//!   one line in the release checklist.
-//! * Pull in `semver` / `regex` deps. The version shapes we ship
-//!   are a small subset; the hand-rolled parser below covers them
-//!   in ~30 lines.
+//! It deliberately does **not** commit, tag or push — a release commit
+//! is the moment to catch a wrong bump, not after the tag has hit CI —
+//! does not talk to the network, and pulls in no `semver`/`regex`
+//! dependency for a version shape the hand-rolled parser below covers
+//! in ~30 lines.
 
 use anyhow::{Result, bail};
 

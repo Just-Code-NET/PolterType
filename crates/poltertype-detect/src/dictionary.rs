@@ -15,12 +15,10 @@ use crate::types::DetectionContext;
 
 /// The empty FST every overlay-only dictionary shares, built once.
 ///
-/// One `expect` on one expression, run at most once per process,
-/// instead of two on every construction: `fst`'s builder cannot fail
-/// on an empty set, and the bytes it produces are a valid FST by
-/// construction — neither of which clippy can see. Leaking here is
-/// deliberate and bounded, because the leaked buffer *is* the
-/// `&'static [u8]` the set borrows for the life of the program.
+/// One `expect` run at most once per process instead of two on every
+/// construction: `fst`'s builder cannot fail on an empty set, which
+/// clippy cannot see. The leak is bounded and deliberate — the leaked
+/// buffer *is* the `&'static [u8]` the set borrows.
 #[allow(clippy::expect_used)]
 static EMPTY_FST: LazyLock<Arc<FstSet<&'static [u8]>>> = LazyLock::new(|| {
     let bytes: Vec<u8> = fst::SetBuilder::memory()
@@ -29,58 +27,40 @@ static EMPTY_FST: LazyLock<Arc<FstSet<&'static [u8]>>> = LazyLock::new(|| {
     Arc::new(FstSet::new(bytes.leak() as &'static [u8]).expect("an empty FST is a valid FST"))
 });
 
-/// Compact immutable per-layout dictionary backed by an FST. Built
-/// from the `data/wordlists/<id>.txt` files at compile time (see
-/// `poltertype-core/build.rs`) and optionally augmented at runtime from the
-/// user's `<config-dir>/wordlists/<id>.txt` (which is loaded into a
-/// supplementary `HashSet`).
+/// Compact immutable per-layout dictionary backed by an FST, built
+/// from `data/wordlists/<id>.txt` at compile time and optionally
+/// augmented at runtime from the user's own overlay.
 ///
-/// FST is the right structure here:
-/// * Encoded byte slice — no per-word allocation, sits in `.rodata`.
-/// * O(len(word)) exact lookup; ~1–2 bytes per word stored.
-/// * Loads in microseconds; wraps a `&'static [u8]` so we can embed
-///   ~370k EN + ~333k UK entries into the binary without bloating
-///   resident memory.
+/// FST rather than a `HashSet`: an encoded byte slice in `.rodata`,
+/// no per-word allocation, O(len) lookup, ~1–2 bytes per word — which
+/// is what lets ~370k EN + ~333k UK entries ship in the binary without
+/// costing resident memory.
 #[derive(Clone)]
 pub struct LayoutDictionary {
     pub embedded: Arc<FstSet<&'static [u8]>>,
     pub user_overlay: HashSet<String>,
-    /// Hand-curated 1- and 2-letter stop words. Consulted **instead
-    /// of** the full FST when the buffer is ≤ 2 letters long. The
-    /// upstream dictionaries we embed are over-inclusive on short
-    /// tokens (`dwyl/english-words` ships `ws`, `ax`, `ne`, `oe`,
-    /// `ai` as "real" 2-letter words) — relying on them for short
-    /// buffers causes aggressive false-positive switches on users
-    /// typing legitimate short Cyrillic words.
+    /// Hand-curated 1- and 2-letter stop words, consulted **instead of**
+    /// the full FST for buffers ≤ 2 letters. The upstream dictionaries
+    /// are over-inclusive on short tokens (`dwyl/english-words` ships
+    /// `ws`, `ax`, `ne`, `oe`, `ai`), which produced aggressive false
+    /// switches on legitimate short Cyrillic words.
     pub short_stop_words: HashSet<String>,
-    /// Hand-curated "weak" dictionary entries — words that are
-    /// grammatically valid (Hunspell expanded the bulk dict to
-    /// include them) but virtually never the user's intent in
-    /// modern usage: archaic vocatives, dead inflections,
-    /// dialectal-only forms. The motivating case is uk-UA `туче`
-    /// (vocative of `туча` — "O cloud!"), which shadows the en-US
-    /// rendering of `next` and used to leave the engine no signal
-    /// to switch.
+    /// Hand-curated "weak" entries: grammatically valid but virtually
+    /// never the user's intent — archaic vocatives, dead inflections,
+    /// dialectal-only forms. The motivating case is uk-UA `туче`, which
+    /// shadows the en-US rendering of `next`.
     ///
-    /// Effect on the dictionary detector: a weak current-side hit
-    /// **defers to** any alt-side dict hit. If no alt is in dict,
-    /// the weak entry still keeps (it IS valid, after all). Strong
-    /// (non-weak) entries are unaffected — they continue to win
-    /// outright.
-    ///
-    /// Weak is the per-layout asymmetric counterpart of the
-    /// existing per-layout overlay/stop lists; it never blocks a
-    /// switch by itself, only opens the door to one when a strong
-    /// alt exists.
+    /// A weak current-side hit **defers to** any alt-side dict hit; with
+    /// no alt hit it still keeps, because it is valid. Strong entries
+    /// are unaffected. Weak never blocks a switch by itself — it only
+    /// opens the door to one when a strong alt exists.
     pub weak: HashSet<String>,
-    /// Surface-form FST for the suggestions engine: the same corpus
-    /// as `embedded`, but canonicalised with
-    /// [`crate::surface_lower`] instead of the lossy
-    /// [`crate::letters_only_lower`] — apostrophes and hyphens
-    /// survive, because a suggestion is *typed back* into the user's
-    /// text (`п'ять` must not degrade to `пять`). `None` when the
-    /// layout ships no `<stem>-surface.fst` — suggestions silently
-    /// degrade to overlay-only candidates for that layout.
+    /// Surface-form FST for the suggestions engine: same corpus as
+    /// `embedded`, canonicalised with [`crate::surface_lower`] rather
+    /// than the lossy [`crate::letters_only_lower`], so apostrophes and
+    /// hyphens survive — a suggestion is *typed back* into the user's
+    /// text, and `п'ять` must not degrade to `пять`. `None` when the
+    /// layout ships no `<stem>-surface.fst`.
     pub surface: Option<Arc<FstSet<&'static [u8]>>>,
 }
 
@@ -109,16 +89,13 @@ impl LayoutDictionary {
         self
     }
 
-    /// Convenience: empty embedded FST + given overlay + given short
-    /// stop list + given weak list.
+    /// Empty embedded FST + the given overlay, short stop list and weak
+    /// list.
     ///
-    /// Not test-only, whatever the previous comment here said:
-    /// `poltertype-core`'s layout loader builds a dictionary this way
-    /// for any language that has user overlay files but no bundled
-    /// wordlist. That matters, because this used to construct — and
-    /// `leak()` — a fresh empty FST per call, so every such language
-    /// cost a permanent allocation on every settings reload, not just
-    /// at startup. It shares [`EMPTY_FST`] now.
+    /// Not test-only: the layout loader builds dictionaries this way for
+    /// any language with user overlays but no bundled wordlist. Shares
+    /// [`EMPTY_FST`] rather than leaking a fresh one per call, which
+    /// used to cost a permanent allocation on every settings reload.
     pub fn from_overlay_only(
         overlay: HashSet<String>,
         short_stop_words: HashSet<String>,
@@ -139,13 +116,11 @@ impl LayoutDictionary {
         self.weak.contains(word_lowercase)
     }
 
-    /// Full-dict containment check (used for ≥ 3-letter tokens).
-    /// `short_stop_words` is consulted as a fallback so that anything
-    /// a user (or maintainer) adds to the curated stop list is
-    /// honoured regardless of token length — Hunspell-derived FSTs
-    /// often miss inflected / colloquial forms (`чую` from `чути`),
-    /// and the stop list is the path-of-least-friction place to
-    /// patch them in without regenerating the FST.
+    /// Full-dict containment check, for ≥ 3-letter tokens.
+    /// `short_stop_words` is consulted as a fallback so curated entries
+    /// are honoured at any length — Hunspell-derived FSTs often miss
+    /// inflected or colloquial forms (`чую` from `чути`), and the stop
+    /// list patches them in without regenerating the FST.
     pub fn contains(&self, word_lowercase: &str) -> bool {
         self.contains_in_overlay(word_lowercase)
             || self.embedded.contains(word_lowercase.as_bytes())
@@ -159,26 +134,22 @@ impl LayoutDictionary {
         self.contains_in_overlay(word_lowercase)
     }
 
-    /// Overlay-only containment — `user_overlay` + the hand-curated
-    /// `short_stop_words` list, both of which are user-influenced
-    /// signals (the user's `<stem>-extras.txt` and `<stem>-stop.txt`
-    /// files merge into them). Used by [`DictionaryDetector::judge`]
-    /// for an overlay-priority sweep so an explicit whitelist entry
-    /// like uk-UA `будь` outranks a coincidental embedded-FST hit
-    /// on its cross-layout twin (the en-US rendering of `будь` is
-    /// `,elm`, which cleans down to the real English word `elm`).
+    /// Overlay-only containment: `user_overlay` + `short_stop_words`,
+    /// both user-influenced. [`DictionaryDetector::judge`] sweeps these
+    /// first so an explicit whitelist entry outranks a coincidental
+    /// embedded hit on its cross-layout twin — uk-UA `будь` renders as
+    /// `,elm` in en-US, which cleans down to the real word `elm`.
     pub fn contains_in_overlay(&self, word_lowercase: &str) -> bool {
         self.user_overlay.contains(word_lowercase) || self.short_stop_words.contains(word_lowercase)
     }
 
-    /// True iff some `user_overlay` entry is plausibly the *same
-    /// word* as `word_lowercase` in a different grammatical form —
-    /// see [`shares_inflection_stem`] for the rule.
+    /// True iff some `user_overlay` entry is plausibly the same word in
+    /// a different grammatical form — see [`shares_inflection_stem`].
     ///
-    /// Only the user's own additions are walked, never the embedded
-    /// FST: this exists to stop re-asking about a word the user has
-    /// already taught us, and stretching it over 370k bundled entries
-    /// would silence the suggestion tooltip for half the language.
+    /// Walks only the user's own additions: this exists to stop
+    /// re-asking about a word they already taught us, and stretching it
+    /// over 370k bundled entries would silence the tooltip for half the
+    /// language.
     pub fn overlay_covers_inflection(&self, word_lowercase: &str) -> bool {
         self.user_overlay
             .iter()
@@ -194,24 +165,19 @@ const STEM_MIN_CHARS: usize = 5;
 
 /// Longest ending either side may carry past the shared prefix.
 /// Ukrainian and Russian inflect in 1–4 characters (`тулбар` →
-/// `тулбарі`, `деплой` → `деплоїмо`), which is what this admits;
-/// anything longer is a different word that happens to start the
-/// same way.
+/// `тулбарі`); anything longer is a different word that happens to
+/// start the same way.
 const INFLECTION_TAIL_MAX: usize = 4;
 
-/// Do two words look like the same word in different grammatical
-/// forms? Deliberately a shape rule and not a stemmer:
+/// Do two words look like the same word in different grammatical forms?
+/// Deliberately a shape rule, not a stemmer: a real stemmer per
+/// language is a data set of its own and this has to work for whatever
+/// languages the user added. Being wrong is cheap in one direction
+/// only — it can silence a suggestion, never authorise a correction —
+/// so the rule lives on the suggestion path alone.
 ///
-/// * a real stemmer per language is a data set of its own, and this
-///   has to work for whatever languages the user has added;
-/// * being wrong here is cheap in one direction only — it can
-///   silence a spelling suggestion, never authorise a correction —
-///   so the rule lives on the suggestion path alone.
-///
-/// The motivating case: a user who adds `деплой` to their dictionary
-/// gets asked again about `деплою`, `деплоїмо`, `деплоїти`. Highly
-/// inflected languages turn one piece of jargon into a dozen tooltip
-/// prompts, and answering them all is the friction this removes.
+/// Motivating case: a user who adds `деплой` gets asked again about
+/// `деплою`, `деплоїмо`, `деплоїти`.
 fn shares_inflection_stem(a: &str, b: &str) -> bool {
     let shared = a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count();
     if shared < STEM_MIN_CHARS {
@@ -223,28 +189,20 @@ fn shares_inflection_stem(a: &str, b: &str) -> bool {
 
 /// Looks the rendered text up in per-layout dictionaries.
 ///
-/// Decision logic:
+/// * `current_text` is in its layout's dictionary → `Keep` (the user
+///   typed a real word; never switch).
+/// * `current_text` is not, and some alternate is → `Switch`,
+///   confidence ~0.95.
+/// * Neither hits → `NoOpinion`, deferring to plausibility.
 ///
-/// * `current_text` matches its layout's dictionary  → `Keep`
-///   (strong signal: the user typed a real word; never switch).
-/// * `current_text` is **not** a word AND any alternate IS  →
-///   `Switch` to the first matching alternate, confidence ~0.95.
-/// * Neither side hits the dictionary  → `NoOpinion` (defer to the
-///   plausibility detector).
-///
-/// Wins:
-/// * Catches single-letter prepositions / pronouns (`а`, `і`, `у`,
-///   `o`, `a`, `i`) which the plausibility heuristic can't see (its
-///   `min_letters` is 3 by design — too noisy below).
-/// * Catches *both-look-plausible* tokens (`vtys` ↔ `мені` —
-///   plausibility scores them ~equal; the dictionary breaks the tie
-///   decisively because `мені` is in the UK dict and `vtys` isn't).
+/// It earns its place by catching what plausibility cannot:
+/// single-letter prepositions (`а`, `і`, `у`, `o`, `a`, `i`), below
+/// that detector's `min_letters`, and both-look-plausible tokens like
+/// `vtys` ↔ `мені`, where only dictionary membership breaks the tie.
 pub struct DictionaryDetector {
-    /// Wrapped in `Arc<RwLock>` so the app can swap dictionaries at
-    /// runtime — vital for the "Reload Settings" flow that picks up
-    /// user-overlay edits in `<config-dir>/poltertype/wordlists/`.
-    /// Read locks taken per word lookup; write only on reload.
-    /// Contention is negligible.
+    /// `Arc<RwLock>` so the app can swap dictionaries at runtime, which
+    /// is what "Reload Settings" and the profile watcher use. Read lock
+    /// per lookup, write only on reload; contention is negligible.
     dicts: Arc<RwLock<HashMap<LayoutId, LayoutDictionary>>>,
 }
 
@@ -309,26 +267,21 @@ impl DictionaryDetector {
     }
 
     /// True iff `text` is on `layout`'s curated weak list — see
-    /// [`LayoutDictionary::weak`]. Used by [`Self::judge`] to defer
-    /// to a strong cross-layout dict hit when the current rendering
-    /// is technically valid but rarely the user's intent (`туче`,
-    /// archaic vocatives, dead inflections).
+    /// [`LayoutDictionary::weak`].
     pub fn is_weak(&self, layout: &LayoutId, text: &str) -> bool {
         let lower = text.to_lowercase();
         let dicts = self.dicts.read();
         dicts.get(layout).is_some_and(|d| d.is_weak(&lower))
     }
 
-    /// Insert `word` into `layout`'s user overlay **in place** — the
-    /// hot path for the tooltip's "add to dictionary". A full
-    /// from-disk reload would re-read (and re-leak, via the
-    /// `&'static` FST plumbing) every dictionary blob per added word;
-    /// this is one HashSet insert under the write lock. The caller
-    /// persists the word to the overlay file separately — this only
-    /// updates the running process.
+    /// Insert `word` into `layout`'s user overlay **in place** — the hot
+    /// path for the tooltip's "add to dictionary". A from-disk reload
+    /// would re-read and re-leak every dictionary blob per added word;
+    /// this is one `HashSet` insert under the write lock. Persisting to
+    /// the overlay file is the caller's job.
     ///
-    /// Returns `false` when the layout has no dictionary loaded or
-    /// the word normalises to nothing.
+    /// `false` when the layout has no dictionary loaded or the word
+    /// normalises to nothing.
     pub fn add_overlay_word(&self, layout: &LayoutId, word: &str) -> bool {
         let normalized = letters_only_lower(word);
         if normalized.is_empty() {
@@ -344,11 +297,10 @@ impl DictionaryDetector {
         }
     }
 
-    /// Run `f` against `layout`'s dictionary under the read lock.
-    /// `None` if the layout has no dictionary loaded. This is how the
-    /// suggestions engine reaches the surface FST / overlays *through*
-    /// the hot-swap handle, so per-app wordlist-profile swaps apply to
-    /// suggestions the same instant they apply to detection.
+    /// Run `f` against `layout`'s dictionary under the read lock; `None`
+    /// if it has none loaded. Reaching the surface FST and overlays
+    /// *through* the hot-swap handle is what makes profile swaps apply
+    /// to suggestions and detection at the same instant.
     pub fn with_dict<R>(
         &self,
         layout: &LayoutId,
@@ -367,23 +319,17 @@ impl Detector for DictionaryDetector {
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
         let current_raw = ctx.text_for(ctx.current_layout).unwrap_or("");
 
-        // Strip non-letter characters before lookup. Reason: the
-        // buffer can legitimately contain a scancode whose current-
-        // layout rendering is punctuation but whose alt-layout
-        // rendering is a letter (e.g. 0x27 → `;` in en-US, `ж` in
-        // uk-UA). The user typing a Cyrillic word in the wrong layout
-        // produces a current-render with `;` mid-string; we still
-        // want to compare against dictionary entries built from
-        // pure-letter words.
+        // Strip non-letters before lookup: a scancode can render as
+        // punctuation in the current layout and a letter in the alt
+        // (0x27 → `;` in en-US, `ж` in uk-UA), so a Cyrillic word typed
+        // in the wrong layout carries a `;` mid-string.
         let current_text = letters_only_lower(current_raw);
 
-        // …but a raw render that DOES carry stray punctuation is not
-        // the word the user typed, so its letters-only skeleton
-        // matching a dictionary entry is coincidence (`ma;ana` →
-        // `maana`, which the en-US FST happens to contain). Such a
-        // hit must never short-circuit a Keep — though it still wins
-        // by default when no alternate hits a dictionary either.
-        // Apostrophes / hyphens don't count as stray (`п'ять`).
+        // …but a raw render that does carry stray punctuation is not the
+        // word the user typed, so a letters-only match is coincidence
+        // (`ma;ana` → `maana`, which the en-US FST contains). Such a hit
+        // must never short-circuit a Keep, though it still wins when no
+        // alternate hits either. Apostrophes and hyphens are not stray.
         let current_has_stray = non_word_char_count(current_raw) > 0;
 
         let letter_count = current_text.chars().count();
@@ -406,12 +352,9 @@ impl Detector for DictionaryDetector {
         };
         let label = if short { "short-stop" } else { "dictionary" };
 
-        // Pre-compute alt-layout renderings once; both the
-        // overlay-priority sweep and the embedded sweep walk them.
-        // Stripping the alt rendering too handles the rare case
-        // where a scancode is "letter in current, punct in alt"
-        // (e.g. an apostrophe-position key) — without it we'd lose
-        // the dictionary hit on the pure-letter substring.
+        // Computed once; both sweeps below walk them. The alt rendering
+        // is stripped too, for the rare scancode that is a letter in the
+        // current layout and punctuation in the alt.
         let alts: Vec<(&LayoutId, String)> = ctx
             .candidates
             .iter()
@@ -422,18 +365,11 @@ impl Detector for DictionaryDetector {
 
         // Phase 1 — overlay-priority sweep.
         //
-        // A user-supplied overlay entry is an explicit signal: the
-        // user took the time to whitelist this exact token for this
-        // layout, so it should outrank a coincidental embedded match
-        // on the cross-layout twin. Without this priority, an entry
-        // like uk-UA `будь` is shadowed because its en-US rendering
-        // `,elm` cleans down to the real English word `elm` and the
-        // current-side Keep short-circuits before alts get scored.
-        //
-        // Rule: if the current layout's overlay claims the token →
-        // Keep. Else if any alt layout's overlay claims it → Switch
-        // (override the embedded lookup that would otherwise
-        // declare the current layout the winner).
+        // An overlay entry is an explicit user signal and outranks a
+        // coincidental embedded match on the cross-layout twin: uk-UA
+        // `будь` renders as `,elm` in en-US, which cleans to the real
+        // English word `elm`, and the current-side Keep would
+        // short-circuit before any alt got scored.
         if !current_has_stray && self.is_in_overlay(ctx.current_layout, &current_text) {
             return Verdict::Keep {
                 reason: format!(
@@ -458,16 +394,11 @@ impl Detector for DictionaryDetector {
 
         // Phase 2 — embedded-dictionary sweep.
         //
-        // Sub-rule for the `weak` list (only fires for ≥3-letter
-        // tokens — the short regime never consults the FST and the
-        // weak list is explicitly about Hunspell-expanded long
-        // entries): a current-side hit that's flagged weak does NOT
-        // short-circuit Keep. Instead, walk the alts first; if any
-        // alt is in dict, Switch to it. Without this, Hunspell-only
-        // forms like uk-UA `туче` (vocative of `туча`, "O cloud!")
-        // shadow the much-more-likely cross-layout intent (the
-        // en-US render is `next`) and the engine has no signal to
-        // switch on.
+        // A current-side hit flagged `weak` does not short-circuit Keep:
+        // walk the alts first and switch if any is in dict. Fires only
+        // for ≥3-letter tokens, since the short regime never consults
+        // the FST. Without it, Hunspell-only forms like uk-UA `туче`
+        // shadow the far likelier intent (en-US `next`).
         let current_in_dict = lookup(ctx.current_layout, &current_text);
         let current_is_weak = !short && self.is_weak(ctx.current_layout, &current_text);
         if current_in_dict && !current_is_weak && !current_has_stray {
