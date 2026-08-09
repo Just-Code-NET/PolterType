@@ -16,36 +16,27 @@ use super::hyprland::HyprlandFocusTracker;
 use super::hyprland_ipc::hyprland_available;
 use super::x11::X11FocusTracker;
 
-/// Pick the focus backend for this session. Hyprland is probed first
-/// (its IPC works regardless of what `XDG_SESSION_TYPE` says), then
-/// plain X11 sessions get EWMH. Everything else — GNOME / KDE on
-/// Wayland — has no compositor-agnostic active-window query, by
-/// design.
+/// Pick the focus backend for this session: Hyprland first (its IPC
+/// works whatever `XDG_SESSION_TYPE` says), then EWMH on plain X11.
+/// Everything else — GNOME and KDE on Wayland — has no
+/// compositor-agnostic active-window query, by design.
 ///
-/// It does **not** follow that those sessions get nothing. AT-SPI is a
-/// session-bus service and does not care which compositor is running,
-/// so it answers on GNOME and KDE exactly as it does on Hyprland, and
-/// it supplies *both* halves:
+/// Those sessions do not get nothing, though. AT-SPI is a session-bus
+/// service that does not care which compositor is running, and it
+/// supplies both halves: the caret, which is a better tooltip anchor
+/// than window geometry, and the focused application, by asking the
+/// bus which process owns the connection that sent a
+/// `window:activate`. Read [`super::atspi_focus`] before relying on the
+/// second — an application with no accessibility bridge is invisible to
+/// it.
 ///
-/// * the caret, which is the tooltip's best anchor — better than the
-///   window geometry the other backends can offer;
-/// * the focused application, by asking the a11y bus which process
-///   owns the connection that sent a `window:activate`.
-///
-/// The second one is why `focused_exe()` is no longer flatly `None`
-/// on GNOME and KDE. Read [`super::atspi_focus`] before relying on
-/// it: an application with no accessibility bridge — most terminals —
-/// is invisible to it, so it is an improvement on nothing rather than
-/// an equivalent of a compositor answer.
-///
-/// No TTL cache on this branch: both watchers are event-driven and
+/// No TTL cache on that branch: both watchers are event-driven and
 /// already cheap to read.
 ///
-/// Note the X11 backend is deliberately NOT used on non-Hyprland
-/// Wayland even when `DISPLAY` points at XWayland: XWayland only sees
-/// its own windows, so its `_NET_ACTIVE_WINDOW` would go stale every
-/// time focus moves to a native Wayland window — a *wrong* answer,
-/// which is worse than no answer.
+/// The X11 backend is deliberately **not** used on non-Hyprland Wayland
+/// even when `DISPLAY` points at XWayland: XWayland sees only its own
+/// windows, so `_NET_ACTIVE_WINDOW` goes stale whenever focus moves to
+/// a native Wayland window — a wrong answer, worse than no answer.
 pub(crate) fn create_linux_focus_tracker() -> Arc<dyn FocusTracker> {
     if hyprland_available() {
         return Arc::new(CachedFocusTracker::new(

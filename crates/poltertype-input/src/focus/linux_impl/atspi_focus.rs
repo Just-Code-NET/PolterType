@@ -2,37 +2,29 @@
 //! tracking on compositors that answer no window query.
 //!
 //! GNOME and KDE on Wayland expose no "which window is active"
-//! interface, by design and for the same reason they expose no global
-//! keyboard. The plan of record was a KWin script plus a GNOME Shell
-//! extension: two out-of-tree artifacts, in two languages, that the
-//! user has to install, and neither testable without running that
-//! desktop.
+//! interface, for the same reason they expose no global keyboard. The
+//! plan of record was a KWin script plus a GNOME Shell extension: two
+//! out-of-tree artifacts, in two languages, that the user has to
+//! install and neither testable without running that desktop.
 //!
-//! This is cheaper and covers more. Every AT-SPI event arrives over
-//! the a11y bus from the *application's own* connection, so the bus
-//! itself can be asked who that connection belongs to —
-//! `GetConnectionUnixProcessID` gives the PID, and `/proc/<pid>/exe`
-//! gives the executable basename, which is exactly what the Hyprland
-//! and X11 trackers already report. One backend, no user-installed
-//! artifacts, and it works on any compositor with an a11y bridge.
-//!
-//! ## What it does not cover, and this matters
+//! This is cheaper and covers more. Every AT-SPI event arrives from the
+//! *application's own* connection, so the bus can be asked who that
+//! connection belongs to — `GetConnectionUnixProcessID` gives the PID
+//! and `/proc/<pid>/exe` the executable basename, exactly what the
+//! Hyprland and X11 trackers already report.
 //!
 //! **Only applications with a live accessibility bridge are ever
-//! seen.** A GTK or Qt app answers; so does Electron with a11y on.
-//! A terminal like foot, alacritty or kitty typically does not — and
-//! a terminal is precisely where a developer types. An app that never
-//! emits also never *un*-focuses the previous one, so the freshest
-//! answer can be stale in a way a real window query never is.
+//! seen.** GTK, Qt and Electron-with-a11y answer; a terminal typically
+//! does not — and a terminal is precisely where a developer types. An
+//! app that never emits also never *un*-focuses the previous one, so
+//! the freshest answer can be stale in a way a real window query never
+//! is. That is why [`AtspiFocusWatcher::latest`] returns the sample's
+//! age and lets the caller decide. Do not describe this as "focus
+//! tracking works on GNOME/KDE".
 //!
-//! That is why [`AtspiFocusWatcher::latest`] returns the sample's age
-//! and the caller decides. It is a genuine improvement on `None`
-//! everywhere, and it is not equivalent to a compositor answer. Do
-//! not describe it as "focus tracking works on GNOME/KDE".
-//!
-//! PRIVACY: this module reads *identity*, never content. Sender
-//! names, PIDs and executable paths only — no accessible names, no
-//! window titles, no text.
+//! PRIVACY: this module reads *identity*, never content. Sender names,
+//! PIDs and executable paths only — no accessible names, no window
+//! titles, no text.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

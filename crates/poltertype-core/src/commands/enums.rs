@@ -5,13 +5,12 @@ use super::shell::ShellCommand;
 use poltertype_types::LayoutId;
 use serde::{Deserialize, Serialize};
 
-/// Tagged enum of available actions. The TOML representation uses
-/// `type = "<snake_case>"` plus the variant's payload fields, e.g.
+/// Tagged enum of available actions. The TOML representation is
+/// `type = "<snake_case>"` plus the variant's payload fields:
 ///
 /// ```toml
 /// [[commands]]
 /// id      = "anrl"
-/// name    = "Anatomical reference list"
 /// trigger = "anrl"
 /// action  = { type = "type_text", text = "Anatomical Reference List" }
 ///
@@ -19,16 +18,11 @@ use serde::{Deserialize, Serialize};
 /// id      = "to-english"
 /// trigger = "((en))"
 /// action  = { type = "switch_layout", layout = "en-US" }
-///
-/// [[commands]]
-/// id      = "open-config"
-/// trigger = ";cfg"
-/// action  = { type = "open_path", path = "C:/Users/me/AppData/Roaming/poltertype/config.toml" }
 /// ```
 ///
-/// Adding a new variant is forward-compat: an old binary will fail
-/// to parse the unknown `type` and the loader will keep the rest of
-/// the config (one warning logged per skipped entry).
+/// Adding a variant is forward-compatible: an old binary fails to parse
+/// the unknown `type`, logs one warning, and keeps the rest of the
+/// config.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CommandAction {

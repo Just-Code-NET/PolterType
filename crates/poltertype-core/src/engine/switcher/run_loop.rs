@@ -47,11 +47,9 @@ impl SwitcherEngine {
             match event {
                 Either::Cmd(cmd) => self.handle_command(cmd, &mut buffer, &key_rx),
                 Either::Key(ev) => {
-                    // Our own injected keystrokes echoing back (Linux
-                    // behind keyd & friends) — swallow them before any
-                    // other processing so they can't pollute the
-                    // buffer, fire hotkey chords, or reset the idle
-                    // clock semantics for real typing.
+                    // Our own injected keystrokes echoing back
+                    // (Linux behind keyd & friends) — swallowed before
+                    // anything else can act on them.
                     if self.consume_echo(&ev) {
                         last_event_at = Instant::now();
                         continue;
@@ -67,35 +65,28 @@ impl SwitcherEngine {
                     self.click_grace_tick(&ev);
                     self.check_keystream_hotkeys(&ev, &mut chord_state, &mut buffer, &key_rx);
                     if last_event_at.elapsed() > idle_timeout {
-                        // A live suggestion offer overrides the idle
-                        // hygiene while no word is mid-flight: the
-                        // tooltip PROMISES the word is replaceable for
-                        // its whole lifetime, and the user pausing to
-                        // read it is the expected interaction — the
-                        // first key of the accept chord must not be
-                        // the event that voids the offer. Anything
-                        // that actually invalidates the caret during
-                        // the pause (click, nav, Esc, focus chord) is
-                        // observed as its own event and dismisses the
-                        // offer through the normal paths.
+                        // A live offer overrides idle hygiene while
+                        // no word is mid-flight: the tooltip promises
+                        // the word stays replaceable, and pausing to
+                        // read it is the expected interaction. Anything
+                        // that really invalidates the caret arrives as
+                        // its own event and dismisses through the
+                        // normal paths.
                         if self.has_live_suggestion() && buffer.keys().is_empty() {
                             debug!("idle timeout skipped — live suggestion offer");
                         } else {
                             debug!("idle timeout — abandoning word buffer");
-                            // Not a plain clear: if a word was
+                            // Not a plain clear: with a word
                             // mid-flight the screen still holds its
-                            // head, and correcting just the tail would
-                            // chop the word in half. `abandon` taints
-                            // the current word so the engine skips
-                            // deciding on it. A pending offer dies
+                            // head, and correcting only the tail would
+                            // chop it in half. A pending offer dies
                             // with the buffer.
                             buffer.abandon();
                             *self.last_word.write() = None;
-                            // The phrase history is bounded by time as
-                            // well as by length: a machine left alone
-                            // must not still be holding a sentence,
-                            // and a trigger should not fire from words
-                            // typed before a long pause.
+                            // Bounded by time as well as length: a
+                            // machine left alone must not still hold a
+                            // sentence, and a trigger must not fire
+                            // from words typed before a long pause.
                             self.word_history.write().clear();
                             self.dismiss_suggestions(None);
                         }
@@ -144,46 +135,28 @@ impl SwitcherEngine {
                 });
             }
             EngineCommand::SwitchLastForcefully => {
-                // Atomic take, NOT clone-and-read. Critical for the
-                // hotkey-loop bug:
+                // Atomic take, NOT clone-and-read — this is what stops
+                // the hotkey loop.
                 //
-                // The user types `цщц` (uk-UA), engine auto-corrects
-                // to `wow ` and stashes last_word. User then presses
-                // `Ctrl+Shift+Backspace` to manually re-apply. The
-                // hotkey fires, we run `apply_correction`, which
-                // sends BACKSPACE keystrokes via SendInput. Those
-                // Backspaces are flagged INJECTED so the engine
-                // ignores them — but the OS-level RegisterHotKey
-                // (used by `global-hotkey`) sees the *combination*
-                // of our injected Backspace + the user's still-held
-                // Ctrl+Shift modifiers as a fresh `Ctrl+Shift+Backspace`
-                // press, and fires the hotkey again. That ran
-                // `force_switch_last` again, which sent another 4
-                // backspaces, which fired the hotkey again — every
-                // iteration both corrected the text again AND played
-                // the correction sound, producing the user-visible
-                // symptom: text accumulating to `wow wow wow…` and a
-                // sound loop that didn't stop until the app was
-                // killed.
+                // `force_switch_last` emits Backspaces. They are
+                // flagged injected so the engine ignores them, but the
+                // OS-level `RegisterHotKey` sees our Backspace plus the
+                // user's still-held Ctrl+Shift as a fresh press and
+                // fires again — correcting the text and playing the
+                // sound each time, so `wow ` accumulated to `wow wow
+                // wow…` until the app was killed. Auto-repeat on a held
+                // Backspace does the same without the modifier edge.
                 //
-                // Auto-repeat on a held Backspace key would have the
-                // same effect even without the modifier-combining
-                // edge case.
-                //
-                // Taking + clearing last_word atomically means the
-                // first fire processes; every subsequent fire from
-                // the same physical hotkey press (or its echo) finds
-                // `None` and exits silently. To re-trigger, the user
-                // must complete another word and let the engine
-                // re-stash a new last_word.
+                // Taking atomically means every subsequent fire from
+                // the same press finds `None` and exits. Re-triggering
+                // needs another completed word.
                 let taken = self.last_word.write().take();
                 if let Some(last) = taken {
-                    // A pending suggestion offer was computed for the
-                    // pre-switch rendering. The force-switch replays
-                    // the SAME scancodes, so the accept path's
-                    // buffer-identity check would still pass — and a
-                    // late click would replace the transliterated
-                    // word with a suggestion for the old one.
+                    // The pending offer was computed for the
+                    // pre-switch rendering, and the force-switch replays
+                    // the same scancodes — so the identity check would
+                    // still pass and a late click would replace the
+                    // transliterated word with the old word's suggestion.
                     self.dismiss_suggestions(None);
                     self.force_switch_last(last, buffer, key_rx);
                 } else {
@@ -241,20 +214,15 @@ impl SwitcherEngine {
             *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
         }
         if ev.modifiers.is_command() && !is_modifier_scancode(ev.scancode) {
-            // Shortcuts (Ctrl+C, Cmd+V, …) — abandon, don't accumulate.
-            // A shortcut can edit text arbitrarily (Ctrl+X, Ctrl+Z), so
-            // a word that was mid-flight is no longer trustworthy;
-            // `abandon` taints it, and a pending suggestion offer dies
-            // with it (its screen position is no longer vouched for).
-            // The stashed last-word survives — the manual switch-last
-            // chord itself is a shortcut.
+            // Shortcuts (Ctrl+C, Cmd+V, …) can edit text arbitrarily,
+            // so a mid-flight word is no longer trustworthy: taint it,
+            // and a pending offer dies with it. The stashed last-word
+            // survives — the manual switch-last chord is itself a
+            // shortcut.
             //
-            // Bare modifier presses are exempt (see
-            // `is_modifier_scancode`): `Ctrl↓` can't edit anything,
-            // and the suggestion-accept chord must survive its own
-            // modifiers — the digit that follows is what accepts (its
-            // own command-abandon lands *after* the chord matched in
-            // `check_keystream_hotkeys`, on an already-consumed offer).
+            // Bare modifier presses are exempt (`is_modifier_scancode`):
+            // the suggestion-accept chord must survive its own
+            // modifiers, and the digit that follows is what accepts.
             buffer.abandon();
             // A shortcut can also move the caret (Ctrl+End, Cmd+click
             // chords, app-specific jumps) — the next word may start
@@ -273,21 +241,17 @@ impl SwitcherEngine {
             self.freeze_suggestion_for_click(buffer);
         }
 
-        // Cross-layout letter hint: keeps Cyrillic words intact when
-        // typed under en-US (`б` at 0x33 would otherwise look like a
-        // `,` boundary). See `WordBuffer::feed` for the full rationale.
-        // Shift-aware so adding more layouts (de-DE / fr-FR / …) doesn't
-        // accidentally classify genuine en-US punctuation as "letter
-        // in another layout".
+        // Cross-layout letter hint: keeps Cyrillic words intact under
+        // en-US (`б` at 0x33 would otherwise read as a `,` boundary).
+        // Shift-aware, so adding layouts cannot reclassify genuine
+        // en-US punctuation. See `WordBuffer::feed`.
         let letter_in_any_layout = self
             .layouts
             .is_letter_in_any_layout(ev.scancode, ev.modifiers.shift);
-        // Resolve the character this scancode produces under the
-        // *currently active* layout — the buffer needs that to
-        // classify (a `,`-position scancode is `б` in uk-UA, etc.).
-        // Only when the classification actually depends on it: the
-        // cross-layout hint alone settles letters, and releases never
-        // reach the classifier.
+        // The character this scancode produces under the *currently
+        // active* layout, which the buffer needs to classify. Only when
+        // classification depends on it — the cross-layout hint settles
+        // letters, and releases never reach the classifier.
         let produced = if ev.direction == KeyDirection::Press && !letter_in_any_layout {
             self.translate_via_current_layout(ev.scancode, ev.modifiers.shift)
         } else {
@@ -297,14 +261,11 @@ impl SwitcherEngine {
         match buffer.feed(ev, produced, letter_in_any_layout) {
             WordBoundary::InProgress => {}
             WordBoundary::Abandoned => {
-                // Caret went somewhere unknown (click / nav / Esc) —
-                // a stashed last-word would be corrected at the wrong
-                // screen position now. Same goes for a pending
-                // suggestion offer — EXCEPT during a click-grace
-                // window, where this very abandon was caused by a
-                // pointer press that may have landed on the tooltip;
-                // the frozen offer outlives it just long enough for
-                // the tooltip's Accepted event to arrive.
+                // Caret went somewhere unknown (click / nav / Esc), so
+                // a stash would now be corrected at the wrong position.
+                // Same for a pending offer — except inside the click
+                // grace window, where this abandon may have come from a
+                // pointer press that landed on the tooltip.
                 *self.last_word.write() = None;
                 if !self.has_click_grace() {
                     self.dismiss_suggestions(None);

@@ -1,24 +1,20 @@
 //! The setup walkthrough's model: what the user still has to grant.
 //!
-//! When the keyboard hooks fail to start, the tray has always shown an
-//! alert and a link to `docs/PERMISSIONS.md`. That stops the app
-//! failing *silently*, and then leaves the user reading a markdown
-//! file to fix their own machine. This module is the data the Settings
-//! window's **Setup** pane renders instead: the same advice, but
-//! specific to this OS, this session, and re-checkable after the user
-//! has changed something.
+//! A failed keyboard hook has always produced a tray alert and a link
+//! to `docs/PERMISSIONS.md`, which stops the app failing silently and
+//! then leaves the user reading a markdown file to fix their machine.
+//! This module is the data the Settings window's **Setup** pane renders
+//! instead: the same advice, specific to this OS and session, and
+//! re-checkable after the user changes something.
 //!
-//! It lives here because probing input permissions is platform code,
-//! and platform code lives in this crate (see the workspace
-//! `CLAUDE.md`). The app renders [`SetupReport`]; it does not know
-//! what a udev rule is.
+//! It lives in this crate because probing input permissions is platform
+//! code. The app renders [`SetupReport`]; it does not know what a udev
+//! rule is.
 //!
-//! **Nothing here changes the system.** The most a step does is open a
-//! documentation page or a System Settings pane, put a command on the
-//! clipboard, or ask macOS to show its own permission dialog. The
-//! Linux script needs `sudo`, and an app that quietly acquires root
-//! has spent trust it will not get back — so the user runs it, in
-//! their terminal, having read it.
+//! **Nothing here changes the system.** A step opens a documentation
+//! page or a settings pane, copies a command, or asks macOS to show its
+//! own dialog. The Linux script needs `sudo`, and an app that quietly
+//! acquires root has spent trust it will not get back.
 
 mod consts;
 mod enums;

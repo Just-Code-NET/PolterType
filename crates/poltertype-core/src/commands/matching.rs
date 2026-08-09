@@ -2,20 +2,15 @@
 
 use super::*;
 
-/// Look up the first command in `commands` whose `trigger` exactly
-/// matches `typed_word` and whose `apps` filter (if set) accepts
-/// `focused_basename`. Returns `None` if no command matches.
+/// The first command whose `trigger` exactly matches `typed_word` and
+/// whose `apps` filter accepts `focused_basename`, or `None`.
 ///
-/// The lookup is linear because the typical user has ≤ 20
-/// commands; a hash map would add complexity without measurable
-/// benefit and would lose the deterministic "first match wins"
-/// rule when two commands share a trigger (a config error in
-/// practice — but we resolve it predictably rather than crashing).
+/// Linear because the typical user has ≤ 20 commands; a hash map would
+/// add complexity for no measurable gain and lose the deterministic
+/// first-match-wins rule when two commands share a trigger.
 ///
-/// Match is case-sensitive on the trigger by design. Most snippet
-/// expanders end up wanting case-sensitive matching once users
-/// have triggers like `Anrl` (capitalised expansion) vs `anrl`
-/// (lowercase one).
+/// Case-sensitive on the trigger by design — snippet expanders end up
+/// wanting it once users have `Anrl` alongside `anrl`.
 pub fn find_matching_command<'a>(
     commands: &'a [UserCommand],
     typed_word: &str,

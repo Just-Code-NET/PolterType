@@ -1,47 +1,14 @@
 //! Running plug-in programs, and stopping them again.
 //!
-//! A plug-in is a separate process, never code loaded into this one.
-//! That is what keeps the process holding the global keyboard hook out
-//! of the blast radius of third-party code: a plug-in that panics,
-//! deadlocks or is outright malicious costs the user that plug-in, not
-//! their keyboard.
+//! A plug-in is a separate process, never code loaded into this one —
+//! see `docs/ARCHITECTURE.md` § Plug-ins for why, and for the four
+//! things this deliberately does not do (no restart loop, no shell, no
+//! inherited stdin, no filtering of a plug-in's own output).
 //!
-//! Two ways to run one, and they are different in kind:
-//!
-//! * a **service** — the long-running half, started when PolterType
-//!   starts and stopped when it quits;
-//! * a **command** — a one-shot invocation behind a menu entry or a
-//!   button, which runs, does its thing and exits.
-//!
-//! ## What this deliberately does not do
-//!
-//! **No restart loop.** A service that dies stays dead until the user
-//! asks again. Restarting it automatically would turn a plug-in that
-//! crashes on startup into a fork bomb that also fills the log, and it
-//! would hide exactly the failure the user needs to see.
-//!
-//! **No shell.** Arguments come from the manifest as a list and are
-//! passed as a list. There is no string to quote, so there is nothing
-//! to quote wrongly.
-//!
-//! **No inherited standard input.** A plug-in gets a null stdin, so it
-//! can never sit waiting on a terminal that a tray app does not have.
-//!
-//! ## Where a service's own output goes
-//!
-//! Into a file of its own, `logs/plugin-<id>.log`, truncated at every
-//! PolterType start — not to the terminal it used to inherit. A tray app
-//! launched from a desktop entry has no terminal, so "inherited" means
-//! the one line explaining why a plug-in died goes nowhere. This is
-//! written for the moment after the fact: the service is gone, and the
-//! question is why. The tail of that file is what [`Supervisor::reap`]
-//! quotes and what reaches the user.
-//!
-//! It is the plug-in's output, not ours, so nothing here filters it.
-//! A plug-in that prints something it shouldn't prints it into its own
-//! log; PolterType's rule about never logging typed text binds
-//! PolterType, and a plug-in that reads keystrokes is trusted with them
-//! by having been installed at all.
+//! A **service** runs for as long as PolterType does; a **command** is
+//! a one-shot invocation behind a menu entry. A service's output goes
+//! to `logs/plugin-<id>.log`, truncated at every start, and the tail of
+//! that file is what [`Supervisor::reap`] quotes to the user.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -76,23 +43,16 @@ pub struct Departed {
 
 /// The command id a plug-in may declare to be told "wind up now".
 ///
-/// Reserved rather than invented per plug-in: the supervisor has to
-/// know the name to call it without being configured, and a plug-in
-/// that does not declare it simply is not asked.
+/// Reserved rather than invented per plug-in, because the supervisor
+/// has to know the name without being configured; a plug-in that does
+/// not declare it is simply not asked.
 ///
 /// This is how a graceful stop works on **every** platform, and it
-/// exists because the per-OS mechanisms do not. Unix has SIGTERM, which
-/// is real but only half the story: a plug-in still has to install a
-/// handler for it. Windows has no signal at all, and the console
-/// control event that stands in for one was measured here and refused —
-/// addressed to the child's process group it returned success and did
-/// nothing, and addressed to the whole console it killed the sender.
-/// Neither outcome is acceptable in the process holding the global
-/// keyboard hook. See `docs/DECISIONS.md`.
-///
-/// A declared command has none of those problems: it is the plug-in's
-/// own program, run the way every other plug-in action is run, and what
-/// "stop cleanly" means is the plug-in author's to define.
+/// exists because the per-OS mechanisms do not: SIGTERM still needs the
+/// plug-in to install a handler, and Windows' console control event was
+/// measured here and refused — see `docs/DECISIONS.md`. A declared
+/// command has neither problem, and what "stop cleanly" means stays the
+/// plug-in author's to define.
 pub const STOP_COMMAND: &str = "stop";
 
 /// Owns every plug-in process this app started.
@@ -137,17 +97,12 @@ impl Supervisor {
     /// Report any service that has exited since the last check, and
     /// forget it.
     ///
-    /// Called from the plug-in heartbeat, every
-    /// [`crate::PLUGIN_STATE_INTERVAL`], so that a service dying is
-    /// noticed while it is happening. It used to run only when the user
-    /// clicked a tray entry, which on 2026-08-05 meant a capture daemon
-    /// that died one second after startup went unnoticed for ten hours
-    /// — the tray kept cheerfully reporting the mode it was no longer
-    /// in, because the mode is answered by a one-shot command that
-    /// works fine whether the service is alive or not.
+    /// Called from the plug-in heartbeat, so a service dying is noticed
+    /// while it happens rather than at the user's next tray click — the
+    /// mode is answered by a one-shot command that works whether the
+    /// service is alive or not, so nothing else would notice.
     ///
-    /// Reaping is also what stops the corpse being a zombie: nobody
-    /// else waits on these children while the app is running.
+    /// Reaping is also what stops the corpse being a zombie.
     pub fn reap(&mut self) -> Vec<Departed> {
         let mut gone = Vec::new();
         self.running.retain_mut(|r| match r.child.try_wait() {
@@ -188,12 +143,9 @@ impl Supervisor {
         !self.running.is_empty()
     }
 
-    /// Ask every service to stop, then make sure it did.
-    ///
-    /// A plug-in is asked politely first because the one this was
-    /// written for has an in-flight buffer to flush on the way out —
-    /// and a plug-in that ignores the request still gets killed, so
-    /// being polite costs a moment, not a guarantee.
+    /// Ask every service to stop, then make sure it did. Politeness
+    /// costs a moment and buys an in-flight buffer the chance to flush;
+    /// a plug-in that ignores the request still gets killed.
     pub fn stop_all(&mut self) {
         for r in &mut self.running {
             // The plug-in's own idea of stopping, first and on every
@@ -274,20 +226,15 @@ pub fn run_command(ext: &DiscoveredExtension, command_id: &str) -> Result<(), St
 
 /// Ask a plug-in what state it is in, for the tray to reflect.
 ///
-/// Unlike [`run_command`] this **is** waited on — the answer is the
-/// point — so it carries a deadline. A plug-in that hangs here would
-/// otherwise freeze the tray menu, and a stale tick is a far smaller
-/// problem than a frozen tray.
+/// Unlike [`run_command`] this **is** waited on, so it carries a
+/// deadline — a plug-in that hangs here would freeze the tray menu.
 ///
-/// Output is one `key=value` per line. Anything else on a line is
-/// ignored rather than rejected, so a plug-in may print a human-facing
-/// summary alongside without breaking this.
+/// Output is one `key=value` per line; anything else is ignored rather
+/// than rejected, so a plug-in may print a human-facing summary too.
 ///
-/// `None` means the plug-in could not be asked at all — it is not
-/// installed, it crashed, it timed out. That is a different thing from
-/// answering without mentioning a particular key, and the menu says so
-/// differently, because one of them is worth investigating and the
-/// other is normal.
+/// `None` means the plug-in could not be asked at all, which the menu
+/// renders differently from an answer that omits a key: one is worth
+/// investigating and the other is normal.
 pub fn read_state(ext: &DiscoveredExtension) -> Option<HashMap<String, String>> {
     if ext.manifest.state_args.is_empty() {
         return None;
@@ -315,12 +262,10 @@ pub fn read_state(ext: &DiscoveredExtension) -> Option<HashMap<String, String>> 
 
 /// Run the state command and return its stdout, or give up.
 ///
-/// The deadline is the reason this is not one `output()` call. That
-/// call waits forever, and this one runs on the UI thread while a menu
-/// is being drawn — a plug-in that blocks on a lock, a dialog or a
-/// dead socket would take the tray with it. A stale tick is a far
-/// smaller problem than a tray that stops responding, so the process is
-/// killed and the previous state left alone.
+/// The deadline is why this is not one `output()` call: that waits for
+/// ever, and this runs on the UI thread while a menu is being drawn. A
+/// stale tick is a far smaller problem than a tray that stops
+/// responding, so the process is killed and the previous state kept.
 fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
     capture_output(
         ext,
@@ -332,12 +277,10 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
 
 /// Run one of a plug-in's declared commands and return what it printed.
 ///
-/// The other half of [`run_command`], and the reason it is a separate
-/// function rather than a flag: that one must return before the child
-/// does, because it runs on the thread drawing a menu. This one is for
-/// a pane that is *showing* an answer, so it waits — off the UI thread,
-/// with its own deadline, because a plug-in that hangs must cost the
-/// pane a message and not the window.
+/// Separate from [`run_command`] rather than a flag on it: that one
+/// must return before the child does, because it runs on the thread
+/// drawing a menu. This one backs a pane that is *showing* an answer,
+/// so it waits — off the UI thread, with its own deadline.
 pub fn read_report(ext: &DiscoveredExtension, command_id: &str) -> Result<String, String> {
     let cmd = ext
         .manifest
@@ -349,11 +292,8 @@ pub fn read_report(ext: &DiscoveredExtension, command_id: &str) -> Result<String
 }
 
 /// Run `args` against the plug-in and collect stdout, or give up.
-///
-/// The deadline is the reason this is not one `output()` call: that
-/// waits forever, and nothing here is allowed to. Shared by the state
-/// read and the report read so there is one place that knows how to
-/// wait for a plug-in without being taken hostage by it.
+/// Shared by the state read and the report read, so there is one place
+/// that knows how to wait for a plug-in without being taken hostage.
 fn capture_output(
     ext: &DiscoveredExtension,
     args: &[String],
@@ -413,10 +353,9 @@ fn capture_output(
 const STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1_500);
 
 /// How long a plug-in gets to produce a report. Longer than the state
-/// read can afford to be, because nothing is waiting on the UI thread
-/// for it and the answer may cost real work — our own autopilot opens
-/// an encrypted corpus to produce one. Still bounded: a pane that says
-/// "it did not answer" is honest, and one that never renders is not.
+/// read can afford, because nothing waits on the UI thread for it and
+/// the answer may cost real work. Still bounded: a pane that says "it
+/// did not answer" is honest, one that never renders is not.
 const REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
 
 fn spawn(
@@ -448,12 +387,10 @@ fn spawn(
     cmd.spawn()
 }
 
-/// Open this service's log, truncating whatever the last run left.
-///
-/// Truncated rather than appended so the file always answers "what
-/// happened this run" and cannot grow without bound across restarts.
-/// Best-effort throughout: a plug-in must still start on a machine
-/// where the log directory cannot be created.
+/// Open this service's log, truncating whatever the last run left, so
+/// the file always answers "what happened this run" and cannot grow
+/// without bound. Best-effort: a plug-in must still start where the log
+/// directory cannot be created.
 fn service_log(id: &str) -> Option<(PathBuf, std::fs::File)> {
     let dir = SettingsStore::log_dir().ok()?;
     if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -472,11 +409,9 @@ fn service_log(id: &str) -> Option<(PathBuf, std::fs::File)> {
     }
 }
 
-/// The last non-blank line a plug-in wrote, trimmed to something that
-/// fits in a notification.
-///
-/// Reads the end of the file only: a plug-in that logged all day must
-/// not be pulled into memory to answer one question.
+/// The last non-blank line a plug-in wrote, trimmed to fit a
+/// notification. Reads the end of the file only — a plug-in that logged
+/// all day must not be pulled into memory to answer one question.
 fn last_line(path: &std::path::Path) -> Option<String> {
     use std::io::{Read as _, Seek as _, SeekFrom};
 

@@ -17,17 +17,13 @@ use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
     /// Match the raw key event against the keystream hotkeys (Wayland
-    /// path). Mirrors what the OS `global-hotkey` grab does on other
-    /// backends, dispatching the same [`EngineCommand`]s.
+    /// path), mirroring what the OS `global-hotkey` grab does elsewhere
+    /// and dispatching the same [`EngineCommand`]s.
     ///
-    /// Our own replayed corrections can't re-trigger a chord here:
-    /// `injected` events are ignored outright, and untagged echoes
-    /// (keyd & friends) were already consumed by `consume_echo` in the
-    /// run loop before this is called — during a manual switch the
-    /// user may still be holding `Ctrl+Shift` while our uinput
-    /// backspaces echo back as `Ctrl+Shift+Backspace`. Run before
-    /// the paused early-return in `handle_key` so the pause chord can
-    /// also *resume*.
+    /// Our own replayed corrections cannot re-trigger a chord:
+    /// `injected` events are ignored, and untagged echoes were already
+    /// consumed by `consume_echo`. Runs before the paused early-return
+    /// in `handle_key`, so the pause chord can also *resume*.
     pub(super) fn check_keystream_hotkeys(
         &self,
         ev: &KeyEvent,
@@ -54,15 +50,12 @@ impl SwitcherEngine {
 
     /// The suggestion-accept digit chord (`<modifiers>+1` … `+9`).
     ///
-    /// Unlike the two chords above, this runs on *every* backend, not
-    /// just Wayland: registering nine OS-level global hotkeys
-    /// permanently would steal those combos from every application
-    /// even while no tooltip is up, whereas stream matching costs one
-    /// mutex peek per digit keypress and only while an offer is
-    /// pending. The trade-off (shared with Wayland hotkeys): the
-    /// keypress still reaches the focused app — which is why the
-    /// default chord is Ctrl+Shift+digit, a combination virtually no
-    /// application binds.
+    /// Runs on *every* backend, not just Wayland: registering nine
+    /// OS-level global hotkeys would steal those combos from every
+    /// application even with no tooltip up, whereas stream matching
+    /// costs one mutex peek per digit and only while an offer is
+    /// pending. The trade-off is that the keypress still reaches the
+    /// focused app, which is why the default chord is Ctrl+Shift+digit.
     fn check_suggestion_chord(
         &self,
         ev: &KeyEvent,
@@ -115,22 +108,15 @@ impl SwitcherEngine {
         }
     }
 
-    /// Run a matched smart command. The shape is the same for every
-    /// action variant: backspace the typed trigger plus the
-    /// boundary character (so the magic word disappears from the
-    /// user's text), then dispatch the action.
+    /// Run a matched smart command: backspace the typed trigger plus the
+    /// boundary character, then dispatch the action.
     ///
-    /// `backspace_count` is precomputed by the caller as
-    /// `current_text.chars().count() + 1` — counting characters not
-    /// bytes, because that's what the OS-level emit_backspace uses
-    /// across Cyrillic / multibyte triggers.
+    /// `backspace_count` is precomputed by the caller as characters, not
+    /// bytes — what `emit_backspace` uses across multibyte triggers.
     ///
-    /// For `TypeText` we re-emit the boundary character after the
-    /// expansion so the user's flow continues naturally — typing
-    /// `anrl<space>` ends up with the cursor after a trailing space
-    /// in the expansion, not glued to the last word. For
-    /// `SwitchLayout` and `OpenPath` the boundary stays consumed
-    /// (the user wanted a side-effect, not text).
+    /// `TypeText` re-emits the boundary after the expansion so the
+    /// user's flow continues naturally. `SwitchLayout` and `OpenPath`
+    /// keep it consumed: the user wanted a side effect, not text.
     pub(super) fn dispatch_smart_command(
         &self,
         cmd: &UserCommand,
@@ -209,16 +195,14 @@ impl SwitcherEngine {
 
     /// Run a `run_shell` command off the correction path.
     ///
-    /// The word-boundary handler must return promptly — it is what
-    /// stands between the user's keystroke and the corrected word —
-    /// and a user command can block for up to `shell::RUN_TIMEOUT`.
-    /// So the process is started on a worker thread, and the thread
-    /// types the output when there is any.
+    /// The word-boundary handler stands between the user's keystroke and
+    /// the corrected word and must return promptly, while a user command
+    /// can block for up to `shell::RUN_TIMEOUT` — so it starts on a
+    /// worker thread, which types the output if there is any.
     ///
     /// The refusal check happens here as well as at settings load:
-    /// `allow_run_shell` can be turned off while the app runs, and
-    /// the entry that was legal at startup must stop working the
-    /// moment it is.
+    /// `allow_run_shell` can be turned off while the app runs, and an
+    /// entry legal at startup must stop working the moment it is.
     fn dispatch_run_shell(
         &self,
         cmd: &UserCommand,

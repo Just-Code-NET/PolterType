@@ -1,51 +1,15 @@
-//! Build-time data preparation: produce the on-disk `data/` tree that
-//! poltertype loads at runtime.
+//! Build-time data preparation: turn the committed `data/` inputs into
+//! the on-disk `data/` tree poltertype loads at runtime — FSTs from the
+//! gzipped wordlists, plus verbatim copies of the stop lists and layout
+//! mappings. `docs/DATA_LAYOUT.md` has the full input/output map.
 //!
-//! ## What lands where
+//! Output goes to `<workspace>/target/dist/data/` rather than `OUT_DIR`
+//! because the installers need a stable path at packaging time, and it
+//! is what the dev-mode runtime resolver falls back to. Cargo's
+//! preference for `OUT_DIR` is about crates consumed by others.
 //!
-//! Inputs (committed in the repo, in `<workspace>/data/`):
-//!
-//! * `data/wordlists/<stem>.txt.gz` — bulk Hunspell-grade dictionary
-//!   for ≥3-letter tokens. Empty / absent → no FST for that stem
-//!   (plausibility-only detection still works).
-//! * `data/wordlists/<stem>-extras.txt` — hand-curated additions.
-//! * `data/wordlists/<stem>-stop.txt` — curated 1- / 2-letter stop
-//!   words.
-//! * `data/layout-mappings/<stem>.toml` — keyboard mapping.
-//!
-//! Outputs (built fresh each `cargo build`, under
-//! `<workspace>/target/dist/data/`):
-//!
-//! ```text
-//! target/dist/data/
-//!   wordlists/
-//!     <stem>.fst                  ← FST built from .txt.gz + extras
-//!     <stem>-surface.fst          ← surface-form FST (suggestions)
-//!     <stem>-stop.txt             ← copied as-is
-//!   layout-mappings/
-//!     <stem>.toml                 ← copied as-is
-//! ```
-//!
-//! Why a stable path instead of `OUT_DIR`: the installers (WiX MSI,
-//! AppImage AppDir, macOS .app) need to know *where* to copy these
-//! files at packaging time. `OUT_DIR` is per-crate-hash and changes
-//! every cargo invocation — useless for that. `target/dist/data` is
-//! invariant, predictable, and matches the dev-mode runtime
-//! resolver in `poltertype-core::data_dir` (the dev fallback path).
-//!
-//! Cargo prefers build scripts to write only inside `OUT_DIR`; the
-//! warning is for portability of crates *consumed by others*. We are
-//! a workspace's own crate writing to its own workspace's own target
-//! dir — fully under our control.
-//!
-//! ## Idempotency / dev experience
-//!
-//! `cargo:rerun-if-changed=` lines mark every input. So:
-//!
-//! * Edit `data/wordlists/uk_ua-extras.txt` → only uk_ua FST rebuilds.
-//! * Tweak a TOML mapping → only that TOML is recopied.
-//! * Plain `cargo build` after no source changes → no work, no
-//!   warnings.
+//! Every input is declared with `cargo:rerun-if-changed`, so an
+//! unchanged tree does no work — see `declare_inputs` for the trap.
 
 // Build scripts are explicitly allowed to use unwrap/expect/panic per
 // the project's CLAUDE.md style — a panic here is an honest "build is
@@ -60,10 +24,8 @@ use flate2::read::GzDecoder;
 use fst::SetBuilder;
 
 /// (`<layout-id-as-file-stem>`, BCP-47 tag for the build-log
-/// "did we wire it up?" diagnostic).
-///
-/// Keep in lock-step with the runtime layout list — discrepancies
-/// surface as missing-layout warnings at startup, never silent.
+/// diagnostic). Keep in lock-step with the runtime layout list —
+/// discrepancies surface as missing-layout warnings at startup.
 const LAYOUTS: &[(&str, &str)] = &[
     ("en_us", "en-US"),
     ("uk_ua", "uk-UA"),
@@ -108,11 +70,9 @@ fn main() {
 
     // ─── Wordlists: build FST + copy stop-word list ────────────────
     //
-    // The directory is watched as a whole, the same way the i18n
-    // catalogs are above, so a wordlist that is *added* later still
-    // triggers a rebuild. That has to be here rather than inside
-    // `prepare_wordlist`, which now declares only files that exist —
-    // see the comment there for what declaring an absent one costs.
+    // The directory is watched as a whole so a wordlist added later
+    // still triggers a rebuild. It has to be here, not in
+    // `prepare_wordlist`, which declares only files that exist.
     println!("cargo:rerun-if-changed={}", src_wordlists.display());
     for (stem, tag) in LAYOUTS {
         prepare_wordlist(&src_wordlists, &out_wordlists, stem, tag);
@@ -162,13 +122,9 @@ fn main() {
     }
 }
 
-/// Locate the workspace's `target/` dir. We deduce it from `OUT_DIR`,
-/// which cargo guarantees is somewhere under `target`. Walking up to
-/// the first ancestor named `target` is reliable across:
-///
-/// * default layout (`<workspace>/target/...`)
-/// * `CARGO_TARGET_DIR` overrides
-/// * cargo workspaces with custom `[build.target-dir]`
+/// Locate the workspace's `target/` dir by walking up from `OUT_DIR`,
+/// which cargo guarantees lives under it. Survives the default layout,
+/// `CARGO_TARGET_DIR` overrides and a custom `[build.target-dir]`.
 fn workspace_target_dir() -> PathBuf {
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR not set"));
     for ancestor in out_dir.ancestors() {
@@ -193,54 +149,38 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     let weak = src_dir.join(format!("{stem}-weak.txt"));
 
     // ONLY paths that exist. A `rerun-if-changed` pointing at a missing
-    // file makes cargo treat this build script as stale on *every*
-    // invocation — and since every crate in the workspace depends on
-    // this one, everything downstream rebuilt too.
+    // file makes cargo treat this script as stale on every invocation —
+    // and every crate in the workspace depends on this one, so the whole
+    // workspace rebuilt. Four of the five names below are absent for
+    // nearly every language, which cost 128 s on a no-op run.
     //
-    // That is not a theoretical cost. Of the five names below, four are
-    // absent for nearly every language: the bulk lists ship as
-    // `<stem>.txt.gz`, so the plain `.txt` never exists, `-extras` only
-    // for en_us and `-weak` only for uk_ua. Fifteen languages × four
-    // absent names meant `cargo clippy` recompiled the whole workspace
-    // from scratch every single time. Measured before the fix: a
-    // no-op run — nothing changed at all — cost 128 s, exactly as much
-    // as a run after editing a file.
-    //
-    // Creation of one of these is still caught: the containing
-    // directory is declared by the caller, and cargo scans it.
+    // Creating one is still caught: the caller declares the containing
+    // directory, and cargo scans it.
     for path in [&txt_gz, &txt, &extras, &stop, &weak] {
         if path.exists() {
             println!("cargo:rerun-if-changed={}", path.display());
         }
     }
 
-    // Bulk wordlist source ships gzipped (uk_ua alone is 84 MB raw,
-    // ~10 MB gzipped). Plain `.txt` honoured as a fallback so a
-    // contributor inspecting a wordlist can `gunzip -k` and rebuild.
-    //
-    // Each entry is normalised twice in one pass: the lossy
-    // `letters_only_lower` shape for the membership FST (must match
-    // what the dictionary detector looks up) and the `surface_lower`
-    // shape for the suggestions FST, which keeps apostrophes and
-    // hyphens — a suggestion gets *typed into the user's text*, so
-    // `п'ять` must come out as `п'ять`, not `пять`.
+    // The bulk source ships gzipped (uk_ua is 84 MB raw, ~10 MB
+    // gzipped); plain `.txt` is honoured so a contributor can
+    // `gunzip -k` and rebuild. Each entry is normalised twice in one
+    // pass — the lossy `letters_only_lower` shape for the membership
+    // FST and `surface_lower` for the suggestions FST, which keeps
+    // apostrophes and hyphens because a suggestion is typed into the
+    // user's text.
     let (mut words, mut surface_words) = read_wordlist_both(&txt_gz);
     if words.is_empty() {
         (words, surface_words) = read_wordlist_both(&txt);
     }
     let (extras_words, extras_surface) = read_wordlist_both(&extras);
     let extras_count = extras_words.len();
-    // Carve out the 1- and 2-letter entries from the curated extras
-    // *before* they get folded into the bulk FST. The runtime
-    // short-token lookup deliberately skips the FST (the upstream
-    // `dwyl/english-words` corpus ships noise like `ws` / `ax` /
-    // `oe` / `ai` as 2-letter "words", which would block legitimate
-    // Cyrillic switches), so a 2-letter acronym sitting only in the
-    // FST is invisible to the short regime. The acronyms in
-    // `<stem>-extras.txt` are *our* curated list — no noise — so
-    // their short subset is safe to mirror into the short-stop
-    // file. Without this, typing `AI` under uk-UA renders `ФШ` and
-    // neither detector has any signal to switch on.
+    // Carve the 1- and 2-letter entries out of the curated extras
+    // *before* they fold into the bulk FST: the runtime short-token
+    // lookup skips the FST deliberately, so a 2-letter acronym living
+    // only there is invisible to it. These are our own curated list, so
+    // mirroring their short subset into the stop file is safe. Without
+    // it, `AI` under uk-UA renders `ФШ` and no detector has a signal.
     let short_extras: Vec<String> = extras_words
         .iter()
         .filter(|w| w.chars().count() <= 2)
@@ -278,15 +218,11 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
         builder.finish().expect("surface FST finish");
     }
 
-    // Compose the dist stop-words file: the source `<stem>-stop.txt`
-    // verbatim (including comments — the runtime parser ignores them)
-    // followed by the ≤2-letter extras carved out above. Writing the
-    // composite ourselves (instead of `fs::copy` + a sidecar file)
-    // keeps the runtime loader untouched: `read_stop_words` already
-    // reads `<stem>-stop.txt` and that's where the short extras now
-    // live. Missing source stop file → still emit a file containing
-    // just the short extras (or remove any stale dist copy if there
-    // are no short extras either).
+    // Compose the dist stop-words file: the source verbatim (comments
+    // included — the runtime parser ignores them) followed by the ≤2
+    // letter extras carved out above. Writing the composite here keeps
+    // the runtime loader untouched. With no source file, still emit one
+    // holding just the short extras, or remove a stale dist copy.
     let stop_dst = out_dir.join(format!("{stem}-stop.txt"));
     let source_stop_text = match fs::read_to_string(&stop) {
         Ok(s) => Some(s),
@@ -352,15 +288,13 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     }
 }
 
-/// Write the dist `<stem>-stop.txt` from the source stop file's text
-/// (preserved verbatim — comments and ordering survive) plus an
-/// auto-generated section appending the ≤2-letter entries from
-/// `<stem>-extras.txt`. Returns the count of unique short stop-words
-/// the runtime will load.
+/// Write the dist `<stem>-stop.txt`: the source stop file verbatim —
+/// comments and ordering survive — plus an auto-generated section with
+/// the ≤2-letter entries from `<stem>-extras.txt`. Returns how many
+/// unique short stop-words the runtime will load.
 ///
-/// Dedup happens against the words already present in `source_text`
-/// — we don't duplicate an acronym someone hand-added to the stop
-/// file even if the same token also lives in extras.
+/// Dedup is against `source_text`, so an acronym hand-added to the stop
+/// file is not duplicated when extras carries it too.
 fn write_stop_file(
     dst: &Path,
     source_text: Option<&str>,
@@ -413,11 +347,9 @@ fn write_stop_file(
     Ok(existing.len() + to_append.len())
 }
 
-/// Read one wordlist file into a deduped, lowercased Vec of words.
-///
-/// Honours both raw `<stem>.txt` and gzipped `<stem>.txt.gz` —
-/// dispatch is by file extension. File-not-found is silent (some
-/// languages ship without a `-extras` file, etc.); other I/O errors
+/// Read one wordlist file into a deduped, lowercased `Vec`, dispatching
+/// on extension between raw and gzipped. File-not-found is silent —
+/// most languages ship without a `-extras` file; other I/O errors
 /// surface as cargo warnings.
 fn read_wordlist(path: &Path) -> Vec<String> {
     let f = match File::open(path) {
@@ -458,11 +390,9 @@ fn read_wordlist(path: &Path) -> Vec<String> {
         .collect()
 }
 
-/// Like [`read_wordlist`], but produces both normalisations in one
-/// pass over the (potentially multi-million-line) source: the lossy
-/// membership shape and the surface shape for the suggestions FST.
-/// One pass matters — gunzipping uk_ua twice would double the
-/// slowest step of this script for no reason.
+/// Like [`read_wordlist`], but produces both normalisations in one pass
+/// over a potentially multi-million-line source. One pass matters:
+/// gunzipping uk_ua twice would double the slowest step of this script.
 fn read_wordlist_both(path: &Path) -> (Vec<String>, Vec<String>) {
     let f = match File::open(path) {
         Ok(f) => f,
@@ -501,12 +431,10 @@ fn read_wordlist_both(path: &Path) -> (Vec<String>, Vec<String>) {
     (letters, surface)
 }
 
-/// Mirror of `poltertype_detect::letters_only_lower`. Duplicated here because
-/// build scripts can't depend on workspace crates without inflating
-/// build-time deps; the runtime dictionary lookup canonicalises typed
-/// tokens the same way, so the FST + overlay must be built against
-/// the same shape (no hyphens / apostrophes / digits — pure
-/// lowercase letters). Keep the two in sync.
+/// Mirror of `poltertype_detect::letters_only_lower`, duplicated because
+/// build scripts cannot depend on workspace crates without inflating
+/// build-time deps. The FST and the runtime lookup must be built
+/// against the same shape — keep the two in sync.
 fn letters_only_lower(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -519,11 +447,10 @@ fn letters_only_lower(s: &str) -> String {
     out
 }
 
-/// Mirror of `poltertype_detect::surface_lower` (suggestions
-/// normalisation): lowercase, keep letters plus apostrophes and
-/// hyphens, fold the apostrophe variants (`’`, `ʼ`) to `'`. Keep the
-/// two in sync — the suggester queries the surface FST with tokens
-/// canonicalised by the runtime twin of this function.
+/// Mirror of `poltertype_detect::surface_lower`: lowercase, keep letters
+/// plus apostrophes and hyphens, fold `’` and `ʼ` to `'`. Keep the two
+/// in sync — the suggester queries this FST with tokens canonicalised
+/// by the runtime twin.
 fn surface_lower(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {

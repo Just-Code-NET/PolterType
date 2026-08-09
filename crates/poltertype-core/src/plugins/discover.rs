@@ -1,32 +1,22 @@
 //! Finding plug-ins: the installed ones, plus whatever a developer is
-//! working on.
-//!
-//! There are three sources, in order of precedence:
+//! working on. Three sources, in order of precedence:
 //!
 //! 1. **Installed** — `<data_dir>/plugins/<id>/`, put there by
-//!    [`super::install`]. This is what a user has.
-//! 2. **`POLTERTYPE_PLUGIN_PATH`** — a `PATH`-style list of plug-in
-//!    directories, honoured in every build. An explicit, visible way
-//!    to run a plug-in that has not been installed, without pretending
-//!    a debug build is the only place anyone tests.
+//!    [`super::install`].
+//! 2. **`POLTERTYPE_PLUGIN_PATH`** — a `PATH`-style list, honoured in
+//!    every build. An explicit, visible way to run an uninstalled
+//!    plug-in.
 //! 3. **Sibling checkouts, debug builds only** — the directories next
-//!    to this repository. Working on a plug-in means `cargo run -p
-//!    poltertype-app` should just find it; asking a developer to
-//!    install their own working copy after every build is a step that
-//!    exists only to be forgotten.
+//!    to this repository, so `cargo run` finds a plug-in being worked
+//!    on. `debug_assertions`-only on purpose: it is the one source that
+//!    runs a program nobody explicitly pointed at, and "a directory
+//!    happened to be next to the checkout" is nowhere near reason
+//!    enough to do that in something a user installed.
 //!
-//! Source 3 is `debug_assertions`-only on purpose. It is the one that
-//! runs a program nobody explicitly pointed at, and "a directory
-//! happened to be next to the checkout" is nowhere near a good enough
-//! reason to do that in something a user installed.
-//!
-//! ## Where a developer's binary actually is
-//!
-//! An installed plug-in keeps its program in `bin/`. A checkout has it
-//! in `target/debug/` or `target/release/`, because that is where
-//! Cargo puts it. [`resolve_exe`] looks in all three, newest first
-//! among the build directories, so a rebuild is picked up without
-//! copying anything into place.
+//! An installed plug-in keeps its program in `bin/`; a checkout has it
+//! in `target/debug/` or `target/release/`. [`resolve_exe`] looks in
+//! all three, newest first among the build directories, so a rebuild is
+//! picked up without copying anything.
 
 use std::path::{Path, PathBuf};
 
@@ -139,18 +129,16 @@ pub fn load(dir: &Path) -> Result<Option<DiscoveredExtension>, PluginError> {
 ///
 /// A manifest names its program with **no extension**, and
 /// [`check_extension`](super::validate::check_extension) refuses
-/// anything that is not a plain file name — both so that one manifest
+/// anything that is not a plain file name, so that one manifest
 /// describes a plug-in on all three platforms. Windows is where that
-/// promise has to be kept rather than assumed: Cargo (and every other
-/// toolchain) writes `foo.exe`, so the bare `foo` a portable manifest
-/// declares never names a file that exists, and every extension was
-/// invisible there.
+/// promise has to be kept rather than assumed: Cargo writes `foo.exe`,
+/// so the bare `foo` a portable manifest declares named no file that
+/// existed and every extension was invisible there.
 ///
-/// The suffix is read from `std::env::consts::EXE_SUFFIX` — a runtime
+/// The suffix comes from `std::env::consts::EXE_SUFFIX` — a runtime
 /// constant, not a `cfg` — so this crate keeps its zero platform
-/// conditionals. It is empty on Unix, where the second candidate would
-/// just be the first one again, so it is only ever tried where it
-/// differs.
+/// conditionals. It is empty on Unix, so the second candidate is only
+/// ever tried where it differs.
 pub(crate) fn exe_in(dir: &Path, name: &str) -> Option<PathBuf> {
     let plain = dir.join(name);
     if plain.is_file() {

@@ -1,75 +1,10 @@
-//! Iced-based Settings window for poltertype.
+//! Iced-based Settings window, run as its own process
+//! (`poltertype --settings`) because the tray already owns the
+//! platform main thread on macOS. The two share nothing but
+//! `config.toml`; the named pane is the whole protocol between them.
 //!
-//! ## Why a separate process
-//!
-//! The tray (`tao::EventLoop` + `tray-icon`) and `iced` both want to
-//! own the platform's main thread on macOS — `NSApplication` is a
-//! singleton and the tray already binds it. Rather than choreograph
-//! a thread swap, we ship the Settings UI as a CLI subcommand:
-//!
-//!     poltertype --settings
-//!
-//! The tray spawns this as a child process when the user clicks
-//! "Settings…". The two have nothing to share at runtime — the
-//! settings UI just reads / writes `config.toml` on disk; when it
-//! exits, the tray sees `SettingsReloaded` and refreshes its caches.
-//!
-//! The subprocess approach is not just a workaround:
-//!
-//! * Crashes in the UI never bring down the engine / hook.
-//! * macOS / Windows / Linux behave identically — no per-platform
-//!   thread juggling.
-//! * The process boundary makes it trivial to run the UI on a
-//!   different thread, in a debugger, or from a unit test driver.
-//!
-//! ## Sections
-//!
-//! Side-nav panes:
-//!
-//! * **Languages** — checkboxes for every layout the OS reports as
-//!   active (queried via `LayoutSwitcher::list_active`). Toggling a
-//!   box updates the `[languages].active` allow-list. An **empty**
-//!   allow-list means "use every OS-active layout" — the default,
-//!   and the UI displays it that way (every box ticked).
-//! * **Hotkeys** — current pause / switch-last bindings, plus a
-//!   "Rebind" button per row that flips the UI into capture mode
-//!   and writes the next valid `<modifier>+<key>` combo back.
-//! * **Commands** — the `[[commands]]` snippet triggers: one row per
-//!   existing command with a delete button, plus a validated "add a
-//!   new command" form (name, trigger, action kind, param, optional
-//!   apps filter).
-//! * **Wordlists** — multiline editor for the user-side wordlist
-//!   overlays in `<config-dir>/poltertype/wordlists/<stem>.txt`
-//!   (and `<stem>-stop.txt`). Pick a layout, pick the file kind,
-//!   edit, then either click the unified footer Save or just
-//!   close the window — both trigger a flush of any unsaved
-//!   editor content. The tray's settings-waiter rebuilds the
-//!   engine's dictionary set (and the per-profile cache) before
-//!   sending `SettingsReloaded`, so edits apply without a tray
-//!   restart.
-//! * **General** — the boolean / numeric knobs from
-//!   `GeneralSettings` + `EngineSettings`: autostart, sound on
-//!   correction, suppress-in-identifiers, idle timeout — plus the
-//!   window's colour theme (`[general].ui_theme`: system / light /
-//!   dark, applied instantly, persisted on Save).
-//! * **Exceptions** — the per-app skip list (`disabled_apps`). One
-//!   row per entry with a delete button; an "Add" row at the bottom
-//!   for new entries.
-//! * **Suggestions** — the `[suggestions]` typo-tooltip knobs:
-//!   master switch, max entries (1–9), tooltip timeout, and the
-//!   keyboard-accept modifier chord (with an inline warning when the
-//!   string would leave keyboard accept disabled).
-//! * **About** — version + links to poltertype.com / the repo / the
-//!   issue tracker (opened in the browser). The bottom row also
-//!   exposes a "Reset to defaults" button as a power-user escape
-//!   hatch.
-//!
-//! ## Branding
-//!
-//! The window carries the product's visual identity — see [`theme`]
-//! for the palettes (ported from the landing page's design tokens)
-//! and the GhostMark logo. Light and dark variants both exist; the
-//! default follows the OS.
+//! See `docs/ARCHITECTURE.md` § Settings UI for the reasoning and for
+//! the three ordering constraints this module has to respect.
 
 mod consts;
 mod enums;
@@ -95,14 +30,11 @@ use tracing::warn;
 
 use state::*;
 
-/// Entry point: load settings + OS layouts, run iced loop, save on
-/// "Save" click. Returns when the user closes the window.
+/// Entry point: load settings + OS layouts, run the iced loop, save on
+/// "Save". Returns when the user closes the window.
 ///
-/// `open_setup` starts the window on the **Setup** pane instead of
-/// Languages. The tray passes it when the keyboard hooks failed to
-/// start: at that moment every other pane is furniture, and making the
-/// user find the right one is exactly the friction this pane exists to
-/// remove.
+/// `open_setup` starts on the **Setup** pane instead of Languages —
+/// what the tray passes when the keyboard hooks failed to start.
 pub fn run(open_setup: bool) -> Result<()> {
     run_on(if open_setup {
         enums::Pane::Setup
@@ -112,16 +44,13 @@ pub fn run(open_setup: bool) -> Result<()> {
 }
 
 /// Open the window on a named pane. `--setup` and `--plugins` both
-/// come through here; the flag is the entire protocol between the two
-/// processes.
+/// come through here.
 pub fn run_on(initial: enums::Pane) -> Result<()> {
     let store = SettingsStore::load_or_default().context("load settings for UI")?;
     let initial_settings = store.snapshot();
 
-    // Before any widget exists: `tr` is called from the view function,
-    // which runs on every frame, so the catalog has to be in place
-    // first. Failing to find one is not an error — the interface is
-    // written in English at every call site and simply stays that way.
+    // Must precede the first widget: `tr` runs from the view function,
+    // on every frame. No catalog is not an error — English call sites.
     match poltertype_core::data_dir::resolve() {
         Ok(dir) => poltertype_core::i18n::init(&dir, Some(&initial_settings.general.ui_language)),
         Err(e) => warn!(?e, "no data dir; the interface stays in English"),
@@ -129,17 +58,9 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
 
     let store = Arc::new(store);
 
-    // Querying the OS layout list is best-effort — if it fails we
-    // present the user with an empty set and a hint, rather than
-    // refusing to open the window. They can still edit other panes
-    // and save.
-    //
-    // The same probe answers a second question the Setup pane asks:
-    // whether a layout switcher exists at all. Hooks working and
-    // switching missing is its own failure — corrections then rewrite
-    // the word into the layout that was already wrong — and it
-    // deserves to be said out loud rather than inferred from an app
-    // that behaves oddly.
+    // Best-effort: a failure yields an empty set and a hint rather
+    // than refusing to open the window. The same probe tells the Setup
+    // pane whether a layout switcher exists at all.
     let (os_layouts, layout_backend): (Vec<LayoutId>, Option<String>) = match create_switcher() {
         Ok(switcher) => {
             let backend = switcher.backend_name().to_owned();
@@ -163,29 +84,15 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
 
     let path = store.path().to_path_buf();
 
-    // iced::application requires `&'static str` OR a closure returning
-    // `String` for the title. The closure form lets us include the
-    // resolved config path so the user sees exactly which file the
-    // window is editing — useful when running multiple installs side
-    // by side or under a non-default `XDG_CONFIG_HOME`.
-    // `exit_on_close_request(false)` lets us intercept the
-    // window-close request, flush any unsaved wordlist edit to
-    // disk, then close manually. Without this, a user who typed a
-    // word in the Wordlists pane and clicked the window's close
-    // button (instead of the per-pane Save) would lose the edit
-    // silently — the bug report that prompted this fix.
+    // `exit_on_close_request(false)` is load-bearing: the window
+    // intercepts the close request to flush an unsaved wordlist edit
+    // before closing. See `docs/ARCHITECTURE.md` § Settings UI.
     let app = iced::application(SettingsApp::title, SettingsApp::update, SettingsApp::view)
         .theme(SettingsApp::theme)
         .subscription(SettingsApp::subscription)
         .exit_on_close_request(false)
-        // Window size was 720x540 in beta.11 and earlier — too cramped
-        // for the Commands and Wordlists panes (Commands has a 6-row
-        // add-form plus the existing list, Wordlists has a 240px-tall
-        // editor + 3 picker rows + a path-hint line + tip). Bumped
-        // to 820x640 so the default render fit without scrolling on a
-        // standard 1080p screen, then to 860x680 when the branded
-        // restyle wrapped pane content in padded cards. Still small
-        // enough to feel like a settings dialog, not a main window.
+        // Sized so Commands and Wordlists render without scrolling on
+        // 1080p; anything smaller clips their forms.
         .window_size((860.0, 680.0))
         .centered();
 
@@ -199,13 +106,8 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
             initial,
             layout_backend,
         );
-        // Controls that have to ask the plug-in are kicked off when the
-        // pane is *selected* — which never happens for the pane the
-        // window opens on. `poltertype --plugins` and the tray's own
-        // entry both land here directly, and without this the report
-        // and the list sit at "Asking the plug-in…" for ever. Seen on
-        // the first screenshot of the finished pane, which is exactly
-        // what screenshots are for.
+        // The pane the window opens on never fires its selection
+        // handler, so its plug-in queries start here or never.
         let first = app.startup_task();
         (app, first)
     })

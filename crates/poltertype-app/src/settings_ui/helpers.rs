@@ -55,21 +55,14 @@ pub fn banner_for_auto_save(outcome: WordlistFlushOutcome) -> Option<SaveBanner>
     }
 }
 
-/// Validate the "Add command" form and produce a [`UserCommand`]
-/// ready to push into `settings.commands`. Returns `Err(message)`
-/// describing the first failed check — message is shown to the user
-/// in the Commands pane's status banner so they know what to fix.
+/// Validate the "Add command" form and produce a [`UserCommand`] ready
+/// to push into `settings.commands`. `Err(message)` describes the first
+/// failed check and is shown in the Commands pane's status banner.
 ///
-/// Validation:
-///
-/// * Trigger is non-empty and contains no whitespace (the buffer
-///   resets at every word boundary so a multi-token trigger could
-///   never match).
-/// * Param is non-empty (every action variant needs payload —
-///   "type empty text" / "switch to ''" / "open ''" all wrong).
-/// * For `SwitchLayout`, the layout id matches the loose BCP-47
-///   shape we already accept elsewhere (`xx-XX[-VARIANT...]`).
-/// * Generated id is unique against existing `settings.commands`.
+/// The trigger must be non-empty and whitespace-free (the buffer resets
+/// at every word boundary, so a multi-token trigger could never match),
+/// the param non-empty, a `SwitchLayout` id must match the loose BCP-47
+/// shape accepted elsewhere, and the generated id must be unique.
 pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String> {
     let trigger = app.command_draft_trigger.trim().to_owned();
     if trigger.is_empty() {
@@ -225,14 +218,13 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
     format!("{display_name} — {action_blurb}{apps_blurb}")
 }
 
-/// Map a [`LayoutId`] (`en-US`, `uk-UA`, `kk-Cyrl-KZ`, …) to the
-/// on-disk overlay-file *stem* (`en_us`, `uk_ua`, `kk_cyrl_kz`).
+/// Map a [`LayoutId`] (`en-US`, `kk-Cyrl-KZ`) to the on-disk overlay
+/// file *stem* (`en_us`, `kk_cyrl_kz`).
 ///
 /// The convention matches both the bundled `data/wordlists/<stem>.fst`
-/// names and the loader's `<config-dir>/poltertype/wordlists/<stem>.txt`
-/// path resolution — keeping them in lock-step is what lets the user
-/// add overlay words from the GUI and have the engine pick them up
-/// without any additional book-keeping.
+/// names and the loader's overlay path resolution; keeping them in
+/// lock-step is what lets a word added from the GUI be picked up with
+/// no extra book-keeping.
 pub fn layout_id_to_stem(id: &LayoutId) -> String {
     id.as_str().to_lowercase().replace('-', "_")
 }

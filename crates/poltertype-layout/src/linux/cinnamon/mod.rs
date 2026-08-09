@@ -1,48 +1,38 @@
 //! Cinnamon layout switcher.
 //!
-//! Cinnamon needs a backend of its own because it looks like GNOME
-//! from the outside and behaves like nothing else from the inside. It
-//! ships `org.gnome.desktop.input-sources` (the schema comes with the
-//! shared GTK stack) and populates it, so the gsettings backend used
-//! to claim the session on sight — and then every `gsettings set …
-//! current` we wrote went into dconf and no further. The layout never
-//! moved, the applet never moved, and the next `current()` read our
+//! Cinnamon needs its own backend because it looks like GNOME from the
+//! outside and behaves like nothing else inside. It ships and populates
+//! `org.gnome.desktop.input-sources`, so the gsettings backend claimed
+//! the session on sight — and every write went into dconf and no
+//! further. The layout never moved, and the next `current()` read our
 //! own write back and told the engine the switch had happened, so
-//! corrections stopped firing altogether. Reported from Linux Mint 22
+//! corrections stopped firing altogether
 //! ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
 //!
-//! Cinnamon does keep a fork of that schema —
-//! `org.cinnamon.desktop.input-sources` — but only its `sources` key
-//! is live. The schema also declares `current`, and nothing in
-//! Cinnamon reads or writes it; the active source is in-memory state
-//! of `InputSourceManager`. So neither schema is a way in, and the
-//! two real ways in are version-dependent:
+//! Its own fork of the schema is no better: only `sources` is live, and
+//! nothing in Cinnamon reads or writes the `current` key it also
+//! declares — the active source is in-memory state of
+//! `InputSourceManager`. So the two real ways in are version-dependent:
 //!
-//! * **Cinnamon 6.6+** exposes the input sources on the session bus:
-//!   `org.Cinnamon.GetInputSources()` and
-//!   `org.Cinnamon.ActivateInputSourceIndex(i)`. That is the same
-//!   entry point the keyboard applet uses, so the indicator follows.
-//! * **Cinnamon 6.4 and older** (Linux Mint 22.x) has no such API.
-//!   There the applet drives `XAppKbdLayoutController`, which is
-//!   libgnomekbd's `gkbd_configuration_lock_group()`, which is plain
-//!   `XkbLockGroup`. Layouts are ordinary XKB groups, and the
-//!   controller listens for group changes, so locking a group both
-//!   switches the keyboard and updates the indicator. That is exactly
-//!   what our X11 backend does — it is simply probed last, for
-//!   sessions where no desktop owns the layout, and Cinnamon has to
-//!   route to it explicitly.
+//! * **6.6+** exposes `org.Cinnamon.GetInputSources()` and
+//!   `ActivateInputSourceIndex(i)` on the session bus — the same entry
+//!   point the keyboard applet uses, so the indicator follows.
+//! * **6.4 and older** has no such API. There the applet drives
+//!   `XAppKbdLayoutController`, which is libgnomekbd's
+//!   `gkbd_configuration_lock_group()`, which is plain `XkbLockGroup`.
+//!   Layouts are ordinary XKB groups and the controller listens for
+//!   group changes, so locking one both switches the keyboard and
+//!   updates the indicator — exactly what our X11 backend does, which
+//!   is why this routes there explicitly rather than by falling through.
 //!
-//! Which of the two applies is decided by *asking*, not by parsing a
-//! version string: if `GetInputSources` answers, this is 6.6+.
+//! Which applies is decided by *asking*: if `GetInputSources` answers,
+//! this is 6.6+.
 //!
-//! IBus is a red herring here even though Cinnamon sets
-//! `GTK_IM_MODULE=ibus`. Cinnamon activates an IBus engine on every
-//! switch, but only so XIM clients keep working — the engines it
-//! picks are the `xkb:…` ones, and, in the words of the comment above
-//! the call in Cinnamon's own `keyboardManager.js`, those "simply
-//! 'echo' back symbols, despite their naming implying differently".
-//! Driving `ibus engine` here would be a second write that changes no
-//! layout.
+//! IBus is a red herring despite `GTK_IM_MODULE=ibus`. Cinnamon
+//! activates an IBus engine on every switch only so XIM clients keep
+//! working, and the engines it picks are the `xkb:…` ones which, in the
+//! words of Cinnamon's own `keyboardManager.js`, "simply 'echo' back
+//! symbols, despite their naming implying differently".
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 

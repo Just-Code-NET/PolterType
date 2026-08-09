@@ -1,11 +1,10 @@
 //! Turning a question into a request body, and a response into an
 //! answer, for each supported endpoint shape.
 //!
-//! Kept free of any HTTP type on purpose: the bodies are plain
-//! strings, so the whole request/response contract is unit-testable on
-//! every host, including the ones where the `remote` cargo feature is
-//! off and `reqwest` is not even compiled. The only thing the
-//! transport adds is sending the bytes.
+//! Free of any HTTP type on purpose: the bodies are plain strings, so
+//! the whole contract is unit-testable on every host, including those
+//! where the `remote` feature is off and `reqwest` is not compiled at
+//! all. The transport only sends the bytes.
 
 use crate::consts::{ANTHROPIC_VERSION, SYSTEM_PROMPT};
 use crate::enums::WireFormat;
@@ -143,13 +142,12 @@ fn read_json_string(s: &str) -> Option<String> {
 }
 
 /// Interpret the model's reply as a 1-based index into the candidate
-/// list, or `None` for "none of them" / anything unparseable.
+/// list, or `None` for "none of them" and anything unparseable.
 ///
-/// Tolerant of the ways a model garnishes a number — surrounding
-/// whitespace, a trailing period, a wrapping quote — and strict about
+/// Tolerant of the ways a model garnishes a number, and strict about
 /// the result: the first run of digits must name a candidate that
-/// exists. Everything else is no opinion, which is the safe answer on
-/// the correction path.
+/// exists. Everything else is no opinion, the safe answer on the
+/// correction path.
 pub fn parse_choice(reply: &str, candidate_count: usize) -> Option<usize> {
     let trimmed = reply.trim();
     let chars: Vec<char> = trimmed.chars().collect();

@@ -13,34 +13,25 @@ use crate::bridges::spawn_error_notification;
 use crate::detectors::*;
 use crate::types::*;
 
-/// Spawn the Settings GUI as a child process (`poltertype
-/// --settings`) and refresh the engine when the window closes.
-/// Subprocess instead of in-process for the macOS main-thread
-/// reason documented at the top of `settings_ui/mod.rs`.
+/// Spawn the Settings GUI as a child process (`poltertype --settings`)
+/// and refresh the engine when the window closes. Subprocess rather
+/// than in-process for the reason in `docs/ARCHITECTURE.md`.
 ///
-/// What "refresh" means in practice — we run all three on close so
-/// every kind of edit the user could have made via the GUI takes
-/// effect by the time the focus returns to their app:
+/// All three refreshes run on close, so every kind of edit takes effect
+/// before focus returns to the user's app:
 ///
-/// 1. **`config.toml` reload** — picks up `[[commands]]` text-trigger
-///    entries, hotkey rebindings, exception list edits, profile
-///    schema changes.
-/// 2. **Global wordlist reload** — `<config-dir>/wordlists/<stem>.txt`
-///    re-read; the engine's dictionary set swapped via
-///    `DictionaryDetector::replace_dicts` (same primitive the tray
-///    "Reload Settings" entry uses).
-/// 3. **Per-profile wordlist cache rebuild + force-reapply** — the
-///    profile dictionary cache is rebuilt from disk, and we set the
-///    watcher's `force_reapply` flag so the *currently active*
-///    profile's freshly-loaded dicts get re-applied on the next tick
-///    (~250 ms). Without this, the watcher only swaps on profile
-///    transitions, so a user editing words while focused on a
-///    profiled app would see no effect until they alt-tabbed away
-///    and back.
+/// 1. **`config.toml` reload** — text triggers, hotkey rebindings,
+///    exception list, profile schema.
+/// 2. **Global wordlist reload** — re-read and swapped through
+///    `DictionaryDetector::replace_dicts`.
+/// 3. **Per-profile cache rebuild + force-reapply** — the watcher
+///    otherwise only swaps on profile transitions, so a user editing
+///    words while focused on a profiled app would see no effect until
+///    they alt-tabbed away and back.
 ///
-/// If we can't spawn at all we tell the user so with a notification
-/// rather than only a log line: the click produced no window, and a
-/// tray app has nowhere else to put an error.
+/// A failure to spawn gets a notification, not just a log line: the
+/// click produced no window, and a tray app has nowhere else to put an
+/// error.
 pub(crate) fn spawn_settings_ui(deps: SettingsCloseDeps) {
     spawn_settings_ui_on(deps, SettingsEntry::Normal)
 }
@@ -144,11 +135,10 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
 /// nothing launchable — in which case the user has already been told.
 ///
 /// The interesting case is a tray that has outlived its own binary: a
-/// dev rebuild or an in-place package upgrade unlinks the file we were
-/// started from, and from then on `current_exe()` reports
-/// `/path/poltertype (deleted)` — a path that cannot be spawned. Before
-/// this, every "Settings…" click on such a tray failed with `ENOENT`
-/// and did nothing visible, forever.
+/// dev rebuild or an in-place upgrade unlinks the file we started from,
+/// and `current_exe()` then reports `/path/poltertype (deleted)`, which
+/// cannot be spawned. Before this, every "Settings…" click on such a
+/// tray failed with `ENOENT` and did nothing visible, for ever.
 fn settings_ui_exe() -> Option<PathBuf> {
     let restart = format!(
         "Restart {app} to open Settings.",

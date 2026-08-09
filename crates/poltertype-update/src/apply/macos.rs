@@ -50,19 +50,15 @@ pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<(), Updat
 
     // `ditto` rather than `cp -R`: it is Apple's own bundle-aware copy
     // and preserves resource forks, extended attributes and code-sign
-    // metadata. `cp` mangles bundles in ways that only show up later,
-    // as a launch failure with no useful error.
+    // metadata, which `cp` mangles in ways that surface later as a
+    // launch failure with no useful error.
     //
-    // The quarantine flag has to come off the *installed* copy. The DMG
-    // was downloaded, so LaunchServices marked it quarantined, and that
-    // flag is inherited by everything ditto'd out of it. Left in place,
-    // it means the user gets "PolterType cannot be opened because the
-    // developer cannot be verified" — for a build they already trusted
-    // and are merely updating. We strip it for the same reason the
-    // release notes tell first-time users to strip it by hand: the app
-    // is unsigned (no Developer ID yet — see `docs/PLAN.md` Phase 9),
-    // and Gatekeeper has nothing else to go on. Once we ship signed and
-    // notarised builds, this line goes away.
+    // The quarantine flag has to come off the *installed* copy: the DMG
+    // was downloaded, so everything ditto'd out of it inherits the
+    // flag, and the user would meet "cannot be opened because the
+    // developer cannot be verified" for a build they already trusted.
+    // Defensible only while the app is unsigned — this line goes away
+    // the day we ship notarised builds.
     let body = format!(
         "#!/bin/sh\n\
          # Written by PolterType {version} to install update {new_version}.\n\

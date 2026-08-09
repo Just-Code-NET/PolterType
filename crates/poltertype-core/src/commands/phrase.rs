@@ -1,30 +1,20 @@
 //! Recent-word history, for triggers made of more than one token.
 //!
-//! A trigger used to be one word, because the word buffer resets at
-//! every boundary and there was nothing to match a phrase against.
-//! `best regards ` needs the engine to remember that `best` came
-//! immediately before `regards`, so this is that memory — and
-//! deliberately the smallest one that does the job.
+//! The word buffer resets at every boundary, so `best regards ` needs
+//! the engine to remember that `best` came immediately before
+//! `regards`. This is that memory, and deliberately the smallest one
+//! that does the job.
 //!
-//! ## Why it is this small
+//! Keeping what the user typed is exactly what the rest of this project
+//! works to avoid, so the history is bounded on three axes at once:
+//! **length** ([`MAX_HISTORY_WORDS`]), **time** ([`clear`] runs on the
+//! same idle timeout that clears the word buffer), and **context**
+//! (cleared on focus change, so words typed in one application cannot
+//! form a phrase with words typed in another).
 //!
-//! Keeping what the user typed is exactly what the rest of this
-//! project works to avoid: the word buffer is RAM-only and
-//! short-lived, and nothing is ever written to disk or a log. A word
-//! history makes that memory *longer*, so it is bounded on three
-//! axes at once:
-//!
-//! * **Length** — [`MAX_HISTORY_WORDS`] entries. Enough for the
-//!   longest trigger anyone reasonably writes, and no more.
-//! * **Time** — [`clear`] is called on the same idle timeout that
-//!   already clears the word buffer, so a machine left alone is not
-//!   holding a sentence.
-//! * **Context** — cleared when focus changes, so words typed in one
-//!   application cannot form a phrase with words typed in another.
-//!
-//! It also never leaves this process, is never logged (every debug
-//! line about it goes through `redact_word`), and holds only words
-//! that ended at a boundary — never the one being typed now.
+//! It never leaves this process, is never logged — every debug line
+//! goes through `redact_word` — and holds only words that ended at a
+//! boundary, never the one being typed now.
 
 use super::UserCommand;
 
@@ -51,15 +41,14 @@ pub struct WordHistory {
 }
 
 impl WordHistory {
-    /// Record a completed word typed in `context`, dropping the
-    /// oldest when full.
+    /// Record a completed word typed in `context`, dropping the oldest
+    /// when full.
     ///
-    /// A different `context` than last time clears the history first:
-    /// half a trigger typed in one window must not combine with a
-    /// word typed in another. An unknown context (`None` — every
-    /// platform where focus tracking does not answer) is treated as
-    /// its own single context, which keeps the feature working there
-    /// rather than disabling it on a technicality.
+    /// A different `context` clears the history first: half a trigger
+    /// typed in one window must not combine with a word from another.
+    /// An unknown context (`None`, wherever focus tracking does not
+    /// answer) is its own single context, which keeps the feature
+    /// working there rather than disabling it on a technicality.
     pub fn push_in(&mut self, context: Option<&str>, word: &str) {
         if self.context.as_deref() != context {
             self.words.clear();
@@ -109,17 +98,13 @@ pub fn trigger_tokens(trigger: &str) -> Vec<&str> {
     trigger.split_whitespace().collect()
 }
 
-/// Does `cmd`'s trigger match the word just completed, given what
-/// came before it?
+/// Does `cmd`'s trigger match the word just completed, given what came
+/// before it? A single-token trigger compares against `current_word`; a
+/// multi-token one additionally requires its earlier tokens to be the
+/// immediately preceding words, in order.
 ///
-/// A single-token trigger is the old behaviour exactly: compare
-/// against `current_word`. A multi-token trigger additionally
-/// requires its earlier tokens to be the immediately preceding
-/// words, in order.
-///
-/// Case-sensitive, like single-token matching always was — users pick
-/// triggers that do not collide with prose, and a case-insensitive
-/// `best regards` would fire on an ordinary sign-off.
+/// Case-sensitive, as single-token matching always was — a
+/// case-insensitive `best regards` would fire on an ordinary sign-off.
 pub fn phrase_matches(cmd: &UserCommand, history: &WordHistory, current_word: &str) -> bool {
     let tokens = trigger_tokens(&cmd.trigger);
     let Some((last, earlier)) = tokens.split_last() else {
@@ -143,12 +128,10 @@ pub fn phrase_matches(cmd: &UserCommand, history: &WordHistory, current_word: &s
             .all(|(had, want)| had.as_str() == *want)
 }
 
-/// How many on-screen characters a fired command has to erase.
-///
-/// For a single-token trigger this is the buffered keys plus the
-/// boundary the user just typed — what the engine already counted.
-/// A multi-token trigger also has to take back the earlier words and
-/// the separator after each, or half the phrase is left on screen.
+/// How many on-screen characters a fired command has to erase: the
+/// buffered keys plus the boundary, and for a multi-token trigger the
+/// earlier words and the separator after each, or half the phrase is
+/// left on screen.
 ///
 /// Counts **characters**, because that is what the screen shows and
 /// what a backspace removes.

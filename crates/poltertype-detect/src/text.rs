@@ -1,19 +1,15 @@
 //! Token-shape helpers: canonicalisation and "is this even
 //! prose?" guards shared by detectors and the engine.
 
-/// Strip every non-letter character from `s` and return a lowercase
-/// `String`. "Letter" here is `char::is_alphabetic`, so digits / `'` /
-/// `-` / spaces / punctuation are all dropped — the function is
-/// designed to feed clean tokens into a Hunspell-derived dictionary,
-/// which only contains pure-letter entries.
+/// Strip every non-letter character from `s` and lowercase it. "Letter"
+/// is `char::is_alphabetic`, so digits, `'`, `-`, spaces and
+/// punctuation all go — the output feeds a Hunspell-derived dictionary
+/// that holds only pure-letter entries.
 ///
-/// The motivating case: with the cross-layout-letter buffer hint, a
-/// buffer can contain a scancode whose *current* layout renders as
-/// punctuation but whose *alt* layout is a letter (0x27 → `;` in
-/// en-US, `ж` in uk-UA). The current-render then has stray `;`s
-/// mid-string and would never hit a dictionary entry. Stripping
-/// before lookup keeps the detector honest: if the *letter*
-/// substring is a real word, the verdict reflects that.
+/// A buffer can hold a scancode rendering as punctuation in the current
+/// layout and a letter in the alt one (0x27 → `;` in en-US, `ж` in
+/// uk-UA), so the current render carries stray `;`s and would never hit
+/// an entry. Stripping first keeps the detector honest.
 pub fn letters_only_lower(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -26,19 +22,16 @@ pub fn letters_only_lower(s: &str) -> String {
     out
 }
 
-/// Count of characters in `s` that cannot be part of a word in ANY
-/// layout: not alphabetic and not one of the marks real words carry
-/// inside them (the apostrophe variants and the hyphen — the same
-/// set [`surface_lower`] preserves; keep the two in sync).
+/// Count of characters that cannot be part of a word in ANY layout:
+/// not alphabetic, and not one of the marks real words carry inside
+/// them (apostrophe variants and the hyphen — the same set
+/// [`surface_lower`] preserves; keep the two in sync).
 ///
-/// The motivating case is the cross-layout artifact. Scancode 0x27
-/// renders as `;` under en-US but `ñ` under es-ES (and `ж` under
-/// uk-UA), so a user typing `mañana` with the wrong layout active
-/// produces the current-render `ma;ana`. Its letters-only skeleton
-/// `maana` happens to be an embedded-dictionary entry — and a real
-/// prose word never carries a `;` mid-token — so detectors use this
-/// count to tell "the user really typed this word" apart from "the
-/// letters between the punctuation coincidentally spell one".
+/// The cross-layout artifact is what this measures. `mañana` typed with
+/// en-US active renders `ma;ana`, whose letters-only skeleton `maana`
+/// happens to be a dictionary entry — but real prose never carries a
+/// `;` mid-token, so this count separates "the user typed this word"
+/// from "the letters between the punctuation coincidentally spell one".
 pub fn non_word_char_count(s: &str) -> usize {
     s.chars()
         .filter(|c| !c.is_alphabetic() && !matches!(c, '\'' | '’' | 'ʼ' | '-'))
@@ -46,15 +39,13 @@ pub fn non_word_char_count(s: &str) -> usize {
 }
 
 /// Suggestions-side canonicalisation: lowercase, keep letters plus
-/// apostrophes and hyphens, fold the apostrophe variants (`’` U+2019,
-/// `ʼ` U+02BC) to `'`. Everything else is dropped.
+/// apostrophes and hyphens, fold `’` and `ʼ` to `'`, drop the rest.
 ///
-/// [`letters_only_lower`] is deliberately lossy — membership lookup
-/// doesn't care that `п'ять` lost its apostrophe. A *suggestion* does:
-/// it gets typed back into the user's text, so the surface FST (built
-/// by `poltertype-core/build.rs` with a mirror of this function — keep
-/// the two in sync) stores `п'ять` verbatim, and queries against it
-/// must canonicalise the same way.
+/// [`letters_only_lower`] is deliberately lossy — membership lookup does
+/// not care that `п'ять` lost its apostrophe. A *suggestion* does: it
+/// gets typed back into the user's text. The surface FST is built by
+/// `poltertype-core/build.rs` with a mirror of this function, so keep
+/// the two in sync.
 pub fn surface_lower(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
@@ -74,41 +65,22 @@ pub fn surface_lower(s: &str) -> String {
     out
 }
 
-/// Heuristic: does `text` look like a programming-language identifier
-/// rather than natural-language prose? When this returns `true`, the
-/// engine suppresses *automatic* layout-switching for that buffer —
-/// it would be far more annoying to corrupt a piece of code than to
-/// leave a wrong-layout token alone. The user's manual switch hotkey
-/// (`Ctrl+Shift+Backspace`) bypasses this filter.
+/// Does `text` look like a programming identifier rather than prose?
+/// When true the engine suppresses *automatic* switching for that
+/// buffer — corrupting code is far worse than leaving a wrong-layout
+/// token alone. The manual switch hotkey bypasses this filter.
 ///
-/// Signals (any single one is enough):
+/// Any one signal is enough: an underscore; a mid-token capital
+/// (`getValue`); a letter+digit mix (`var2`); or code punctuation that
+/// escaped the buffer's word-class table (backslash, semicolon,
+/// backtick).
 ///
-/// 1. Underscore (`_`) — snake_case is rare in EN/UK prose.
-/// 2. Mid-token capital letter (`getValue`, `MyClass`) — never in
-///    prose; common in camelCase / PascalCase identifiers.
-/// 3. Letter+digit mix (`var2`, `addr1`) — rare in prose, common in
-///    versions / symbol names.
-/// 4. Code punctuation that escaped the buffer's word-class table:
-///    backslash, semicolon, backtick.
-///
-/// Acronyms (`URL`, `HTML`) and ordinary capitalised prose
-/// (`Hello`, `Привіт`) deliberately do NOT trip the heuristic.
-/// Acronym shape: a short all-uppercase alphabetic token.
-///
-/// Used by the plausibility detector as a safety net for SQL / IDE /
-/// CLI / etc. that aren't in the embedded English dictionary. The
-/// well-known ones (URL, HTML, API, JSON, …) live in
-/// `data/wordlists/en_us-extras.txt` and are caught by the dict
-/// detector first; this function is the fallback for the long tail.
-///
-/// Length cap: 5 letters. Real acronyms are almost always ≤5 chars
-/// (HTTPS is the famous outlier). Anything longer (`HELLO`, `ПРИВІТ`)
-/// might just be shouted prose, where mis-keying is more likely than
-/// a deliberate caps acronym — let the normal plausibility pipeline
-/// decide.
-///
-/// All-letters requirement: `H2O`-style mixed letter+digit goes to
-/// `looks_like_code_token` instead.
+/// Acronyms (`URL`) and ordinary capitalised prose (`Привіт`)
+/// deliberately do not trip it. The well-known acronyms live in
+/// `data/wordlists/en_us-extras.txt` and are caught by the dictionary
+/// detector first; this is the fallback for the long tail, capped at 5
+/// letters so shouted prose goes through normal scoring instead.
+/// Mixed letter+digit shapes like `H2O` go to `looks_like_code_token`.
 pub fn looks_like_acronym(text: &str) -> bool {
     let letters: Vec<char> = text.chars().filter(|c| c.is_alphabetic()).collect();
     if letters.is_empty() || letters.len() > 5 {

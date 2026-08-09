@@ -33,26 +33,21 @@ impl UinputEmitter {
             device: parking_lot::Mutex::new(None),
             emitted: parking_lot::Mutex::new(Vec::new()),
         };
-        // Create the virtual keyboard eagerly. Input remappers (keyd
-        // with `[ids] *`) grab every new keyboard asynchronously; if
-        // the device springs into existence lazily at the FIRST
-        // correction, that correction's opening backspaces race the
-        // grab and some get lost on the floor — the user sees the
-        // word's first letter survive. At startup the grab settles
-        // long before any correction. Failure is fine (no permissions
-        // yet); we retry lazily on first use.
+        // Eagerly, because input remappers (keyd with `[ids] *`) grab
+        // every new keyboard asynchronously. A device created lazily at
+        // the first correction has its opening backspaces race that
+        // grab, and the word's first letter survives. Failure here is
+        // fine — no permissions yet; we retry on first use.
         if let Err(e) = s.ensure_device() {
             warn!(?e, "uinput device creation deferred to first use");
         }
         s
     }
 
-    /// Whether the virtual keyboard actually exists.
-    ///
-    /// `new` creates it eagerly and tolerates failure, so this is how
-    /// a caller learns the difference between "ready" and "will retry
-    /// and probably fail again". The emitter-choosing code uses it to
-    /// decide whether the portal is worth asking about.
+    /// Whether the virtual keyboard actually exists. `new` creates it
+    /// eagerly and tolerates failure, so this is how a caller tells
+    /// "ready" from "will retry and probably fail again" — which is
+    /// what decides whether the portal is worth asking about.
     pub fn is_usable(&self) -> bool {
         if self.device.lock().is_some() {
             return true;
@@ -111,12 +106,10 @@ impl KeyEmitter for UinputEmitter {
         let dev = g
             .as_mut()
             .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
-        // Same coalescing trap as `send_keys`: packing press + release
-        // into one `emit` produces a single SYN_REPORT frame, and
-        // libinput / keyd drop that as a zero-duration tap. The user
-        // visible symptom was a backspace burst silently missing a
-        // few presses, which left fragments of the previous word
-        // (or its trailing space) on screen after a correction.
+        // Same coalescing trap as `send_keys`: press + release in one
+        // `emit` is a single SYN_REPORT frame, which libinput/keyd drop
+        // as a zero-duration tap. Symptom was a backspace burst missing
+        // presses, leaving fragments of the previous word on screen.
         let step = Duration::from_millis(4);
         for _ in 0..n {
             emit_one(
@@ -140,38 +133,28 @@ impl KeyEmitter for UinputEmitter {
             return Ok(());
         }
         debug!(count = keys.len(), "uinput replay starting");
-        // No settle sleep here on purpose. `hyprctl switchxkblayout`
-        // returns instantly while the compositor propagates the new
-        // xkb state asynchronously, so a replay CAN outrun it (you see
-        // the original `lfdfq` rather than `давай`) — but a blind
-        // sleep at the last moment before emitting is precisely the
-        // window in which a physical keystroke lands on screen ahead
-        // of our text and scrambles the result. The engine owns that
-        // wait now, measured from the actual layout switch and taken
-        // before the deletion: see `LAYOUT_SETTLE` in poltertype-core.
+        // No settle sleep here on purpose. A blind sleep immediately
+        // before emitting is precisely the window in which a physical
+        // keystroke lands ahead of our text and scrambles it. The engine
+        // owns that wait, measured from the actual layout switch and
+        // taken before the deletion — see `LAYOUT_SETTLE`.
         self.ensure_device()?;
         let mut g = self.device.lock();
         let dev = g
             .as_mut()
             .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
-        // `WordKey::scancode` is Win SC Set-1; on Linux those coincide
-        // with evdev `KEY_*` codes for the alphanumeric / boundary rows
-        // we ever buffer (see `evdev_to_sc1`). Anything outside that
-        // band would have been filtered out by `WordBuffer::feed` long
-        // before getting here.
-        // Emit press / release as separate `dev.emit` calls. `emit`
-        // packs everything into a single frame with one trailing
-        // SYN_REPORT, which libinput treats as a "zero-duration tap"
-        // and drops — the original missing-space symptom.
+        // `WordKey::scancode` is Win SC Set-1, which coincides with the
+        // evdev `KEY_*` codes for every row we buffer; anything else was
+        // filtered by `WordBuffer::feed` long before this.
         //
-        // We also pace the stream with a small inter-event delay.
-        // Without it `keyd` (or any input remapper proxying our
-        // uinput device) sees press/release pairs land within a few
-        // microseconds of each other and silently coalesces or
-        // discards the last one in a burst — most visibly the
-        // trailing space after a corrected word. 4 ms per event is
-        // well below human-noticeable for a 5-10 keystroke replay
-        // and large enough to clear that coalescing window.
+        // Press and release must be separate `dev.emit` calls: one call
+        // packs them into a single frame with one SYN_REPORT, which
+        // libinput treats as a zero-duration tap and drops.
+        //
+        // The 4 ms pacing is for remappers proxying our uinput device —
+        // keyd coalesces or discards pairs landing microseconds apart,
+        // most visibly the trailing space. Well below human-noticeable
+        // for a 5-10 keystroke replay.
         let step = Duration::from_millis(4);
         let last_hold = Duration::from_millis(20);
         let boundary_guard = Duration::from_millis(12);
@@ -188,23 +171,17 @@ impl KeyEmitter for UinputEmitter {
                 )?;
                 thread::sleep(step);
             }
-            // The very last key in the replay is the boundary the user
-            // typed (almost always Space) — the key whose *press* just
-            // triggered this correction. We react on that press within
-            // ~10 ms, well before the user lifts their finger, so when
-            // we reach this point the boundary key is still PHYSICALLY
-            // HELD DOWN. Injecting a *press* for an already-down key is
-            // a no-op at the compositor (global key state is already
-            // "down"), so the boundary character never gets produced —
-            // the corrected words run together with the space eaten,
-            // exactly the long-standing "space gets cut" report.
+            // The last key is the boundary the user typed, and we react
+            // to its *press* within ~10 ms — so it is still physically
+            // held down here. Injecting a press for an already-down key
+            // is a no-op at the compositor, so the boundary character
+            // never appeared and corrected words ran together: the
+            // long-standing "space gets cut" report.
             //
-            // Fix: emit a release for the boundary scancode first, which
-            // clears the held state regardless of whether the user is
-            // still holding it (a harmless no-op if they already let
-            // go). The following press is then a real down edge that
-            // actually produces the character. The user's own later
-            // release lands on an already-up key and is ignored.
+            // Emitting a release first clears the held state (harmless
+            // if they already let go), so the following press is a real
+            // down edge. The user's own release then lands on an
+            // already-up key and is ignored.
             if is_last {
                 emit_one(dev, &self.emitted, InputEvent::new(EventType::KEY.0, kc, 0))?;
                 thread::sleep(boundary_guard);

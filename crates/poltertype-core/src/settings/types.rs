@@ -22,22 +22,19 @@ pub struct Settings {
     pub exceptions: ExceptionSettings,
     #[serde(default)]
     pub hotkeys: HotkeySettings,
-    /// User-defined "smart commands" — additional `[[commands]]`
-    /// hotkey entries beyond the two built-in pause / switch-last
-    /// actions in `[hotkeys]`. See [`crate::commands`] for the
-    /// schema and the rationale behind keeping the built-in two in
-    /// `[hotkeys]` and the rest here.
+    /// User-defined "smart commands" — `[[commands]]` entries beyond
+    /// the two built-in actions in `[hotkeys]`. See [`crate::commands`]
+    /// for the schema and `docs/ARCHITECTURE.md` for the split.
     #[serde(default)]
     pub commands: Vec<UserCommand>,
     /// Whether `run_shell` smart commands may execute at all.
     ///
-    /// **Off by default, and that is the security boundary.** A
-    /// `[[commands]]` entry that runs a program turns a shared or
-    /// stolen `config.toml` into code that fires the next time the
-    /// user types an ordinary word — see the threat model in
-    /// [`crate::commands::shell`]. Entries are still parsed and shown
-    /// in Settings while this is false; they simply refuse to run,
-    /// and say so once per firing rather than failing silently.
+    /// **Off by default, and that is the security boundary.** An entry
+    /// that runs a program turns a shared or stolen `config.toml` into
+    /// code that fires the next time the user types an ordinary word —
+    /// see the threat model in [`crate::commands::shell`]. While this
+    /// is false the entries still parse and show in Settings; they
+    /// refuse to run and say so once per firing.
     #[serde(default)]
     pub commands_allow_run_shell: bool,
     /// Per-application wordlist profiles. Each profile points at
@@ -136,20 +133,14 @@ pub struct EngineSettings {
     /// pauses for this long.
     pub idle_timeout_ms: u64,
     /// Skip auto-switching when the just-typed token looks like a
-    /// programming-language identifier (snake_case, camelCase,
-    /// letter+digit, …). The manual switch hotkey
-    /// (`Ctrl+Shift+Backspace`) bypasses this filter — so users can
-    /// still fix wrong-layout identifiers explicitly. Default: on.
-    /// See `docs/DECISIONS.md` for the reasoning.
+    /// programming identifier. The manual switch hotkey bypasses this
+    /// filter. Default: on; see `docs/DECISIONS.md`.
     pub suppress_in_identifiers: bool,
-    /// Skip auto-switching when the rendered word is ALL CAPS (held
-    /// Shift / Caps Lock throughout, ≥2 letters, every alphabetic
-    /// character uppercase). This is the textbook abbreviation case
-    /// — `URL`, `HTTP`, `API`, `ССЫЛКА` — where the user typed
-    /// deliberately and a layout flip is more disruptive than
-    /// helpful. The manual switch hotkey still works on these
-    /// buffers (`last_word` is stashed before any filter). Default:
-    /// on.
+    /// Skip auto-switching when the rendered word is ALL CAPS (≥2
+    /// letters, every cased one uppercase) — the textbook abbreviation
+    /// case, where the user typed deliberately and a flip is more
+    /// disruptive than helpful. The manual hotkey still works, since
+    /// `last_word` is stashed before any filter. Default: on.
     pub suppress_for_all_caps: bool,
 }
 
@@ -169,28 +160,19 @@ impl Default for EngineSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ExceptionSettings {
-    /// Foreground apps where auto-switching is disabled. Each entry
-    /// is matched case-insensitively against the focused process's
-    /// executable basename (e.g. `Code.exe` on Windows, `code` on
-    /// Linux, `Code` on macOS). The manual switch hotkey
-    /// (`Ctrl+Shift+Backspace`) ignores this list — devs can still
-    /// explicitly fix a wrong-layout word inside an IDE.
+    /// Foreground apps where auto-switching is disabled, matched
+    /// case-insensitively against the focused process's executable
+    /// basename (`Code.exe`, `code`, `Code`). The manual switch hotkey
+    /// ignores this list.
     ///
-    /// **Empty by default: we do not decide for the user where they
-    /// are allowed to type.** We used to ship a ~50-entry list of
-    /// editors, IDEs and terminals here, on the theory that
-    /// auto-switching is most likely to corrupt syntax there. It was
-    /// harmless only for as long as it was inert: no Linux focus
-    /// tracker existed, `focused_exe()` returned `None`, and the list
-    /// never matched. The moment the Hyprland/X11 tracker landed the
-    /// list armed itself and the app went silent in exactly the
-    /// windows a developer types in — indistinguishable, from the
-    /// outside, from "layout switching is broken". A default that only
-    /// works because it never runs is not a default; the engine's own
-    /// guards (`suppress_in_identifiers`, `min_word_length`,
-    /// dictionary confidence) are what keep code safe, and they apply
-    /// everywhere. Users who *do* want an app skipped add it to
-    /// `config.toml` themselves.
+    /// **Empty by default: we do not decide for the user where they are
+    /// allowed to type.** A shipped ~50-entry list of editors and
+    /// terminals was harmless only while it was inert — no Linux focus
+    /// tracker existed, so it never matched. The moment one landed the
+    /// list armed itself and the app went silent in exactly the windows
+    /// a developer types in, indistinguishable from "layout switching is
+    /// broken". The engine's own guards apply everywhere and are what
+    /// keep code safe.
     #[serde(default)]
     pub disabled_apps: Vec<String>,
     /// Words that should never be auto-corrected.
@@ -199,14 +181,11 @@ pub struct ExceptionSettings {
 }
 
 impl ExceptionSettings {
-    /// True iff `stripped` — a typed word already canonicalised with
-    /// [`poltertype_detect::letters_only_lower`] — is on the
-    /// never-touch list.
-    ///
-    /// Entries are canonicalised the same way on the fly, so a config
-    /// line can be written the way the word is actually spelled
-    /// (`NGINX`, `just-code.net`, `ім'я`) and still match the buffer's
-    /// letters-only rendering (`nginx`, `justcodenet`, `імя`).
+    /// True iff `stripped` — already canonicalised with
+    /// [`poltertype_detect::letters_only_lower`] — is on the never-touch
+    /// list. Entries are canonicalised the same way on the fly, so a
+    /// config line can be spelled naturally (`NGINX`, `just-code.net`,
+    /// `ім'я`) and still match the buffer's rendering.
     pub fn is_whitelisted(&self, stripped: &str) -> bool {
         self.word_whitelist
             .iter()
@@ -224,14 +203,11 @@ pub struct HotkeySettings {
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
-            // Platform-neutral on purpose. macOS needs a different
-            // pause chord — `Ctrl+Space` is the OS's own input-source
-            // switcher there — but that substitution belongs to the
-            // binary, which already does the same thing for the
-            // Wayland switch-last key off the live backend name. A
-            // settings default that changes shape with the build
-            // target would also mean the same `config.toml` describes
-            // two different things depending on where it is read.
+            // Platform-neutral on purpose: macOS needs a different
+            // pause chord, but that substitution belongs to the binary,
+            // which picks it off the live backend name. A default that
+            // changed with the build target would make one
+            // `config.toml` mean two different things.
             pause_toggle: "Ctrl+Shift+Space".into(),
             manual_switch_last: "Ctrl+Shift+Backspace".into(),
         }
@@ -256,12 +232,11 @@ impl Default for SoundSettings {
 
 /// Spelling suggestions for mistyped words.
 ///
-/// When a completed word is (a) not a wrong-layout word the engine
-/// would auto-correct and (b) not in the current language's
-/// dictionary, the engine offers nearby dictionary words in a small
-/// tooltip. Clicking one — or pressing the accept chord + a digit —
-/// replaces the word in place. Purely local computation over the
-/// bundled dictionaries: no network, nothing typed ever leaves RAM.
+/// A completed word that is neither a wrong-layout word the engine
+/// would correct nor in the current dictionary gets nearby dictionary
+/// words offered in a small tooltip; a click or the accept chord plus a
+/// digit replaces it in place. Purely local computation over the
+/// bundled dictionaries — no network, nothing typed leaves RAM.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct SuggestionSettings {
@@ -273,10 +248,9 @@ pub struct SuggestionSettings {
     pub max_suggestions: usize,
     /// Seconds the tooltip stays on screen before hiding itself.
     pub tooltip_timeout_secs: u64,
-    /// Modifier half of the keyboard-accept chord: pressing
-    /// `<modifiers>+1` … `<modifiers>+9` applies the Nth suggestion
-    /// while the tooltip is up. Parsed like `[hotkeys]` strings
-    /// (`"Ctrl+Shift"`, `"Ctrl+Alt"`, …). Empty disables keyboard
+    /// Modifier half of the keyboard-accept chord: `<modifiers>+1` …
+    /// `<modifiers>+9` applies the Nth suggestion while the tooltip is
+    /// up. Parsed like `[hotkeys]` strings; empty disables keyboard
     /// accept, leaving click-to-apply only.
     pub accept_modifiers: String,
 }
@@ -307,32 +281,29 @@ impl SuggestionSettings {
 
 /// Automatic updates from GitHub Releases.
 ///
-/// This is the one place a default PolterType build talks to the
-/// network, and it is worth being precise about what that means. With
-/// `enabled = true` the app periodically fetches a small JSON manifest
-/// from `github.com`, and when it names a newer version, downloads that
-/// release's installer for this platform and verifies its checksum. The
-/// download is staged, never installed under the user's hands — it is
-/// applied when they quit or explicitly ask for a restart.
+/// The one place a default build talks to the network, and worth being
+/// precise about. With `enabled = true` the app periodically fetches a
+/// small JSON manifest from `github.com` and, when it names a newer
+/// version, downloads that release's installer and verifies its
+/// checksum. The download is staged, never installed under the user's
+/// hands.
 ///
-/// GitHub therefore sees what any HTTP server sees: the connecting IP
-/// and a User-Agent naming the running version. Nothing about the user,
-/// their typing, their layouts or their configuration is transmitted —
-/// there is no request body and no query string. This is not telemetry
-/// and it does not become telemetry.
+/// GitHub sees what any HTTP server sees: the connecting IP and a
+/// User-Agent naming the running version. There is no request body and
+/// no query string — nothing about the user, their typing, their
+/// layouts or their configuration. **This is not telemetry and it does
+/// not become telemetry.**
 ///
-/// `enabled = false` switches all of it off, permanently and with no
-/// residual "just one check on startup". A user who wants a build that
-/// never opens a socket sets this and has one.
+/// `enabled = false` switches all of it off permanently, with no
+/// residual "just one check on startup".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UpdateSettings {
     /// Check for, download and stage new releases in the background.
     ///
     /// On by default. The alternative — an opt-in nobody finds — leaves
-    /// users on old builds of an *unsigned* app that they would then
-    /// have to update by hand, and that is the worse security posture,
-    /// not the better one.
+    /// users on old builds of an *unsigned* app they would then have to
+    /// update by hand, which is the worse security posture.
     pub enabled: bool,
     /// Hours between checks. Clamped to a sane floor at read time
     /// (see [`UpdateSettings::interval`]) so a hand-edited `0` cannot
@@ -355,11 +326,10 @@ pub const MIN_UPDATE_INTERVAL_HOURS: u64 = 1;
 impl UpdateSettings {
     /// The check interval, with the hand-edit floor applied.
     ///
-    /// A release ships roughly monthly; the difference between checking
-    /// hourly and daily is nil for the user and free for us to refuse.
-    /// The floor exists so that a `check_interval_hours = 0` — a typo, or
-    /// a user reasoning that zero means "off" — can't hammer GitHub in a
-    /// tight loop from every installed copy of the app.
+    /// Releases ship roughly monthly, so hourly versus daily makes no
+    /// difference to the user. The floor stops a
+    /// `check_interval_hours = 0` — a typo, or a user reasoning that
+    /// zero means "off" — hammering GitHub from every installed copy.
     pub fn interval(&self) -> Duration {
         Duration::from_secs(self.check_interval_hours.max(MIN_UPDATE_INTERVAL_HOURS) * 60 * 60)
     }

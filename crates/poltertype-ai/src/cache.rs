@@ -1,24 +1,19 @@
-//! The decided-word cache.
+//! The decided-word cache — what makes an LLM usable on the correction
+//! path at all.
 //!
-//! This is what makes an LLM usable on the correction path at all. A
-//! query takes anywhere from 30 ms on a warm local model to several
-//! seconds on a hosted API; a correction has to happen in the pause
-//! between two words. So the detector never waits by default — it
-//! answers from here, and a miss queues the question so the *next*
-//! occurrence is decided.
+//! A query takes 30 ms on a warm local model and seconds on a hosted
+//! API; a correction has to happen in the pause between two words. So
+//! the detector never waits by default: it answers from here, and a
+//! miss queues the question so the *next* occurrence is decided.
 //!
-//! That trade is only worth making because of how people type. The
-//! same person types the same few thousand words over and over, so a
-//! cache this small reaches a high hit rate within a session and the
-//! cost is a one-off "no opinion" the first time a word appears —
-//! which is exactly what the detector returned before there was a
-//! backend at all.
+//! That trade works because the same person types the same few thousand
+//! words over and over, so even a small cache reaches a high hit rate
+//! within a session, and the cost is a one-off "no opinion" the first
+//! time a word appears.
 //!
 //! **What is stored is a verdict, not text a human can read back.**
-//! Keys are hashes of the candidate list, never the words themselves,
-//! and nothing here is written to disk. A memory dump of a running
-//! process is out of scope, but a cache that quietly accumulated a
-//! plain-text record of everything typed would not be.
+//! Keys are hashes of the candidate list, never the words, and nothing
+//! is written to disk.
 
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};

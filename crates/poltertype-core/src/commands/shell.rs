@@ -1,58 +1,37 @@
 //! `run_shell` — running a program when a trigger fires.
 //!
-//! This is the one action that can do anything, so it is the one with
-//! a threat model written down.
+//! The one action that can do anything, so the one with a threat model
+//! written down. PolterType already reads every keystroke; adding "and
+//! can run a program" turns a stolen or mistaken `config.toml` into
+//! code execution that fires the next time the user types an ordinary
+//! word. Three routes in particular: a **synced config** pulled from
+//! someone else's dotfiles repo; a **trigger that collides with prose**
+//! (`date` is fine until someone writes "the release date is"); and
+//! **shell metacharacters**, where every quoting bug in a string that
+//! came from a config file is an injection.
 //!
-//! ## What the danger actually is
+//! What answers each:
 //!
-//! PolterType already reads every keystroke. Adding "and can run a
-//! program" turns a stolen or mistaken `config.toml` from an
-//! annoyance into remote code execution that fires the next time the
-//! user types an ordinary word. Three concrete routes:
-//!
-//! 1. **A synced config.** People keep dotfiles in git and share
-//!    them. A `[[commands]]` entry pulled in from someone else's repo
-//!    runs on this machine.
-//! 2. **A trigger that collides with prose.** `date` looks like a
-//!    fine trigger until someone writes "the release date is". The
-//!    engine cannot tell the difference.
-//! 3. **Shell metacharacters.** `sh -c "echo $FOO"` invites quoting
-//!    bugs, and every quoting bug in a string that came from a config
-//!    file is an injection.
-//!
-//! ## What is done about each
-//!
-//! * **Off unless switched on.** `[commands].allow_run_shell` is
-//!   `false` by default. A config full of `run_shell` entries on a
-//!   machine that never enabled it runs nothing and says so once per
-//!   entry at load.
+//! * **Off unless switched on** — `[commands].allow_run_shell` is
+//!   `false` by default, and entries on a machine that never enabled it
+//!   run nothing and say so once per entry at load.
 //! * **No shell.** [`ShellCommand`] is a program plus an argument
-//!   vector, executed directly. There is no `sh -c`, so there is
-//!   nothing for a metacharacter to mean. Users who genuinely want a
-//!   pipeline write `sh` as the program and `-c` as an argument —
-//!   explicit, visible, and their decision.
+//!   vector, executed directly, so there is nothing for a
+//!   metacharacter to mean. A user who wants a pipeline writes `sh` as
+//!   the program and `-c` as an argument — explicit, and their call.
 //! * **Nothing the user typed becomes an argument.** No placeholder
-//!   substitutes the trigger, the buffer, or the surrounding text
-//!   into the command line. That would turn every expansion into a
-//!   way to smuggle arguments, and would put typed text into a
-//!   process table other users can read.
-//! * **Bounded.** A timeout, a captured-output cap, and no stdin.
-//!   A command that hangs cannot wedge the correction pipeline,
-//!   because it does not run on it — see below.
-//! * **Never on the typing path.** Dispatch is fire-and-forget on a
-//!   worker thread. The engine's word-boundary handler returns
-//!   immediately, exactly as it does for the other actions.
-//!
-//! ## Output insertion
+//!   substitutes the trigger or the buffer into the command line; that
+//!   would smuggle arguments and put typed text into a process table
+//!   other users can read.
+//! * **Bounded** — a timeout, an output cap, no stdin.
+//! * **Never on the typing path** — dispatch is fire-and-forget on a
+//!   worker thread, so the word-boundary handler returns immediately.
 //!
 //! `insert_output = true` types the command's stdout at the cursor,
-//! which is the point of the feature (`:date:` → today's date). It is
-//! also the sharpest edge: whatever the program prints is typed into
-//! whatever window has focus. So output is capped, trimmed to a
-//! single logical line by default, and never inserted when the
-//! command failed — a program that writes an error to stdout and
-//! exits non-zero should not have its error typed into the user's
-//! document.
+//! which is the point of the feature and its sharpest edge: whatever
+//! the program prints goes into whatever window has focus. So output is
+//! capped, trimmed to one logical line by default, and never inserted
+//! when the command failed.
 
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -119,14 +98,13 @@ pub fn check(cmd: &ShellCommand, allow_run_shell: bool) -> Result<(), ShellRefus
 
 /// Run the command and return its stdout, if it should be inserted.
 ///
-/// Returns `None` whenever nothing should be typed: output insertion
-/// off, the command failed, it produced nothing, or it had to be
-/// abandoned. Never returns `Err` — a failing user command is a
-/// normal event that belongs in the log, not an error the engine has
-/// to thread anywhere.
+/// `None` whenever nothing should be typed: insertion off, the command
+/// failed, it produced nothing, or it was abandoned. Never returns
+/// `Err` — a failing user command belongs in the log, not threaded
+/// through the engine.
 ///
-/// **Must not be called from the word-boundary handler.** It blocks
-/// for up to [`RUN_TIMEOUT`].
+/// **Must not be called from the word-boundary handler.** It blocks for
+/// up to [`RUN_TIMEOUT`].
 pub fn run(cmd: &ShellCommand) -> Option<String> {
     let started = Instant::now();
     let mut child = match Command::new(&cmd.program)
@@ -199,17 +177,14 @@ pub fn run(cmd: &ShellCommand) -> Option<String> {
     Some(sanitise_output(&buf)).filter(|s| !s.is_empty())
 }
 
-/// Turn raw stdout into something safe to type.
-///
-/// Three things happen here, each because typing is not printing:
+/// Turn raw stdout into something safe to type — printing and typing
+/// are not the same thing:
 ///
 /// * **Truncate** to [`MAX_OUTPUT_BYTES`], on a character boundary.
-/// * **Drop control characters.** A newline in the middle of typed
-///   output submits a chat message or runs a shell line; a `\r` or an
-///   escape sequence does stranger things still. Interior newlines
-///   become spaces, everything else in the C0 range goes.
-/// * **Trim** the trailing newline every well-behaved command emits,
-///   which the user did not ask to have typed.
+/// * **Drop control characters.** A newline mid-output submits a chat
+///   message or runs a shell line; escapes do stranger things.
+///   Interior newlines become spaces, the rest of C0 goes.
+/// * **Trim** the trailing newline the user never asked to have typed.
 pub fn sanitise_output(raw: &[u8]) -> String {
     let text = String::from_utf8_lossy(raw);
     let mut cut = text.len().min(MAX_OUTPUT_BYTES);

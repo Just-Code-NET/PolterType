@@ -6,15 +6,14 @@ pub(crate) const SCHEMA_VERSION: u32 = 1;
 /// The `[exceptions].disabled_apps` list PolterType shipped as a
 /// default up to and including v0.4.1, frozen verbatim.
 ///
-/// It is here for exactly one reason: to be *recognised* and retired.
-/// Every config written by those versions has these 69 entries spelled
-/// out in it, and on Linux they became load-bearing the moment the
-/// Hyprland/X11 focus tracker landed — muting the app in every editor
-/// and terminal its owner uses. `retire_default_skip_list` clears the
-/// list when it still matches this exactly, i.e. when the user never
-/// touched it. Curated lists are left alone, which is why this has to
-/// stay byte-for-byte accurate: edit it and we would either miss the
-/// configs we mean to fix or clobber a list somebody wrote themselves.
+/// Here for exactly one reason: to be *recognised* and retired. Every
+/// config written by those versions spells these 69 entries out, and on
+/// Linux they became load-bearing the moment the focus tracker landed,
+/// muting the app in every editor its owner uses.
+/// `retire_default_skip_list` clears the list only when it still
+/// matches this exactly — so it has to stay byte-for-byte accurate, or
+/// we either miss the configs we mean to fix or clobber a list somebody
+/// wrote themselves.
 ///
 /// Nothing reads this to *apply* it. The default today is empty.
 pub(crate) const LEGACY_DEFAULT_DISABLED_APPS: [&str; 69] = [

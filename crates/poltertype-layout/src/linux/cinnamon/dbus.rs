@@ -66,11 +66,10 @@ pub(crate) fn read_sources() -> Result<Vec<InputSource>, LayoutError> {
 ///   ('xkb', 'ru', 1, 'Russian', 'ru', 'ru', 'ru', 'ru', '', '', -1, false)],)
 /// ```
 ///
-/// We do not need a GVariant parser for that, but we do need to
-/// respect quoting: display names are localised, and a layout called
-/// `Hawai'ian` would otherwise cut a tuple in half. Sources we cannot
-/// read are skipped rather than guessed at — an IBus engine with no
-/// XKB layout behind it is not something we can switch into anyway.
+/// That needs no GVariant parser, but it does need quoting respected:
+/// display names are localised, and a layout called `Hawai'ian` would
+/// otherwise cut a tuple in half. Unreadable sources are skipped rather
+/// than guessed at.
 pub(crate) fn parse_input_sources(raw: &str) -> Vec<InputSource> {
     let Some(body) = array_body(raw) else {
         return Vec::new();
@@ -178,12 +177,11 @@ fn matching(s: &str, open_at: usize, open: u8, close: u8) -> Option<usize> {
 /// the scanners above can ignore brackets and commas that a localised
 /// display name happens to contain.
 ///
-/// The delimiter has to be remembered rather than assumed. `glib`
-/// prints strings in single quotes *until* the string contains one,
-/// and then switches the whole literal to double quotes instead of
-/// escaping: a layout named `Hawai'ian (US, alt)` comes back as
-/// `"Hawai'ian (US, alt)"`. Reading that apostrophe as an opening
-/// quote desynchronises the scan for the rest of the reply.
+/// The delimiter has to be remembered rather than assumed: `glib`
+/// prints strings in single quotes *until* the string contains one, and
+/// then switches the whole literal to double quotes instead of
+/// escaping. Reading that apostrophe as an opening quote desynchronises
+/// the scan for the rest of the reply.
 #[derive(Default)]
 struct StringScan {
     delimiter: Option<u8>,

@@ -10,28 +10,21 @@ use tracing::debug;
 
 use super::consts::CARET_MAX_AGE;
 
-/// Resolve the anchor from one sample of the focus tracker.
+/// Resolve the anchor from one sample of the focus tracker. Best first:
 ///
-/// Chain, best first:
-///
-/// 1. **AT-SPI caret** — the real text-insertion point, when the
-///    focused app exposes it, the sample is fresh, and it lies inside
-///    the focused window (a stale caret from a previous window must
-///    not win).
+/// 1. **AT-SPI caret** — the real insertion point, when the app exposes
+///    it, the sample is fresh, and it lies inside the focused window,
+///    so a stale caret from a previous window cannot win.
 /// 2. **Focused window** — bottom-centre, the neighbourhood of chat
 ///    inputs and prompts.
-/// 3. **Screen bottom** — nothing known (GNOME/KDE Wayland).
+/// 3. **Screen bottom** — nothing known.
 ///
 /// The pointer used to sit between the first two, on the theory that
-/// the user had just clicked into the text they were editing. It is
-/// gone: nothing tells us the pointer is still *at* that click, and an
-/// idle mouse parked mid-screen dragged the tooltip to the middle of
-/// the display while the caret sat in a chat box at the bottom edge
-/// (reported 2026-07-29; reproduced with the caret 600 px below the
-/// pointer). A wrong anchor is worse than a coarse one — the window's
-/// bottom edge is always in the right neighbourhood, and for the chat
-/// inputs and shell prompts that dominate this feature it lands within
-/// a line or two of the caret.
+/// the user had just clicked into the text. It is gone: nothing says
+/// the pointer is still *at* that click, and an idle mouse parked
+/// mid-screen dragged the tooltip to the middle of the display while
+/// the caret sat in a chat box at the bottom edge. A wrong anchor is
+/// worse than a coarse one.
 pub(super) fn resolve_anchor(
     geometry: Option<FocusedWindowGeometry>,
     caret: Option<CaretHint>,

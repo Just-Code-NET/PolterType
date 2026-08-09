@@ -1,22 +1,17 @@
 //! Ed25519 signature over the release manifest.
 //!
-//! ## What this is for
+//! The per-artifact SHA-256 proves the bytes we downloaded are the
+//! bytes the manifest names. It proves nothing about who wrote the
+//! manifest — it lives in the same GitHub release as the artifact, so
+//! whoever can publish one can publish both. The signature is the part
+//! that does not come from GitHub: made on the maintainer's machine
+//! with a key CI never sees, verified against a public key compiled
+//! into this binary.
 //!
-//! The per-artifact SHA-256 in `latest.json` proves the bytes we
-//! downloaded are the bytes the manifest names. It proves nothing about
-//! who wrote the manifest — it lives in the same GitHub release as the
-//! artifact, so whoever can publish one can publish both. The signature
-//! is the part that does not come from GitHub: it is made on the
-//! maintainer's machine, with a key that never touches CI, and verified
-//! against a public key compiled into this binary.
-//!
-//! ## What is signed
-//!
-//! Not the JSON. Signing raw JSON would make the check hostage to
-//! formatting — a re-serialisation with different whitespace or key
-//! order breaks a valid signature, and any "canonical JSON" scheme is a
-//! second specification to get wrong. Instead we sign a flat,
-//! newline-delimited rendering of the fields that carry meaning:
+//! **Not the JSON is signed.** That would make the check hostage to
+//! formatting, and any canonical-JSON scheme is a second specification
+//! to get wrong. The payload is a flat, newline-delimited rendering of
+//! the fields that carry meaning:
 //!
 //! ```text
 //! poltertype-manifest-v1
@@ -27,25 +22,19 @@
 //! url=https://github.com/…/poltertype-0.7.0-x86_64.AppImage
 //! sha256=9f86d081…
 //! size=28311552
-//! artifact=macos-universal
-//! …
 //! ```
 //!
 //! Artifacts are ordered by key so a `HashMap` cannot change the
-//! payload, and every line ends with `\n` including the last. Because
-//! `\n` is the only separator, a value containing one could forge a
-//! different manifest with the same payload — so any value carrying
-//! `\n` or `\r` is rejected outright, on both the signing and the
-//! verifying side. That is the whole ambiguity surface of the format.
+//! payload, and every line ends with `\n`. Because `\n` is the only
+//! separator, a value containing one could forge a different manifest
+//! with the same payload — so any value carrying `\n` or `\r` is
+//! rejected on both the signing and the verifying side. That is the
+//! whole ambiguity surface of the format.
 //!
-//! ## Rollout
-//!
-//! [`consts::REQUIRE_SIGNATURE`](crate::consts) is the switch. While it
-//! is `false`, an unsigned manifest is accepted with a warning and a
-//! *present* signature must still verify — that is the release where
-//! signing starts happening without stranding anyone. Flipping it to
-//! `true` makes an unsigned manifest an error, and can only be done
-//! once a signed release is the one users' updaters will see.
+//! [`consts::REQUIRE_SIGNATURE`](crate::consts) is the rollout switch:
+//! while `false`, an unsigned manifest is accepted with a warning and a
+//! *present* signature must still verify. Flipping it can only be done
+//! once a signed release is the one users' updaters resolve to.
 
 use std::collections::BTreeMap;
 

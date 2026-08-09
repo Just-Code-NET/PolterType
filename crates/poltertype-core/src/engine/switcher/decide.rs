@@ -20,9 +20,9 @@ use crate::engine::types::{Correction, LastWord};
 use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
-    /// Best-effort current-layout translate. Returns `None` if we
-    /// can't query the OS or the scancode isn't in the mapping
-    /// table — both are normal for control / OEM keys.
+    /// Best-effort current-layout translate. `None` when the OS
+    /// cannot be queried or the scancode is not in the mapping table —
+    /// both normal for control / OEM keys.
     pub(super) fn translate_via_current_layout(&self, scancode: u32, shift: bool) -> Option<char> {
         let current = self.layout_switcher.current().ok()?;
         let mapping = self.layouts.get(&current)?;
@@ -46,10 +46,8 @@ impl SwitcherEngine {
         if keys.is_empty() {
             return;
         }
-        // Note: no global min_word_length gate here. Each detector
-        // decides on its own — the dictionary detector wants to see
-        // single-letter prepositions; word-plausibility self-filters
-        // to ≥3 letters.
+        // No global min_word_length gate: each detector decides for
+        // itself.
 
         let current_layout = match self.layout_switcher.current() {
             Ok(l) => l,
@@ -59,24 +57,12 @@ impl SwitcherEngine {
             }
         };
 
-        // Filter the candidate set down to layouts the engine can
-        // actually switch to. Three layers, all must pass:
-        //
-        //   1. `[languages].active` from settings — empty means "every
-        //      loaded layout".
-        //   2. `[languages].ignored` from settings — always vetoes.
-        //   3. The OS's current active-layouts list — anything not
-        //      installed/enabled in the OS is unreachable. Including it
-        //      here previously caused the detector to pick e.g. `fr-FR`
-        //      for `http` even when the user only has en-US / ru-RU /
-        //      uk-UA installed — `switch_to()` would then reject it,
-        //      and because backspaces had already been emitted the word
-        //      was simply destroyed. Filtering here means the detector
-        //      never sees the unreachable layout to begin with.
-        //
-        // If the OS query fails we fail-open (skip layer 3), matching
-        // the previous behaviour. The pre-flight check inside
-        // `apply_correction` is the second line of defence.
+        // Candidates must survive all three layers: `[languages].active`
+        // (empty = every loaded layout), `[languages].ignored`, and the
+        // OS's own active list. Layer 3 matters — an unreachable layout
+        // reaching the detector means `switch_to` rejects it *after* the
+        // backspaces went out, destroying the word. A failed OS query
+        // fails open; `apply_correction` pre-flights again.
         let os_active: Option<Vec<LayoutId>> = match self.layout_switcher.list_active() {
             Ok(list) => Some(list),
             Err(e) => {
@@ -98,16 +84,16 @@ impl SwitcherEngine {
             .map(|(id, m)| (id.clone(), m.translate_buffer(&keys)))
             .collect();
 
-        // ---- Stash the rendered current text early; "force switch
-        // last" uses it whether or not auto-decision proceeds. ----
+        // Stashed early: "force switch last" needs it whether or not
+        // the auto-decision proceeds.
         let current_text = candidates
             .iter()
             .find(|(l, _)| l == &current_layout)
             .map(|(_, t)| t.clone())
             .unwrap_or_default();
 
-        // Resolve boundary scancode → character (even if we skip the
-        // decision below, store it so the manual hotkey works).
+        // Stored even if the decision below is skipped, so the manual
+        // hotkey still works.
         let boundary_char = self
             .layouts
             .get(&current_layout)
@@ -133,36 +119,23 @@ impl SwitcherEngine {
             boundary_char,
             boundary_scancode,
             boundary_shift,
-            // Filled in by `apply_correction` if this word ends up
-            // being corrected — the stash is written before the
-            // decision is even made.
+            // Filled in by `apply_correction`; the stash is written
+            // before the decision is made.
             corrected_to: None,
         });
 
-        // ---- Smart commands (text triggers) ----
-        //
-        // Consult the user's `[[commands]]` list BEFORE the auto-
-        // switch filters: text expansion is a direct user
-        // intent ("I typed `anrl ` because I want it expanded"),
-        // not a guess the engine is making, so the structural-
-        // boundary / disabled-app / identifier filters don't apply.
-        //
-        // The match is on the rendering in the CURRENT layout —
-        // typing `anrl ` under en-US matches `anrl`, but typing the
-        // same physical keys under uk-UA produces a Cyrillic
-        // rendering that won't match (which is the right behaviour:
-        // an English acronym typed accidentally in Ukrainian layout
-        // should go through normal layout-correction, not
-        // expansion).
+        // Smart commands run before the auto-switch filters: expansion
+        // is a direct user intent, not a guess. Matching is on the
+        // rendering in the *current* layout, so the same physical keys
+        // under another layout fall through to layout-correction.
+        // See `docs/ARCHITECTURE.md` § Smart commands.
         let focused_basename = self.focus_tracker.focused_exe().and_then(|exe| {
             std::path::Path::new(&exe)
                 .file_name()
                 .and_then(|f| f.to_str())
                 .map(str::to_owned)
         });
-        // A multi-token trigger ("best regards") also has to see the
-        // words before this one, so the history is consulted here and
-        // updated below whatever the outcome.
+        // A multi-token trigger also has to see the preceding words.
         let history = self.word_history.read().clone();
         if let Some(cmd) = find_matching_command(
             &snap.commands,
@@ -170,44 +143,28 @@ impl SwitcherEngine {
             focused_basename.as_deref(),
             &history,
         ) {
-            // Erase one on-screen character per buffered key plus the
-            // boundary — and, for a phrase, the earlier words and the
-            // separator after each. Counting keys (not rendered
-            // chars) for the current word survives scancodes our
-            // mapping table can't render; the screen still shows a
-            // character for those.
+            // One on-screen character per buffered key plus the
+            // boundary (and, for a phrase, the earlier words and their
+            // separators). Counting keys rather than rendered chars
+            // survives scancodes the mapping table cannot render.
             self.dispatch_smart_command(cmd, erase_len(cmd, keys.len()), boundary_char);
-            // The trigger text no longer exists on screen — neither
-            // the word nor the phrase leading to it may be re-opened
-            // by backspace, or matched again by the next word.
+            // The trigger text is gone from screen: not re-openable by
+            // backspace, not matchable again.
             buffer.forget_completed();
             self.word_history.write().clear();
             return;
         }
-        // Not a trigger: remember it, so it can be the first half of
-        // one next time.
+        // Not a trigger — remember it as a possible first half.
         self.word_history
             .write()
             .push_in(focused_basename.as_deref(), &current_text);
 
-        // ---- Pre-decision filters (auto-switch only) ----
-        //
-        // Filters apply *only* to automatic decisions — the manual
-        // switch-last hotkey calls force_switch_last directly and
-        // bypasses all of them. That's the dev-friendly contract:
-        // we stay quiet by default in code / URL / path contexts,
-        // but if the user explicitly hits the hotkey we always do
-        // the switch.
+        // Pre-decision filters, automatic decisions only. The manual
+        // switch-last hotkey calls `force_switch_last` and bypasses
+        // every one of them.
 
-        // Filter 0: the user said "never touch this word".
-        //
-        // First of the filters because it is the only one that is a
-        // direct statement rather than a heuristic: everything below
-        // guesses at intent from shape and context, `word_whitelist`
-        // *is* the intent. It used to be read in exactly one place —
-        // the suggestion tooltip — so a setting documented as "words
-        // that should never be auto-corrected" silenced the tooltip
-        // and then let the correction happen anyway.
+        // Filter 0: `word_whitelist` — the only filter that is a direct
+        // statement of intent rather than a heuristic, so it goes first.
         if snap
             .exceptions
             .is_whitelisted(&letters_only_lower(&current_text))
@@ -225,11 +182,9 @@ impl SwitcherEngine {
             return;
         }
 
-        // Filter 0a: submission / navigation boundary (Enter, Tab).
-        // Re-emitting one of these as part of the correction replay
-        // executes a shell command, sends a chat message, or fires a
-        // completion — and the correction fires too late to be useful
-        // anyway (the line is already submitted). Stay out of it.
+        // Filter 0a: submission / navigation boundary. Replaying Enter
+        // or Tab runs a command or sends a message, and the line is
+        // already gone anyway.
         if is_submission_boundary(boundary_char) {
             debug!(
                 token = %logsafe::redact_word(&current_text),
@@ -244,12 +199,9 @@ impl SwitcherEngine {
             return;
         }
 
-        // Filter 0: structural boundary character. If the user
-        // ended the word with `:` / `/` / `\` / `@` / `=` / `#` /
-        // `&` then they're typing a URL / path / email / config
-        // expression / code, NOT prose. Switching `http` to `реез`
-        // because they just typed `:` would corrupt the URL they're
-        // half-way through. Skip.
+        // Filter 0b: structural boundary (`:` `/` `\` `@` `=` `#` `&`)
+        // means URL / path / email / code, not prose. Switching `http`
+        // to `реез` would corrupt what the user is half-way through.
         if is_structural_boundary(boundary_char) {
             debug!(
                 token = %logsafe::redact_word(&current_text),
@@ -265,25 +217,12 @@ impl SwitcherEngine {
             return;
         }
 
-        // Filter 0c: ALL-CAPS word (held Shift / Caps Lock through
-        // the whole token). The user typing `URL`, `HTTP`, `API`,
-        // `ССЫЛКА` is being deliberate — they're not "in the wrong
-        // layout", they're spelling out an abbreviation. Auto-
-        // switching here is the classic glitchy case: the all-caps
-        // token often happens to render as something letter-like in
-        // the other layout, the detector takes the bait, and the
-        // user watches their abbreviation get replaced with
-        // gibberish.
-        //
-        // Held-Shift catches the case on every backend. Caps Lock
-        // catches it on Linux/Wayland (the listener XORs caps into
-        // the shift bit before the engine sees the event). Windows /
-        // macOS don't yet fold Caps Lock into the modifier — a
-        // separate fix at the per-OS listener level — but the
-        // held-Shift variant covers most ALL-CAPS typing there too.
-        //
-        // The manual switch-last hotkey still works on these buffers:
-        // `last_word` was stashed above before any filter ran.
+        // Filter 0c: ALL-CAPS is deliberate spelling-out, not a wrong
+        // layout — and it renders as letter-like bait for the detector.
+        // Held Shift catches it everywhere; Caps Lock only on
+        // Linux/Wayland, where the listener folds caps into the shift
+        // bit. `last_word` was stashed above, so the manual hotkey
+        // still works on these buffers.
         if snap.engine.suppress_for_all_caps && looks_like_all_caps(&current_text) {
             debug!(
                 token = %logsafe::redact_word(&current_text),
@@ -309,16 +248,11 @@ impl SwitcherEngine {
             }
         }
 
-        // Filter 2: token looks like an identifier (camelCase /
-        // snake_case / letter+digit / code punct).
-        //
-        // We feed `looks_like_code_token` a *cleaned* rendering that
-        // strips cross-layout artifacts — characters whose scancode is
-        // a letter in some other layout but renders as punctuation
-        // under the current one. Without this, typing a Ukrainian word
-        // containing `ж` (scancode 0x27) under en-US produces a `;`
-        // mid-string and the heuristic would (wrongly) call the buffer
-        // "code". See `render_for_code_check` for details.
+        // Filter 2: identifier-shaped token (camelCase / snake_case /
+        // letter+digit / code punctuation). Fed a *cleaned* rendering —
+        // otherwise a Ukrainian `ж` under en-US shows up as a mid-string
+        // `;` and the heuristic calls prose "code". See
+        // `render_for_code_check`.
         let token_for_code_check =
             render_for_code_check(&keys, &current_layout, &self.layouts, &current_text);
         if snap.engine.suppress_in_identifiers && looks_like_code_token(&token_for_code_check) {
@@ -342,9 +276,8 @@ impl SwitcherEngine {
             recent_context: "",
         };
 
-        // Run detectors in priority order. The first non-NoOpinion
-        // verdict wins — including a `Keep` veto, which short-circuits
-        // the rest of the pipeline.
+        // Priority order; first non-NoOpinion verdict wins, including a
+        // `Keep` veto.
         let mut chosen: Option<Verdict> = None;
         for d in &self.detectors {
             match d.judge(&ctx) {
@@ -356,10 +289,8 @@ impl SwitcherEngine {
             }
         }
 
-        // A Switch verdict that stays below the confidence threshold
-        // is remembered: the engine won't auto-apply it, but the
-        // suggestions tooltip offers it as a candidate — the user gets
-        // to make the call the detector wasn't confident enough for.
+        // Below the confidence threshold: not auto-applied, but offered
+        // in the suggestions tooltip for the user to decide.
         let mut low_conf_alt: Option<(LayoutId, String)> = None;
 
         let action = match chosen {
@@ -372,19 +303,16 @@ impl SwitcherEngine {
                     .find(|(l, _)| l == &v.best_layout)
                     .map(|(_, t)| t.clone())
                     .unwrap_or_default();
-                // The boundary key has already been delivered to the
-                // focused app, so we have to delete it too and re-emit
-                // a copy after the corrected word.
+                // The boundary key already reached the focused app, so
+                // it has to be deleted and re-emitted after the word.
                 let mut corrected_with_boundary = target_text;
                 corrected_with_boundary.push(boundary_char);
                 SwitchAction::SwitchAndReplay {
                     target_layout: v.best_layout,
                     corrected_text: corrected_with_boundary,
                     // One on-screen character per buffered key + the
-                    // boundary. Keys (not rendered chars): a scancode
-                    // missing from our mapping table still produced a
-                    // character on screen, and under-counting here is
-                    // exactly how word heads get left behind.
+                    // boundary. Keys, not rendered chars: under-counting
+                    // is how word heads get left behind.
                     backspaces: keys.len() + 1,
                     reason: v.reason,
                 }
@@ -410,13 +338,10 @@ impl SwitcherEngine {
             SwitchAction::KeepCurrent { reason } => {
                 debug!(%reason, "decision: keep current");
                 let _ = self.out_tx.send(SwitcherEvent::KeptCurrent { reason });
-                // The word stays as typed — if it's not even a
-                // dictionary word, offer spelling suggestions. Only
-                // for words that started right after an observed
-                // boundary: after a click / nav / Esc the typed keys
-                // may be a fragment of a longer on-screen word, and a
-                // suggestion computed on a fragment is noise that
-                // corrupts the word if accepted.
+                // Word stays as typed — offer spelling suggestions, but
+                // only if it started right after an observed boundary. On
+                // a fragment of a longer word a suggestion is noise that
+                // corrupts it if accepted.
                 if started_clean {
                     self.maybe_offer_suggestions(
                         &keys,
@@ -433,11 +358,9 @@ impl SwitcherEngine {
                 backspaces,
                 reason,
             } => {
-                // Build the replay sequence: original word scancodes
-                // + the boundary key. After the layout flips, emitting
-                // these same scancodes against the new xkb mapping
-                // produces the corrected glyphs — no Unicode-compose
-                // dance needed on Wayland.
+                // Original scancodes + the boundary key: re-emitted
+                // against the new mapping they produce the corrected
+                // glyphs, with no Unicode-compose dance on Wayland.
                 let mut replay: Vec<ReplayKey> = keys
                     .iter()
                     .map(|k| ReplayKey {

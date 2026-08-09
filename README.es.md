@@ -8,6 +8,8 @@ un poltergeist amable que habita tu teclado.
 Para la documentación completa, las notas de desarrollo y las advertencias
 detalladas, consulta el [README en inglés](README.md).
 
+En el proceso de desarrollo se recurrió a la IA.
+
 ## Instalación
 
 Los binarios se publican en la [página de Releases](../../releases). Cada

@@ -2,21 +2,16 @@
 //!
 //! Every call into Win32 in this backend is here, so the thread in
 //! [`super::popup`] reads as plain Rust — the same split the X11
-//! backend uses between its connection and its loop.
+//! backend uses.
 //!
-//! ## Why a *layered* window rather than a painted one
-//!
-//! The tooltip has rounded corners and a translucent panel, and it sits
-//! over somebody else's text. `WM_PAINT` into a normal window would
-//! give us a rectangle: per-pixel alpha is not a thing a plain window
-//! has. `UpdateLayeredWindow` takes a 32-bit premultiplied BGRA surface
-//! and composites it, which is exactly the shape [`crate::render`]
-//! already produces for Wayland — so the pixels cross unchanged except
-//! for the channel order.
-//!
-//! It also means we never paint on demand: there is no `WM_PAINT` to
-//! answer, no flicker, and no repaint when the window behind us
-//! scrolls.
+//! **Layered rather than painted.** The tooltip has rounded corners and
+//! a translucent panel over somebody else's text, and a plain window
+//! has no per-pixel alpha, so `WM_PAINT` would give a rectangle.
+//! `UpdateLayeredWindow` composites a 32-bit premultiplied BGRA surface
+//! — exactly what [`crate::render`] already produces for Wayland, so
+//! the pixels cross unchanged but for channel order. It also means
+//! there is no `WM_PAINT` to answer, no flicker, and no repaint when
+//! the window behind scrolls.
 
 use tracing::warn;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -45,22 +40,16 @@ pub(super) struct PopupWindow {
 impl PopupWindow {
     /// Register the class (once) and create the window.
     ///
-    /// The extended styles are the whole "never steal focus" guarantee,
-    /// and each one is load-bearing:
+    /// The extended styles are the whole "never steal focus" guarantee:
+    /// `WS_EX_NOACTIVATE` so clicking the tooltip does not deactivate
+    /// the editor the user is typing into — the exact failure this
+    /// crate exists to avoid; `WS_EX_TOPMOST` to sit above the focused
+    /// window; `WS_EX_TOOLWINDOW` to stay out of the taskbar and
+    /// Alt+Tab; `WS_EX_LAYERED` because `UpdateLayeredWindow` requires
+    /// it.
     ///
-    /// * `WS_EX_NOACTIVATE` — clicking the tooltip does not move focus
-    ///   away from what the user is typing into. Without it the first
-    ///   click would deactivate their editor, which is the exact
-    ///   failure this crate exists to avoid.
-    /// * `WS_EX_TOPMOST` — above the focused window, which is the only
-    ///   place a tooltip is any use.
-    /// * `WS_EX_TOOLWINDOW` — keeps it out of the taskbar and out of
-    ///   Alt+Tab. A tray app with an Alt+Tab entry for its tooltip
-    ///   would be a bug report.
-    /// * `WS_EX_LAYERED` — required by `UpdateLayeredWindow`.
-    ///
-    /// `WS_POPUP` (not `WS_OVERLAPPED`) so there is no caption, no
-    /// border and no system menu to draw or to click.
+    /// `WS_POPUP` rather than `WS_OVERLAPPED`, so there is no caption,
+    /// border or system menu to draw or click.
     pub(super) fn create() -> Option<Self> {
         // Safety: GetModuleHandleW(None) returns this module's handle.
         let instance = unsafe { GetModuleHandleW(None) }.ok()?;
@@ -113,10 +102,9 @@ impl PopupWindow {
     /// The scale the renderer should draw at for a tooltip landing at
     /// `(x, y)` in virtual-screen coordinates.
     ///
-    /// Asked per monitor rather than per system: a laptop panel at 150%
-    /// beside an external display at 100% is the ordinary Windows
-    /// desktop, and a tooltip rendered at the wrong one of those is
-    /// either blurry or half the size it should be.
+    /// Per monitor rather than per system: a laptop panel at 150% beside
+    /// an external display at 100% is the ordinary Windows desktop, and
+    /// the wrong scale is either blurry or half-sized.
     pub(super) fn scale_at(x: i32, y: i32) -> f32 {
         let mut dpi_x = BASE_DPI;
         let mut dpi_y = BASE_DPI;
@@ -146,12 +134,11 @@ impl PopupWindow {
     }
 
     /// Put `rgba` (premultiplied, as `tiny_skia` produces) on screen at
-    /// `(x, y)`, sizing the window to match, and show it without
-    /// activating it.
+    /// `(x, y)`, sizing the window to match, without activating it.
     ///
-    /// Returns `false` if the surface could not be handed to Windows,
-    /// in which case nothing is shown and the caller reports no popup —
-    /// better than a window sitting there with stale pixels in it.
+    /// `false` if the surface could not be handed to Windows, in which
+    /// case nothing is shown and the caller reports no popup — better
+    /// than a window sitting there with stale pixels.
     pub(super) fn show(&self, rgba: &[u8], w: i32, h: i32, x: i32, y: i32) -> bool {
         if w <= 0 || h <= 0 || rgba.len() < (w * h * 4) as usize {
             return false;
@@ -304,13 +291,11 @@ impl Drop for PopupWindow {
     }
 }
 
-/// Nothing to do here on purpose.
-///
-/// The popup's own loop reads mouse messages out of the queue with
-/// `PeekMessageW` before dispatching, so hit-testing happens in plain
-/// Rust with the row rectangles in scope rather than in a C callback
-/// that would need the state smuggled to it through
-/// `GWLP_USERDATA`. Everything else is the default.
+/// Nothing to do here on purpose: the popup's own loop reads mouse
+/// messages out of the queue with `PeekMessageW` before dispatching, so
+/// hit-testing happens in plain Rust with the row rectangles in scope
+/// rather than in a C callback needing state smuggled through
+/// `GWLP_USERDATA`.
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
     msg: u32,

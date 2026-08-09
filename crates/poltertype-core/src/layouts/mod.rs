@@ -1,48 +1,25 @@
 //! Layout mappings — what each Win-SC1 scancode produces under each
-//! supported layout. Loaded at runtime from the on-disk **data
-//! directory** resolved by [`crate::data_dir`].
+//! supported layout. Loaded at runtime from the data directory resolved
+//! by [`crate::data_dir`]; `docs/DATA_LAYOUT.md` has the tree, which
+//! `build.rs` writes and the installers copy. An FST is never
+//! re-derived at runtime, only `mmap`ed.
 //!
-//! ## On-disk layout
-//!
-//! ```text
-//! <data_dir>/
-//!   layout-mappings/<stem>.toml         ← mapping table
-//!   wordlists/<stem>.fst                ← FST built from <stem>.txt.gz
-//!   wordlists/<stem>-stop.txt           ← curated 1- / 2-letter words
-//! ```
-//!
-//! `build.rs` writes this tree to `<workspace>/target/dist/data/` from
-//! the committed sources under `data/`. Installers copy the same tree
-//! next to the executable. At runtime we never re-derive an FST — we
-//! just `mmap` the prepared `.fst` files.
-//!
-//! ## Active-layout filter
-//!
-//! [`LayoutDb::load`] takes an optional **active filter** — typically
-//! the list returned by `LayoutSwitcher::list_active()`. When set, only
-//! layouts whose `id` matches are read into memory; the others stay on
-//! disk. A user with `en-US / uk-UA / ru-RU` enabled in the OS skips
-//! loading ~7-15 MB of fr-FR / es-ES / de-DE FST data they'd never
-//! query.
-//!
-//! ## OS keymaps
+//! [`LayoutDb::load`] takes an optional **active filter**, typically
+//! `LayoutSwitcher::list_active()`. Only matching layouts are read into
+//! memory, which saves a user with three enabled layouts the ~7-15 MB
+//! of FST data for the ones they would never query.
 //!
 //! [`LoadOptions::os_keymaps`] carries what the platform backend says
 //! the user's keyboards actually produce. Where a language has more
 //! than one keyboard — Windows ships three Bulgarian ones under the
-//! single id `bg-BG` — a bundled table can only be right for one of
-//! them, so the OS's answer replaces it. See [`os_keymap`] for the
-//! precedence chain and what it deliberately does not fix.
+//! single id `bg-BG` — a bundled table can only be right for one, so
+//! the OS's answer replaces it. See [`os_keymap`] for the precedence
+//! chain and what it deliberately does not fix.
 //!
-//! ## User extensions
-//!
-//! Two override paths layered on top of the bundled set:
-//!
-//! 1. `<config-dir>/poltertype/layouts/*.toml` — add new layouts
-//!    without rebuilding. Same TOML schema as the bundled ones.
-//! 2. `<config-dir>/poltertype/wordlists/<stem>(-extras|-stop).txt`
-//!    — extend the dictionary or short-stop list of any layout
-//!    (bundled or user) at runtime.
+//! Two user override paths layer on top: `<config-dir>/poltertype/
+//! layouts/*.toml` adds whole layouts without a rebuild, and
+//! `wordlists/<stem>(-extras|-stop).txt` extends any layout's
+//! dictionary or short-stop list at runtime.
 
 mod consts;
 mod db;

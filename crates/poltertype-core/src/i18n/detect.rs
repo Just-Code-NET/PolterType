@@ -4,18 +4,15 @@
 /// environment, otherwise English.
 ///
 /// `"auto"`, `"system"` and the empty string all mean "ask the
-/// environment". `"system"` is the value `[general].ui_language` has
-/// shipped with since the setting was added — it was never read until
-/// 0.10.0, so honouring it costs nothing and silently upgrading every
-/// existing config file to a new spelling would be worse.
+/// environment". `"system"` is what `[general].ui_language` has shipped
+/// with since the setting was added, so honouring it costs nothing and
+/// beats silently rewriting every existing config.
 ///
-/// Environment detection is the POSIX trio (`LC_ALL`, `LC_MESSAGES`,
-/// `LANG`), checked in the order the C library uses. Windows sets none
-/// of these and therefore lands on English unless the user picks a
-/// language in Settings — deliberate: reading the Windows locale means
-/// a `#[cfg(target_os)]`, and platform code belongs in the seven
-/// crates allowed to hold it, not in `poltertype-core`. A picker the
-/// user can reach is a better answer than a guess anyway.
+/// Detection is the POSIX trio (`LC_ALL`, `LC_MESSAGES`, `LANG`) in the
+/// order the C library uses. Windows sets none of these and lands on
+/// English unless the user picks a language — deliberate, since reading
+/// the Windows locale means a `#[cfg(target_os)]` in a crate that holds
+/// none, and a picker beats a guess anyway.
 pub fn resolve_locale(requested: Option<&str>) -> String {
     if let Some(explicit) = requested {
         let trimmed = explicit.trim();

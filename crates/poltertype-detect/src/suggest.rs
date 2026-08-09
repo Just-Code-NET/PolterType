@@ -1,26 +1,17 @@
-//! Spelling suggestions: fuzzy search over the surface-form FSTs plus
-//! a keyboard-aware ranking metric.
+//! Spelling suggestions: fuzzy search over the surface-form FSTs plus a
+//! keyboard-aware ranking metric. See [`Suggester::suggest`].
 //!
-//! The pipeline (see [`Suggester::suggest`]):
+//! Canonicalise the token, stream every dictionary word within
+//! Levenshtein distance 1 off the layout's surface FST (distance 2 as a
+//! second pass when the first found little and the token is long enough
+//! for d=2 to mean something), sweep the small user overlay linearly
+//! because its entries are user intent, then re-rank with a *weighted*
+//! optimal-string-alignment distance: a physical-neighbour substitution
+//! costs less than a random one, a transposition less than two edits,
+//! and a matching first letter is rewarded.
 //!
-//! 1. Canonicalise the typed token with [`surface_lower`].
-//! 2. Stream every dictionary word within Levenshtein distance 1 off
-//!    the layout's surface FST (distance 2 as a second pass when the
-//!    first found little and the token is long enough to make d=2
-//!    meaningful rather than noisy).
-//! 3. Sweep the user-overlay wordlist linearly (it is small and its
-//!    entries are user intent — they must be reachable as suggestions
-//!    even though they live outside the FST).
-//! 4. Re-rank everything with a *weighted* optimal-string-alignment
-//!    distance: substituting a key by its physical neighbour costs
-//!    less than a random substitution (that is what a finger slip
-//!    looks like), transpositions cost less than two edits (that is
-//!    what fast typing looks like), and a matching first letter is
-//!    rewarded (people rarely miss the first key of a word).
-//!
-//! Everything here is pure computation over data the detector crate
-//! already owns — no OS access, no logging of token contents (the
-//! engine's privacy rule: typed text never reaches a log).
+//! Pure computation over data the crate already owns — no OS access,
+//! and token contents never reach a log.
 
 use std::collections::{HashMap, HashSet};
 

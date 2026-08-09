@@ -26,25 +26,20 @@ pub(crate) fn open_keyboard_devices() -> Vec<OpenDevice> {
         .collect()
 }
 
-/// Open keyboards that appeared since the last scan — a hot-plugged USB
+/// Open keyboards that appeared since the last scan — a hot-plugged
 /// keyboard, a Bluetooth one powered back on, or our own emitter.
 ///
-/// Deliberately NOT `evdev::enumerate()`: that opens every node under
-/// `/dev/input` and reads its capabilities, which on this box costs
-/// 70–140 ms. This runs on the same thread that reads key events, so
-/// paying that every 2 s left the engine blind in ~5 % of wall-clock
-/// time — events piled up in kernel buffers and arrived late in a
-/// burst, right where the correction logic is timing-sensitive. Reading
-/// the directory and opening only genuinely new paths costs microseconds
-/// in the overwhelmingly common case of nothing having changed.
-/// Which paths need judging, and which can be forgotten.
+/// Deliberately not `evdev::enumerate()`: opening every node under
+/// `/dev/input` and reading its capabilities costs 70–140 ms, and this
+/// runs on the thread that reads key events. Paying it every 2 s left
+/// the engine blind ~5 % of the time, with events arriving late in a
+/// burst exactly where the correction logic is timing-sensitive.
 ///
-/// Split out as a pure function because the two halves are easy to get
-/// subtly wrong and impossible to test against a live `/dev/input`:
-/// forgetting nothing makes a replugged keyboard invisible (its node
-/// number is reused, so it looks like one we already judged), while
-/// forgetting everything re-opens a dozen sound cards every 2 s on the
-/// thread that reads keystrokes.
+/// Pure function because both halves are easy to get subtly wrong and
+/// impossible to test against a live `/dev/input`: forgetting nothing
+/// makes a replugged keyboard invisible, since its node number is
+/// reused; forgetting everything re-opens a dozen sound cards every 2 s
+/// on the keystroke thread.
 pub(crate) fn plan_rescan(
     present: &HashSet<PathBuf>,
     known: &HashSet<PathBuf>,
@@ -57,12 +52,11 @@ pub(crate) fn plan_rescan(
     (fresh, forgotten)
 }
 
-/// `known` is every path already judged — opened or rejected — and is
-/// updated in place. Judging a node costs an open plus a capability
-/// read, and most of them are sound cards and power buttons that will
-/// never be keyboards, so each path is judged once and remembered.
+/// `known` is every path already judged — opened or rejected — updated
+/// in place. Judging costs an open plus a capability read, and most
+/// nodes are sound cards and power buttons, so each is judged once.
 /// Paths that disappear are forgotten, which is what makes a device
-/// re-appearing at the same node get looked at again.
+/// reappearing at the same node get looked at again.
 pub(crate) fn open_new_keyboard_devices(known: &mut HashSet<PathBuf>) -> Vec<OpenDevice> {
     let Ok(entries) = std::fs::read_dir("/dev/input") else {
         return Vec::new();
@@ -97,12 +91,10 @@ pub(crate) fn open_new_keyboard_devices(known: &mut HashSet<PathBuf>) -> Vec<Ope
 fn accept_device(path: PathBuf, dev: Device, log_skips: bool) -> Option<OpenDevice> {
     {
         {
-            // Heuristic: a device that advertises KEY_A is a keyboard.
-            // Devices with BTN_LEFT (mice, touchpads) are opened too —
-            // a click usually moves the caret, which the engine must
-            // know about or its word buffer silently diverges from the
-            // text on screen (the classic "half a word got corrected"
-            // report). We only ever read button presses off them.
+            // A device advertising KEY_A is a keyboard. Devices with
+            // BTN_LEFT are opened too: a click usually moves the caret,
+            // which the engine must know about or its buffer silently
+            // diverges from the screen. Only button presses are read.
             let types = dev.supported_keys();
             let is_keyboard = types.is_some_and(|k| k.contains(KeyCode::KEY_A));
             let wanted = is_keyboard || types.is_some_and(|k| k.contains(KeyCode::BTN_LEFT));
@@ -113,14 +105,10 @@ fn accept_device(path: PathBuf, dev: Device, log_skips: bool) -> Option<OpenDevi
                 }
                 return None;
             }
-            // `evdev::Device::fetch_events` is a blocking read by
-            // default. Our `drain_devices` loop walks every device
-            // in turn on a single thread, so the first quiet device
-            // (a HID keyboard on a mouse that nobody is typing on,
-            // a sleep button, …) would deadlock the loop forever.
-            // Flip the FD to non-blocking so `fetch_events` returns
-            // `WouldBlock` instead of waiting — the loop already
-            // handles that branch.
+            // `fetch_events` blocks by default, and `drain_devices`
+            // walks every device on one thread — so the first quiet
+            // device would deadlock the loop for ever. Non-blocking
+            // makes it return `WouldBlock`, which the loop handles.
             if let Err(e) = set_nonblocking(&dev) {
                 warn!(?path, name = %name, ?e, "evdev: failed to set O_NONBLOCK — dropping");
                 return None;
@@ -166,15 +154,13 @@ pub(crate) fn drain_devices(
     stop: Arc<AtomicBool>,
     gate: Arc<EvdevGate>,
 ) {
-    // Naive multi-device polling — for v0.1 we just spin a small
-    // loop that asks each device for events. epoll-based fan-in is a
-    // v0.1.x optimisation.
+    // Naive multi-device polling; epoll-based fan-in is a later
+    // optimisation.
     //
-    // We track modifier state in-loop because evdev gives us raw
-    // press/release pairs and the engine downstream needs to know
-    // whether `K` was typed shifted (`Lfdfq` -> `Давай`, not `давай`).
-    // Caps Lock is handled the same way — it inverts the shift flag
-    // for the produced character.
+    // Modifier state is tracked in-loop because evdev gives raw
+    // press/release pairs and the engine needs to know whether `K` was
+    // typed shifted (`Lfdfq` → `Давай`, not `давай`). Caps Lock inverts
+    // the same flag.
     let mut shift_down = false;
     let mut ctrl_down = false;
     let mut alt_down = false;
@@ -317,13 +303,12 @@ pub(crate) fn update_modifiers(
     }
 }
 
-/// `from_us` marks events read back off our own uinput device. Behind
-/// an input remapper our events return through *its* virtual keyboard
-/// instead and arrive untagged — that is what the engine's echo queue
-/// is for — but on a direct stack this flag identifies them exactly,
-/// which is the difference between swallowing our own replay and
-/// swallowing a keystroke of the user's that happens to share a
-/// scancode with it.
+/// `from_us` marks events read back off our own uinput device. Behind a
+/// remapper our events return through *its* virtual keyboard untagged —
+/// that is what the engine's echo queue is for — but on a direct stack
+/// this flag identifies them exactly, which is the difference between
+/// swallowing our own replay and swallowing a user keystroke that
+/// happens to share a scancode.
 pub(crate) fn translate(ev: &InputEvent, modifiers: Modifiers, from_us: bool) -> Option<KeyEvent> {
     if ev.event_type() != EventType::KEY {
         return None;

@@ -3,18 +3,14 @@
 //! * Querying: `GetForegroundWindow` → `GetWindowThreadProcessId` →
 //!   `GetKeyboardLayout(thread_id)`.
 //! * Listing: `GetKeyboardLayoutList`.
-//! * Switching: `PostMessageW(hwnd, WM_INPUTLANGCHANGEREQUEST, 0, hkl)` —
-//!   correct way to ask the foreground window to change layout. We
-//!   avoid `ActivateKeyboardLayout` because it is per-thread and only
-//!   affects whoever calls it.
+//! * Switching: `PostMessageW(hwnd, WM_INPUTLANGCHANGEREQUEST, 0, hkl)`,
+//!   not `ActivateKeyboardLayout`, which is per-thread and affects only
+//!   the caller.
+//! * Describing: `MapVirtualKeyExW` + `ToUnicodeEx` against each active
+//!   HKL. The low word of an HKL says which *language* a keyboard is
+//!   for; only the keys themselves say which *keyboard* it is.
 //!
-//! HKL → BCP-47 mapping uses `LCIDToLocaleName` on the low word of
-//! the HKL, which holds the input-language LCID.
-//!
-//! * Describing: `MapVirtualKeyExW` + `ToUnicodeEx` against each
-//!   active HKL. The low word of an HKL says which *language* a
-//!   keyboard is for; only the keys themselves say which *keyboard*
-//!   it is.
+//! HKL → BCP-47 goes through `LCIDToLocaleName` on that low word.
 
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -34,17 +30,16 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 
 /// The character block we ask every keyboard about: number row, the
-/// three letter rows, the backtick (`0x29`) and backslash (`0x2B`)
-/// keys that move between ANSI and ISO boards, and the extra key next
-/// to the left Shift (`0x56`) that only ISO boards carry.
+/// three letter rows, the backtick and backslash keys that move between
+/// ANSI and ISO boards, and the extra key beside left Shift that only
+/// ISO boards carry.
 ///
 /// Deliberately a fixed list rather than one derived from the loaded
-/// mappings: [`LayoutSwitcher::describe_keymaps`] promises a table
-/// that is *complete*, and completeness only means something against
-/// a known set of questions. A scancode asked about and left out of
-/// the answer is evidence that the key produces nothing — which is
-/// what lets the layout DB replace a stale mapping instead of merging
-/// into it.
+/// mappings: [`LayoutSwitcher::describe_keymaps`] promises a *complete*
+/// table, and completeness only means something against a known set of
+/// questions. A scancode asked about and absent from the answer is
+/// evidence the key produces nothing — which is what lets the layout DB
+/// replace a stale mapping rather than merge into it.
 const CHARACTER_SCANCODES: &[u32] = &[
     // Number row: `1` … `=`
     0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, //
@@ -224,17 +219,14 @@ fn describe_hkl(hkl: HKL) -> OsKeymap {
 
 /// What does this key produce under `hkl`, with or without Shift?
 ///
-/// Two `ToUnicodeEx` quirks decide the shape of this function:
-///
-/// * **Dead keys return `-1`** — and still write their character.
-///   Reading that as "no character" silently loses every accented
-///   key; it was also 22 of the 35 apparent mismatches in the audit
-///   behind issue #20, which were an artefact of the audit tool
-///   rather than real differences.
-/// * **It mutates keyboard state.** A pending dead key left behind
-///   would compose itself into whatever the *user* types next. We ask
-///   Windows not to touch the state via [`TOUNICODE_NO_STATE_CHANGE`]
-///   and drain by hand anyway, since older builds ignore the flag.
+/// Two `ToUnicodeEx` quirks shape this function. **Dead keys return
+/// `-1`** and still write their character; reading that as "no
+/// character" loses every accented key, and accounted for 22 of the 35
+/// apparent mismatches in the audit behind issue #20. **It mutates
+/// keyboard state**, so a pending dead key would compose itself into
+/// whatever the *user* types next — hence
+/// [`TOUNICODE_NO_STATE_CHANGE`], plus draining by hand because older
+/// builds ignore the flag.
 fn char_at(vk: u32, sc: u32, hkl: HKL, shift: bool) -> Option<char> {
     let mut state = [0u8; 256];
     if shift {

@@ -8,21 +8,18 @@ use fst::Set as FstSet;
 use poltertype_detect::LayoutDictionary;
 use tracing::{info, warn};
 
-/// Parse a one-word-per-line text file into a HashSet whose entries
-/// are normalized exactly like a typed token passes through the
-/// dictionary detector — non-letter chars stripped, lowercase.
+/// Parse a one-word-per-line file into a `HashSet` normalised exactly
+/// as a typed token is by the dictionary detector — non-letters
+/// stripped, lowercased.
 ///
-/// Without this normalization, the on-disk format and the lookup
-/// pipeline disagreed: `poltertype_detect::letters_only_lower` strips
-/// hyphens / apostrophes / digits off the buffered token before
-/// hitting the overlay HashSet, so an extras line like
-/// `v-strel-zbook` (a hostname the user wants to type as English)
-/// or `ім'я` was stored verbatim and never matched the canonicalised
-/// lookup key (`vstrelzbook`, `імя`).
+/// Without that, the on-disk format and the lookup pipeline disagree:
+/// `letters_only_lower` strips hyphens, apostrophes and digits off the
+/// buffered token, so an entry like `v-strel-zbook` or `ім'я` stored
+/// verbatim never matched the lookup key.
 ///
-/// Blank lines and `#` comments are skipped. Lines that contain no
-/// alphabetic chars at all (`---`, `42`) are dropped — they'd
-/// normalize to the empty string and pollute the set.
+/// Blank lines and `#` comments are skipped, as are lines with no
+/// alphabetic characters at all — they would normalise to the empty
+/// string and pollute the set.
 pub fn parse_wordlist(input: &str) -> HashSet<String> {
     input
         .lines()
@@ -33,21 +30,20 @@ pub fn parse_wordlist(input: &str) -> HashSet<String> {
         .collect()
 }
 
-/// Construct a [`LayoutDictionary`] for `stem`, reading the bundled
-/// FST and stop-word file from `<data_dir>/wordlists/`.
+/// Construct a [`LayoutDictionary`] for `stem` from the bundled FST and
+/// stop-word file in `<data_dir>/wordlists/`.
 ///
-/// `overlay_dir` (typically `<config-dir>/poltertype/wordlists/`)
-/// can extend either layer at runtime:
+/// `overlay_dir` can extend either layer at runtime:
 ///
-/// | User file                | Merged into        | Use case |
-/// |--------------------------|--------------------|----------|
-/// | `<stem>.txt`             | `user_overlay`     | runtime additions |
-/// | `<stem>-extras.txt`      | `user_overlay`     | same; separate file for organisation |
-/// | `<stem>-stop.txt`        | `short_stop_words` | extend the ≤2-letter list |
-/// | `<stem>-weak.txt`        | `weak`             | mark Hunspell-valid-but-rare entries (e.g. archaic vocatives) so a strong cross-layout dict hit wins |
+/// | User file | Merged into | Use case |
+/// |---|---|---|
+/// | `<stem>.txt` | `user_overlay` | runtime additions |
+/// | `<stem>-extras.txt` | `user_overlay` | same, separate file for organisation |
+/// | `<stem>-stop.txt` | `short_stop_words` | extend the ≤2-letter list |
+/// | `<stem>-weak.txt` | `weak` | Hunspell-valid but rare, so a strong cross-layout hit wins |
 ///
-/// Missing files are silently fine. Read errors are logged and the
-/// bundled data continues to work.
+/// Missing files are silently fine; read errors are logged and the
+/// bundled data keeps working.
 pub fn build_dictionary(
     data_dir: &Path,
     stem: &str,

@@ -2,12 +2,11 @@
 //! holding the values its manifest declared and knowing how to write
 //! them back.
 //!
-//! The pane edits *the plug-in's* config file, not ours. That file is
-//! written and read by a program we did not write, so two rules apply
-//! throughout: only the keys the manifest declared are ever touched,
-//! and a write that cannot be made cleanly is reported rather than
-//! forced. Everything else in the file — including every comment its
-//! author left for the user — comes back unchanged, which is
+//! The pane edits *the plug-in's* config file, written and read by a
+//! program we did not write, so two rules apply throughout: only the
+//! keys the manifest declared are ever touched, and a write that cannot
+//! be made cleanly is reported rather than forced. Everything else in
+//! the file, comments included, comes back unchanged — that is
 //! [`poltertype_core::plugins::write_setting`]'s whole job.
 
 use std::path::{Path, PathBuf};
@@ -19,14 +18,13 @@ use tracing::warn;
 
 /// What a control that has to *ask the plug-in* is showing right now.
 ///
-/// Shared by the two kinds that run a command — the report, which shows
-/// the text, and the list, which parses rows out of it — so there is
-/// one cache, one message and one place that knows a command has been
-/// asked for.
+/// Shared by the report, which shows the text, and the list, which
+/// parses rows out of it, so there is one cache and one place that
+/// knows a command has been asked for.
 ///
 /// Three states and not two: "asked, waiting" reads very differently
 /// from "asked, got nothing", and a pane that shows an empty box for
-/// both is a pane that looks broken while it is working.
+/// both looks broken while it is working.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandOutput {
     /// The command is running.
@@ -177,13 +175,11 @@ impl PluginPane {
     ///
     /// Reads, edits and writes on the spot rather than batching: the
     /// plug-in may be running and watching that file, and a pane that
-    /// held changes back would be showing a state the plug-in is not
-    /// in.
+    /// held changes back would show a state the plug-in is not in.
     /// Is `member` currently in the array this list control edits?
     ///
-    /// Read from the file each time rather than cached: the plug-in's
-    /// config is a file another program owns, and the user may well
-    /// have it open in an editor while this pane is up.
+    /// Read from the file each time rather than cached: another program
+    /// owns that file, and the user may have it open in an editor.
     pub fn in_array(&self, index: usize, member: &str) -> bool {
         let Some(control) = self.ext.manifest.pane.get(index) else {
             return false;

@@ -9,21 +9,16 @@ use std::sync::Arc;
 /// Holds physical keystrokes back from applications for the duration of
 /// a correction burst, then lets them through again.
 ///
-/// This is the only real answer to keystrokes scrambling a correction.
-/// Everything we inject travels the same path to the compositor as
-/// everything the user types, so a key pressed while a burst is on the
-/// wire lands *inside* our text (`зтзь ш ` coming out as `ipnpm `), and
-/// no amount of counting afterwards can put it back where it belongs.
-/// Held keys are still delivered to the engine, which replays them
-/// behind the correction in the order they were typed.
+/// The only real answer to keystrokes scrambling a correction:
+/// everything we inject travels the same path to the compositor as
+/// everything the user types, so a key pressed mid-burst lands *inside*
+/// our text and no counting afterwards can put it back. Held keys still
+/// reach the engine, which replays them behind the correction in typed
+/// order.
 ///
-/// A gate that reports `available() == false` is a no-op, and that is
-/// the common case: the Windows one is off unless
-/// `POLTERTYPE_HOLD_KEYS=1` because it has never run on real hardware,
-/// and even the evdev gate stands down on stacks where it would do
-/// more harm than good. Callers must therefore treat
-/// [`hold`](Self::hold) returning `false` as normal and stay correct
-/// without it.
+/// A gate reporting `available() == false` is a no-op, and that is the
+/// common case. Callers must treat [`hold`](Self::hold) returning
+/// `false` as normal and stay correct without it.
 #[derive(Clone, Default)]
 pub struct KeyGate {
     #[cfg(target_os = "linux")]

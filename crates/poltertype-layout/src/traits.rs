@@ -21,18 +21,14 @@ pub trait LayoutSwitcher: Send + Sync {
     ///
     /// [`current`](Self::current) and [`list_active`](Self::list_active)
     /// can only name a *language*, and a language is not a keyboard:
-    /// where a language has several keyboard variants, the bundled
-    /// mapping describes one of them and is wrong — silently, and by
-    /// most of the alphabet — for the rest. A backend that can answer
-    /// this question lets the layout DB correct itself against the
-    /// machine it is running on.
+    /// where one has several variants the bundled mapping is wrong for
+    /// the rest, silently and by most of the alphabet.
     ///
-    /// Ordering is significant: the keyboard currently in effect comes
-    /// first, because the DB keeps the first entry per language when a
-    /// user has installed more than one keyboard for it.
+    /// Ordering is significant — the keyboard currently in effect comes
+    /// first, because the DB keeps the first entry per language.
     ///
-    /// The default is an empty list — "this backend cannot tell you" —
-    /// which leaves the bundled mappings untouched.
+    /// The default empty list means "this backend cannot tell you" and
+    /// leaves the bundled mappings untouched.
     fn describe_keymaps(&self) -> Result<Vec<OsKeymap>, LayoutError> {
         Ok(Vec::new())
     }

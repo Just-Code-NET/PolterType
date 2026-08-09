@@ -14,17 +14,16 @@ use crate::types::Artifact;
 
 /// Download `artifact` into `dir` and verify its SHA-256.
 ///
-/// Hashing happens *while* streaming, so we never hold the installer in
-/// memory and never write a file we haven't accounted for. The download
-/// lands on a `.part` path and is only renamed into place once the hash
-/// matches — so the existence of the final file is itself the proof
-/// that it verified, and a crash mid-download leaves nothing that a
-/// later run could mistake for a good artifact.
+/// Hashing happens *while* streaming, so the installer is never held in
+/// memory and no unaccounted file is ever written. The download lands
+/// on a `.part` path and is renamed into place only once the hash
+/// matches — so the existence of the final file is itself the proof it
+/// verified, and a crash mid-download leaves nothing a later run could
+/// mistake for a good artifact.
 ///
-/// On a hash mismatch the partial file is deleted and the error names
-/// both digests. That is a loud failure on purpose: the two ways to get
-/// here are a corrupted transfer and a substituted file, and neither is
-/// something to paper over.
+/// A mismatch deletes the partial file and names both digests. Loud on
+/// purpose: the two ways to get here are a corrupted transfer and a
+/// substituted file.
 pub(crate) fn fetch_verified(artifact: &Artifact, dir: &Path) -> Result<PathBuf, UpdateError> {
     std::fs::create_dir_all(dir)?;
 

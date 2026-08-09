@@ -1,14 +1,12 @@
 //! Choices the wordlist pipeline switches on.
 
-/// Character encoding of a Hunspell dictionary pair, as declared by
-/// the `SET` directive in the `.aff`.
+/// Character encoding of a Hunspell dictionary pair, as declared by the
+/// `SET` directive in the `.aff` — which covers **both** files, since
+/// the `.dic` carries no `SET` of its own.
 ///
-/// The `.dic` carries no `SET` of its own — in Hunspell the `.aff`
-/// declares the encoding for **both** files. Reading each file's own
-/// bytes for a `SET` line and defaulting to Latin-1 when there isn't
-/// one is what silently mangled Polish (ISO-8859-2) and Greek
-/// (ISO-8859-7) into `bel\u{00F3}w`-shaped nonsense; German only
-/// survived it because German really is Latin-1.
+/// Reading each file's own bytes and defaulting to Latin-1 is what
+/// silently mangled Polish and Greek into nonsense; German only
+/// survived because German really is Latin-1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Encoding {
     Utf8,
@@ -29,15 +27,13 @@ pub(crate) enum ExpandMode {
     Full,
     /// Keep the `.dic` stems and skip affix expansion entirely.
     ///
-    /// Reserved for dictionaries whose affix table is combinatorial
-    /// rather than inflectional. Hebrew is the case that forced this
-    /// to exist: `he_IL.aff` carries 3335 prefix rules and *zero*
-    /// suffix rules, because it encodes the clitic prefixes
-    /// (ב ל כ מ ש ו ה, and every legal pair of them) as affixes.
-    /// Expanding it faithfully yields 60.6 M forms — a 141 MB
-    /// `.txt.gz` in the repo and a far larger FST inside every
-    /// installer, for a language whose script already separates it
-    /// from every other bundled layout on sight. Stems keep the
-    /// dictionary useful as a refinement without paying that.
+    /// For dictionaries whose affix table is combinatorial rather than
+    /// inflectional. Hebrew forced this to exist: `he_IL.aff` carries
+    /// 3335 prefix rules and zero suffix rules, because it encodes the
+    /// clitic prefixes and every legal pair of them as affixes.
+    /// Expanding it faithfully yields 60.6 M forms — a 141 MB `.txt.gz`
+    /// and a far larger FST in every installer, for a language whose
+    /// script already separates it from every other bundled layout on
+    /// sight.
     StemsOnly,
 }

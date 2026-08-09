@@ -1,28 +1,22 @@
 //! Turn `[[ai.plugins]]` entries into detectors.
 //!
 //! Everything here is about being *safe to enable*, because the
-//! pipeline this feeds runs on the correction path.
+//! pipeline this feeds runs on the correction path. Four rules:
 //!
-//! Four rules the module exists to enforce:
-//!
-//! * **One bad entry never costs the others.** A plug-in that cannot be
-//!   built is logged with its id and skipped; the rest still load. A
-//!   config typo must not silently disable the AI subsystem entirely,
-//!   and must never take down the engine.
+//! * **One bad entry never costs the others** — it is logged with its
+//!   id and skipped, so a config typo cannot silently disable the whole
+//!   subsystem or take down the engine.
 //! * **A secret in `config.toml` is refused, not used.** `api_key_ref`
-//!   has to be a `keyring:` reference. Accepting a literal key would
-//!   quietly teach users to put one in a plain-text file that they
-//!   might well paste into a bug report.
-//! * **Remote stays behind both switches.** The cargo feature decides
-//!   whether an HTTP client exists at all; `[ai].allow_remote` decides
-//!   whether a non-loopback endpoint may be called. A detector that
-//!   may not run returns no opinion rather than failing to construct,
-//!   so flipping the setting takes effect on the next restart without
-//!   editing config.
-//! * **A blocking entry cannot be configured into ruining typing.**
-//!   The deadline is capped here, at build time, where the user gets
-//!   told — not silently clamped later where they would just
-//!   experience it as lag.
+//!   must be a `keyring:` reference; accepting a literal key would
+//!   teach users to keep one in a file they might paste into a bug
+//!   report.
+//! * **Remote stays behind both switches** — the cargo feature decides
+//!   whether an HTTP client exists, `[ai].allow_remote` whether a
+//!   non-loopback endpoint may be called. A detector that may not run
+//!   returns no opinion rather than failing to construct.
+//! * **A blocking entry cannot be configured into ruining typing.** The
+//!   deadline is capped here, at build time, where the user is told —
+//!   not clamped silently later where they would just feel the lag.
 
 use poltertype_detect::Detector;
 use poltertype_types::AiPluginConfig;
@@ -177,18 +171,14 @@ fn resolve_latency(cfg: &AiPluginConfig, mode: QueryMode) -> Result<u64, AiError
 /// Resolve the API key, if there is one to resolve.
 ///
 /// Returns `(key, unavailable)`. A key is optional on purpose: a local
-/// Ollama needs no credential, and demanding a placeholder would be
-/// theatre. A *remote* endpoint without one is allowed too — plenty of
-/// gateways authenticate by IP — but it is worth a word in the log,
-/// because the likelier explanation is a forgotten setting.
+/// Ollama needs no credential. A *remote* endpoint without one is
+/// allowed too, since plenty of gateways authenticate by IP, but it is
+/// worth a log line — the likelier explanation is a forgotten setting.
 ///
-/// A keychain that cannot answer is **not** a construction failure.
-/// The entry is well-formed; the secret is merely missing or the
-/// keychain is locked, which is a runtime condition and often a
-/// temporary one. Following the same rule as `allow_remote`, the
-/// detector is built and stays quiet, so the log says exactly one
-/// useful thing at startup instead of the plug-in vanishing with a
-/// message about config that is not wrong.
+/// A keychain that cannot answer is **not** a construction failure: the
+/// entry is well-formed and the secret is merely missing or the
+/// keychain locked, which is often temporary. As with `allow_remote`,
+/// the detector is built and stays quiet.
 fn resolve_key(
     cfg: &AiPluginConfig,
     locality: Locality,

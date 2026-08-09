@@ -1,27 +1,20 @@
 //! X11 layout switcher via XKB group locking.
 //!
-//! This is the backend for sessions with **no desktop environment to
-//! ask** — i3, openbox, awesome, xfce without an input-method daemon, a
-//! hand-rolled `.xinitrc`. There the X server itself holds the layout
-//! list, and switching means locking a different XKB *group*.
+//! The backend for sessions with **no desktop environment to ask** —
+//! i3, openbox, awesome, a hand-rolled `.xinitrc`. There the X server
+//! holds the layout list and switching means locking a different XKB
+//! *group*: the up-to-four groups of a keymap are exactly the layouts
+//! in `setxkbmap -layout us,ua`.
 //!
-//! An XKB keymap carries up to four groups (`Group::M1`..`M4`), which
-//! are exactly the layouts in `setxkbmap -layout us,ua`. The locked
-//! group is the one the user is typing in, so:
-//!
-//! * `current()`   → `XkbGetState.locked_group`
+//! * `current()` → `XkbGetState.locked_group`
 //! * `switch_to()` → `XkbLatchLockState { lock_group: true, .. }`
-//! * `list_active()` → the `_XKB_RULES_NAMES` property on the root
-//!   window, which is where the server records the layout list it was
-//!   configured with (it's what `setxkbmap -query` reads).
+//! * `list_active()` → `_XKB_RULES_NAMES` on the root window, where the
+//!   server records the list it was configured with.
 //!
-//! ## Why this backend is probed last
-//!
-//! On an X11 session that *does* run a desktop environment, GNOME / KDE
-//! / IBus / Fcitx already own the layout and keep a tray indicator in
-//! sync with it. Locking the XKB group underneath them switches the
-//! keyboard but leaves their indicator lying, so those backends win and
-//! this one only picks up what they leave behind.
+//! Probed last: on an X11 session that *does* run a desktop
+//! environment, that desktop already owns the layout and keeps a tray
+//! indicator in sync, and locking the group underneath it switches the
+//! keyboard while leaving the indicator lying.
 //!
 //! Reference: <https://www.x.org/releases/current/doc/kbproto/xkbproto.html>
 

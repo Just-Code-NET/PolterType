@@ -1,57 +1,28 @@
 //! Tiny Hunspell `.aff` parser + `.dic` expander.
 //!
-//! ## Why this exists
+//! Hunspell dictionaries store **stems**, not surface forms: the `.dic`
+//! lists each stem with a flag string and the `.aff` holds the affix
+//! rules that expand it. Without an expander ~70 % of the verbal
+//! vocabulary in any inflected language is missing from the surface FST
+//! — the gap behind the `має` auto-delete bug (DECISIONS.md,
+//! 2026-05-07).
 //!
-//! Hunspell dictionaries store **stems**, not surface forms. The
-//! `.dic` file lists each stem with a flag string (`мати/Z{P`,
-//! `find/SDG`); the matching `.aff` file contains affix rules
-//! per-flag that expand the stem into all inflected forms (`має`,
-//! `матиму`, `finds`, `finding`, `found`, …). Without an expander,
-//! ~70 % of the verbal vocabulary in any inflected language is
-//! missing from the surface FST — exactly the gap that produced the
-//! "має" auto-delete bug (DECISIONS.md, 2026-05-07).
+//! Covers enough Hunspell to expand the LibreOffice dictionaries we
+//! ship: `SFX`/`PFX` rules of `<strip> <add> <condition>` shape;
+//! conditions with literals, `.`, `[abc]` and `[^abc]`; all four
+//! flag-encoding modes, including `FLAG num` for tr_TR; and
+//! continuation flags, recursively expanded under a depth cap.
 //!
-//! ## What it covers
+//! Deliberately absent: `COMPOUND*` (wrong-layout detection works on
+//! word boundaries, never on multi-stem compounds), cross-product
+//! PFX × SFX (uk_UA has no PFX rules and the others a handful, so
+//! separate expansions are enough vocabulary), and the spell-checker
+//! concerns — `ICONV`/`OCONV`, `MAP`, `REP`, `BREAK`, `TRY` and the
+//! rest — which are ignored while parsing.
 //!
-//! Enough Hunspell to expand the LibreOffice dictionaries we ship —
-//! that means:
-//!
-//! * Suffix (`SFX`) and prefix (`PFX`) rules with simple
-//!   `<strip> <add> <condition>` shape.
-//! * Condition patterns: literal chars, `.` (any single char), `[abc]`
-//!   class, `[^abc]` negative class.
-//! * Four flag-encoding modes: default ASCII (one flag per char),
-//!   `FLAG long` (two chars per flag), `FLAG UTF-8` (one Unicode
-//!   char per flag — same shape as ASCII at the parser level), and
-//!   `FLAG num` (comma-separated decimals, which tr_TR needs — its
-//!   affix table is effectively one flag per surface form and runs
-//!   to six figures).
-//! * Continuation flags inside `<add>/CONT` — recursively expanded
-//!   with a depth cap to keep pathological cases bounded.
-//!
-//! ## What it does NOT cover
-//!
-//! * `COMPOUND*` rules (compound-word generation). Compounds are a
-//!   tiny fraction of inflected forms in our target languages and
-//!   the engine doesn't need them — wrong-layout detection works
-//!   on individual word boundaries, never on multi-stem compounds.
-//! * Cross-product PFX × SFX combinations. uk_UA has zero PFX rules,
-//!   the others have a handful — generating each one's PFX-only and
-//!   SFX-only forms is enough vocabulary in practice. We skip the
-//!   cross to keep the expander small and the FST size bounded.
-//! * `ICONV` / `OCONV` input/output character conversions. Those
-//!   are spell-checker concerns (normalising user input before
-//!   lookup); we generate canonical forms only.
-//! * `MAP`, `REP`, `BREAK`, `KEY`, `TRY`, `WORDCHARS`, `IGNORE`,
-//!   `NEEDAFFIX`, `CIRCUMFIX`, `ONLYINCOMPOUND`, …  — also
-//!   spell-checker-side. We ignore them while parsing.
-//!
-//! Trade-off: this is a **lossy** Hunspell port — the resulting FST
-//! covers most surface vocabulary the user will type in prose, but
-//! not the corner cases (compound nouns in German that aren't listed
-//! as separate stems, deep cross-product chains, etc.). The
-//! `data/wordlists/<lang>-extras.txt` overlay is the escape hatch
-//! when a missing form bites.
+//! This is therefore a **lossy** port: the FST covers most prose
+//! vocabulary but not the corner cases. `data/wordlists/<lang>-extras.txt`
+//! is the escape hatch when a missing form bites.
 
 mod aff;
 mod enums;

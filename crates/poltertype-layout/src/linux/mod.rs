@@ -1,58 +1,30 @@
-//! Linux layout switcher — shells out to whichever backend the
-//! current session uses, in priority order:
+//! Linux layout switcher — shells out to whichever backend the session
+//! uses, probed in priority order: Hyprland, KDE Plasma, Cinnamon,
+//! GSettings (GNOME and friends), IBus, Fcitx5, and X11 XKB last.
 //!
-//! 1. **Hyprland** (`hyprctl switchxkblayout`) — picked when the
-//!    `HYPRLAND_INSTANCE_SIGNATURE` env var is set; the user's
-//!    Hyprland config may have `kb_layout = us,ua,…` and we cycle by
-//!    index.
-//! 2. **KDE Plasma** (`qdbus6` / `qdbus` → `org.kde.keyboard`).
-//! 3. **Cinnamon** (`gdbus` → `org.Cinnamon`, or XKB groups on 6.4 and
-//!    older). Ahead of GSettings because Cinnamon ships that schema,
-//!    populates it, and never reads it — see [`cinnamon`].
-//! 4. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
-//!    GNOME, Ubuntu Unity 7+, Budgie, Pantheon (elementary OS).
-//!    `try_init()` here only matches when the schema is actually
-//!    installed *and populated*.
-//! 5. **IBus** (`ibus engine`) — any DE that hosts IBus and lets it
-//!    own the layout.
-//! 6. **Fcitx5** (`fcitx5-remote`) — any DE that hosts Fcitx.
-//! 7. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — the bare-WM
-//!    fallback (i3, openbox, plain `.xinitrc`), where no desktop
-//!    environment owns the layout and the X server itself holds it.
-//!    Last on purpose: where a DE *is* present it keeps a tray
-//!    indicator in sync with the layout, and locking the XKB group
-//!    underneath it would switch the keyboard while leaving that
-//!    indicator lying. Cinnamon 6.4 is the exception that proves the
-//!    rule — there the indicator is *driven by* the XKB group, which
-//!    is why that case routes here deliberately rather than by
-//!    falling through.
+//! X11 is last on purpose: where a desktop environment is present it
+//! keeps a tray indicator in sync, and locking the XKB group underneath
+//! would switch the keyboard while leaving that indicator lying.
+//! Cinnamon 6.4 is the exception that proves the rule — there the
+//! indicator *is* driven by the XKB group, so that case routes here
+//! deliberately rather than by falling through. Cinnamon sits ahead of
+//! GSettings because it ships that schema, populates it, and never
+//! reads it.
 //!
-//! Each backend's `try_init()` does a cheap reachability probe (env
-//! var, schema check, or daemon ping). The first that initialises
-//! wins. Setting [`BACKEND_ENV`] skips the probe entirely and pins one
-//! backend — the escape hatch for an input stack we guessed wrong
-//! about, and the first thing to ask a bug reporter to try.
+//! Desktop backends drive their daemon through the canonical CLI tool
+//! of that ecosystem, which survives D-Bus interface drift between
+//! distro versions and costs no zbus/async dependency. X11 speaks the
+//! protocol directly: there is no daemon to ask, and `setxkbmap` cannot
+//! switch a group, only re-install the whole list.
 //!
-//! The DE backends interact with their daemon via the canonical CLI
-//! tool shipped with that ecosystem — that's more robust against
-//! D-Bus interface drift between distro / DE versions than raw D-Bus
-//! calls (and lets us skip the zbus + async-runtime dep entirely).
-//! X11 is the exception: it speaks the protocol directly, because
-//! there is no daemon to ask and `setxkbmap` cannot switch a group —
-//! it can only re-install the whole layout list.
-//!
-//! ## Probing by what a desktop *does*, not by what it ships
-//!
-//! Issue [#26](https://github.com/Just-Code-NET/PolterType/issues/26)
-//! is the cautionary tale for everything above: a schema being
-//! installed, populated and writable says nothing about whether
-//! anyone reads it. A probe that only checks reachability can hand
-//! the session to a backend whose every write is a no-op, and the
-//! failure is silent in the worst way — we read our own write back
-//! and conclude the layout changed. Where a backend can be asked
-//! something only the real owner of the layout could answer (does
-//! this method exist? does this desktop drive this schema?), ask
-//! that instead.
+//! **Probe by what a desktop *does*, not by what it ships.** A schema
+//! being installed, populated and writable says nothing about whether
+//! anyone reads it, and a reachability-only probe can hand the session
+//! to a backend whose every write is a no-op — silent in the worst way,
+//! because we read our own write back and conclude the layout changed.
+//! Where a backend can be asked something only the real owner of the
+//! layout could answer, ask that instead.
+//! ([#26](https://github.com/Just-Code-NET/PolterType/issues/26).)
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
@@ -72,14 +44,12 @@ pub mod kde;
 pub mod shared;
 pub mod x11;
 
-/// Pins one backend instead of probing for it: `cinnamon`, `ibus`,
-/// `gnome`, `kde`, `hyprland`, `fcitx`, `x11` — or `auto` (the
-/// default) to probe.
+/// Pins one backend instead of probing: `cinnamon`, `ibus`, `gnome`,
+/// `kde`, `hyprland`, `fcitx`, `x11`, or `auto`. The first thing to ask
+/// a bug reporter to try.
 ///
-/// Unset, empty or `auto` changes nothing. A name we don't know, or a
-/// backend that cannot initialise on this machine, is an error rather
-/// than a quiet fall-through to the probe: someone who pinned a
-/// backend wants to hear that it didn't happen, and "we picked a
+/// An unknown name, or a backend that cannot initialise here, is an
+/// error rather than a quiet fall-through to the probe: "we picked a
 /// different one and said nothing" is the exact failure this variable
 /// exists to diagnose.
 pub const BACKEND_ENV: &str = "POLTERTYPE_LAYOUT_BACKEND";
@@ -175,22 +145,17 @@ fn create_pinned_switcher(name: &str) -> Result<Box<dyn LayoutSwitcher>, LayoutE
 
 /// TTL cache in front of a Linux backend.
 ///
-/// Every Linux backend answers `current()` / `list_active()` by
-/// talking to an external process or socket. The engine calls
-/// `current()` on (nearly) every keystroke to resolve the produced
-/// character, and 3-4 more times per completed word — uncached, that
-/// used to spawn a `hyprctl` subprocess per keystroke, which both
-/// burned CPU and stretched the window between "user typed the word
-/// boundary" and "our backspaces reach the screen" to 100 ms+. Keys
-/// the user typed inside that window got eaten by the correction —
-/// the "first letter of the word stays behind" bug.
+/// Every backend answers `current()` by talking to an external process
+/// or socket, and the engine asks on nearly every keystroke. Uncached,
+/// that spawned a `hyprctl` per keystroke and stretched the gap between
+/// the word boundary and our backspaces past 100 ms — keys typed inside
+/// that window were eaten, the "first letter stays behind" bug.
 ///
-/// `current()` is cached for a short TTL (manual layout switches by
-/// the user must surface quickly); `list_active()` for a longer one
-/// (the set changes only when the user edits compositor config). A
-/// successful `switch_to()` updates the `current` cache immediately,
-/// so the engine sees the new layout with no round-trip — important
-/// for classifying keystrokes that race the correction.
+/// `current()` gets a short TTL so manual switches surface quickly;
+/// `list_active()` a longer one, since it changes only on a config
+/// edit. A successful `switch_to()` updates the cache immediately, so
+/// keystrokes racing the correction are classified against the new
+/// layout with no round-trip.
 struct CachedSwitcher {
     inner: Box<dyn LayoutSwitcher>,
     current: Mutex<Option<(LayoutId, Instant)>>,

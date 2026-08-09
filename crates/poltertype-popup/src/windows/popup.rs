@@ -2,18 +2,14 @@
 //!
 //! One dedicated thread owns the window and the renderer; the public
 //! handle only pushes commands into a channel, the same shape as the
-//! two Linux backends. The thread parks on a 16 ms tick, which is what
-//! bounds how quickly a click on a row is noticed — nothing here is
-//! animated.
-//!
-//! ## Where the mouse is handled, and why not in the window procedure
+//! two Linux backends. The thread parks on a 16 ms tick, which bounds
+//! how quickly a click on a row is noticed — nothing here is animated.
 //!
 //! Mouse messages are *posted*, so they arrive through the thread's
-//! queue and can be read with `PeekMessageW` before being dispatched.
-//! Doing the hit-test there — in this file, with the row rectangles in
-//! scope — means the window procedure stays a bare `DefWindowProcW`
-//! and none of this state has to be smuggled into a C callback through
-//! `GWLP_USERDATA` and back out of a raw pointer.
+//! queue and can be read with `PeekMessageW` before dispatch. Doing the
+//! hit-test here, with the row rectangles in scope, keeps the window
+//! procedure a bare `DefWindowProcW` and this state out of a C callback
+//! reached through `GWLP_USERDATA`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;

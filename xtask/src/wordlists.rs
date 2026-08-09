@@ -65,15 +65,13 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
     Ok(())
 }
 
-/// Download one language's `.dic` AND `.aff`, drop them under
-/// `sources/<base>.dic` / `sources/<base>.aff`, then run the affix
-/// expander to produce `<wl_dir>/<output>` containing all surface
+/// Download one language's `.dic` and `.aff` into `sources/`, then run
+/// the affix expander to produce `<wl_dir>/<output>` with all surface
 /// forms.
 ///
-/// Errors are surfaced on stderr but don't abort the rest of the
-/// fetch run — partial progress is better than none for a multi-
-/// source script. Returns whether this language came through, so the
-/// caller can fail the command as a whole.
+/// Errors go to stderr without aborting the rest of the run — partial
+/// progress beats none for a multi-source script. Returns whether this
+/// language came through, so the caller can still fail the command.
 pub(crate) fn fetch_hunspell(src_dir: &Path, wl_dir: &Path, source: &HunspellSource) -> bool {
     let dic_path = src_dir.join(format!("{}.dic", source.base));
     let aff_path = src_dir.join(format!("{}.aff", source.base));
@@ -106,15 +104,14 @@ pub(crate) fn download(url: &str, dest: &Path) -> Result<()> {
 /// Read the `SET <encoding>` directive out of a `.aff`.
 ///
 /// **This is the encoding of the whole dictionary pair, `.dic`
-/// included.** Hunspell declares it once, in the `.aff`; the `.dic`
-/// has no `SET` line of its own. Reading each file's own bytes for a
-/// `SET` and falling back to Latin-1 when there wasn't one is how
-/// Polish and Greek shipped as mojibake — the `.aff` decoded
-/// correctly, the `.dic` did not, and nothing failed. German came
-/// through only because German *is* Latin-1.
+/// included.** Hunspell declares it once, in the `.aff`. Reading each
+/// file's own bytes and falling back to Latin-1 is how Polish and Greek
+/// shipped as mojibake: the `.aff` decoded correctly, the `.dic` did
+/// not, and nothing failed. German came through only because German
+/// *is* Latin-1.
 ///
-/// An unrecognised or absent `SET` is an error rather than a guess,
-/// for the same reason.
+/// An unrecognised or absent `SET` is an error rather than a guess, for
+/// the same reason.
 pub(crate) fn detect_encoding(aff_path: &Path) -> Result<Encoding> {
     let bytes = fs::read(aff_path).with_context(|| format!("read {}", aff_path.display()))?;
     encoding_of_aff(&bytes)
@@ -216,21 +213,16 @@ pub(crate) fn process_en(input: &Path, output: &Path) -> Result<()> {
 
 /// Hunspell `.dic` + `.aff` → expanded surface-form list.
 ///
-/// 1. Parse the `.aff` (one-time per language).
-/// 2. For each `.dic` entry `<stem>/<flags>`, run the expander to
-///    produce all surface forms (the stem itself plus every form the
-///    rules generate from those flags).
-/// 3. Lowercase, filter to entries that read as words (letters +
-///    apostrophe + hyphen, at least one alphabetic char), dedupe via
-///    `BTreeSet`, write sorted.
+/// Parse the `.aff` once, expand every `<stem>/<flags>` entry into its
+/// surface forms, then lowercase, filter to entries that read as words,
+/// dedupe through a `BTreeSet` and write sorted.
 ///
-/// Same cleanup pipeline as the previous "strip flags only" path —
-/// the difference is that `set` now contains `1M+` entries instead
-/// of `350k` for inflected languages. FST encoding makes the on-disk
-/// size grow ~3-5×, which is fine for our embed budget.
+/// Same cleanup pipeline as the older strip-flags-only path; the
+/// difference is 1M+ entries instead of 350k for inflected languages,
+/// which FST encoding grows ~3-5× on disk — within the embed budget.
 ///
-/// [`ExpandMode::StemsOnly`] skips step 2 and keeps the bare stems;
-/// see the enum for the one dictionary that needs it and why.
+/// [`ExpandMode::StemsOnly`] skips the expansion and keeps bare stems;
+/// see the enum for the one dictionary that needs it.
 pub(crate) fn process_hunspell_with_aff(
     dic: &Path,
     aff: &Path,

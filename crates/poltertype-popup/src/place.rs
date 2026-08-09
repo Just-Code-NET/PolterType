@@ -1,15 +1,13 @@
-//! Placement of the tooltip around its anchor point.
+//! Placement of the tooltip around its anchor point — the text caret.
 //!
-//! The anchor is the text caret. The tooltip
-//! prefers to hang *above* the point — "над словом" — and walks the
-//! sides by preference when there is no room: above → below → right
-//! → left, taking the first side where it fits fully on the screen.
-//! Whatever side wins, the transverse coordinate is clamped inside
-//! the screen with a small breathing margin, so a point near a corner
-//! slides the tooltip along the edge instead of pushing it off.
+//! It prefers to hang *above* the point and walks the sides when there
+//! is no room: above → below → right → left, taking the first that fits
+//! fully on screen. Whatever side wins, the transverse coordinate is
+//! clamped inside the screen with a small margin, so a point near a
+//! corner slides the tooltip along the edge instead of off it.
 //!
-//! Pure arithmetic, shared by both Linux backends and unit-tested —
-//! coordinates are "the anchor's space": output-local logical px on
+//! Pure arithmetic, shared by both Linux backends and unit-tested.
+//! Coordinates are the anchor's space: output-local logical px on
 //! Wayland, root pixels on X11.
 
 /// Gap between the point and the tooltip's bottom edge when above.
@@ -22,14 +20,13 @@ const GAP_SIDE: i32 = 24;
 const EDGE_MARGIN: i32 = 8;
 
 /// Top-left position for a `w`×`h` tooltip near the vertical segment
-/// `(px, py_top)..(px, py_bottom)` — a caret with its line height, or
-/// a pointer (`py_top == py_bottom`). "Above" clears the segment's
-/// top, "below" clears its bottom, so the tooltip never covers the
-/// line being typed.
+/// `(px, py_top)..(px, py_bottom)` — a caret with its line height, or a
+/// pointer where the two coincide. "Above" clears the segment's top and
+/// "below" its bottom, so the tooltip never covers the line being typed.
 ///
-/// `bounds` is the screen/output size in the same coordinate space;
-/// `None` (unknown output) degrades to above-else-below with a
-/// non-negative clamp — the compositor clips the rest.
+/// `bounds` is the screen size in the same space; `None` degrades to
+/// above-else-below with a non-negative clamp, and the compositor clips
+/// the rest.
 pub(crate) fn place_near_point(
     px: i32,
     py_top: i32,

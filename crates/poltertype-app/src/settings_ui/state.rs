@@ -220,27 +220,20 @@ impl SettingsApp {
         theme::brand_palette(&self.theme())
     }
 
-    /// The root backdrop colour for this view rebuild: the theme's
-    /// window background with its blue channel nudged by an epsilon
-    /// that changes on every call.
+    /// The root backdrop colour: the theme's window background with its
+    /// blue channel nudged by an epsilon that changes on every call.
     ///
-    /// The nudge is a deliberate workaround for iced 0.13's tiny-skia
-    /// compositor. Its partial-present path mis-tracks which swapchain
-    /// buffer holds which frame, so small damage regions get painted
-    /// onto stale buffers — after a palette change the window blinks
-    /// between the new theme and an old-theme frame, and hover
-    /// repaints can freeze outright. A full-window quad whose colour
-    /// never repeats makes the layer diff mark the whole window
-    /// damaged on every UI change, so every present redraws the full
-    /// frame and stale buffers can't survive.
+    /// A workaround for iced 0.13's tiny-skia compositor, whose
+    /// partial-present path mis-tracks which swapchain buffer holds
+    /// which frame — after a palette change the window blinks between
+    /// themes and hover repaints can freeze. A full-window quad whose
+    /// colour never repeats makes the layer diff mark the whole window
+    /// damaged, so every present redraws in full.
     ///
-    /// The epsilon cycles through 251 steps of at most 1/1024 — far
-    /// below 8-bit output precision, so the rendered pixels are
-    /// identical frame to frame. A prime cycle length keeps
-    /// consecutive rebuilds distinct regardless of how many times the
-    /// runtime samples the view. The window repaints only on input
-    /// events, so the extra fill is negligible. Remove when the
-    /// workspace moves to iced 0.14.
+    /// The epsilon cycles 251 steps of at most 1/1024, far below 8-bit
+    /// output precision, so rendered pixels are identical frame to
+    /// frame; a prime cycle keeps consecutive rebuilds distinct however
+    /// often the runtime samples the view. Remove at iced 0.14.
     pub(super) fn backdrop_color(&self) -> iced::Color {
         let bg = self.brand().bg;
         let n = self.bg_jitter.get().wrapping_add(1);

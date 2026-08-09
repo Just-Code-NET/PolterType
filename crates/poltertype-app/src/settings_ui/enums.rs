@@ -52,19 +52,14 @@ impl CommandActionKind {
     }
 }
 
-/// Which user-overlay file the Wordlists pane is currently editing
-/// for the selected layout. Both files live under
-/// `<config-dir>/poltertype/wordlists/`:
+/// Which user-overlay file the Wordlists pane is editing for the
+/// selected layout. Both live under `<config-dir>/poltertype/wordlists/`:
+/// [`WordlistKind::Extras`] is `<stem>.txt`, merged into the layout's
+/// `user_overlay`, and [`WordlistKind::Stop`] is `<stem>-stop.txt`,
+/// merged into its short-stop list.
 ///
-/// * [`WordlistKind::Extras`] → `<stem>.txt` — extra dictionary
-///   words that get merged into the layout's `user_overlay` set.
-/// * [`WordlistKind::Stop`] → `<stem>-stop.txt` — extra short-stop
-///   words (≤2 letters) that get merged into the per-layout
-///   short-stop list.
-///
-/// The two files have identical syntax (one word per line, `#`
-/// comments, blank lines ignored — see
-/// [`poltertype_core::layouts::parse_wordlist`]); only their semantic role
+/// Identical syntax — see
+/// [`poltertype_core::layouts::parse_wordlist`]; only the semantic role
 /// differs at engine load time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WordlistKind {

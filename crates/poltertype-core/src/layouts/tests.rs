@@ -169,13 +169,12 @@ fn wordlists_loaded_with_layouts() {
 }
 
 /// Every bundled language must recognise ordinary words of its own,
-/// **including ones that carry the script's diacritics**.
+/// **including ones carrying the script's diacritics**.
 ///
-/// That second half is the point. Polish and Greek shipped through a
-/// `.dic` decoded with the wrong codepage: the ASCII-only words were
-/// all present and correct, so any spot-check that stuck to `jest` or
-/// `kai` passed, while `słowo` sat in the FST as `s³owo`. Each row
-/// below therefore mixes plain words with accented / non-Latin ones.
+/// That second half is the point: Polish and Greek shipped through a
+/// `.dic` decoded with the wrong codepage, so ASCII-only words were all
+/// correct while `słowo` sat in the FST as `s³owo`. Each row below
+/// mixes plain words with accented ones.
 #[test]
 fn every_bundled_dictionary_knows_its_own_words() {
     let db = LayoutDb::load_embedded();
@@ -352,15 +351,10 @@ fn user_overlay_picks_up_extras_file() {
 
 #[test]
 fn user_overlay_normalizes_hyphens_and_apostrophes() {
-    // Regression: the wordlists tab lets users add hand-picked
-    // tokens to the per-layout dictionary, but hyphenated /
-    // apostrophe-bearing entries used to be stored verbatim while
-    // the lookup path canonicalised the typed token via
-    // `letters_only_lower`. End-result: `v-strel-zbook` in the
-    // extras file never matched the buffer `v-strel-zbook`
-    // (lookup key `vstrelzbook`) and the engine kept switching
-    // it. Lock the canonicalisation in: the entry as written and
-    // the canonical key must both resolve to a Keep.
+    // Regression: hyphenated and apostrophe-bearing extras used to be
+    // stored verbatim while the lookup path canonicalised the typed
+    // token, so `v-strel-zbook` never matched its own lookup key
+    // `vstrelzbook`. Entry-as-written and canonical key must both Keep.
     let tmp = TmpDir::new("normalize-hyphen");
     tmp.write("en_us-extras.txt", "v-strel-zbook\n");
     tmp.write("uk_ua-extras.txt", "ім'я\n");
@@ -388,15 +382,11 @@ fn user_overlay_normalizes_hyphens_and_apostrophes() {
     );
 }
 
-/// Regression: 2-letter acronyms in `<stem>-extras.txt` (`ai`,
-/// `ml`, `ui`, `ux`, `db`, …) used to land **only** in the
-/// embedded FST, but the runtime short-token lookup deliberately
-/// skips the FST (the bulk dict ships short-noise like `ws` /
-/// `ax` / `oe`). Result: typing `AI` while in uk-UA produced
-/// `ФШ` and neither detector had any signal to switch — the user
-/// was stuck. `build.rs` now mirrors the ≤2-letter slice of
-/// extras into the dist `<stem>-stop.txt`, so the short regime
-/// sees them.
+/// Regression: 2-letter acronyms in `<stem>-extras.txt` used to land
+/// only in the embedded FST, which the short-token lookup deliberately
+/// skips — so typing `AI` under uk-UA produced `ФШ` with no signal to
+/// switch. `build.rs` now mirrors the ≤2-letter slice of extras into
+/// the dist stop file.
 #[test]
 fn short_extras_are_visible_to_short_token_lookup() {
     let db = LayoutDb::load_embedded();

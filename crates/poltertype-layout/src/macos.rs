@@ -1,15 +1,13 @@
 //! macOS layout switcher via the Carbon TIS (Text Input Services) API.
 //!
-//! `TISCreateInputSourceList` enumerates installed keyboard layouts;
-//! `TISSelectInputSource` makes one current.
-//! `TISGetInputSourceProperty(s, kTISPropertyInputSourceID)` returns a
-//! reverse-DNS string (`"com.apple.keylayout.US"`,
-//! `"com.apple.keylayout.Ukrainian"`, …) which we map to BCP-47 with
-//! a small table.
+//! `TISCreateInputSourceList` enumerates installed layouts,
+//! `TISSelectInputSource` makes one current, and
+//! `kTISPropertyInputSourceID` returns a reverse-DNS string
+//! (`"com.apple.keylayout.Ukrainian"`) mapped to BCP-47 by a small
+//! table.
 //!
-//! > **Status:** validated on macOS 15 (Intel). Note the threading
-//! > requirement: every TIS call must run on the main dispatch queue
-//! > (HIToolbox asserts it since macOS 14/15) — see `run_on_main`.
+//! Validated on macOS 15 (Intel). Every TIS call must run on the main
+//! dispatch queue — see `run_on_main`.
 
 #![allow(unused_imports, dead_code)] // macOS-only; see DECISIONS for status.
 
@@ -45,15 +43,11 @@ unsafe extern "C" {
 
 // ─── Main-thread dispatch ────────────────────────────────────────────
 //
-// Since macOS 14/15 the HIToolbox Text-Services layer asserts the
-// main dispatch queue (`dispatch_assert_queue` inside
-// `TSMGetInputSourceProperty` → `isValidateInputSourceRef` →
-// `islGetInputSourceListWithAdditions`). Calling ANY TIS function
-// from a worker thread — our layout poller polls every 250 ms, the
-// engine switches on its own thread — kills the process with SIGILL
-// (EXC_BAD_INSTRUCTION). Route every TIS call through the main
-// dispatch queue; run inline when the caller already is the main
-// thread, or `dispatch_sync` would deadlock.
+// Since macOS 14/15 the HIToolbox Text-Services layer asserts the main
+// dispatch queue, so calling ANY TIS function from a worker thread —
+// the layout poller runs every 250 ms, the engine switches on its own
+// thread — kills the process with SIGILL. Route every call through the
+// main queue, inline when already on it or `dispatch_sync` deadlocks.
 
 use std::ffi::c_void;
 
@@ -295,18 +289,14 @@ fn tis_id_to_bcp47(id: &str) -> Option<String> {
     )
 }
 
-/// Inverse of [`tis_id_to_bcp47`] — best-effort reverse lookup so
-/// `switch_to(LayoutId("uk-UA"))` finds the right TIS source. Falls
-/// back to the input string if no entry exists.
+/// Inverse of [`tis_id_to_bcp47`], so `switch_to(LayoutId("uk-UA"))`
+/// finds the right TIS source. Falls back to the input string.
 ///
-/// Deliberately narrower than the forward table: this one names the
-/// source we *ask macOS to select*, so only the base id each language
-/// is certain to have gets an entry. A wrong guess in the forward
-/// direction costs nothing (the id falls through unmapped and stays a
-/// stable opaque `LayoutId`), whereas a wrong guess here is a switch
-/// that silently targets a source the user doesn't have. Like the
-/// rest of the macOS backend, none of this has been exercised on real
-/// hardware — see the known-gaps list in CLAUDE.md.
+/// Deliberately narrower than the forward table: this names the source
+/// we *ask macOS to select*, so only the base id each language is
+/// certain to have gets an entry. A wrong guess forward costs nothing —
+/// the id stays a stable opaque `LayoutId` — whereas a wrong guess here
+/// silently targets a source the user does not have.
 fn bcp47_to_tis_id(id: &str) -> Option<String> {
     Some(
         match id {

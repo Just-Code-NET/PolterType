@@ -111,19 +111,16 @@ impl LayoutMapping {
         }
     }
 
-    /// Reverse lookup: which physical key (and shift state) produces
-    /// `ch` under this layout? Used by the suggestion-accept path to
-    /// type a replacement as scancodes — the only injection that works
-    /// in Wayland-native / terminal apps. Linear over the ~48-key
-    /// table; callers do this a handful of times per accepted word.
-    /// Unshifted match wins when a character appears in both columns.
+    /// Reverse lookup: which physical key and shift state produces `ch`
+    /// under this layout? Used by the suggestion-accept path to type a
+    /// replacement as scancodes. Linear over the ~48-key table, a
+    /// handful of times per accepted word; an unshifted match wins.
     ///
     /// Ties break on the lowest scancode, which matters more than it
-    /// looks: a real keyboard puts the same character on two keys
-    /// often enough — en-US carries `\` on both `0x2B` and the extra
-    /// ISO key `0x56` — and iterating a `HashMap` would otherwise pick
-    /// a different one run to run. The low scancode is also the key
-    /// that exists on every board, ISO or ANSI.
+    /// looks: a real keyboard carries the same character on two keys
+    /// often enough — en-US has `\` on both `0x2B` and the ISO `0x56` —
+    /// and a `HashMap` would pick a different one run to run. The low
+    /// scancode is also the key that exists on every board.
     pub fn key_for_char(&self, ch: char) -> Option<(u32, bool)> {
         let mut plain_hit: Option<u32> = None;
         let mut shifted_hit: Option<u32> = None;

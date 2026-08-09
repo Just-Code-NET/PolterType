@@ -1,28 +1,17 @@
 //! Spelling-suggestion offers: when to offer, how an accept is
-//! validated, and applying the chosen replacement through the same
+//! validated, and applying the replacement through the same
 //! absorb → delete → replay machinery as layout corrections.
 //!
-//! Lifecycle of one offer:
+//! One offer's life: `decide()` kept the word and it is not in the
+//! dictionary → [`SwitcherEngine::maybe_offer_suggestions`] stamps a
+//! generation and emits [`SwitcherEvent::SuggestionsReady`] → the user
+//! clicks or presses the accept chord → [`SwitcherEngine::
+//! accept_suggestion`] re-validates generation, deadline and that the
+//! word is still the last one the buffer can vouch for → the
+//! replacement goes out through `apply_correction`.
 //!
-//! 1. `decide()` kept the word, the word is not in the current
-//!    language's dictionary, no suppression applies →
-//!    [`SwitcherEngine::maybe_offer_suggestions`] stamps a generation,
-//!    stashes a [`PendingSuggestion`] and emits
-//!    [`SwitcherEvent::SuggestionsReady`] for the tooltip.
-//! 2. The user clicks an entry (app sends
-//!    [`EngineCommand::AcceptSuggestion`]) or presses the accept
-//!    chord + digit (matched off the key stream in `commands.rs`).
-//! 3. [`SwitcherEngine::accept_suggestion`] re-validates: right
-//!    generation, deadline not passed, and the mistyped word is
-//!    still the last completed word the buffer can vouch for.
-//! 4. The replacement is emitted via `apply_correction` — same-layout
-//!    for spelling entries, with a real layout switch for the
-//!    below-threshold cross-layout entry.
-//!
-//! Anything that invalidates the screen position of the word (next
-//! word committed, caret moved, pause, settings reload, tooltip
-//! timeout) dismisses the offer via
-//! [`SwitcherEngine::dismiss_suggestions`].
+//! Anything that invalidates the word's screen position dismisses the
+//! offer via [`SwitcherEngine::dismiss_suggestions`].
 
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -45,11 +34,11 @@ use crate::settings::Settings;
 
 use super::engine::SwitcherEngine;
 
-/// How long a click-frozen offer stays acceptable. Long enough for
-/// the tooltip's `Accepted` event to cross popup thread → app loop →
-/// engine command channel; short enough that a click *elsewhere*
-/// (which also freezes, because the engine can't tell the difference)
-/// can't authorise a replacement after the user has moved on.
+/// How long a click-frozen offer stays acceptable: long enough for the
+/// tooltip's `Accepted` event to cross popup thread → app loop → engine
+/// channel, short enough that a click *elsewhere* (which also freezes,
+/// because the engine cannot tell them apart) cannot authorise a
+/// replacement after the user moved on.
 const CLICK_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl SwitcherEngine {
@@ -120,12 +109,10 @@ impl SwitcherEngine {
             );
             return;
         }
-        // Last row: "add to dictionary" — the escape hatch for
-        // jargon, names and project vocabulary the tooltip would
-        // otherwise keep flagging. Rides along only when a tooltip
-        // shows anyway (a tooltip whose ONLY content is "add to
-        // dictionary" would itself be the noise it exists to stop).
-        // Trimmed to keep the total digit-addressable (1..=9).
+        // Last row: "add to dictionary", the escape hatch for jargon
+        // and names. Rides along only when a tooltip shows anyway — one
+        // whose only content is this row would be the noise it exists
+        // to stop. Trimmed to stay digit-addressable (1..=9).
         entries.truncate(8);
         entries.push(SuggestionEntry {
             text: current_text.to_owned(),
@@ -175,10 +162,9 @@ impl SwitcherEngine {
     }
 
     /// A pointer press is about to abandon the buffer — freeze the
-    /// screen model into the pending offer first, in case this click
-    /// lands on the tooltip (whose `Accepted` event arrives through
-    /// the command channel a beat later). Only freezes while the
-    /// buffer still vouches for the offered word.
+    /// screen model into the pending offer first, in case the click
+    /// lands on the tooltip and its `Accepted` event arrives a beat
+    /// later. Only freezes while the buffer still vouches for the word.
     pub(super) fn freeze_suggestion_for_click(&self, buffer: &WordBuffer) {
         let mut slot = self.pending_suggestion.lock();
         let Some(p) = slot.as_mut() else { return };
@@ -256,10 +242,9 @@ impl SwitcherEngine {
     }
 
     /// Handle an accept (tooltip click or digit chord). Validates the
-    /// generation, the deadline and — critically — that the mistyped
-    /// word is still the last completed word the buffer can vouch
-    /// for; anything else is silently declined (the tooltip is
-    /// already gone or lying about the screen).
+    /// generation, the deadline, and that the mistyped word is still the
+    /// last completed word the buffer can vouch for. Anything else is
+    /// silently declined — the tooltip is gone or lying about the screen.
     pub(super) fn accept_suggestion(
         &self,
         generation: u64,
@@ -315,16 +300,11 @@ impl SwitcherEngine {
             return;
         }
 
-        // Two ways the screen state can be vouched for:
-        //
-        // * The live buffer still holds the offered word (chord path,
-        //   or a click whose `Accepted` event outran its own key-
-        //   stream observation) → read separators/tail from it.
-        // * The buffer was just abandoned by the click's pointer
-        //   press, but the state was frozen at that instant and the
-        //   grace window is open → use the frozen copy (a click ON
-        //   the overlay never reached the app, so the screen is
-        //   exactly as frozen).
+        // Two ways the screen can be vouched for: the live buffer still
+        // holds the offered word, or the buffer was abandoned by the
+        // click's own pointer press but the state was frozen at that
+        // instant and the grace window is open. A click ON the overlay
+        // never reached the app, so the frozen copy is exact.
         let same_word = buffer.completed().len() == pending.keys.len()
             && buffer
                 .completed()
@@ -347,11 +327,9 @@ impl SwitcherEngine {
             return;
         };
         // A click-sourced accept has exactly one physical click in
-        // flight; the absorb machinery must swallow it rather than
-        // abort. (When the pointer press was already consumed —
-        // frozen path — an unused allowance is harmless: it only
-        // ever ignores pointer presses, which always mean "caret
-        // moved" for every OTHER purpose.)
+        // flight, which the absorb machinery must swallow rather than
+        // abort on. An unused allowance is harmless: it only ever
+        // ignores pointer presses.
         let click_allowance = usize::from(from_pointer);
         let Some(plan) =
             self.plan_suggestion_replacement(&pending, &entry, &run, &tail, typed_digit)
@@ -361,13 +339,10 @@ impl SwitcherEngine {
         self.apply_suggestion_replacement(&pending, &entry, &plan, click_allowance, buffer, key_rx);
     }
 
-    /// Work out what the replacement is: which layout to end up in,
-    /// how much of the screen to delete, what to replay in its place,
-    /// and how it reads once typed.
-    ///
-    /// `None` declines the accept, leaving the user's text untouched —
-    /// every reason to give up lives here rather than half-way through
-    /// emitting.
+    /// Work out the replacement: which layout to end up in, how much of
+    /// the screen to delete, what to replay, and how it reads once
+    /// typed. `None` declines the accept — every reason to give up
+    /// lives here rather than half-way through emitting.
     fn plan_suggestion_replacement(
         &self,
         pending: &PendingSuggestion,
@@ -398,11 +373,10 @@ impl SwitcherEngine {
             return None;
         }
 
-        // The word itself: cross-layout entries replay the original
-        // scancodes under the switched layout (exactly what
-        // force_switch_last does); spelling entries reverse-map the
-        // suggestion text to scancodes. A character the current layout
-        // can't type (uk apostrophe) falls back to text injection.
+        // Cross-layout entries replay the original scancodes under the
+        // switched layout; spelling entries reverse-map the suggestion
+        // text. A character the layout cannot type (uk apostrophe) falls
+        // back to text injection.
         let word_replay: Option<Vec<ReplayKey>> = if entry.switch_to.is_some() {
             Some(
                 pending
@@ -479,11 +453,10 @@ impl SwitcherEngine {
             "spelling suggestion accepted"
         };
 
-        // The replacement word in scancodes, for re-pointing the
-        // buffer's stash afterwards. Worked out here because this is
-        // where the target mapping is in hand; `None` when the layout
-        // cannot type every character, which is exactly the case where
-        // the stash must be dropped rather than re-pointed.
+        // The replacement in scancodes, for re-pointing the buffer's
+        // stash afterwards — worked out here because the target mapping
+        // is in hand. `None` when the layout cannot type every
+        // character, which is exactly when the stash must be dropped.
         let replacement_keys: Option<Vec<WordKey>> = {
             let keys: Vec<WordKey> = entry
                 .text
@@ -545,19 +518,15 @@ impl SwitcherEngine {
             replacement: entry.text.clone(),
         });
 
-        // Keep the stashes coherent with the new screen contents.
+        // Keep the stashes coherent with the new screen contents. A
+        // cross-layout entry leaves the scancodes unchanged, so the
+        // buffer stash stays valid; a spelling entry changes them, so
+        // re-point the stash (or forget it when text injection left no
+        // scancode form) and backspacing re-opens the right thing.
         //
-        // * Cross-layout entry: the scancodes on screen are unchanged
-        //   (same keys, new layout) — the buffer stash stays valid.
-        // * Spelling entry: the word now has *different* scancodes.
-        //   Re-point the buffer's completed-word stash at them (or
-        //   forget it when text injection was used and no scancode
-        //   form exists) so backspacing across the boundary re-opens
-        //   the right thing.
-        //
-        // The manual switch-last stash is dropped in both cases:
-        // re-transliterating a word the user just hand-picked is
-        // never what the hotkey should do next.
+        // The manual switch-last stash is dropped either way:
+        // re-transliterating a word the user just hand-picked is never
+        // what the hotkey should do next.
         if entry.switch_to.is_none() {
             let still_same = buffer.completed().len() == pending.keys.len()
                 && buffer

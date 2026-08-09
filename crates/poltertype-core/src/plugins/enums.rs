@@ -5,23 +5,18 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use thiserror::Error;
 
-/// The two kinds of plug-in, which are **not** two points on one
-/// scale — they have different trust models and are validated by
-/// different rules.
+/// The two kinds of plug-in, which are **not** two points on one scale:
+/// they have different trust models and different validation rules.
 ///
-/// A [`Self::Pack`] is data. It cannot execute; the installer's
-/// allow-list is what guarantees that, and nothing about it changes.
+/// A [`Self::Pack`] is data and cannot execute; the installer's
+/// allow-list is what guarantees that.
 ///
-/// A [`Self::Extension`] ships a program. That is a genuinely larger
-/// decision by the user, so it is a separate kind rather than a looser
-/// pack: the difference is visible in the manifest, can be shown in
-/// the UI before anything is installed, and cannot be arrived at by a
-/// pack quietly gaining a field.
-///
-/// An extension never runs *inside* PolterType. It is spawned as its
-/// own process, so it has its own permissions and its own crashes, and
-/// the process that owns the global keyboard hook is not put at the
-/// mercy of third-party code.
+/// A [`Self::Extension`] ships a program — a genuinely larger decision,
+/// so it is a separate kind rather than a looser pack. The difference
+/// is visible in the manifest, can be shown before anything is
+/// installed, and cannot be arrived at by a pack quietly gaining a
+/// field. An extension never runs *inside* PolterType; it is spawned as
+/// its own process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginKind {
@@ -66,40 +61,35 @@ pub enum ControlKind {
     /// Shows what one of the plug-in's declared commands prints.
     ///
     /// The only control that displays something the plug-in produced
-    /// rather than something the manifest declared — so it is worth
-    /// being precise about what that does and does not allow. The text
-    /// is rendered as text, in a fixed-width block that is visibly part
-    /// of the plug-in's card: it cannot draw a button, style itself,
-    /// or look like anything PolterType said. What it is for is the
-    /// answer a plug-in has and a manifest cannot: how much it has
-    /// learned, what it found, what it will and will not be able to do
-    /// on this machine.
+    /// rather than something the manifest declared, so: the text is
+    /// rendered as text, in a fixed-width block visibly part of the
+    /// plug-in's card. It cannot draw a button, style itself, or look
+    /// like anything PolterType said. It exists for the answer a
+    /// plug-in has and a manifest cannot — what it found, what it can
+    /// and cannot do on this machine.
     ///
     /// Binds to no key. Reads, never writes.
     Report,
     /// A checkbox per row, where the rows come from the plug-in and
     /// ticking one adds its name to an array in the plug-in's config.
     ///
-    /// The control for a set nobody can write down in advance: which
-    /// applications to learn from, which of them to act in. A manifest
-    /// cannot list those — they are whatever is installed on this
-    /// machine — so the plug-in supplies the rows at runtime and
-    /// PolterType draws the boxes. Each row may carry a line of detail
-    /// under it, which is how a row can say what it *measured* about
-    /// that application rather than only naming it.
+    /// The control for a set nobody can write down in advance — which
+    /// applications to learn from, which to act in. A manifest cannot
+    /// list what is installed on this machine, so the plug-in supplies
+    /// the rows at runtime and PolterType draws the boxes. A row may
+    /// carry a line of detail, which is how it says what it *measured*
+    /// rather than only naming the application.
     ///
     /// `key` is the array. `command` produces the rows.
     List,
     /// A control this PolterType does not know.
     ///
-    /// Here so that a plug-in written for a newer PolterType still
-    /// *loads* on an older one. Without it, serde refuses the unknown
-    /// word, the refusal takes the whole manifest with it, and the
-    /// user's plug-in vanishes from the pane entirely because one line
-    /// mentioned a control that had not been invented when their app
-    /// was built. One unrenderable control is a far smaller problem,
-    /// and it is a problem that explains itself: the pane says the
-    /// control needs a newer version.
+    /// Here so a plug-in written for a newer PolterType still *loads* on
+    /// an older one. Without it serde refuses the unknown word, the
+    /// refusal takes the whole manifest with it, and the plug-in
+    /// vanishes from the pane because one line mentioned a control that
+    /// did not exist yet. One unrenderable control is smaller and
+    /// explains itself — the pane says it needs a newer version.
     #[serde(other)]
     Unknown,
 }

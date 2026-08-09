@@ -34,55 +34,46 @@ pub struct SwitcherEngine {
     pub(super) key_gate: KeyGate,
     /// Modifiers the user was holding as of the last event we saw.
     ///
-    /// A correction triggered *by* a chord — accepting a suggestion
-    /// with `Ctrl+Meta+<digit>`, the manual switch-last hotkey — starts
-    /// while those keys are still physically down, and our replay
-    /// travels the same path to the application as the user's own
-    /// keystrokes. Emitting under a held `Ctrl` types nothing at all:
-    /// every key of the replay arrives as a shortcut. So the emitter is
-    /// told to let them go first.
+    /// A correction triggered *by* a chord starts while those keys are
+    /// still down, and our replay travels the same path to the
+    /// application as the user's own keystrokes — under a held `Ctrl`
+    /// every replayed key arrives as a shortcut and nothing is typed.
+    /// So the emitter is told to let them go first.
     pub(super) held_modifiers: RwLock<Modifiers>,
     pub(super) focus_tracker: Arc<dyn FocusTracker>,
     pub(super) audio: Arc<AudioPlayer>,
     pub(super) out_tx: Sender<SwitcherEvent>,
     pub(super) paused: Arc<RwLock<bool>>,
-    /// The last few completed words, so a smart-command trigger can
-    /// span more than one of them (`best regards`).
+    /// The last few completed words, so a smart-command trigger can span
+    /// more than one (`best regards`).
     ///
-    /// Bounded three ways — length, the idle timeout, and a focus
-    /// change — because this is the one place the engine holds more
-    /// of the user's text than the word being typed. See
+    /// Bounded three ways — length, idle timeout, focus change —
+    /// because this is the one place the engine holds more of the
+    /// user's text than the word being typed. See
     /// [`crate::commands::phrase`].
     pub(super) word_history: Arc<RwLock<WordHistory>>,
     /// Buffer of the previous fully-completed word (for "switch-last").
     pub(super) last_word: Arc<RwLock<Option<LastWord>>>,
-    /// Expected echoes of our own injected keystrokes: scancodes of
-    /// every *press* the emitter reported putting on the wire, oldest
-    /// first, each with an expiry deadline.
+    /// Expected echoes of our own injected keystrokes: the scancode of
+    /// every *press* the emitter put on the wire, oldest first, each
+    /// with an expiry deadline.
     ///
-    /// On Linux/Wayland the only correction path that actually works
-    /// inside terminals and Wayland-native apps is to replay the
-    /// original scancodes via uinput *after* `switch_to`. But our
-    /// uinput device is not distinguishable from a real keyboard at
-    /// the listener level — keyd (and similar input remappers) proxies
-    /// our virtual events through its own virtual keyboard, stripping
-    /// the `injected` marker entirely. Without protection the engine
-    /// would read its own replay back, run another correction on it,
-    /// and spiral into an infinite backspace+space loop.
+    /// Our uinput device is not distinguishable from a real keyboard at
+    /// the listener level — keyd and friends proxy our events through
+    /// their own virtual keyboard, stripping the `injected` marker. Left
+    /// unguarded the engine reads its own replay back, corrects it
+    /// again, and spirals into a backspace+space loop.
     ///
-    /// Earlier versions suppressed *everything* for a fixed 300-400 ms
-    /// window after a correction and cleared the word buffer on every
-    /// event inside it. That ate the first real keystrokes of the next
-    /// word for fast typists: the characters were on screen but not in
-    /// the buffer, so the *next* correction under-counted its
-    /// backspaces and left the leading characters behind — the
-    /// "перший символ слова залишається" bug. Match-and-consume is
-    /// precise instead: each incoming press either matches the head of
-    /// this queue (→ it's our echo, swallow it) or is real user input
-    /// (→ process normally, no matter how soon after a correction).
-    /// Only releases are exempt — they are state-neutral everywhere
-    /// downstream and remappers sometimes filter ours, so tracking
-    /// them would desync the queue.
+    /// Match-and-consume rather than a blanket suppression window:
+    /// suppressing everything for 300–400 ms ate the first real
+    /// keystrokes of the next word for fast typists, so the next
+    /// correction under-counted its backspaces and left the leading
+    /// characters behind. Here each press either matches the head of
+    /// this queue and is swallowed, or is real input and is processed
+    /// however soon after a correction it arrives.
+    ///
+    /// Releases are exempt: they are state-neutral downstream, and
+    /// remappers sometimes filter ours, which would desync the queue.
     pub(super) expected_echo: Mutex<VecDeque<(u32, Instant)>>,
     /// Hotkey chords matched directly off the key stream. Empty unless
     /// the app enables them (Wayland) via
@@ -97,32 +88,26 @@ pub struct SwitcherEngine {
     pub(super) pending_suggestion: Mutex<Option<PendingSuggestion>>,
     /// Monotonic stamp source for [`PendingSuggestion::generation`].
     pub(super) suggestion_generation: AtomicU64,
-    /// Wall-clock deadline before which auto-correction is suppressed
-    /// because the user just pasted (Ctrl+V / Ctrl+Shift+V / Shift+Insert).
+    /// Deadline before which auto-correction is suppressed because the
+    /// user just pasted (Ctrl+V / Ctrl+Shift+V / Shift+Insert).
     ///
-    /// A clipboard paste is not "typing", so its text must never be
-    /// retyped into another layout. On most backends the pasted content
-    /// never reaches us as key events at all. But on Wayland the
-    /// compositor / input remapper (keyd & friends) can replay the
-    /// inserted text through a virtual keyboard, where it is
-    /// indistinguishable from human typing — the engine would then
-    /// "correct" a word the user never typed. We can't tell those
-    /// synthetic keystrokes apart event-by-event, so instead we mark a
-    /// short window after the paste shortcut and decline to auto-correct
-    /// anything that completes inside it. The buffer still tracks keys,
-    /// so normal correction resumes the moment the window lapses.
+    /// A paste is not typing and must never be retyped into another
+    /// layout. On most backends it never reaches us as key events at
+    /// all — but on Wayland a compositor or remapper can replay the
+    /// inserted text through a virtual keyboard, indistinguishable from
+    /// human typing. Since the events cannot be told apart one by one,
+    /// a short window after the shortcut declines to correct anything
+    /// completing inside it. The buffer keeps tracking, so correction
+    /// resumes the moment the window lapses.
     pub(super) paste_guard_until: RwLock<Instant>,
 }
 
 /// Everything the engine is built out of.
 ///
-/// A struct rather than ten positional parameters, and not because a
-/// lint asked: seven of these are `Arc<dyn …>` trait objects, so any
-/// two of the same shape can be swapped at the call site and the
-/// compiler will accept it happily. Named fields make the wiring
-/// legible in `main.rs` and impossible to transpose. A constructor is
-/// also the one thing that cannot be "split into smaller functions" —
-/// the object is not usable half-built.
+/// A struct rather than ten positional parameters because seven of
+/// these are `Arc<dyn …>` trait objects: any two of the same shape can
+/// be swapped at the call site and the compiler accepts it happily.
+/// Named fields make the wiring in `main.rs` impossible to transpose.
 pub struct EngineDeps {
     pub settings: Arc<SettingsStore>,
     pub layouts: Arc<LayoutDb>,

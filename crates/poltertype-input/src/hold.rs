@@ -2,34 +2,23 @@
 //!
 //! Everything that decides *whether to swallow a keystroke* lives here,
 //! deliberately platform-free, so it compiles under `cfg(test)` on any
-//! host and the safety properties get tested on machines this project
-//! actually has. The Windows hook callback and the macOS event-tap
-//! callback each do nothing but read an event's flags and ask
-//! [`HoldState::swallow`].
+//! host and the safety properties are tested on machines this project
+//! actually has. The Windows hook and macOS event-tap callbacks do
+//! nothing but read an event's flags and ask [`HoldState::swallow`].
 //!
-//! ## Why this is safer than it sounds
+//! A gate that swallows keystrokes system-wide is the one feature here
+//! that can leave a user unable to type, and on Linux that fear is well
+//! earned — `EVIOCGRAB` outlives a wedged caller, and a stuck grab took
+//! a real session down on 2026-07-31.
 //!
-//! A gate that swallows keystrokes system-wide is the one feature in
-//! this project that can leave a user unable to type. On Linux that
-//! fear is well earned: `EVIOCGRAB` outlives a wedged caller, and a
-//! stuck grab took a real session down on 2026-07-31.
-//!
-//! Windows fails the other way, and it is worth being precise about
-//! why:
-//!
-//! * **A dead process cannot hold the keyboard.** The hook belongs to
-//!   the process; when it exits, the hook goes with it.
-//! * **A hung process cannot either.** Windows removes a low-level hook
-//!   whose callback overruns `LowLevelHooksTimeout`. Our callback is a
-//!   couple of atomic loads, but if the process ever stopped answering,
-//!   the OS itself would give the keyboard back.
-//!
-//! That leaves exactly one dangerous shape: a healthy, responsive
-//! process that sets [`HoldState::hold`] and never clears it. The
-//! deadline below is the answer, and it is checked **inside the
-//! decision** rather than by a watchdog thread — so the very next
-//! keystroke after expiry is the one that clears the hold and passes
-//! through. No timer to miss, no thread to hang.
+//! Windows fails the other way: a dead process cannot hold the
+//! keyboard, because the hook belongs to it, and neither can a hung
+//! one, because Windows removes a low-level hook whose callback
+//! overruns `LowLevelHooksTimeout`. That leaves exactly one dangerous
+//! shape — a healthy, responsive process that sets [`HoldState::hold`]
+//! and never clears it. The deadline below answers it, checked *inside
+//! the decision* rather than by a watchdog, so the very next keystroke
+//! after expiry clears the hold and passes through.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -94,19 +83,17 @@ impl HoldState {
 
     /// Should this keystroke be kept from the focused application?
     ///
-    /// `ours` must be true for events **we** synthesised. Swallowing
-    /// those would be a self-deadlock: the correction's own backspaces
-    /// and letters would never reach the application it is correcting.
-    /// It is not enough to ask whether an event is *injected* — another
-    /// automation tool's synthetic keys are injected too, and those we
-    /// do want to hold back for the same reason we hold back the
-    /// user's. `listener.rs` decides `ours` from the marker the emitter
-    /// stamps into `dwExtraInfo`.
+    /// `ours` must be true for events **we** synthesised, or the
+    /// correction's own backspaces never reach the application it is
+    /// correcting. Asking whether an event is merely *injected* is not
+    /// enough — another automation tool's synthetic keys are injected
+    /// too, and those we do want to hold back. `listener.rs` decides
+    /// `ours` from the marker the emitter stamps into `dwExtraInfo`.
     ///
     /// Expiry is handled here rather than by a watchdog: a hold past
     /// its deadline is cleared by the first event that observes it, so
-    /// the worst case is one keystroke of latency and never a keyboard
-    /// that stays dead.
+    /// the worst case is one keystroke of latency, never a dead
+    /// keyboard.
     pub(crate) fn swallow(&self, ours: bool, now_ms: u64) -> bool {
         if ours {
             return false;

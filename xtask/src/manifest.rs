@@ -1,20 +1,18 @@
 //! `cargo xtask manifest` — sign and inspect the release manifest.
 //!
-//! The updater in `poltertype-update` verifies `latest.json` against a
-//! public key compiled into the binary. This is the other half: the
-//! tool that makes that signature, run **on the maintainer's machine**
-//! with a private key that is deliberately not available to CI.
+//! The updater verifies `latest.json` against a public key compiled
+//! into the binary; this is the other half, run **on the maintainer's
+//! machine** with a private key deliberately not available to CI.
 //!
-//! That asymmetry is the entire security gain. A signing key stored as
-//! an Actions secret would be reachable by anyone who can compromise
-//! the GitHub account — which is exactly the attacker the signature is
-//! supposed to stop, so it would buy nothing. Signing by hand, between
-//! the draft release CI produces and the moment a human publishes it,
-//! keeps the key on hardware GitHub never touches.
+//! That asymmetry is the entire security gain. A key stored as an
+//! Actions secret would be reachable by anyone who can compromise the
+//! GitHub account — exactly the attacker the signature is meant to
+//! stop. Signing by hand, between the draft CI produces and the moment
+//! a human publishes it, keeps the key on hardware GitHub never
+//! touches.
 //!
-//! The signed bytes are produced by `poltertype_update::signing_payload`
-//! — the same function the app verifies with, so there is exactly one
-//! implementation of the format and no way for the two ends to drift.
+//! The signed bytes come from `poltertype_update::signing_payload`, the
+//! same function the app verifies with, so the two ends cannot drift.
 
 use std::path::{Path, PathBuf};
 

@@ -32,26 +32,19 @@ pub const LAYOUT_SETTLE: Duration = Duration::from_millis(30);
 pub const INTRUSION_REPAIRS: usize = 2;
 
 /// How many times the intrusion probe samples the key stream before
-/// giving up on finding a pause. A repair is itself a burst, so
-/// starting one while the user is still mid-word only moves the
-/// scramble along — better to leave the text alone and stop vouching
-/// for the screen. Bounded so a user who never pauses can't stall the
-/// engine.
+/// giving up on finding a pause. A repair is itself a burst, so starting
+/// one mid-word only moves the scramble along. Bounded so a user who
+/// never pauses cannot stall the engine.
 ///
-/// Counted in probes rather than wall-clock on purpose. The loop's
-/// own unit is one [`POST_EMIT_LAG`] sleep per sample, so a deadline
-/// measured by the clock races the sleeps that drive it: overshoot
-/// enough of them — 142 tests on a 3-core CI runner will — and the
-/// deadline expires before [`INTRUSION_QUIET_PROBES`] silent samples
-/// can accumulate, and the engine declines a repair it should have
-/// made. That surfaced as an intermittent test failure on macOS CI,
-/// but the same load makes a real user lose a correction. Counting
-/// samples keeps the decision identical whatever the scheduler does;
-/// only the wall-clock duration stretches, which is exactly the part
-/// that should stretch on a busy machine.
+/// Counted in probes rather than wall-clock: the loop's unit is one
+/// [`POST_EMIT_LAG`] sleep per sample, so a clock deadline races the
+/// sleeps that drive it. Overshoot enough of them — 142 tests on a
+/// 3-core CI runner will — and the deadline expires before
+/// [`INTRUSION_QUIET_PROBES`] silent samples accumulate, declining a
+/// repair that should have happened. Counting samples keeps the
+/// decision identical whatever the scheduler does.
 ///
-/// Must stay comfortably above [`INTRUSION_QUIET_PROBES`], the
-/// shortest run of silence that authorises a repair.
+/// Must stay comfortably above [`INTRUSION_QUIET_PROBES`].
 pub const INTRUSION_PROBES: u8 = 24;
 
 /// Consecutive silent probes (of [`POST_EMIT_LAG`] each) that count as
@@ -84,11 +77,10 @@ pub const SC_INSERT: u32 = 110;
 /// SC Set-1 scancode for the spacebar.
 ///
 /// A layout overlay describes the 46 character keys and nothing else,
-/// so the spacebar has no entry in any of them. That matters wherever
-/// held keystrokes are replayed as *text*: without special-casing it
-/// here, the boundary that triggered the correction in the first place
-/// is the one keystroke that never comes back, and the next word runs
-/// straight into the corrected one.
+/// so the spacebar has no entry in any of them. Without special-casing
+/// it wherever held keystrokes are replayed as *text*, the boundary
+/// that triggered the correction is the one keystroke that never comes
+/// back, and the next word runs straight into the corrected one.
 pub const SC_SPACE: u32 = 0x39;
 /// SC Set-1 scancode for Backspace. Also layout-independent, and also
 /// not text — it has to be re-emitted as a keypress, in order.

@@ -17,17 +17,12 @@ use super::heuristics::*;
 use super::types::*;
 use super::*;
 
-/// Full-engine integration tests with mocked OS surfaces. These drive
+/// Full-engine integration tests with mocked OS surfaces. They drive
 /// `SwitcherEngine::run` on a real thread through the public channel
-/// API — the same way `poltertype-app` does — and assert on the exact key
-/// operations the engine emits. They are the regression net for the
-/// two long-standing field reports:
-///
-/// * "після перемикання лишається перший символ старого слова" —
-///   keystrokes racing the correction used to soak up backspaces;
-/// * "видаляю пару символів, дописую — переводить пів слова" — the
-///   buffer used to lose the word head across backspace-over-boundary
-///   edits, so the next correction under-counted.
+/// API, the way `poltertype-app` does, and assert on the exact key
+/// operations emitted — the regression net for keystrokes racing a
+/// correction and for the word head lost across a backspace-over-
+/// boundary edit.
 mod engine_integration_tests {
     use super::*;
     use crate::layouts::LayoutDb;
@@ -364,13 +359,11 @@ mod engine_integration_tests {
             }
         }
 
-        /// Wait until the engine has drained everything we sent AND
-        /// its emit-op log has stopped moving. Corrections deliberately
-        /// dawdle — quiet-gap absorption (~90 ms), the post-replay
-        /// echo-settle wait (up to 400 ms when echoes never arrive, as
-        /// with this mock), and chained decisions for absorbed words —
-        /// so the stability window must outlast the engine's longest
-        /// internal quiet stretch.
+        /// Wait until the engine has drained everything sent AND its
+        /// emit-op log has stopped moving. Corrections deliberately
+        /// dawdle (quiet-gap absorption, the echo-settle wait, chained
+        /// decisions), so the stability window must outlast the
+        /// engine's longest internal quiet stretch.
         fn settle(&self) {
             let mut last_ops = usize::MAX;
             let mut stable = 0;
@@ -483,17 +476,12 @@ mod engine_integration_tests {
         }
     }
 
-    /// Regression for the field report "ввід доменів працює дуже
-    /// погано — перемикає по декілька разів".
-    ///
-    /// `.` is `ю` in uk-UA, so a host stays one token and its en-US
-    /// rendering (dots intact) used to score 0.00 against the Cyrillic
-    /// rendering's 0.75. Typing a sentence with a domain in it
-    /// therefore switched **twice**: once to mangle the host into
-    /// `пфьуіюогіе-сщвуютуе`, then back again on the next prose word.
-    /// Both the host and the sentence around it must now survive
-    /// untouched — while a genuine wrong-layout word whose rendering
-    /// carries a dot is still corrected.
+    /// Regression: a domain used to be switched **twice** — once to
+    /// mangle the host, then back on the next prose word. `.` is `ю` in
+    /// uk-UA, so a host stays one token and its en-US rendering scored
+    /// 0.00 against the Cyrillic 0.75. Host and surrounding sentence
+    /// must survive, while a genuine wrong-layout word carrying a dot
+    /// is still corrected.
     #[test]
     fn domain_in_a_sentence_does_not_switch_the_layout() {
         let h = Harness::start_full(
@@ -686,12 +674,9 @@ mod engine_integration_tests {
         );
     }
 
-    /// The full fast-typing race: the user types the second word AND
-    /// its boundary before the correction of the first word begins.
-    /// Everything must come out in order — word1 corrected, boundary,
-    /// word2 replayed behind it — and word2 must get its own decision
-    /// (a second correction here, since the mock detector always
-    /// flips).
+    /// The full fast-typing race: the user types the second word and its
+    /// boundary before the first correction begins. Everything must come
+    /// out in order, and word2 must get its own decision.
     #[test]
     fn raced_full_word_is_absorbed_in_order() {
         let h = Harness::start(60_000);
@@ -764,13 +749,10 @@ mod engine_integration_tests {
         }
     }
 
-    /// СИМПТОМ 3 (`зтзь ш ` → `ipnpm `): the next word's first key
-    /// reaches the compositor while the replay burst is still going
-    /// out, so it lands on screen *among* our own characters — before
-    /// all of them when it slips into the gap ahead of the replay.
-    /// Nothing in the key stream says where it landed, so the engine
-    /// erases everything it just typed, the intruder included, and
-    /// re-emits the lot in typed order.
+    /// The next word's first key reaches the compositor mid-replay and
+    /// lands among our own characters (`зтзь ш ` → `ipnpm `). Nothing in
+    /// the key stream says where, so the engine erases everything it
+    /// typed, the intruder included, and re-emits in typed order.
     #[test]
     fn keystroke_inside_the_replay_is_repaired() {
         let h = Harness::start(60_000);
@@ -831,14 +813,11 @@ mod engine_integration_tests {
         );
     }
 
-    /// The user's report: "Ctrl+Meta+<digit> does nothing". A
-    /// correction fired by a chord starts while that chord's own
-    /// modifiers are still physically down, and our replay reaches the
-    /// application the same way the user's keys do — so under a held
-    /// Ctrl every replayed key arrives as a shortcut and nothing is
-    /// typed at all. Verified against the real compositor too: with
-    /// the modifiers released by hand the same accept replaced the
-    /// word, with them held it did nothing.
+    /// A correction fired by a chord starts while that chord's modifiers
+    /// are still down, and the replay reaches the application the way
+    /// the user's keys do — so under a held Ctrl every replayed key
+    /// arrives as a shortcut and nothing is typed. Confirmed against a
+    /// real compositor both ways.
     #[test]
     fn accept_chord_releases_its_own_modifiers_before_typing() {
         // This user's configured chord, which also exercises parsing
@@ -1229,12 +1208,10 @@ mod engine_integration_tests {
         );
     }
 
-    /// A tooltip click reaches the engine twice: once as the physical
-    /// `SC_POINTER_BUTTON` press in the key stream (which abandons
-    /// the buffer — a click usually moves the caret) and once as the
+    /// A tooltip click reaches the engine twice: as the physical
+    /// `SC_POINTER_BUTTON` press (which abandons the buffer) and as the
     /// popup's `Accepted` command. The click never reached the app
-    /// below (the overlay swallowed it), so the frozen screen state
-    /// must still authorise the replacement.
+    /// below, so the frozen screen state must still authorise it.
     #[test]
     fn click_accept_survives_pointer_abandon() {
         let h = suggestion_harness();
@@ -1328,18 +1305,13 @@ mod engine_integration_tests {
         );
     }
 
-    /// Regression for the two bugs the first live Hyprland run hit:
+    /// Regression for the two bugs the first live Hyprland run hit: the
+    /// evdev listener stamps a modifier's own press with its flag, which
+    /// read as a command and killed the accept chord; and pausing to
+    /// *read* the tooltip past `idle_timeout_ms` voided the offer on the
+    /// chord itself.
     ///
-    /// 1. The evdev listener stamps a modifier's OWN press with its
-    ///    flag (`Ctrl↓` arrives with `control: true`), which used to
-    ///    read as a "command" and abandon the buffer — killing the
-    ///    accept chord before its digit landed.
-    /// 2. Pausing to *read* the tooltip (longer than
-    ///    `idle_timeout_ms`) used to void the offer on the very next
-    ///    event — i.e. the accept chord itself.
-    ///
-    /// This drives the realistic sequence: word → pause past the
-    /// idle timeout → `Ctrl↓ Shift↓ 1↓ 1↑ Shift↑ Ctrl↑` with
+    /// Drives word → pause past the timeout → the full chord with
     /// listener-faithful modifier flags. The replacement must land.
     #[test]
     fn accept_chord_survives_modifier_presses_and_idle_gap() {
@@ -1588,12 +1560,9 @@ mod engine_integration_tests {
         h.cmd_tx
             .send(EngineCommand::SwitchLastForcefully)
             .expect("engine alive");
-        // No wait for `Corrected` here: with no correction of ours to
-        // reverse, the hotkey falls back to "some other layout", and
-        // which one that is depends on `LayoutDb` iteration order —
-        // it may land on a layout the mock OS doesn't have active, in
-        // which case the correction is declined before any keystroke.
-        // Either way the assertion below is the point.
+        // No wait for `Corrected`: with no correction to reverse the
+        // hotkey falls back to "some other layout", which may not be
+        // active in the mock OS — the assertion below is the point.
         h.settle();
         let (_, events) = h.stop();
         assert!(
@@ -1724,37 +1693,19 @@ mod last_word_consume_tests {
     use poltertype_layout::LayoutId;
     use std::sync::Arc;
 
-    /// Regression for the manual-switch hotkey loop bug.
+    /// Regression for the manual-switch hotkey loop.
     ///
-    /// The user types `цщц` (uk-UA), engine auto-corrects to `wow `,
-    /// stashes `last_word`. User presses `Ctrl+Shift+Backspace` to
-    /// re-apply manually. `apply_correction` sends BACKSPACE
-    /// keystrokes via SendInput; those Backspaces are flagged
-    /// INJECTED so the engine ignores them, but Win32
-    /// `RegisterHotKey` (the primitive `global-hotkey` uses) sees
-    /// the combination of our injected Backspace + the user's
-    /// still-held Ctrl+Shift modifiers as another fresh
-    /// `Ctrl+Shift+Backspace` press and fires the hotkey again.
-    /// Same effect from key auto-repeat if the user holds the chord.
+    /// `force_switch_last` emits Backspaces flagged injected, but Win32
+    /// `RegisterHotKey` sees them combined with the user's still-held
+    /// Ctrl+Shift as a fresh press and fires again; auto-repeat does the
+    /// same. Without atomic take-and-clear every echo re-ran the
+    /// correction, so the text accumulated and the sound looped until
+    /// the app was killed.
     ///
-    /// Without atomic take-and-clear, every echo runs another
-    /// `force_switch_last`, deleting + re-typing `wow ` and playing
-    /// the correction sound. The user-visible symptom: text
-    /// accumulates and a sound loop doesn't stop until the app is
-    /// killed.
-    ///
-    /// The fix in `EngineCommand::SwitchLastForcefully` swaps from
-    /// `read().clone()` to `write().take()`: the first fire
-    /// processes; subsequent fires hit `None` and exit silently.
-    /// To re-trigger, the user must complete another word and let
-    /// the engine re-stash a new last_word.
-    ///
-    /// We can't easily construct a full `SwitcherEngine` here (lots
-    /// of OS deps), so we exercise the storage primitive directly —
-    /// what matters for the bug is that the take semantics are
-    /// load-bearing, and a future refactor that switches them back
-    /// to clone-and-read would re-introduce the loop. This test
-    /// pins that.
+    /// A full `SwitcherEngine` is impractical here, so this exercises
+    /// the storage primitive directly: what must not regress is that
+    /// `write().take()` is load-bearing and clone-and-read re-introduces
+    /// the loop.
     #[test]
     fn take_consumes_last_word_so_repeated_fires_no_op() {
         let storage: Arc<RwLock<Option<LastWord>>> = Arc::new(RwLock::new(None));
