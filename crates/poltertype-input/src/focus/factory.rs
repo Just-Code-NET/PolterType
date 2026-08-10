@@ -15,7 +15,11 @@ pub fn create_focus_tracker() -> Arc<dyn FocusTracker> {
     {
         linux_impl::create_linux_focus_tracker()
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        std::sync::Arc::new(macos_impl::MacosFocusTracker)
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         Arc::new(NoopFocusTracker)
     }

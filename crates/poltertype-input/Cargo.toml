@@ -36,6 +36,13 @@ core-foundation     = "0.10"
 # `None` back into the original event, so an "active" tap swallowed
 # nothing and the key gate doubled the user's keystrokes.
 core-graphics       = "0.25"
+# `proc_pidpath` — the focused-exe half of the AX focus tracker.
+libc                = "0.2"
+# NSWorkspace.frontmostApplication — the reliable way to find the
+# focused app's pid (the system-wide AX element is not, on real
+# machines). Used by the focus tracker only.
+objc2               = "0.6"
+objc2-app-kit       = "0.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Wayland-first: evdev requires the user to be in the `input` group.

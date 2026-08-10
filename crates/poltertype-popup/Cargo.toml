@@ -36,3 +36,16 @@ windows = { version = "0.58", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_LibraryLoader",
 ] }
+
+# macOS overlay: an NSPanel driven entirely on the main dispatch queue
+# (AppKit's hard rule), pixels handed over as a CGImage built from the
+# shared renderer's premultiplied RGBA — same family of crates tao and
+# poltertype-input already link, so no second ObjC runtime copy.
+[target.'cfg(target_os = "macos")'.dependencies]
+block2            = "0.6"
+core-graphics     = "0.25"
+dispatch2         = "0.3"
+objc2             = "0.6"
+objc2-app-kit     = "0.3"
+objc2-foundation  = "0.3"
+objc2-quartz-core = "0.3"
