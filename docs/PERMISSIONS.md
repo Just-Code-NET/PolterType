@@ -31,6 +31,14 @@ Accessibility when the tap fails to attach without it. Granting only
 one leaves the app running with a tray icon and no corrections, which
 is why the tray alert below matters.
 
+Since v0.15.0 the Accessibility grant does a second job: placing the
+suggestion tooltip. PolterType asks the focused application, over the
+same API, which window has focus and where the text caret is — its
+position and size, never its contents, and only at the moment a
+suggestion is about to be shown. No text is read out of any
+application, on any platform; that is the same boundary the engine
+works under.
+
 **Expect to grant both again after an update.** macOS attaches these
 permissions to a code identity, and ours is an ad-hoc signature (see
 `docs/CODE_SIGNING.md`), whose identity is the hash of the app's own

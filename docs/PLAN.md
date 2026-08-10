@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-10 (v0.14.4).
+> Created: 2026-05-02. Last updated: 2026-08-11 (v0.15.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -18,9 +18,9 @@
 >   even though it shipped back in 0.1.0-beta).
 > * **What does not exist despite being described below** —
 >   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` is
->   complete on Windows / Hyprland / X11, partial on other Wayland
->   (AT-SPI sees only apps with an accessibility bridge, which
->   excludes most terminals) and absent on macOS; AT-SPI *keystroke
+>   complete on Windows / macOS / Hyprland / X11 and partial on other
+>   Wayland (AT-SPI sees only apps with an accessibility bridge, which
+>   excludes most terminals); AT-SPI *keystroke
 >   listening* is decided against with measurements, and `libei` does
 >   not exist. The AI subsystem ships an *interface* and no backend
 >   at all as of 0.10.0 — a socket the user points at their own model.
@@ -62,6 +62,7 @@
 | 2026-07-31 | **No Flatpak, decided rather than left open.** `uinput` is not grantable short of `--device=all`, and no portal exists. | Deciding once with evidence costs less than answering the question every few months. Details in `DECISIONS.md` (2026-07-31). |
 | 2026-07-24 | **Spelling suggestions**: dictionary-driven tooltip for mistyped same-layout words (`poltertype-popup` crate, `[suggestions]`, on by default). Below-threshold layout verdicts surface as the leading tooltip entry instead of being dropped. | Extends the correction promise to plain typos with the data we already bundle. Details in `DECISIONS.md` (2026-07-24). |
 | 2026-08-10 | **The macOS bundle is ad-hoc signed now, not when a Developer ID is bought.** The release also asserts each architecture slice by name and fails if either is unsigned. | An unsigned slice has no code identity, and macOS grants Accessibility to an identity — so on Intel the app ran and corrected nothing. Details in `DECISIONS.md` (2026-08-10). |
+| 2026-08-11 | **macOS gets the suggestion tooltip and a focus tracker** (non-activating `NSPanel`, Accessibility-based focus/caret) — and the caret answer is **validated** rather than trusted. | Chrome and Terminal report carets that are nowhere near the text; an unchecked answer anchors the tooltip to the previous field. Details in `DECISIONS.md` (2026-08-11) and `MACOS_POPUP.md`. |
 
 ---
 
@@ -597,19 +598,25 @@ Not in the MVP.
   implemented** (2026-07-13).
 - Linux X11: `_NET_ACTIVE_WINDOW` + `_NET_WM_PID` (EWMH) — **✅
   implemented** (2026-07-13).
-- macOS: `NSWorkspace.didActivateApplicationNotification` — **❌ no**.
+- macOS: `NSWorkspace.frontmostApplication` → pid → `proc_pidpath`,
+  window geometry and caret over the Accessibility API — **✅
+  implemented** (0.15.0, outside contributor, Intel hardware). Not the
+  notification sketched here: a live query per ask, for the same
+  reason the Linux backends poll rather than subscribe.
 - Linux GNOME/KDE Wayland — **❌ no**: there is no compositor-agnostic
   active-window query, by design; needs per-DE backends (KWin script /
   GNOME shell extension).
 
-> **Remaining hole (macOS + GNOME/KDE Wayland).**
-> `create_focus_tracker()` returns a `NoopFocusTracker` there, and its
-> `focused_exe()` always returns `None`. So everything keyed off the
-> active application **silently does nothing** on those targets:
+> **Remaining hole (GNOME/KDE Wayland).**
+> `create_focus_tracker()` falls back to the AT-SPI tracker there, and
+> it sees only applications with a live accessibility bridge — most
+> terminals have none. So everything keyed off the active application
+> **can silently do nothing** on those targets:
 > `[exceptions].disabled_apps`, per-app dictionary profiles, and
 > `apps = [...]` on smart commands. There will be no error — simply
 > nothing will happen. Do not promise these features there (in
-> particular on the landing page) until the trackers exist.
+> particular on the landing page) as if they were the Windows/macOS
+> answer.
 >
 > Design notes for the Linux backends (identity = executable basename
 > via `/proc/<pid>/exe`, 150 ms TTL cache, why XWayland is not used as
@@ -896,8 +903,11 @@ separate `poltertype --settings` process.
       system's own prompt for each, and deep-links into the matching
       System Settings pane. Never yet run on a Mac; the screenshots /
       GIFs of the toggles remain undone.
-- [ ] **`NSWorkspace` focus tracking** — not implemented, so the
-      `FocusTracker` on macOS is a no-op (see Phase 6 and §3.9).
+- [x] **Focus tracking** — 0.15.0, outside contributor, Intel
+      hardware: frontmost pid via `NSWorkspace`, window geometry and
+      caret over the Accessibility API, caret answers validated
+      because Chrome and Terminal report junk ones. See §3.9 and
+      `MACOS_POPUP.md`.
 - [ ] **Keystroke hold-back.** The key gate works on Linux/evdev and
       on macOS (validated on Intel; opt-in via `POLTERTYPE_HOLD_KEYS=1`
       because of the post-correction latency); on Windows it is

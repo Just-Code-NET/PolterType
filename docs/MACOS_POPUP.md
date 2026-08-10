@@ -1,8 +1,8 @@
 # macOS suggestion tooltip — spec
 
-Status: implemented (branch `feat/macos-popup`), hardware-verified
-2026-08-10 (TextEdit + Chrome, Intel Mac Pro, macOS 15.7).
-Tracks the "macOS | noop today" row in `crates/poltertype-popup/src/lib.rs`.
+Status: shipped in 0.15.0 ([#29](https://github.com/Just-Code-NET/PolterType/pull/29)),
+hardware-verified 2026-08-10 (TextEdit + Chrome, Intel Mac Pro,
+macOS 15.7).
 
 ## Goal
 
@@ -69,10 +69,12 @@ backends there is **no popup thread**:
   hit-test against the stored row rects, send `PopupUiEvent` over the
   channel, hide via `orderOut`.
 
-Panel creation is also dispatched async at `try_new` — `create_popup`
-is called *before* `event_loop.run()`, so a synchronous hop to the
-main queue would deadlock; async enqueue is correct because the main
-queue is FIFO and any `show` dispatch lands after creation.
+Panel creation is *lazy*, on the first `show` — `create_popup` is
+called before `event_loop.run()`, so nothing may touch AppKit at
+construction time: a synchronous hop to the main queue would deadlock
+there, and an async one would race. Creating it inside the first
+dispatched `show` sidesteps both, which is why `MacosPopup::new`
+cannot fail.
 
 ### Pixels
 
@@ -100,12 +102,14 @@ union; all clamped to the display union.
 
 ### Subclassing
 
-One `objc2::define_class!` NSView subclass (`PopupView`) with ivars
-for the event channel, the current row rects (logical px), and the
-generation. Overrides: `isFlipped` (top-down coordinates so the shared
-hit-test works unmodified), `mouseDown`, `mouseMoved`, `mouseExited`,
-`updateTrackingAreas` (a visible-rect tracking area — borderless
-windows get no motion events otherwise).
+One `objc2::define_class!` NSView subclass (`PopupView`). Its ivars
+are empty: the event channel, the row rects and the generation all
+live in the main-thread `STATE` alongside the panel, because the view
+callbacks run on that same thread and reaching them through one place
+beats keeping a second copy in sync. Overrides: `isFlipped` (top-down
+coordinates so the shared hit-test works unmodified), `mouseDown`,
+`mouseMoved`, `mouseExited`, `updateTrackingAreas` (a visible-rect
+tracking area — borderless windows get no motion events otherwise).
 
 ## Design: the focus tracker (`poltertype-input/src/focus/macos_impl.rs`)
 
@@ -158,7 +162,7 @@ degrades exactly as it does on GNOME Wayland.
 
 - `crates/poltertype-popup/Cargo.toml` — macOS target deps:
   `objc2 0.6`, `objc2-foundation 0.3`, `objc2-app-kit 0.3`,
-  `block2 0.6`, `dispatch2 0.3`, `core-graphics 0.25`
+  `objc2-quartz-core 0.3`, `dispatch2 0.3`, `core-graphics 0.25`
   (all already in the lockfile via tao / poltertype-input).
 - `crates/poltertype-popup/src/macos/{mod,panel,popup}.rs` — new.
 - `crates/poltertype-popup/src/lib.rs` — `mod macos`, platform table,

@@ -2332,3 +2332,59 @@ several releases, so the build now asserts **each architecture by
 name** and fails the release if either comes back unsigned. A packaging
 step that can silently produce a half-broken artifact needs an
 assertion that names the half.
+
+---
+
+## 2026-08-11 — The macOS caret answer is validated before it is trusted
+
+The macOS suggestion tooltip landed with a focus tracker
+([#29](https://github.com/Just-Code-NET/PolterType/pull/29), outside
+contributor, Intel hardware), and the interesting part is not the
+`NSPanel` — it is that the Accessibility API answers the caret
+question wrongly, confidently, in the applications people type in
+most.
+
+`AXBoundsForRange` and the marker-range pair return real, thin caret
+rectangles in TextEdit and native fields. Chrome — omnibox and web
+inputs alike — and Terminal return a zero-size rectangle at the web
+area's origin, or a point past the bottom edge of the window. Taken at
+face value that anchors the tooltip to a place the text is not, which
+reads to a user as the tooltip following the *previous* field: a bug
+that looks like flakiness rather than like a wrong answer.
+
+So the tracker judges what it gets. A caret is believable when its
+numbers are finite, it is between half a point and 120 points tall, it
+is no wider than a sliver, and it intersects the focused element's own
+frame with 24 points of slack — real carets do stick out of their
+field by a few points, junk ones miss by hundreds. Anything else falls
+back to the focused element's frame when that element is a text
+widget, which is exact for the omnibox and field-accurate for web
+inputs. Two related choices: the app element is built from
+`NSWorkspace`'s frontmost pid rather than from
+`AXUIElementCreateSystemWide`, whose `kAXFocusedApplication` answered
+`cannotComplete` essentially always on the test machine, and every
+query carries a 0.3 s messaging timeout because this runs on the event
+loop and a hung target app must not take the tray with it.
+
+`AXManualAccessibility` / `AXEnhancedUserInterface` would make Chrome
+compute real carets. They were considered and refused: a typing
+utility does not get to mutate another process's global accessibility
+state to make its own tooltip prettier.
+
+The general shape is worth keeping. Where a platform API is *allowed*
+to answer badly and no error accompanies the bad answer, validate the
+answer against what a correct one would look like, and degrade to a
+coarser source. The alternative — trusting it and shipping — produces
+exactly the class of bug nobody can reproduce on their own machine.
+
+Two smaller findings came out of the same work and are recorded here
+because both look like nothing in a diff. macOS `CGEvent` posts made
+back-to-back coalesce inside the receiving app's run-loop turn, which
+dropped or duplicated a keystroke at the delete/replay seam of a
+correction; the emitter now paces a burst at 2 ms per event, matching
+the X11 emitter. And `cosmic-text`/`fontdb` log the text they are
+shaping at debug level — the tooltip shapes the user's words, so those
+two targets are now capped at `warn` regardless of `RUST_LOG`. That
+one was a live leak on every platform, not a macOS detail: the rule is
+that typed text never reaches a log, and a dependency's logger is
+still a log.

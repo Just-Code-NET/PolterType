@@ -236,10 +236,11 @@ two layers solve different problems:
 
 The per-app overlays are declared as `[[wordlists.profiles]]` entries
 in `config.toml`; the engine swaps the active overlay set when the
-focused app changes. **Caveat:** focus tracking is implemented on
-**Windows, Hyprland and X11** — and nowhere else. On macOS and on
-non-Hyprland Wayland (GNOME/KDE) the tracker is a no-op, so the
-profile set never switches there.
+focused app changes. **Caveat:** focus tracking is complete on
+**Windows, macOS, Hyprland and X11**. On non-Hyprland Wayland
+(GNOME/KDE) it runs on the accessibility bus, which only sees
+applications that expose a bridge — most terminals do not, so the
+profile set may not switch there.
 
 Order of precedence at load time (last writer wins on `id` collision):
 

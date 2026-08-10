@@ -15,12 +15,13 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.14.4 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.15.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
-> (GNOME Wayland gets it through XWayland) — **and on Windows since
+> (GNOME Wayland gets it through XWayland), **on Windows since
 > 0.11.0**, where it appears above the focused window rather than at
-> the caret. On Linux/Wayland a
+> the caret, and **on macOS since 0.15.0**, where it follows the
+> caret in applications that report one. On Linux/Wayland a
 > correction holds your keystrokes back while it types and replays
 > them behind itself, so carrying straight on with the next word no
 > longer scrambles the result — except behind an input remapper such
@@ -260,16 +261,19 @@ must never touch.
 > The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
 > Sway and KDE Plasma, and an override-redirect window on X11 — which
 > also covers GNOME Wayland, since Mutter has no layer-shell but does
-> run XWayland. **Windows** has had one since 0.11.0. **macOS** has no
-> overlay backend yet; there the feature stays engine-side only, so
-> suggestions exist but nothing draws them.
+> run XWayland. **Windows** has had one since 0.11.0, and **macOS**
+> since 0.15.0 — a non-activating panel that cannot take the keyboard
+> away from what you are typing in.
 >
 > Where it lands depends on what the focused app will tell us. On
-> Linux, apps with a live accessibility bridge report the caret and
-> the tooltip sits directly above it; everything else — and **every
-> app on Windows**, where nothing reports the caret yet — gets it just
-> above the window's bottom edge, the neighbourhood of chat boxes and
-> shell prompts. It is never placed by your mouse pointer.
+> Linux and macOS, apps that expose the caret get the tooltip directly
+> above it — the accessibility bridge on Linux, the Accessibility API
+> on macOS. Everything else — and **every app on Windows**, where
+> nothing reports the caret yet — gets it just above the window's
+> bottom edge, the neighbourhood of chat boxes and shell prompts. It
+> is never placed by your mouse pointer. On macOS the caret answer is
+> checked before it is trusted: Chrome and Terminal report one that is
+> nowhere near the text, and those fall back to the focused field.
 
 ## Smart commands (text triggers)
 
@@ -383,13 +387,12 @@ explicitly:
 
 > **The skip list needs a focus tracker, and it isn't equally good
 > everywhere.** Reading which application has focus is complete on
-> Windows, Hyprland and X11. On other Wayland sessions (GNOME, KDE)
-> PolterType asks the accessibility bus instead — which works, but
-> only for applications that expose an accessibility bridge. Most
-> terminals don't, so the per-app skip list, per-app wordlist
-> profiles, and `apps = [...]` scoping on smart commands may simply
-> not fire there. On macOS the tracker is still a no-op and they do
-> nothing at all.
+> Windows, macOS (since 0.15.0), Hyprland and X11. On other Wayland
+> sessions (GNOME, KDE) PolterType asks the accessibility bus
+> instead — which works, but only for applications that expose an
+> accessibility bridge. Most terminals don't, so the per-app skip
+> list, per-app wordlist profiles, and `apps = [...]` scoping on smart
+> commands may simply not fire there.
 
 ### Adding your own vocabulary
 
