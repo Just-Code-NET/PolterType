@@ -31,6 +31,15 @@ Accessibility when the tap fails to attach without it. Granting only
 one leaves the app running with a tray icon and no corrections, which
 is why the tray alert below matters.
 
+**Expect to grant both again after an update.** macOS attaches these
+permissions to a code identity, and ours is an ad-hoc signature (see
+`docs/CODE_SIGNING.md`), whose identity is the hash of the app's own
+bytes — a new version is, to macOS, different software. A Developer ID
+would carry the grant across updates; until then this is the cost of
+the signature that makes the permissions work at all. Builds before
+v0.14.4 had no usable identity on Intel Macs, where the permission
+could be granted but never took effect.
+
 **Autostart is a third, lighter capability.** With *"Start
 automatically when I sign in"* enabled, the app writes a per-user
 LaunchAgent to `~/Library/LaunchAgents/dev.opensource.poltertype.plist`
