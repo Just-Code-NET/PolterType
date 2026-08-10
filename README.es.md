@@ -8,7 +8,9 @@ un poltergeist amable que habita tu teclado.
 Para la documentación completa, las notas de desarrollo y las advertencias
 detalladas, consulta el [README en inglés](README.md).
 
-En el proceso de desarrollo se recurrió a la IA.
+En el proceso de desarrollo se recurrió a la IA. Somos muy exigentes
+con la calidad del código y con la del producto final: cada línea de
+código pasa por revisión.
 
 ## Instalación
 

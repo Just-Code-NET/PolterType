@@ -196,7 +196,9 @@ Three caveats worth stating plainly:
   (`cargo build`, no flags) still contains none of it.
   See [docs/AI.md](docs/AI.md).
 
-AI was involved in the development process.
+AI was involved in the development process. Code quality and the
+quality of the finished product are held to a demanding standard:
+every line of code is reviewed.
 
 See [docs/PLAN.md §2](docs/PLAN.md) for the alternatives considered.
 
