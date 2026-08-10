@@ -4,6 +4,9 @@ use crossbeam_channel::Sender;
 use tracing::info;
 
 use crate::enums::PopupUiEvent;
+// macOS is the one lane where every platform has a real backend, so
+// the fallback stays out of that build entirely.
+#[cfg(not(target_os = "macos"))]
 use crate::noop::NoopPopup;
 use crate::traits::SuggestionPopup;
 
@@ -59,7 +62,16 @@ fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup>
     }
 }
 
-#[cfg(not(any(target_os = "linux", windows)))]
+/// macOS gets the `NSPanel` backend. It cannot fail at construction:
+/// the panel is created lazily on the first `show`, because
+/// `create_popup` runs before the tao event loop starts pumping the
+/// main queue that every AppKit call must hop to.
+#[cfg(target_os = "macos")]
+fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    Box::new(crate::macos::MacosPopup::new(events))
+}
+
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
 fn create_for_platform(_events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
     Box::new(NoopPopup)
 }

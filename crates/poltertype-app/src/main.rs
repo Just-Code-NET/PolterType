@@ -920,7 +920,17 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::util::SubscriberInitExt;
     use tracing_subscriber::{EnvFilter, fmt};
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // cosmic-text / fontdb log the *text being shaped* at debug level
+    // ("Failed to find script fallback …: '<word>'") — and the
+    // suggestion tooltip shapes the user's words. Those targets are
+    // capped at warn no matter what RUST_LOG says: typed text stays
+    // out of the logs at any level.
+    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    for target in ["cosmic_text=warn", "fontdb=warn"] {
+        if let Ok(directive) = target.parse() {
+            filter = filter.add_directive(directive);
+        }
+    }
 
     let stderr_layer = fmt::layer().with_writer(std::io::stderr).with_target(false);
 

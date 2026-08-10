@@ -7,10 +7,13 @@
 //!   that grabs focus breaks the very keystrokes we exist to fix.
 //!   Wayland uses a layer-shell surface with
 //!   `keyboard_interactivity = None`, X11 an override-redirect window,
-//!   Windows `WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW`.
+//!   Windows `WS_EX_NOACTIVATE | WS_EX_TOPMOST | WS_EX_TOOLWINDOW`,
+//!   macOS a borderless `NSPanel` with `NonactivatingPanel`.
 //! * **Never log the words being shown**, same rule as the engine.
 //! * **Never block the caller.** `show` / `hide` enqueue and return;
-//!   all OS I/O happens on the popup's own thread.
+//!   all OS I/O happens on the popup's own thread (Linux/Windows) or
+//!   on the main dispatch queue (macOS — AppKit's rule; see
+//!   `docs/MACOS_POPUP.md`).
 //!
 //! Backends are *probed*, not chosen from a table of desktop names:
 //! layer-shell, then X11, then noop. That is why KDE worked the whole
@@ -25,20 +28,25 @@
 
 mod enums;
 mod factory;
+// The fallback for platforms and probes without an overlay path;
+// unused on macOS, where the one backend is infallible.
+#[cfg(not(target_os = "macos"))]
 mod noop;
 // The shared placement + renderer are consumed by every real backend.
-// Still gated, because macOS has none and compiling them there would
-// trip `-D dead_code` on that CI lane; add its target here when one
-// lands.
-#[cfg(any(target_os = "linux", windows))]
+// Still gated, because a platform with no backend compiling them would
+// trip `-D dead_code` on that CI lane; add new targets here as
+// backends land.
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 mod place;
-#[cfg(any(target_os = "linux", windows))]
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 mod render;
 mod traits;
 mod types;
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -47,5 +55,5 @@ pub use factory::create_popup;
 pub use traits::SuggestionPopup;
 pub use types::{PopupEntry, PopupModel};
 
-#[cfg(all(test, any(target_os = "linux", windows)))]
+#[cfg(all(test, any(target_os = "linux", windows, target_os = "macos")))]
 mod tests;

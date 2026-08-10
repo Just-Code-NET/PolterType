@@ -27,6 +27,18 @@ use crate::{InputError, KeyEmitter, Modifiers};
 /// for the same reason.
 const MODIFIER_SETTLE: Duration = Duration::from_millis(4);
 
+/// Gap between individual key events inside one burst.
+///
+/// The hazard the `MODIFIER_SETTLE` comment above describes applies
+/// to key events too, and harder: a backspace burst posted
+/// back-to-back reaches the focused app within a single run-loop
+/// turn, and AppKit coalesces same-key down/up pairs that share a
+/// timestamp — observably, one delete in six was landing, which left
+/// the mistyped word's first letter on screen ahead of the
+/// replacement (and one *extra* landing delete ate the separator
+/// before the word). 2 ms matches the X11 emitter's `KEY_STEP`.
+const KEY_STEP: Duration = Duration::from_millis(2);
+
 pub struct MacosEmitter;
 
 impl MacosEmitter {
@@ -69,7 +81,9 @@ impl KeyEmitter for MacosEmitter {
         let src = event_source()?;
         for _ in 0..n {
             keyboard_event(&src, KVK_DELETE, true)?.post(CGEventTapLocation::HID);
+            std::thread::sleep(KEY_STEP);
             keyboard_event(&src, KVK_DELETE, false)?.post(CGEventTapLocation::HID);
+            std::thread::sleep(KEY_STEP);
         }
         Ok(())
     }
@@ -85,6 +99,7 @@ impl KeyEmitter for MacosEmitter {
                 let ev = keyboard_event(&src, 0, key_down)?;
                 ev.set_string_from_utf16_unchecked(&utf16);
                 ev.post(CGEventTapLocation::HID);
+                std::thread::sleep(KEY_STEP);
             }
         }
         Ok(())
