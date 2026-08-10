@@ -3981,7 +3981,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-ai"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "keyring",
  "poltertype-detect",
@@ -3995,7 +3995,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-app"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -4024,14 +4024,14 @@ dependencies = [
 
 [[package]]
 name = "poltertype-autostart"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "poltertype-core"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "crossbeam-channel",
  "directories",
@@ -4053,7 +4053,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-detect"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "fst",
  "levenshtein_automata",
@@ -4066,7 +4066,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-input"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "core-foundation 0.10.1",
  "core-graphics 0.25.0",
@@ -4085,7 +4085,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-layout"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "core-foundation 0.10.1",
  "poltertype-types",
@@ -4097,7 +4097,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-popup"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "cosmic-text",
  "crossbeam-channel",
@@ -4112,7 +4112,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-shell"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "single-instance",
  "tao",
@@ -4121,7 +4121,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-tray"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "glib",
  "tracing",
@@ -4129,7 +4129,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-types"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
@@ -4137,7 +4137,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-update"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "base64",
  "directories",

@@ -4,7 +4,7 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.14.4
+## [0.14.4] — the other half of the binary
 
 ### Fixed — half a signature is none
 
