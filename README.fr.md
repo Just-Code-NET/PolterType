@@ -8,7 +8,9 @@ poltergeist bienveillant qui hante votre clavier.
 Pour la documentation complète, les notes de développement et les mises en
 garde détaillées, voir le [README en anglais](README.md).
 
-L'IA a été mise à contribution durant le développement.
+L'IA a été mise à contribution durant le développement. Nous sommes
+très exigeants sur la qualité du code comme sur celle du produit fini :
+chaque ligne de code fait l'objet d'une revue.
 
 ## Installation
 

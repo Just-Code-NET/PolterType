@@ -8,7 +8,9 @@ in deiner Tastatur wohnt.
 Die vollständige Dokumentation, die Entwicklungsnotizen und die ausführlichen
 Vorbehalte stehen im [englischen README](README.md).
 
-Bei der Entwicklung kam KI zum Einsatz.
+Bei der Entwicklung kam KI zum Einsatz. An die Qualität des Codes und
+des fertigen Produkts legen wir strenge Maßstäbe an: Jede einzelne
+Codezeile durchläuft ein Review.
 
 ## Installation
 
