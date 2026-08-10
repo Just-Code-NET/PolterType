@@ -1,6 +1,7 @@
 # macOS suggestion tooltip — spec
 
-Status: draft → implemented (branch `feat/macos-popup`).
+Status: implemented (branch `feat/macos-popup`), hardware-verified
+2026-08-10 (TextEdit + Chrome, Intel Mac Pro, macOS 15.7).
 Tracks the "macOS | noop today" row in `crates/poltertype-popup/src/lib.rs`.
 
 ## Goal
@@ -109,29 +110,49 @@ windows get no motion events otherwise).
 ## Design: the focus tracker (`poltertype-input/src/focus/macos_impl.rs`)
 
 Raw FFI to HIServices (`ApplicationServices` framework), same pattern
-as the existing `macos/listener.rs` FFI glue — no new crate deps
-beyond `libc` (for `proc_pidpath`):
+as the existing `macos/listener.rs` FFI glue. Hardware findings that
+shaped it (2026-08-10, verified with a signed probe binary):
 
-- `AXUIElementCreateSystemWide` → `kAXFocusedApplicationAttribute`
-  → `AXUIElementGetPid` + `proc_pidpath` ⇒ `focused_exe`.
-- Focused app element → `kAXFocusedWindowAttribute` →
-  `kAXPositionAttribute` / `kAXSizeAttribute` (AXValue-wrapped
-  `CGPoint`/`CGSize`) ⇒ `focused_window_geometry`. `output`/`output_*`
-  are `None`/`0` — that field is Wayland-only by contract.
-- System-wide `kAXFocusedUIElementAttribute` →
-  `kAXSelectedTextRangeAttribute` (AXValue `CFRange`) → parameterized
-  `kAXBoundsForRangeParameterizedAttribute` ⇒ caret `CGRect` in global
-  CG coordinates; converted to window-relative for `CaretHint`
-  (`age = 0` — it is a live query, not a cached sample).
+- **`AXUIElementCreateSystemWide` is not trustworthy.** Its
+  `kAXFocusedApplication` answered `kAXErrorCannotComplete` ~always,
+  while `AXUIElementCreateApplication(frontmost_pid)` (pid via
+  `NSWorkspace.frontmostApplication`) answers instantly. Everything
+  hangs off the pid-built app element. (SuperDictate instead retries
+  the system-wide path; both validate that the *focused-element* query
+  needs a retry on transient `cannotComplete`/`noValue` — 3×40 ms.)
+- **Caret bounds are junk in Chrome and Terminal.** Both
+  `AXBoundsForRange` and the marker-range pair
+  (`AXBoundsForTextMarkerRange`, tried first — WebKit implements it
+  better) return zero-size rects at the web area's origin or points
+  past the window's bottom edge. Native apps (TextEdit, loginwindow)
+  return real thin caret rects. So: caret answers are *validated*
+  (finite, one-line height cap, thin-width cap, must intersect the
+  element's frame ±24 pt); junk falls back to the focused element's
+  own frame when its role is a text widget (`AXTextField`/`AXTextArea`
+  /`AXComboBox`) — exact for the omnibox, field-level for web inputs.
+  The `AXManualAccessibility`/`AXEnhancedUserInterface` toggles that
+  would make Chrome compute real carets were considered and rejected:
+  they mutate another process's global state from a typing utility.
+- **AX queries get a 0.3 s messaging timeout** — this runs on the tao
+  event loop at tooltip-show time, and a hung target app must not
+  freeze it for the multi-second AX default.
 
 Accessibility permission is already a hard requirement of the app
 (the `CGEventTap` listener needs it), so these calls either work or
-return `kAXErrorAPIDisabled`, which we map to `None` — the anchor
-chain then degrades exactly as it does on GNOME Wayland.
+return an AX error, which maps to `None` — the anchor chain then
+degrades exactly as it does on GNOME Wayland.
 
-Every AX object is `CFRelease`d; no ObjC objects cross threads
-(the tracker methods are called on the engine thread and are
-self-contained).
+## Verified on hardware (2026-08-10)
+
+- TextEdit: caret anchor = the real text caret; 4/4 click-accepts and
+  chord accepts replaced the word cleanly.
+- Chrome omnibox: anchor lands under the address bar.
+- Burst pacing: before `KEY_STEP`, one backspace in a burst was
+  observably lost/gained at the delete→replay seam ("Привт пприват",
+  eaten leading separator); after, 4/4 clean.
+- Screenshot capture note: `screencapture`/`CGWindowListCreateImage`
+  only see the *active* Space; the panel's on-screen geometry was
+  confirmed via `CGWindowListCopyWindowInfo` instead.
 
 ## Files touched
 
