@@ -4185,7 +4185,6 @@ dependencies = [
 name = "poltertype-popup"
 version = "0.14.4"
 dependencies = [
- "block2 0.6.2",
  "core-graphics 0.25.0",
  "cosmic-text",
  "crossbeam-channel",

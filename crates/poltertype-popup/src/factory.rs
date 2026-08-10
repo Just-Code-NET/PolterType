@@ -4,8 +4,8 @@ use crossbeam_channel::Sender;
 use tracing::info;
 
 use crate::enums::PopupUiEvent;
-// macOS is the one lane where every platform has a real backend, so
-// the fallback stays out of that build entirely.
+// macOS is the one target whose single backend cannot fail, so the
+// fallback stays out of that build entirely.
 #[cfg(not(target_os = "macos"))]
 use crate::noop::NoopPopup;
 use crate::traits::SuggestionPopup;

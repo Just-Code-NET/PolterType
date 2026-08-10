@@ -12,7 +12,7 @@ pub trait FocusTracker: Send + Sync {
 
     /// Geometry of the focused window, when the backend can answer.
     /// Default `None` — callers must treat geometry as a bonus, never
-    /// a given (macOS and GNOME/KDE Wayland have no path to it).
+    /// a given (GNOME/KDE Wayland has no path to it).
     ///
     /// Not TTL-cached like [`Self::focused_exe`]: it is queried once
     /// per suggestion-tooltip show, not on the per-keystroke path.

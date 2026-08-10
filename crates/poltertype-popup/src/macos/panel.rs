@@ -534,3 +534,6 @@ impl PopupView {
         unsafe { msg_send![super(this), init] }
     }
 }
+
+#[cfg(test)]
+mod tests;

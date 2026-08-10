@@ -42,7 +42,6 @@ windows = { version = "0.58", features = [
 # shared renderer's premultiplied RGBA — same family of crates tao and
 # poltertype-input already link, so no second ObjC runtime copy.
 [target.'cfg(target_os = "macos")'.dependencies]
-block2            = "0.6"
 core-graphics     = "0.25"
 dispatch2         = "0.3"
 objc2             = "0.6"

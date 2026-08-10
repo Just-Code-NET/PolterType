@@ -427,3 +427,6 @@ impl FocusTracker for MacosFocusTracker {
         "macos-ax"
     }
 }
+
+#[cfg(test)]
+mod tests;

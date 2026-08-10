@@ -2,7 +2,9 @@
 
 use super::*;
 
-/// Always returns `None` — used on macOS / Linux until those impls land.
+/// Always returns `None` — the arm for a target with no tracker at
+/// all. Windows, macOS and Linux each have one; this is what a fourth
+/// platform would compile against.
 pub struct NoopFocusTracker;
 
 impl FocusTracker for NoopFocusTracker {
