@@ -4,6 +4,35 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.14.4
+
+### Fixed — half a signature is none
+
+- **PolterType now works on Intel Macs.** The universal binary we
+  shipped had its arm64 half signed and its x86_64 half not, and macOS
+  runs the x86_64 half on an Intel Mac. Accessibility permission cannot
+  attach to unsigned code, so the event tap installed, reported
+  success, and received nothing: the toggle in System Settings read
+  ON, the log showed a healthy listener, and no layout was ever
+  switched. Apple Silicon was unaffected throughout.
+
+  Nobody removed a signature — nothing ever added one. On an Apple
+  Silicon build machine the linker ad-hoc-signs the arm64 binary
+  because arm64 macOS refuses to run unsigned code at all; the
+  cross-compiled x86_64 binary needs no such favour and does not get
+  one. `lipo` then merges the pair verbatim, and the release never ran
+  `codesign` over the result. The build now signs the finished `.app`
+  and **fails the release if either slice comes out unsigned**, which
+  is the check whose absence let this ship.
+
+  This does not make the app notarised: Gatekeeper still asks for
+  right-click → Open on first launch, exactly as before. One new
+  wrinkle — because the signature is ad-hoc, macOS identifies the app
+  by the hash of its bytes, so **Accessibility must be granted again
+  after an update**. A Developer ID would fix that too, and is still
+  on the list. Reported by @shohart, with the `codesign` output that
+  made it diagnosable.
+
 ## [0.14.3] — the keyboard you actually have
 
 ### Fixed — a language is not a keyboard

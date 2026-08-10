@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-08 (v0.14.3).
+> Created: 2026-05-02. Last updated: 2026-08-10 (v0.14.4).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -61,6 +61,7 @@
 | 2026-07-31 | **The hook-failure alert opens a Setup pane, not a browser tab.** Four states, including "set up, but this session predates it". Still no self-`sudo` — the button copies the command. | A document cannot tell the user which of the two Linux failure states they are in; a probe can. |
 | 2026-07-31 | **No Flatpak, decided rather than left open.** `uinput` is not grantable short of `--device=all`, and no portal exists. | Deciding once with evidence costs less than answering the question every few months. Details in `DECISIONS.md` (2026-07-31). |
 | 2026-07-24 | **Spelling suggestions**: dictionary-driven tooltip for mistyped same-layout words (`poltertype-popup` crate, `[suggestions]`, on by default). Below-threshold layout verdicts surface as the leading tooltip entry instead of being dropped. | Extends the correction promise to plain typos with the data we already bundle. Details in `DECISIONS.md` (2026-07-24). |
+| 2026-08-10 | **The macOS bundle is ad-hoc signed now, not when a Developer ID is bought.** The release also asserts each architecture slice by name and fails if either is unsigned. | An unsigned slice has no code identity, and macOS grants Accessibility to an identity — so on Intel the app ran and corrected nothing. Details in `DECISIONS.md` (2026-08-10). |
 
 ---
 

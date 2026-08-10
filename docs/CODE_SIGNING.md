@@ -5,7 +5,7 @@
 > can read is not a policy — and because SignPath Foundation requires
 > one from projects it signs for.
 >
-> Last updated: 2026-08-02 (v0.10.0).
+> Last updated: 2026-08-10 (v0.14.4).
 
 PolterType asks for an unusual amount of trust: it reads every
 keystroke on the machine and can type. A signature is how a user checks
@@ -18,7 +18,8 @@ each signature covers and, just as importantly, what it does not.
 |---|---|---|
 | Release manifest (`latest.json`) | detached ed25519, key on the maintainer's machine | **live since v0.7.0** |
 | Windows `.msi` | OV certificate (SignPath Foundation HSM) | **applied for** |
-| macOS `.dmg` / `.app` | Apple Developer ID + notarisation | **not held** — no free path, see below |
+| macOS `.app` | ad-hoc (`codesign --sign -`), no identity | **live since v0.14.4** — required for Accessibility to work at all, see below |
+| macOS `.dmg` / notarisation | Apple Developer ID | **not held** — no free path, see below |
 | Linux `.AppImage` | none | intentional — the manifest signature covers the update path |
 | Linux `.deb` / `.rpm` repositories | GPG, key held by us | **when repositories exist** |
 
@@ -89,6 +90,31 @@ Foundation**, not to us, and the private key stays in their HSM — we
 never hold it and cannot export it. Signing is requested by the release
 workflow and approved by a human in SignPath.
 
+### macOS ad-hoc signature — live
+
+`installers/macos/build-dmg.sh` runs `codesign --force --sign -` over
+the finished `.app`. An ad-hoc signature proves nothing about who built
+the app — there is no identity in it — so it is worth being exact about
+why it is here: **without it the app does not work on Intel Macs.**
+
+macOS grants Accessibility to a *code identity*, and unsigned code has
+none. Until v0.14.4 the universal binary carried a signature on its
+arm64 slice only (the linker adds one there, because arm64 macOS will
+not run unsigned code) while the cross-compiled x86_64 slice — the one
+Intel Macs actually run — had none. The event tap attached and silently
+received nothing (issue #28). The build now signs the bundle and
+**fails if either slice is unsigned**, since the old failure was
+invisible in every artifact we looked at.
+
+Two consequences worth knowing:
+
+- The designated requirement of an ad-hoc signature pins the code
+  hash, so **the Accessibility grant does not survive an update** — the
+  bytes change, the identity changes, macOS asks again. A Developer ID
+  pins the certificate instead and would survive.
+- The DMG is not signed. Signing it buys nothing without an identity;
+  it becomes a step the day notarisation does.
+
 ### macOS Developer ID — not held
 
 There is no free path: Apple Developer Program membership ($99/year) is
@@ -96,6 +122,12 @@ required for a Developer ID certificate and for notarisation, with no
 open-source exemption. Until it is bought, macOS users get the
 right-click → Open route, which the README, the site and the Homebrew
 cask all say plainly.
+
+The build script is ready for one: set `SIGN_IDENTITY` to a
+`Developer ID Application: …` identity and it signs with that instead,
+adding the hardened runtime and a secure timestamp that notarisation
+requires. Importing the certificate into the runner's keychain, and
+the `notarytool` submission after it, are the parts still missing.
 
 **One thing must change the day notarised builds ship:** the updater
 strips `com.apple.quarantine` from the installed bundle

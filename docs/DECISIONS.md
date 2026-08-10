@@ -2289,3 +2289,46 @@ The same assumption lives in the evdev backend
 question. Nothing has reported it — an `EVIOCGRAB` by another process
 takes the whole device rather than swallowing one edge — so it is
 noted here rather than fixed on spec.
+
+## 2026-08-10 — An ad-hoc signature is worth shipping before a real one
+
+macOS release builds carried a signature on their arm64 slice and none
+on their x86_64 slice, for the whole life of the universal DMG. Nobody
+stripped anything: arm64 macOS refuses to execute unsigned code, so the
+linker ad-hoc-signs that slice as a matter of course; the
+cross-compiled x86_64 slice is under no such rule and gets nothing;
+`lipo` merges the two verbatim. The release never ran `codesign` at
+all, and the missing half was invisible in every artifact anyone
+looked at — the DMG mounted, the app launched, `--version` answered.
+
+On Intel, where macOS runs the x86_64 slice, the cost was the whole
+product. Accessibility is granted to a *code identity*, and unsigned
+code has none, so the event tap attached, reported success and
+received nothing: permission toggled on, listener healthy in the log,
+not one correction ever made
+([#28](https://github.com/Just-Code-NET/PolterType/issues/28)).
+
+The decision is to ad-hoc sign now rather than wait for the Developer
+ID that `docs/CODE_SIGNING.md` has been deferring since v0.10.0. An
+ad-hoc signature identifies nobody and buys no Gatekeeper trust — the
+right-click → Open dance is unchanged, and it would be easy to file
+this as security theatre. It is not: the signature is what gives the
+app an identity for TCC to attach a permission to, and without one the
+app does not work on that hardware at all. Correctness first,
+provenance when someone buys the certificate.
+
+Its price is real and belongs in the docs rather than in a footnote:
+an ad-hoc designated requirement pins the code hash, so every update
+is different software to macOS and the user must grant Accessibility
+again. A Developer ID pins the certificate instead and would carry the
+grant across updates. That is now the strongest argument for buying
+one — stronger than the Gatekeeper warning, which users only meet
+once.
+
+What the fix mostly is, though, is the check rather than the signature.
+`codesign --verify` passes happily on a bundle whose fat binary has an
+unsigned slice, which is precisely how this shipped unnoticed through
+several releases, so the build now asserts **each architecture by
+name** and fails the release if either comes back unsigned. A packaging
+step that can silently produce a half-broken artifact needs an
+assertion that names the half.
