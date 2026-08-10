@@ -1855,7 +1855,7 @@ Implementation notes:
   adds latency to the tray's event loop.
 * Notification text never contains the typed word — only the
   destination layout's name. Matches the project's hard rule
-  in `CLAUDE.md` about not logging user-typed text.
+  in the project's own rules about not logging user-typed text.
 * Failures (no notification daemon, Focus Assist suppressing
   toasts, sandbox quirks) are logged at warn level and
   swallowed; the auto-switch itself already happened, so the

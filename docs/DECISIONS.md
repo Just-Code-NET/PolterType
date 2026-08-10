@@ -265,7 +265,7 @@ So the feature is redundant on the one session type where it reliably
 works, unverifiable on the one where it might help, and dead on the
 rest. Writing it would mean several hundred lines of code that this
 project could never honestly describe as working — the same standard
-that keeps the macOS caveats in `CLAUDE.md` explicit.
+that keeps the macOS caveats explicit.
 
 **Alternatives considered.** `libei` through the
 `org.freedesktop.portal.RemoteDesktop` portal is the *emitting* half
@@ -348,7 +348,7 @@ surface is created, configured by KWin and mapped, exactly as on
 Hyprland. No code was needed. The claim that it didn't work appeared
 in five places (`poltertype-popup`'s crate docs, its factory, the
 Wayland backend's module docs, the `NoLayerShell` error *message*, and
-`CLAUDE.md`'s known-gaps list) and had been wrong since it was
+the known-gaps list) and had been wrong since it was
 written.
 
 The lesson is not "KDE works". It is that **the backend is a probe and
@@ -692,7 +692,7 @@ alternatives were to put the first `#[cfg]` in the binary and amend the
 rule, or to hide a GTK concern inside an unrelated platform crate. So
 `poltertype-tray` exists, holding per-OS tray quirks; the `TrayIcon`
 itself is still built in the app, because `tray-icon` already
-abstracts it. The list in `CLAUDE.md` is now five crates, not four.
+abstracts it. The platform-island list is now five crates, not four.
 
 **`cargo deny` gained an entry on the way.** RUSTSEC-2024-0429 (glib
 0.18's unsound `VariantStrIter`) fails the advisory check — it already
@@ -1752,7 +1752,7 @@ more honest. Revisit if onboarding drop-off proves real.
 
 **The app now makes a network call.** That sentence is the whole
 weight of this decision, so it goes first. Until now `poltertype`'s
-default build never opened a socket, and both `CLAUDE.md` and the
+default build never opened a socket, and both the project rules and the
 landing page said so in as many words. It now polls GitHub for new
 releases, downloads them, and installs them on restart. The rest of
 this entry is the reasoning and the boundaries.
@@ -1849,7 +1849,7 @@ every quit forever. Three strikes and the staged update is deleted.
 
 ### Platform code in a third crate
 
-`CLAUDE.md` said platform code lives in `poltertype-input` and
+The project rules said platform code lives in `poltertype-input` and
 `poltertype-layout` and nowhere else. Installing an update is
 irreducibly per-OS, so the rule now names three crates:
 `poltertype-update` is the third. The intent of the rule — platform

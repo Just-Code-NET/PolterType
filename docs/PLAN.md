@@ -17,7 +17,7 @@
 >   have since been revisited (most notably "the full GUI is deferred",
 >   even though it shipped back in 0.1.0-beta).
 > * **What does not exist despite being described below** —
->   `../CLAUDE.md`, the "Known gaps" section: `focused_exe()` is
+>   the maintainer's known-gaps list, kept out of tree: `focused_exe()` is
 >   complete on Windows / macOS / Hyprland / X11 and partial on other
 >   Wayland (AT-SPI sees only apps with an accessibility bridge, which
 >   excludes most terminals); AT-SPI *keystroke
@@ -644,8 +644,7 @@ modules are split into "one entity — one file" directories, and
 `CONTRIBUTING.md` lives at the root, not in `docs/`):
 
 ```
-poltertype/                      # (the Claude config is not here — it's
-│                                #  at the workspace root: ../.claude/)
+poltertype/
 ├── .cargo/config.toml           # the `cargo xtask` alias
 ├── .github/workflows/{ci.yml,release.yml}
 ├── .githooks/                   # pre-commit / pre-push (installed by xtask)
@@ -686,7 +685,6 @@ poltertype/                      # (the Claude config is not here — it's
 ├── Cargo.toml                   # workspace
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
-├── CLAUDE.md
 ├── LICENSE                      # MIT
 └── README.md
 ```
@@ -705,34 +703,18 @@ A workspace of several crates gives us:
 
 ---
 
-## 5. Claude Code integration
+## 5. Developer environment
 
-### 5.1 `CLAUDE.md` (root)
+Deliberately thin, and deliberately not in this repository. Editor and
+assistant configuration is per-developer and lives outside the tree —
+what the project asserts about itself lives in files every contributor
+reads anyway: architecture rules and the crate layout in
+`CONTRIBUTING.md`, dev commands in `README.md`, the hard constraints
+in section 6 below, and the release procedure in `docs/RELEASING.md`.
 
-Always in context:
-
-- Architecture rules (where platform code lives, how to add a new language).
-- Dev commands (`cargo run -p poltertype-app`, `cargo test --workspace`,
-  `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
-  `cargo fmt --all`).
-- Code style (rustfmt, clippy strict).
-- Safety constraints (never log user text in release builds).
-- The release procedure.
-
-### 5.2 `.claude/settings.json`
-
-- Permissions for safe tools (`Read`, `Grep`, `Glob`, `Edit`, `Write`,
-  `Bash(cargo *)`, `Bash(rustup *)`, `Bash(git status / diff / log / ...)`).
-- Forbid accidental push/force operations.
-
-### 5.3 Possible subagents (later)
-
-- `platform-windows-expert` / `platform-macos-expert` /
-  `platform-linux-expert`.
-- `layout-mapping` — help with adding new layouts.
-- `ai-integrations` — for work on AI plugins.
-
----
+The one thing that *is* shared is the git hooks: `cargo xtask hooks
+install` wires `.githooks/` into a clone, and they run the same
+`fmt` + `clippy` sets CI does.
 
 ## 6. Security & privacy
 
@@ -837,7 +819,7 @@ Levels:
 
 - [x] Create the project, `git init`.
 - [x] PLAN.md, README, LICENSE (MIT), .gitignore, .gitattributes,
-      .editorconfig, CLAUDE.md, `.claude/`.
+      .editorconfig.
 - [x] CONTRIBUTING.md (at the repository root, not in `docs/`).
 
 ### Phase 1 — Rust skeleton bootstrap ✅

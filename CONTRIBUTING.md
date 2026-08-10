@@ -355,7 +355,7 @@ Imperative mood, scope prefix when useful (`engine:`, `win:`, `ui:`,
 
 > **Read [docs/RELEASING.md](docs/RELEASING.md) first — all of it.**
 > In particular step 2: **syncing the docs is a release blocker.** No
-> tag ships while `README.md`, `CLAUDE.md` and `docs/` still describe
+> tag ships while `README.md` and `docs/` still describe
 > the previous release. Nothing in CI will catch it for you.
 
 Releases are cut by pushing a `v*` tag. CI ([release.yml]) then

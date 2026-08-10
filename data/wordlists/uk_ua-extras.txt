@@ -18,4 +18,4 @@
 # `build.rs` merges this list into the uk-UA FST at compile time.
 # Format: one lowercase word per line; blank lines and `#`-comments
 # ignored. Reload via the tray "Reload Settings" item picks up edits
-# at runtime via the user-overlay path — see CLAUDE.md.
+# at runtime via the user-overlay path — see docs/DATA_LAYOUT.md.

@@ -12,7 +12,7 @@
 //! unchanged tree does no work — see `declare_inputs` for the trap.
 
 // Build scripts are explicitly allowed to use unwrap/expect/panic per
-// the project's CLAUDE.md style — a panic here is an honest "build is
+// the project's style — a panic here is an honest "build is
 // broken" signal, not a runtime hazard.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

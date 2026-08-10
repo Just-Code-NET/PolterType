@@ -1,8 +1,7 @@
 //! macOS: mount the DMG, replace the .app bundle, relaunch.
 //!
 //! **Not validated on hardware.** macOS is a CI-only target for this
-//! project (see `CLAUDE.md` § Known gaps), and this backend is written
-//! from Apple's documentation. The Windows and Linux paths have been
+//! backend, which is written from Apple's documentation. The Windows and Linux paths have been
 //! exercised; this one has not.
 
 use std::path::PathBuf;

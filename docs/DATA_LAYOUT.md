@@ -207,7 +207,7 @@ pack before publishing.
   blast-radius of a malicious pack and rules out platform-portability
   headaches.
 * **Network calls.** Plug-ins get **none**. The app's single network
-  capability (the updater — see CLAUDE.md and DECISIONS.md) is not a
+  capability (the updater — see DECISIONS.md) is not a
   door plug-ins can walk through: a pack that wants to fetch updates
   does it through a separate user-driven download / installer step,
   not at PolterType runtime.

@@ -8,7 +8,7 @@ step against a third-party system.
 
 > **The README install table and the site must not mention a target
 > until that target is live.** They may only promise what a user can
-> actually do today — see the workspace `CLAUDE.md`. Add the line in the
+> actually do today. Add the line in the
 > same change that publishes the package, not before.
 
 ## Read this first: Linux is two problems, not one

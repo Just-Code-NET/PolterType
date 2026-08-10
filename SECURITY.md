@@ -111,8 +111,8 @@ treated as a vulnerability:
 
 ## Where the honest list of weaknesses lives
 
-Every known gap is written down rather than discovered by you:
-`CLAUDE.md` § *Known gaps* is the maintained list, and
-[`docs/DECISIONS.md`](docs/DECISIONS.md) records why each trade-off was
-made. If something there looks worse than we judged it, that is a
+Every known gap is written down rather than discovered by you: the
+caveats in [`README.md`](README.md) say what does and does not work on
+each platform, and [`docs/DECISIONS.md`](docs/DECISIONS.md) records why
+each trade-off was made. If something there looks worse than we judged it, that is a
 conversation worth having.

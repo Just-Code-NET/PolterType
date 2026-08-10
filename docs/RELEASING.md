@@ -64,7 +64,7 @@ file or convince yourself it genuinely didn't change.
 |---|---|
 | `README.md` | anything user-facing changes — **especially the Status line, the Goals bullets, the install table, and the hotkey table** |
 | `README.<lang>.md` | the translations carry their own copy of the install table and the caveats, so **anything that changes a row of the English one changes theirs**. They hold no version numbers by design, which bounds this to structural changes: an installer added or renamed, a permission step altered, a caveat that stops being true. A translation nobody speaks is the easiest doc to leave rotting — if there is no one to update it, delete it rather than ship a lie in a language we cannot read |
-| `CLAUDE.md` | the `## Known gaps (as of vX.Y.Z)` heading — re-stamp it and re-verify every bullet; a gap that closed must come out |
+| the maintainer's known-gaps list | kept out of tree, but it is a release blocker all the same: re-stamp its version heading and re-verify every bullet; a gap that closed must come out, and whatever it says must match `README.md` |
 | `docs/PLAN.md` | the `Last updated:` line, the phase checkboxes, and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there) |
 | `docs/DECISIONS.md` | you made a call worth defending later — append an entry; don't rewrite history |
 | `docs/CODE_SIGNING.md` | a signing key is added, rotated or retired, or a platform's signing status changes — it is a **published** policy and a stale one misleads users, not just us |
@@ -92,7 +92,7 @@ the old wording lives and fix each one:
 ```bash
 # Does any doc still describe a capability the code has moved past?
 grep -rn "no network\|no telemetry\|never.*network\|no build makes" \
-    README.md CLAUDE.md CONTRIBUTING.md docs/*.md
+    README.md CONTRIBUTING.md SECURITY.md docs/*.md
 ```
 
 > **A worked example — and read it precisely, because the precise
@@ -126,11 +126,11 @@ grep -rn "no network\|no telemetry\|never.*network\|no build makes" \
 ```bash
 # 1. Nothing still claims the last version is current.
 #    (Replace 0.4.2 with the version you are ABOUT to leave behind.)
-grep -rn "0\.4\.2\|v0\.4\.2" README.md CLAUDE.md docs/*.md CONTRIBUTING.md
+grep -rn "0\.4\.2\|v0\.4\.2" README.md docs/*.md CONTRIBUTING.md
 
 # 2. Every crate in the workspace appears in the docs that list crates.
 ls crates/                                   # compare against
-grep -n "poltertype-" CLAUDE.md CONTRIBUTING.md | grep -c crates
+grep -n "poltertype-" CONTRIBUTING.md | grep -c crates
 
 # 3. Skim the diff of the release you are cutting, and ask of each
 #    changed file: "does any doc describe this behaviour?"
@@ -509,8 +509,8 @@ cargo test --workspace
 
 # 2. SYNC THE DOCS — mandatory, own commit, before the bump.
 #    Walk the table in step 2. At minimum: README Status line +
-#    Goals bullets, the `Known gaps (as of vX.Y.Z)` heading in
-#    CLAUDE.md, PLAN.md's `Last updated` + settings schema, a
+#    Goals bullets, the known-gaps list's version heading,
+#    PLAN.md's `Last updated` + settings schema, a
 #    DECISIONS.md entry, and the site if any user-facing claim
 #    moved. If the release changed what the app CAN do, grep for
 #    the old promise everywhere before you tag.

@@ -20,9 +20,10 @@ Cargo.lock.bak
 .env.*
 !.env.example
 
-# --- Claude Code (local-only, never committed) ---
+# --- Local-only assistant notes, never committed ---
+# (per-developer notes are excluded globally, not here — nothing about a
+#  developer's own tooling belongs in a public repository)
 .claude/
-CLAUDE.md
 
 # --- Logs / coverage ---
 *.log
