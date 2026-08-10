@@ -207,7 +207,10 @@ impl PanelState {
         let timeout = model.timeout;
         // Deliberately no word in this line — the tooltip's contents
         // are the user's text, and this crate logs none of it.
-        debug!(entries = model.entries.len(), scale, x, y, w, h, "tooltip shown");
+        debug!(
+            entries = model.entries.len(),
+            scale, x, y, w, h, "tooltip shown"
+        );
         self.shown = Some(Shown {
             model,
             rendered,
@@ -447,14 +450,12 @@ fn point_in_rect(point: NSPoint, rect: NSRect) -> bool {
 /// half-translated.
 fn mac_hint(hint: &str) -> String {
     hint.split('+')
-        .filter_map(|token| {
-            match token.trim().to_lowercase().as_str() {
-                "ctrl" | "control" => Some('⌃'),
-                "shift" => Some('⇧'),
-                "alt" | "option" => Some('⌥'),
-                "cmd" | "command" | "meta" | "super" | "win" => Some('⌘'),
-                _ => None,
-            }
+        .filter_map(|token| match token.trim().to_lowercase().as_str() {
+            "ctrl" | "control" => Some('⌃'),
+            "shift" => Some('⇧'),
+            "alt" | "option" => Some('⌥'),
+            "cmd" | "command" | "meta" | "super" | "win" => Some('⌘'),
+            _ => None,
         })
         .collect()
 }

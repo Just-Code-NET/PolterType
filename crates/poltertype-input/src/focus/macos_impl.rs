@@ -165,7 +165,11 @@ fn ax_value<T: Copy>(value: CFTypeRef, value_type: u32) -> Option<T> {
 
 /// A parameterized attribute whose answer is an AXValue-wrapped
 /// CGRect (`kAXBoundsForRange`, `AXBoundsForTextMarkerRange`).
-fn parameterized_rect(element: CFTypeRef, name: &'static str, parameter: CFTypeRef) -> Option<CGRect> {
+fn parameterized_rect(
+    element: CFTypeRef,
+    name: &'static str,
+    parameter: CFTypeRef,
+) -> Option<CGRect> {
     let attr = CFString::from_static_string(name);
     let mut bounds: CFTypeRef = std::ptr::null();
     // Safety: live element, live parameter, out-pointer is ours.
@@ -191,8 +195,9 @@ fn copy_attr_retry(element: CFTypeRef, name: &'static str) -> Option<OwnedCF> {
         let attr = CFString::from_static_string(name);
         let mut value: CFTypeRef = std::ptr::null();
         // Safety: as in `copy_attr`.
-        let err =
-            unsafe { AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut value) };
+        let err = unsafe {
+            AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut value)
+        };
         if err == 0 && !value.is_null() {
             return Some(OwnedCF(value));
         }
@@ -210,10 +215,10 @@ fn copy_attr_retry(element: CFTypeRef, name: &'static str) -> Option<OwnedCF> {
 
 /// `AXPosition` + `AXSize` of an element as one rect, when it has both.
 fn element_frame(element: CFTypeRef) -> Option<CGRect> {
-    let origin =
-        copy_attr(element, "AXPosition").and_then(|v| ax_value::<CGPoint>(v.0, K_AXVALUE_TYPE_CGPOINT))?;
-    let size =
-        copy_attr(element, "AXSize").and_then(|v| ax_value::<CGSize>(v.0, K_AXVALUE_TYPE_CGSIZE))?;
+    let origin = copy_attr(element, "AXPosition")
+        .and_then(|v| ax_value::<CGPoint>(v.0, K_AXVALUE_TYPE_CGPOINT))?;
+    let size = copy_attr(element, "AXSize")
+        .and_then(|v| ax_value::<CGSize>(v.0, K_AXVALUE_TYPE_CGSIZE))?;
     Some(CGRect::new(&origin, &size))
 }
 
@@ -264,8 +269,7 @@ impl MacosFocusTracker {
     /// only answer non-empty ranges.
     fn raw_caret_bounds(element: CFTypeRef) -> Option<CGRect> {
         if let Some(marker) = copy_attr(element, "AXSelectedTextMarkerRange") {
-            if let Some(rect) =
-                parameterized_rect(element, "AXBoundsForTextMarkerRange", marker.0)
+            if let Some(rect) = parameterized_rect(element, "AXBoundsForTextMarkerRange", marker.0)
             {
                 return Some(rect);
             }
@@ -309,7 +313,10 @@ impl MacosFocusTracker {
     /// in the neighbourhood of its element.
     fn caret_is_sane(rect: CGRect, frame: Option<CGRect>) -> bool {
         let (w, h) = (rect.size.width, rect.size.height);
-        if !rect.origin.x.is_finite() || !rect.origin.y.is_finite() || !w.is_finite() || !h.is_finite()
+        if !rect.origin.x.is_finite()
+            || !rect.origin.y.is_finite()
+            || !w.is_finite()
+            || !h.is_finite()
         {
             return false;
         }
@@ -365,7 +372,10 @@ impl FocusTracker for MacosFocusTracker {
             return None;
         }
         let path = unsafe { CStr::from_ptr(buf.as_ptr()) }.to_string_lossy();
-        let name = Path::new(path.as_ref()).file_name()?.to_string_lossy().into_owned();
+        let name = Path::new(path.as_ref())
+            .file_name()?
+            .to_string_lossy()
+            .into_owned();
         Some(name)
     }
 
