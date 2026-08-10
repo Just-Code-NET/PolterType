@@ -385,10 +385,12 @@ jobs:
           body: |
             ## PolterType ${{ github.ref_name }}
 
-            **Unsigned binaries.** The MSI / DMG / AppImage below are
-            produced by CI on `${{ github.sha }}`. Code signing is not
-            in place yet, so Windows and macOS will warn on first launch
-            — see the workarounds below.
+            **No signing identity.** The MSI / DMG / AppImage below are
+            produced by CI on `${{ github.sha }}`. The macOS bundle is
+            ad-hoc signed — which is what lets it hold Accessibility
+            permission, not a statement about who built it — and
+            nothing is notarised; the Windows installer is unsigned. So
+            both still warn on first launch — see the workarounds below.
 
             ### Install
 
@@ -402,7 +404,9 @@ jobs:
               click the app and pick **Open**, or run
               `xattr -dr com.apple.quarantine /Applications/poltertype.app`
               once. Then grant Accessibility permission in System
-              Settings.
+              Settings — again after every update, since without a
+              Developer ID macOS identifies the app by the hash of its
+              own bytes and reads a new version as different software.
             * **Linux** — download the `.AppImage` for your
               architecture (`x86_64` for a normal PC, `aarch64` for a
               Raspberry Pi 5, an Asahi Mac or an ARM server),
