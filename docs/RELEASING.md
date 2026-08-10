@@ -461,7 +461,43 @@ git push origin v0.2.1
 This is the one place we re-tag — it's safe before publish
 because the draft hasn't been seen by users yet.
 
-## 8. Common mistakes and how to recover
+## 8. Close what this release fixed (~2 min)
+
+**Do this after publishing, never before.** A fix is not delivered
+until users can download it, and an issue closed against a draft is
+closed against something nobody has.
+
+```bash
+# Every issue referenced from the entry you just shipped.
+sed -n '/^## \[0\.15\.0\]/,/^## \[/p' CHANGELOG.md | grep -o 'issues/[0-9]*'
+
+# What is still open — read it against the changelog entry.
+gh issue list --state open
+```
+
+For each one the release actually fixes: a short comment naming the
+version, then close it. `gh issue close <n> --reason completed
+--comment "..."` does both in one call.
+
+Two rules that are easy to get wrong:
+
+* **A comment is not a close.** #28 sat open for two days carrying a
+  comment that began "Fixed in v0.14.4" — the fix shipped, someone
+  wrote it down, and nobody pressed the button. That is the failure
+  this step exists to prevent, so if you find yourself typing "fixed
+  in", close it in the same breath.
+* **"Shipped but off by default" still counts as done** when the
+  default is a deliberate product decision rather than unfinished
+  work — say so in the comment and close. #7 and #8 are the
+  precedent: both key gates ship behind `POLTERTYPE_HOLD_KEYS=1`, and
+  both are closed. What stays open is what nobody has *validated* —
+  #3 (Apple Silicon) is open because no one has run the app on that
+  hardware, not because code is missing.
+
+Leave open anything the release only partly addresses, and say in a
+comment which part moved.
+
+## 9. Common mistakes and how to recover
 
 **Shipped with stale docs.** The most common one, and the only
 one on this list that nothing will ever warn you about. There is
@@ -532,8 +568,23 @@ git commit -m "release: v$NEW"
 git tag "v$NEW"
 git push origin HEAD --tags
 
-# 6. Watch CI, publish the draft.
+# 6. Watch CI. It builds four installers into a DRAFT release.
 gh run watch
+
+# 7. SIGN THE MANIFEST — mandatory, and nothing fails if you skip
+#    it. Run from the repo root; see step 7 for why.
+gh release download "v$NEW" --pattern latest.json --dir /tmp --clobber
+cargo xtask manifest sign /tmp/latest.json --key ~/.config/poltertype-signing/release.key
+gh release upload "v$NEW" /tmp/latest.json --clobber
+
+# 8. Sanity-check the artefacts, then publish. Publishing is what
+#    ships the update to every existing user — un-publishing does
+#    not un-install.
+gh release edit "v$NEW" --draft=false
+
+# 9. Close what this release fixed — after publishing, not before.
+#    A comment saying "fixed in vX" is not a close.
+gh issue list --state open
 ```
 
 [release-yml]: ../.github/workflows/release.yml
