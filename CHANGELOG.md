@@ -4,6 +4,58 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] — the Mac learns where to look
+
+### Added — macOS can finally show you the suggestion
+
+- **The spelling-suggestion tooltip now renders on macOS.** It was the
+  last platform where the feature existed engine-side and nothing drew
+  it: suggestions were computed, the accept chord worked, and there was
+  no list to look at. There is now — a borderless, non-activating
+  `NSPanel` that **cannot take the keyboard away from what you are
+  typing in**, the same guarantee the Windows and Linux overlays make
+  and the reason this feature has its own window type on every
+  platform. Click a row to accept it, hover to highlight, ignore it and
+  it hides itself. The accept chord is shown the way macOS writes
+  shortcuts (`⌃⇧`) rather than in the Windows spelling the config uses.
+
+  Contributed by [@shohart](https://github.com/shohart) and verified on
+  real hardware (Intel, macOS 15.7) —
+  [#29](https://github.com/Just-Code-NET/PolterType/pull/29).
+
+- **PolterType can see which application has focus on macOS.** The
+  tracker was a stub there, which meant three features silently did
+  nothing on that platform however you configured them:
+  `[exceptions].disabled_apps`, per-app wordlist profiles, and
+  `apps = [...]` scoping on smart commands. They work now. **If you
+  carried any of those settings on a Mac, they start taking effect with
+  this release** — they were never wrong, just inert.
+
+  The tooltip uses the same tracker to find the caret, so on macOS it
+  sits at the text rather than at the bottom of the window. Where an
+  application reports a caret that isn't where the text is — Chrome and
+  Terminal both do — the answer is rejected and the tooltip falls back
+  to the focused field. This uses the Accessibility permission the app
+  already required: it reads *where* the caret and window are, never
+  what is in them.
+
+### Fixed
+
+- **Corrections on macOS no longer drop or duplicate a character.**
+  Key events posted back-to-back arrive inside a single run-loop turn
+  in the receiving application, which coalesces them — so a backspace
+  could go missing at the seam between deleting the mistyped word and
+  typing the replacement, leaving its first letter on screen, or land
+  one too many and eat the space before it. The burst is now paced, as
+  it already was on X11.
+
+- **Typed words could reach the log through a dependency.**
+  `cosmic-text` and `fontdb` log the text they are shaping at debug
+  level, and the suggestion tooltip shapes the words being suggested.
+  Both are now capped at `warn` whatever `RUST_LOG` says. This affected
+  every platform, not just macOS, and only at debug level — but "no
+  typed text in logs, ever" does not have a level qualifier on it.
+
 ## [0.14.4] — the other half of the binary
 
 ### Fixed — half a signature is none
