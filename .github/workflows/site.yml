@@ -12,7 +12,8 @@ on:
   release:
     types: [published]
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   rebuild-site:
@@ -22,10 +23,36 @@ jobs:
       - name: Trigger the Vercel deploy hook
         env:
           DEPLOY_HOOK: ${{ secrets.VERCEL_SITE_DEPLOY_HOOK }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$DEPLOY_HOOK" ]; then
             echo "::warning::VERCEL_SITE_DEPLOY_HOOK secret is not set — skipping the site rebuild."
             exit 0
           fi
+          # Wait for `releases/latest` to catch up before triggering.
+          # The site resolves the version from that endpoint at build
+          # time, and it is served from a cache that does not update the
+          # instant a release is published: on v0.14.4 the build started
+          # 24 s after publication, was told v0.14.3, and the site went
+          # on advertising the previous version with nothing anywhere
+          # reporting a failure. Poll rather than sleep a fixed minute,
+          # so the usual case stays fast.
+          # A failed poll must never hold the rebuild hostage: every
+          # branch here falls through to the hook, and the pinned
+          # fallback in the site's app-release.ts is the real backstop.
+          for i in $(seq 1 20); do
+            latest="$(curl -fsS -H 'accept: application/vnd.github+json' \
+              -H "authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest" \
+              | jq -r .tag_name || echo unavailable)"
+            if [ "$latest" = "$RELEASE_TAG" ]; then
+              echo "releases/latest is ${latest} — triggering."
+              break
+            fi
+            echo "releases/latest says '${latest}', want '${RELEASE_TAG}' — waiting (${i}/20)"
+            sleep 15
+          done
+
           curl -fsS -X POST "$DEPLOY_HOOK" -o /dev/null
           echo "Site rebuild triggered."
