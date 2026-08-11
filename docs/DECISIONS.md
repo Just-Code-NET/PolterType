@@ -2388,3 +2388,51 @@ two targets are now capped at `warn` regardless of `RUST_LOG`. That
 one was a live leak on every platform, not a macOS detail: the rule is
 that typed text never reaches a log, and a dependency's logger is
 still a log.
+
+## 2026-08-11 — `view` is rebuilt per state change, not per frame
+
+A report that the Settings window "lags badly when scrolling" was
+diagnosed twice, and the first diagnosis was wrong in a way worth
+recording, because the wrong answer was written down in our own source
+comments and read back as fact.
+
+Several comments asserted that `view` runs on every frame. On that
+belief, `PluginPane::in_array` looked catastrophic: it read the
+plug-in's whole config file and ran a format-preserving `toml_edit`
+parse **per list row**, so a chat plug-in showing two room lists of 34
+conversations would do 68 of those per frame. Measured, one such call
+costs 78 µs against a 17 KB config.
+
+The belief was false. iced rebuilds the widget tree on a *state
+change* — a message from a click, a keystroke, a completed command —
+and a `Scrollable` with no `on_scroll` handler produces no message, so
+scrolling rebuilds nothing. A counter in `view` logged **one** call
+across a session containing a nav click, a room-list load and 150
+wheel events, and `/proc/<pid>/io` confirmed the scroll path reads
+zero bytes.
+
+Two separate things came out of that, and they are separate on
+purpose:
+
+* **The per-row re-read was still a real defect**, just on a different
+  axis. It cost 1.2 MB read and 68 TOML parses on *every click*,
+  against a file the click itself had just written. The membership and
+  the parsed rows are now held on the pane and refreshed where the
+  file can actually have changed — on load, on every write this pane
+  makes, and on reaching a section. Another program owns that file, so
+  the refresh still reads from disk; what is gone is doing it per row.
+  Measured: 1216 KB per interaction before, 34 KB after.
+* **The scrolling itself was the CPU renderer, and the dev profile
+  owned it.** The window has no GPU path — every frame is rasterised
+  by `tiny-skia` and shaped by `cosmic-text` — and unoptimised those
+  two are the entire frame budget. The same scroll costs 97% of a core
+  in a stock debug build and 20% in release, so `[profile.dev.package
+  ."*"] opt-level = 3` is now set: dependencies are optimised, our own
+  crates are not, and stepping still works where the bugs are.
+
+The general lesson is the one about the comments. A performance claim
+in a comment is a measurement someone did not repeat, and it decays
+like any other doc — except that nobody re-checks it, because it reads
+as an explanation rather than as a fact. State the *shape* of the cost
+in a comment and put the number next to the measurement that produced
+it.

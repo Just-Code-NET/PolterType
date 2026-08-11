@@ -14,6 +14,14 @@ wrong place has real consequences.
 
 ## Building locally
 
+**The first build after a fresh clone is slow, on purpose.**
+Dependencies are compiled with `opt-level = 3` even in a debug build
+(`[profile.dev.package."*"]`), because the Settings window is rendered
+on the CPU — unoptimised, `tiny-skia` and `cosmic-text` are the whole
+frame budget and the window stutters when you scroll it. Our own crates
+stay unoptimised, so backtraces and stepping work where the bugs are,
+and it is those crates you recompile while working.
+
 ```bash
 # Default build (no AI subsystem)
 cargo build -p poltertype-app
@@ -21,13 +29,16 @@ cargo build -p poltertype-app
 # Run
 cargo run -p poltertype-app
 
-# With the AI subsystem compiled in. This does NOT turn AI on: the crate
-# ships stubs (LocalOnnxDetector / RemoteLlmDetector) that nothing
-# constructs, so the flag changes no behaviour today. See docs/AI.md.
+# With the AI subsystem compiled in. This does NOT turn AI on: there is
+# no default endpoint, `[ai].enabled` is off, and a non-loopback one
+# needs `[ai].allow_remote` as well — so out of the box nothing answers
+# and no decision changes. See docs/AI.md.
 cargo build -p poltertype-app --features ai
 
-# With AI + the remote HTTP capability compiled in (still unreachable —
-# the client is built and never used)
+# With AI + the remote HTTP capability compiled in. Without this
+# sub-feature no HTTP client is compiled in at all (`cargo tree`
+# confirms it); with it, `[[ai.plugins]]` entries call whatever endpoint
+# the user configured.
 cargo build -p poltertype-app --features ai,poltertype-ai/remote
 
 # Lints (CI runs the same)
