@@ -453,7 +453,7 @@ impl SettingsApp {
         let pane = &self.plugins[plugin];
         let column = self.output_heading(plugin, index, control);
 
-        let body: Element<'a, Message> = match pane.outputs.get(&index) {
+        let body: Element<'a, Message> = match pane.output(index) {
             None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
                 .size(12)
                 .color(b.muted)
@@ -531,7 +531,7 @@ impl SettingsApp {
         control: &'a poltertype_core::plugins::PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
-        let state = self.plugins[plugin].outputs.get(&index);
+        let state = self.plugins[plugin].output(index);
         let body: Element<'a, Message> = match state {
             None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
                 .size(12)

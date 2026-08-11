@@ -179,3 +179,22 @@ strip         = "symbols"
 panic         = "abort"
 opt-level     = 3
 
+# Dependencies are optimised even in a debug build; our own crates are
+# not, so backtraces and stepping still work where the bugs are.
+#
+# This is not a build-time preference, it is what makes the Settings
+# window usable in development. The window is rendered on the CPU
+# (`iced`'s tiny-skia backend, no GPU stack — see the `iced` entry
+# above), so every frame is rasterised by `tiny-skia` and shaped by
+# `cosmic-text`, and unoptimised those two are the whole frame budget.
+# Measured on the Plug-ins pane with a chat plug-in's room list open,
+# scrolling for 6.5 s: 97% of a core unoptimised against 20% for the
+# same code in release. That is the difference between a list that
+# scrolls and one that stutters, and everyone running `cargo run` was
+# getting the stuttering one.
+#
+# Costs one slow rebuild of the dependency tree, and nothing after that
+# — the app's own crates are what get recompiled while working.
+[profile.dev.package."*"]
+opt-level = 3
+

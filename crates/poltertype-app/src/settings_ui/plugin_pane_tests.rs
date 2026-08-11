@@ -208,17 +208,16 @@ fn reports_are_asked_for_once_and_not_on_every_draw() {
         "the report, not the toggle"
     );
 
-    pane.outputs.insert(1, CommandOutput::Loading);
+    pane.set_output(1, CommandOutput::Loading);
     assert!(
         pane.unasked_commands().is_empty(),
         "asking twice would run the command twice"
     );
 
-    pane.outputs
-        .insert(1, CommandOutput::Ready("42 episodes".to_owned()));
+    pane.set_output(1, CommandOutput::Ready("42 episodes".to_owned()));
     assert!(pane.unasked_commands().is_empty());
     assert_eq!(
-        pane.outputs.get(&1),
+        pane.output(1),
         Some(&CommandOutput::Ready("42 episodes".to_owned()))
     );
     std::fs::remove_dir_all(&root).unwrap();
@@ -246,8 +245,7 @@ fn a_failed_report_is_remembered_rather_than_retried_forever() {
         }]),
         &root,
     );
-    pane.outputs
-        .insert(0, CommandOutput::Failed("it exited 1".to_owned()));
+    pane.set_output(0, CommandOutput::Failed("it exited 1".to_owned()));
     assert!(pane.unasked_commands().is_empty());
     std::fs::remove_dir_all(&root).unwrap();
 }
@@ -268,7 +266,7 @@ fn list_rows_are_parsed_leniently() {
         }]),
         &root,
     );
-    pane.outputs.insert(
+    pane.set_output(
         0,
         CommandOutput::Ready(
             "code\tVS Code\t150 episodes\n\nfirefox\n  \nslack\tSlack\tnothing yet\textra\n"
@@ -332,6 +330,61 @@ fn ticking_a_row_writes_the_plugins_own_config() {
 
     pane.set_array_member(0, "code", false);
     assert!(!pane.in_array(0, "code"));
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_ticked_box_is_answered_without_touching_the_disk() {
+    // `in_array` is called once per row on every frame, so it reads the
+    // cache. The regression that matters is the cache going stale: what
+    // is on screen has to follow the file, not the last thing this pane
+    // happened to know.
+    let root = scratch("listcache");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::List, "capture.allow_apps")]),
+        &root,
+    );
+    pane.set_array_member(0, "code", true);
+    assert!(pane.in_array(0, "code"), "{:?}", pane.status);
+
+    // The file goes away underneath us. Nothing has told the pane, so
+    // the answer is still the one it last read — that is the trade the
+    // cache makes, and it is worth stating.
+    let config = root.join("demo-plugin").join("config.toml");
+    std::fs::write(&config, "[capture]\nallow_apps = []\n").unwrap();
+    assert!(pane.in_array(0, "code"), "stale until something re-reads");
+
+    // Reaching a section is such a moment, and the box follows.
+    pane.select_section(0);
+    assert!(
+        !pane.in_array(0, "code"),
+        "an edit made elsewhere is picked up on the next step the user takes"
+    );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn rows_follow_the_answer_they_were_parsed_from() {
+    // The rows are parsed once, when the plug-in answers. A second
+    // answer must replace them rather than leave the first one drawn.
+    let root = scratch("rowsrefresh");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::List, "capture.allow_apps")]),
+        &root,
+    );
+    pane.set_output(0, CommandOutput::Ready("code\tVS Code\n".to_owned()));
+    assert_eq!(pane.list_rows(0).len(), 1);
+
+    pane.set_output(
+        0,
+        CommandOutput::Ready("code\tVS Code\nslack\tSlack\n".to_owned()),
+    );
+    assert_eq!(pane.list_rows(0).len(), 2, "a refresh redraws the list");
+
+    // And a failure clears them: rows from a previous answer under an
+    // error message would be the pane inventing a state.
+    pane.set_output(0, CommandOutput::Failed("it exited 1".to_owned()));
+    assert!(pane.list_rows(0).is_empty());
     std::fs::remove_dir_all(&root).unwrap();
 }
 

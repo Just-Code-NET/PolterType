@@ -92,7 +92,7 @@ impl SettingsApp {
                         Err(why) => CommandOutput::Failed(why),
                     };
                     for control in controls {
-                        pane.outputs.insert(control, state.clone());
+                        pane.set_output(control, state.clone());
                     }
                 }
             }
@@ -539,7 +539,7 @@ impl SettingsApp {
         };
         let (ext, command) = (pane.ext.clone(), declared.command.clone());
         for control in &controls {
-            pane.outputs.insert(*control, CommandOutput::Loading);
+            pane.set_output(*control, CommandOutput::Loading);
         }
 
         let (tx, rx) = iced::futures::channel::oneshot::channel();
