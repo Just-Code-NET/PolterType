@@ -154,13 +154,21 @@ pub enum Message {
     /// refresh button, and what opening the pane sends for each
     /// command-backed control it has not asked for yet.
     PluginOutputRefresh(usize, usize),
-    /// A command answered. `Err` carries why it could not be had,
-    /// which the pane shows rather than swallowing: a plug-in that
-    /// cannot answer is something the user should see.
-    PluginOutputLoaded(usize, usize, Result<String, String>),
+    /// A command answered, for every control that asked for it. `Err`
+    /// carries why it could not be had, which the pane shows rather
+    /// than swallowing: a plug-in that cannot answer is something the
+    /// user should see.
+    ///
+    /// Several controls, because two controls may share one command —
+    /// the room list a chat app learns from and the one it replies in
+    /// are the same rooms — and running the plug-in twice to ask the
+    /// same question means reading a chat client's sidebar twice.
+    PluginOutputLoaded(usize, Vec<usize>, Result<String, String>),
     /// A row of a list control was ticked or unticked: add or remove
     /// that name in the plug-in's own config array.
     PluginListToggled(usize, usize, String, bool),
+    /// A section was chosen in the plug-in's own navigation list.
+    PluginSectionSelected(usize, usize),
     LanguageToggled(LayoutId, bool),
     LanguageIgnoreToggled(LayoutId, bool),
     AutostartToggled(bool),

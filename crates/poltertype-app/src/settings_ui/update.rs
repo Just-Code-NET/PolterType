@@ -20,6 +20,18 @@ impl SettingsApp {
             self.save_banner = None;
         }
 
+        // Doing anything other than typing in the same box settles what
+        // was typed into a plug-in's box — including asking to close
+        // the window, which is why this sits above the match rather
+        // than in each arm. See [`PluginPane::flush_edits`].
+        let typing = match &msg {
+            Message::PluginTextChanged(plugin, control, _) => Some((*plugin, *control)),
+            _ => None,
+        };
+        for (i, pane) in self.plugins.iter_mut().enumerate() {
+            pane.flush_edits(typing.filter(|(p, _)| *p == i).map(|(_, c)| c));
+        }
+
         match msg {
             Message::SelectPane(p) => {
                 self.pane = p;
@@ -46,22 +58,19 @@ impl SettingsApp {
             }
             Message::PluginTextChanged(plugin, index, text) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
-                    // A number control stores a number; anything that
-                    // is not one yet is left in the box rather than
-                    // written, so a half-typed "12" does not land as 1.
-                    let value = match pane.control(index).map(|c| c.kind) {
-                        Some(poltertype_core::plugins::ControlKind::Number) => {
-                            match text.trim().parse::<i64>() {
-                                Ok(n) => Some(SettingValue::Int(n)),
-                                Err(_) => None,
-                            }
-                        }
-                        _ => Some(SettingValue::Text(text)),
-                    };
-                    if let Some(value) = value {
-                        pane.set(index, value);
-                    }
+                    pane.set_text(index, text);
                 }
+            }
+            Message::PluginSectionSelected(plugin, index) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.select_section(index);
+                }
+                // Reaching a section is what makes its command-backed
+                // controls visible — and a control nobody asked for
+                // shows "Asking the plug-in…" for ever otherwise. It is
+                // also why a chat client is only ever read when its own
+                // section is open.
+                return self.load_pending_outputs();
             }
             Message::PluginListToggled(plugin, control, member, on) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
@@ -69,17 +78,22 @@ impl SettingsApp {
                 }
             }
             Message::PluginOutputRefresh(plugin, control) => {
-                return self.load_output(plugin, control);
+                let sharing = self
+                    .plugins
+                    .get(plugin)
+                    .map(|p| p.sharing_command(control))
+                    .unwrap_or_default();
+                return self.load_output(plugin, sharing);
             }
-            Message::PluginOutputLoaded(plugin, control, outcome) => {
+            Message::PluginOutputLoaded(plugin, controls, outcome) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
-                    pane.outputs.insert(
-                        control,
-                        match outcome {
-                            Ok(text) => CommandOutput::Ready(text),
-                            Err(why) => CommandOutput::Failed(why),
-                        },
-                    );
+                    let state = match outcome {
+                        Ok(text) => CommandOutput::Ready(text),
+                        Err(why) => CommandOutput::Failed(why),
+                    };
+                    for control in controls {
+                        pane.outputs.insert(control, state.clone());
+                    }
                 }
             }
             Message::PluginCommandClicked(plugin, command) => {
@@ -488,20 +502,23 @@ impl SettingsApp {
     /// Ask for every command-backed control on this pane that has not
     /// been asked yet.
     pub(super) fn load_pending_outputs(&mut self) -> Task<Message> {
-        let wanted: Vec<(usize, usize)> = self
-            .plugins
-            .iter()
-            .enumerate()
-            .flat_map(|(plugin, pane)| {
-                pane.unasked_commands()
-                    .into_iter()
-                    .map(move |control| (plugin, control))
+        let wanted: Vec<usize> = (0..self.plugins.len())
+            .filter(|i| {
+                self.plugins
+                    .get(*i)
+                    .is_some_and(|p| !p.unasked_commands().is_empty())
             })
             .collect();
         Task::batch(
             wanted
                 .into_iter()
-                .map(|(plugin, control)| self.load_output(plugin, control))
+                .flat_map(|plugin| {
+                    let groups = self.plugins[plugin].unasked_by_command();
+                    groups
+                        .into_iter()
+                        .map(|controls| self.load_output(plugin, controls))
+                        .collect::<Vec<_>>()
+                })
                 .collect::<Vec<_>>(),
         )
     }
@@ -510,15 +527,20 @@ impl SettingsApp {
     /// as a message. A plain thread rather than anything cleverer: the
     /// work is one blocking wait on a child process, and the runtime
     /// under iced is not ours to assume.
-    pub(super) fn load_output(&mut self, plugin: usize, control: usize) -> Task<Message> {
+    pub(super) fn load_output(&mut self, plugin: usize, controls: Vec<usize>) -> Task<Message> {
         let Some(pane) = self.plugins.get_mut(plugin) else {
             return Task::none();
         };
-        let Some(declared) = pane.ext.manifest.pane.get(control) else {
+        let Some(declared) = controls
+            .first()
+            .and_then(|c| pane.ext.manifest.pane.get(*c))
+        else {
             return Task::none();
         };
         let (ext, command) = (pane.ext.clone(), declared.command.clone());
-        pane.outputs.insert(control, CommandOutput::Loading);
+        for control in &controls {
+            pane.outputs.insert(*control, CommandOutput::Loading);
+        }
 
         let (tx, rx) = iced::futures::channel::oneshot::channel();
         std::thread::spawn(move || {
@@ -529,7 +551,7 @@ impl SettingsApp {
                 rx.await
                     .unwrap_or_else(|_| Err("the report task went away".to_owned()))
             },
-            move |outcome| Message::PluginOutputLoaded(plugin, control, outcome),
+            move |outcome| Message::PluginOutputLoaded(plugin, controls.clone(), outcome),
         )
     }
 

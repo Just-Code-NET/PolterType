@@ -34,18 +34,25 @@ impl SettingsApp {
             Pane::About => self.view_about(),
         };
 
-        let content = Column::new()
-            .push(
-                Scrollable::new(Container::new(body).padding(Padding {
-                    top: 22.0,
-                    right: 24.0,
-                    bottom: 16.0,
-                    left: 24.0,
-                }))
+        // The Plug-ins pane scrolls its own halves — a plug-in's
+        // section list has to stay put while its settings scroll, and
+        // a scrollable inside a scrollable cannot do that.
+        let scrolls_itself = self.pane == Pane::Plugins && self.plugins.len() == 1;
+        let padded = Container::new(body).padding(Padding {
+            top: 22.0,
+            right: 24.0,
+            bottom: 16.0,
+            left: 24.0,
+        });
+        let scrolled: Element<'_, Message> = if scrolls_itself {
+            padded.height(Length::Fill).width(Length::Fill).into()
+        } else {
+            Scrollable::new(padded)
                 .height(Length::Fill)
-                .width(Length::Fill),
-            )
-            .push(self.view_footer());
+                .width(Length::Fill)
+                .into()
+        };
+        let content = Column::new().push(scrolled).push(self.view_footer());
 
         let main = Row::new()
             .push(self.nav_panel())

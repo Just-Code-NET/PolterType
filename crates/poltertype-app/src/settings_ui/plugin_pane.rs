@@ -12,7 +12,8 @@
 use std::path::{Path, PathBuf};
 
 use poltertype_core::plugins::{
-    ControlKind, DiscoveredExtension, PaneControl, SettingValue, read_setting, write_setting,
+    ControlKind, DiscoveredExtension, PaneControl, SettingValue, read_setting, read_string_array,
+    write_setting, write_string_array,
 };
 use tracing::warn;
 
@@ -64,13 +65,30 @@ pub struct PluginPane {
     /// empty" are different, and only one of them should send a
     /// command.
     pub outputs: std::collections::HashMap<usize, CommandOutput>,
+    /// Which section is on screen, as a control index. `None` before
+    /// anything is chosen, which means "the first one".
+    ///
+    /// One section at a time rather than an accordion: a plug-in with
+    /// a hundred settings has thirteen sections, and thirteen fold
+    /// arrows over a page that is still metres long is not navigation.
+    pub section: Option<usize>,
+    /// What is in a text box right now, before it is a value.
+    ///
+    /// Without this the box can only ever show what the *file* holds,
+    /// so a number cannot be cleared and a decimal cannot be typed —
+    /// "0." is not a number, is therefore not written, and the box
+    /// snaps back before the next character arrives.
+    pub edits: std::collections::HashMap<usize, String>,
 }
 
 impl PluginPane {
     /// Which controls need a command run and have not had one yet.
     ///
     /// The pane asks on the way in rather than on every draw: each of
-    /// these costs a process, and `view` runs on every frame.
+    /// these costs a process, and `view` runs on every frame. Only the
+    /// section on screen is asked — reading a chat client's room list
+    /// means talking to that application, and doing it for twelve
+    /// sections nobody opened is a cost with nothing to show for it.
     pub fn unasked_commands(&self) -> Vec<usize> {
         self.ext
             .manifest
@@ -80,9 +98,101 @@ impl PluginPane {
             .filter(|(i, c)| {
                 matches!(c.kind, ControlKind::Report | ControlKind::List)
                     && !self.outputs.contains_key(i)
+                    && self.is_visible(*i)
             })
             .map(|(i, _)| i)
             .collect()
+    }
+
+    /// Every section heading, in declaration order.
+    pub fn sections(&self) -> Vec<usize> {
+        self.ext
+            .manifest
+            .pane
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.kind == ControlKind::Section)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// The section on screen: what was chosen, or the first one.
+    pub fn selected_section(&self) -> Option<usize> {
+        match self.section {
+            Some(i) if matches!(self.control(i).map(|c| c.kind), Some(ControlKind::Section)) => {
+                Some(i)
+            }
+            _ => self.sections().first().copied(),
+        }
+    }
+
+    /// Is this control on screen?
+    ///
+    /// A control belongs to the nearest [`ControlKind::Section`] above
+    /// it. Controls declared *before* the first section belong to none
+    /// and are always shown — which is also what makes a plug-in with
+    /// no sections at all render exactly as it used to.
+    pub fn is_visible(&self, index: usize) -> bool {
+        let controls = &self.ext.manifest.pane;
+        let Some(selected) = self.selected_section() else {
+            return true;
+        };
+        if index == selected {
+            return true;
+        }
+        if matches!(
+            controls.get(index).map(|c| c.kind),
+            Some(ControlKind::Section)
+        ) {
+            return false;
+        }
+        controls[..index.min(controls.len())]
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, c)| c.kind == ControlKind::Section)
+            .is_none_or(|(i, _)| i == selected)
+    }
+
+    /// [`Self::unasked_commands`], grouped so each command runs once.
+    pub fn unasked_by_command(&self) -> Vec<Vec<usize>> {
+        let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
+        for index in self.unasked_commands() {
+            let Some(command) = self.control(index).map(|c| c.command.clone()) else {
+                continue;
+            };
+            match groups.iter_mut().find(|(id, _)| *id == command) {
+                Some((_, members)) => members.push(index),
+                None => groups.push((command, vec![index])),
+            }
+        }
+        groups.into_iter().map(|(_, members)| members).collect()
+    }
+
+    /// Every control fed by the same command as this one, itself
+    /// included — what a Refresh should update, since they are all
+    /// showing one answer.
+    pub fn sharing_command(&self, index: usize) -> Vec<usize> {
+        let Some(command) = self.control(index).map(|c| c.command.as_str()) else {
+            return Vec::new();
+        };
+        self.ext
+            .manifest
+            .pane
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| {
+                c.command == command
+                    && matches!(c.kind, ControlKind::Report | ControlKind::List)
+                    && self.is_visible(*i)
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Show one section.
+    pub fn select_section(&mut self, index: usize) {
+        self.section = Some(index);
     }
 
     /// The rows of a list control: `id`, its label, and a line of detail.
@@ -138,6 +248,12 @@ impl PluginPane {
             .map(|c| {
                 if c.key.is_empty() {
                     None
+                } else if c.kind == ControlKind::Strings {
+                    // An array has no `SettingValue`, and it does not
+                    // need one: the box shows the members joined, and
+                    // what is written back is always a fresh array.
+                    let members = read_string_array(&text, &c.key);
+                    (!members.is_empty()).then(|| SettingValue::Text(members.join(", ")))
                 } else {
                     read_setting(&text, &c.key)
                 }
@@ -149,6 +265,116 @@ impl PluginPane {
             values,
             status: None,
             outputs: std::collections::HashMap::new(),
+            section: None,
+            edits: std::collections::HashMap::new(),
+        }
+    }
+
+    /// What a text-shaped control's box should show: what is being
+    /// typed, else what the file holds, else nothing (and the box shows
+    /// its "plug-in default" placeholder).
+    pub fn display_of(&self, index: usize) -> Option<String> {
+        if let Some(raw) = self.edits.get(&index) {
+            return Some(raw.clone());
+        }
+        self.values
+            .get(index)
+            .and_then(|v| v.as_ref())
+            .map(SettingValue::as_display)
+    }
+
+    /// A text-shaped control was typed into. Held, not written.
+    pub fn set_text(&mut self, index: usize, raw: String) {
+        self.edits.insert(index, raw);
+    }
+
+    /// Write everything typed since the last flush, except the box the
+    /// user is still in.
+    ///
+    /// Deferring the write is the point. A pane that saved on every
+    /// keystroke — which this one used to do — puts every prefix of
+    /// what is being typed into a file the plug-in is reading: a
+    /// threshold on its way from `0.9` to `0.95` passes through `0`,
+    /// and for the length of a keystroke the gate is wide open. So a
+    /// value settles when the user does something else, and at the
+    /// latest when the window closes.
+    ///
+    /// Text that is not yet a value of the right shape is kept in the
+    /// box and out of the file: half a number is not a number, and
+    /// writing `1` for a half-typed `1.5` would be worse than waiting.
+    pub fn flush_edits(&mut self, still_typing: Option<usize>) {
+        let pending: Vec<(usize, String)> = self
+            .edits
+            .iter()
+            .filter(|(i, _)| Some(**i) != still_typing)
+            .map(|(i, raw)| (*i, raw.clone()))
+            .collect();
+
+        for (index, raw) in pending {
+            let Some(kind) = self.control(index).map(|c| c.kind) else {
+                continue;
+            };
+            let trimmed = raw.trim().to_owned();
+            let settled = match kind {
+                ControlKind::Number => match trimmed.parse::<i64>() {
+                    Ok(n) => {
+                        self.set(index, SettingValue::Int(n));
+                        true
+                    }
+                    Err(_) => false,
+                },
+                ControlKind::Decimal => match trimmed.parse::<f64>() {
+                    Ok(f) if f.is_finite() => {
+                        self.set(index, SettingValue::Float(f));
+                        true
+                    }
+                    _ => false,
+                },
+                ControlKind::Strings => {
+                    self.set_strings(index, &trimmed);
+                    true
+                }
+                _ => {
+                    self.set(index, SettingValue::Text(trimmed));
+                    true
+                }
+            };
+            if settled {
+                self.edits.remove(&index);
+            }
+        }
+    }
+
+    /// Write the comma-separated box back as an array.
+    ///
+    /// Empty members are dropped rather than written, so a trailing
+    /// comma while typing does not put `""` in the list — which, for
+    /// the substring matching these lists usually feed, would match
+    /// everything.
+    fn set_strings(&mut self, index: usize, raw: &str) {
+        let Some(control) = self.ext.manifest.pane.get(index) else {
+            return;
+        };
+        if control.key.is_empty() {
+            return;
+        }
+        let key = control.key.clone();
+        let members: Vec<String> = raw
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let current = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        match write_string_array(&current, &key, &members) {
+            Ok(updated) => {
+                self.values[index] = Some(SettingValue::Text(members.join(", ")));
+                self.write(updated);
+            }
+            Err(e) => {
+                warn!(key = %key, "cannot edit plug-in config list: {e}");
+                self.status = Some(format!("Could not change {key}: {e}"));
+            }
         }
     }
 
@@ -160,6 +386,7 @@ impl PluginPane {
             None => match self.ext.manifest.pane.get(index).map(|c| c.kind) {
                 Some(ControlKind::Toggle) => SettingValue::Bool(false),
                 Some(ControlKind::Number) => SettingValue::Int(0),
+                Some(ControlKind::Decimal) => SettingValue::Float(0.0),
                 _ => SettingValue::Text(String::new()),
             },
         }

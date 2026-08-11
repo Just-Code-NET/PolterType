@@ -334,3 +334,205 @@ fn ticking_a_row_writes_the_plugins_own_config() {
     assert!(!pane.in_array(0, "code"));
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+fn section(label: &str) -> PaneControl {
+    PaneControl {
+        kind: ControlKind::Section,
+        label: label.to_owned(),
+        ..PaneControl::default()
+    }
+}
+
+fn listed(key: &str) -> PaneControl {
+    PaneControl {
+        kind: ControlKind::List,
+        key: key.to_owned(),
+        label: key.to_owned(),
+        command: String::new(),
+        ..PaneControl::default()
+    }
+}
+
+#[test]
+fn one_section_is_on_screen_at_a_time() {
+    let root = scratch("sections");
+    let mut pane = PluginPane::load(
+        extension(vec![
+            control(ControlKind::Toggle, "capture.enabled"),
+            section("Pictures"),
+            control(ControlKind::Toggle, "act.vision.enabled"),
+            section("Links"),
+            control(ControlKind::Toggle, "act.links.enabled"),
+        ]),
+        &root,
+    );
+
+    // Nothing chosen yet: the first section, and whatever was declared
+    // above every section.
+    assert!(pane.is_visible(0), "a control above every section is shown");
+    assert!(pane.is_visible(1), "the first section is the default one");
+    assert!(pane.is_visible(2));
+    assert!(
+        !pane.is_visible(3),
+        "another section's heading is in the nav, not the page"
+    );
+    assert!(!pane.is_visible(4));
+
+    pane.select_section(3);
+    assert!(!pane.is_visible(2));
+    assert!(pane.is_visible(4));
+    assert_eq!(pane.sections(), vec![1, 3]);
+}
+
+#[test]
+fn a_section_nobody_opened_costs_no_process() {
+    // Every command-backed control spawns the plug-in. Asking on behalf
+    // of a section that is not on screen is a chat client woken up for
+    // a list nobody is looking at.
+    let root = scratch("unasked");
+    let mut pane = PluginPane::load(
+        extension(vec![
+            section("Applications"),
+            control(ControlKind::Toggle, "capture.enabled"),
+            section("Chats"),
+            listed("chat.rooms"),
+        ]),
+        &root,
+    );
+    assert!(pane.unasked_commands().is_empty());
+
+    pane.select_section(2);
+    assert_eq!(pane.unasked_commands(), vec![3]);
+}
+
+#[test]
+fn two_controls_on_one_command_ask_once() {
+    // The rooms an app learns from and the rooms it replies in are the
+    // same rooms; asking twice reads the sidebar twice.
+    let root = scratch("shared-command");
+    let pane = PluginPane::load(
+        extension(vec![
+            section("Chats"),
+            listed("chat.apps.Element.learn.rooms"),
+            listed("chat.apps.Element.reply.rooms"),
+        ]),
+        &root,
+    );
+    assert_eq!(pane.unasked_by_command(), vec![vec![1, 2]]);
+    assert_eq!(pane.sharing_command(1), vec![1, 2]);
+}
+
+#[test]
+fn a_plugin_with_no_sections_shows_everything() {
+    let root = scratch("no-sections");
+    let pane = PluginPane::load(
+        extension(vec![
+            control(ControlKind::Toggle, "a.b"),
+            control(ControlKind::Toggle, "c.d"),
+        ]),
+        &root,
+    );
+    assert!(pane.is_visible(0) && pane.is_visible(1));
+    assert!(pane.sections().is_empty());
+}
+
+#[test]
+fn typing_reaches_the_file_only_once_it_settles() {
+    // The prefixes of "0.85" include "0", and a threshold that is 0 for
+    // the length of a keystroke is a gate the user never opened. So
+    // nothing is written until the user does something else.
+    let root = scratch("decimal");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::Decimal, "act.min_confidence")]),
+        &root,
+    );
+
+    for prefix in ["0", "0.", "0.8", "0.85"] {
+        pane.set_text(0, prefix.to_owned());
+        pane.flush_edits(Some(0));
+        assert!(
+            !pane.config_path.exists(),
+            "still typing: nothing should have been written yet"
+        );
+    }
+
+    pane.flush_edits(None);
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(written.contains("min_confidence = 0.85"), "{written}");
+}
+
+#[test]
+fn a_half_typed_decimal_stays_in_the_box_and_out_of_the_file() {
+    let root = scratch("decimal-half");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::Decimal, "act.min_confidence")]),
+        &root,
+    );
+
+    pane.set_text(0, "-".to_owned());
+    pane.flush_edits(None);
+    assert_eq!(
+        pane.display_of(0).as_deref(),
+        Some("-"),
+        "what cannot be written is still what the user sees"
+    );
+    assert!(!pane.config_path.exists(), "half a number is not a number");
+}
+
+#[test]
+fn a_whole_number_typed_into_a_decimal_is_written_as_a_decimal() {
+    let root = scratch("decimal-round");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::Decimal, "act.humanize.type_cps")]),
+        &root,
+    );
+    pane.set_text(0, "6".to_owned());
+    pane.flush_edits(None);
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(
+        written.contains("type_cps = 6.0"),
+        "a plug-in expecting a float cannot read an integer: {written}"
+    );
+}
+
+#[test]
+fn a_typed_list_round_trips_through_the_file() {
+    let root = scratch("strings");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::Strings, "act.links.allow_hosts")]),
+        &root,
+    );
+
+    pane.set_text(0, "github.com, docs.rs".to_owned());
+    pane.flush_edits(None);
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(
+        written.contains("allow_hosts = [\"github.com\", \"docs.rs\"]"),
+        "{written}"
+    );
+
+    // Re-read the way opening the window does.
+    let reloaded = PluginPane::load(
+        extension(vec![control(ControlKind::Strings, "act.links.allow_hosts")]),
+        &root,
+    );
+    assert_eq!(
+        reloaded.display_of(0).as_deref(),
+        Some("github.com, docs.rs")
+    );
+}
+
+#[test]
+fn a_trailing_comma_does_not_put_an_empty_name_in_the_list() {
+    // These lists are matched as substrings; an empty member would
+    // match every conversation there is.
+    let root = scratch("strings-comma");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::Strings, "act.awayreply.rooms")]),
+        &root,
+    );
+    pane.set_text(0, "Піккатцо, ".to_owned());
+    pane.flush_edits(None);
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(written.contains("rooms = [\"Піккатцо\"]"), "{written}");
+}

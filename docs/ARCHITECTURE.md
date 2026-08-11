@@ -232,3 +232,34 @@ Every call into a plug-in is bounded. The state read runs on the UI
 thread while a menu is drawn, so its deadline is short; a report runs
 off it and gets longer. A pane that says "it did not answer" is
 honest, one that never renders is not.
+
+### The settings pane a plug-in declares
+
+A plug-in describes its settings; PolterType draws them. That is the
+whole isolation story on the UI side — a plug-in cannot render a pixel,
+so it cannot imitate a system prompt, PolterType's own dialogs or
+another plug-in. What it can declare is a small closed set of controls
+(toggle, choice, text, number, decimal, list-of-strings, button,
+report, list, section) bound to dotted keys in **its own** config file.
+Edits go through `toml_edit`, so the prose in that file — which is
+where a plug-in explains what each switch costs — survives.
+
+Three decisions worth keeping:
+
+- **A decimal is not a number.** TOML's integer and float are different
+  types to the program reading the file back, and a plug-in expecting
+  `0.35` refuses to start on `1`. So `decimal` is its own control kind
+  and always writes a float, even for a round value.
+- **Typing does not write.** A value settles when the user does
+  something else, and at the latest when the window closes. Saving on
+  every keystroke — which this pane used to do — walks a threshold on
+  its way from `0.9` to `0.95` through `0`, and for the length of a
+  keystroke a gate in a running plug-in is wide open.
+- **Sections are navigation, not decoration.** A capable plug-in has
+  around a hundred settings; PolterType lists its sections beside the
+  window's own nav and shows one at a time. A section nobody is looking
+  at is also unasked — a `list` whose rows come from the plug-in does
+  not spawn it until its section is on screen, which is what keeps
+  opening this pane from waking every chat client on the machine.
+  Exactly one region of the pane scrolls, so a wheel never lands on an
+  ambiguous boundary.

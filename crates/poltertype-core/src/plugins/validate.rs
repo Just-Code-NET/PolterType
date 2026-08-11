@@ -97,8 +97,22 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                 }
                 check_key(control.key.trim(), &control.label)?;
             }
-            ControlKind::Toggle | ControlKind::Text | ControlKind::Number => {
+            ControlKind::Toggle
+            | ControlKind::Text
+            | ControlKind::Number
+            | ControlKind::Decimal
+            | ControlKind::Strings => {
                 check_key(control.key.trim(), &control.label)?;
+            }
+            // A heading stores nothing and runs nothing; all it needs is
+            // to say something. An unlabelled one would draw a fold
+            // arrow with no way to tell what is behind it.
+            ControlKind::Section => {
+                if control.label.trim().is_empty() {
+                    return Err(PluginError::BadPane(
+                        "a section heading has no label".to_owned(),
+                    ));
+                }
             }
             ControlKind::List => {
                 // Both halves are load-bearing: without the command

@@ -56,6 +56,32 @@ pub enum ControlKind {
     Text,
     /// A whole number, bound to an integer key.
     Number,
+    /// A fractional number, bound to a floating-point key.
+    ///
+    /// Separate from [`Self::Number`] because TOML's two number types
+    /// are not interchangeable to the program reading the file: a
+    /// plug-in expecting `0.35` and handed `1` fails to parse its own
+    /// config. A decimal control therefore always writes a float, even
+    /// when the user typed a round number.
+    Decimal,
+    /// A list of strings, edited as one comma-separated line.
+    ///
+    /// The counterpart to [`Self::List`] for a set nobody can offer
+    /// rows for — host names, window titles, application names the
+    /// plug-in has never seen. `List` is better wherever the plug-in
+    /// *can* enumerate the candidates, because a checkbox cannot be
+    /// misspelt.
+    Strings,
+    /// A heading that groups the controls under it into a page of its
+    /// own.
+    ///
+    /// Binds to no key and stores nothing. It exists because a plug-in
+    /// with a hundred settings is otherwise one undifferentiated
+    /// column: PolterType draws the sections as a navigation list and
+    /// shows one at a time, so the dangerous settings are reachable
+    /// without being the first thing a hand lands on. A control belongs
+    /// to the nearest section above it.
+    Section,
     /// Runs one of the plug-in's declared commands. Binds to no key.
     Button,
     /// Shows what one of the plug-in's declared commands prints.

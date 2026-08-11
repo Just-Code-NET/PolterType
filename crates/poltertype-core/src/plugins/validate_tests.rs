@@ -285,3 +285,35 @@ fn a_control_from_a_newer_polterype_does_not_take_the_manifest_with_it() {
     assert_eq!(manifest.pane[0].kind, ControlKind::Unknown);
     assert!(check_extension(&manifest).is_ok());
 }
+
+#[test]
+fn a_section_needs_something_to_say() {
+    let m = ExtensionManifest {
+        exe: "demo".to_owned(),
+        pane: vec![PaneControl {
+            kind: ControlKind::Section,
+            ..PaneControl::default()
+        }],
+        ..ExtensionManifest::default()
+    };
+    assert!(matches!(check_extension(&m), Err(PluginError::BadPane(_))));
+}
+
+#[test]
+fn a_typed_list_and_a_decimal_both_need_a_key() {
+    for kind in [ControlKind::Strings, ControlKind::Decimal] {
+        let m = ExtensionManifest {
+            exe: "demo".to_owned(),
+            pane: vec![PaneControl {
+                kind,
+                label: "no key".to_owned(),
+                ..PaneControl::default()
+            }],
+            ..ExtensionManifest::default()
+        };
+        assert!(
+            matches!(check_extension(&m), Err(PluginError::BadPane(_))),
+            "{kind:?} without a key must be refused"
+        );
+    }
+}

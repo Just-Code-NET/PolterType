@@ -28,6 +28,11 @@ use super::enums::PluginError;
 pub enum SettingValue {
     Bool(bool),
     Int(i64),
+    /// Kept apart from [`Self::Int`] all the way to the file: TOML's two
+    /// number types are not interchangeable to the program that reads
+    /// the result, and a plug-in expecting `0.35` refuses to start on
+    /// `1`.
+    Float(f64),
     Text(String),
 }
 
@@ -37,6 +42,11 @@ impl SettingValue {
         match self {
             Self::Bool(b) => b.to_string(),
             Self::Int(n) => n.to_string(),
+            // Always with a point, even for a round number — that is
+            // what the file holds, and `25` shown for a `25.0` invites
+            // the user to save back an integer the plug-in cannot read.
+            Self::Float(f) if f.is_finite() && f.fract() == 0.0 => format!("{f:.1}"),
+            Self::Float(f) => f.to_string(),
             Self::Text(s) => s.clone(),
         }
     }
@@ -54,7 +64,7 @@ pub fn read_setting(text: &str, key: &str) -> Option<SettingValue> {
         Value::Boolean(b) => Some(SettingValue::Bool(*b.value())),
         Value::Integer(n) => Some(SettingValue::Int(*n.value())),
         Value::String(s) => Some(SettingValue::Text(s.value().clone())),
-        Value::Float(f) => Some(SettingValue::Text(f.value().to_string())),
+        Value::Float(f) => Some(SettingValue::Float(*f.value())),
         _ => None,
     }
 }
@@ -109,27 +119,10 @@ pub fn set_array_member(
     let mut doc: Document = text
         .parse()
         .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
-
-    let parts: Vec<&str> = key.split('.').collect();
-    let (last, tables) = parts
-        .split_last()
-        .ok_or_else(|| PluginError::BadPane(format!("empty config key {key:?}")))?;
-
-    let mut item: &mut Item = doc.as_item_mut();
-    for part in tables {
-        if !item.is_table_like() && !item.is_none() {
-            return Err(PluginError::BadPane(format!(
-                "config key {key:?} runs through {part:?}, which is not a table"
-            )));
-        }
-        if item.get(part).is_none() {
-            item[*part] = toml_edit::table();
-        }
-        item = &mut item[*part];
-    }
+    let (item, last) = reach_mut(&mut doc, key)?;
 
     if item.get(last).is_none() {
-        item[*last] = Item::Value(Value::Array(toml_edit::Array::new()));
+        item[last] = Item::Value(Value::Array(toml_edit::Array::new()));
     }
     let array = item
         .get_mut(last)
@@ -158,28 +151,7 @@ pub fn write_setting(text: &str, key: &str, value: &SettingValue) -> Result<Stri
     let mut doc: Document = text
         .parse()
         .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
-
-    let parts: Vec<&str> = key.split('.').collect();
-    let (last, tables) = parts
-        .split_last()
-        .ok_or_else(|| PluginError::BadPane(format!("empty config key {key:?}")))?;
-
-    let mut item: &mut Item = doc.as_item_mut();
-    for part in tables {
-        // A key whose parent is a value, not a table, cannot be
-        // reached — and quietly replacing that value with a table
-        // would throw away whatever the user had there.
-        if !item.is_table_like() && !item.is_none() {
-            return Err(PluginError::BadPane(format!(
-                "config key {key:?} runs through {part:?}, which is not a table"
-            )));
-        }
-        if item.get(part).is_none() {
-            let table = toml_edit::table();
-            item[*part] = table;
-        }
-        item = &mut item[*part];
-    }
+    let (item, last) = reach_mut(&mut doc, key)?;
 
     if !item.is_table_like() && !item.is_none() {
         return Err(PluginError::BadPane(format!(
@@ -198,6 +170,7 @@ pub fn write_setting(text: &str, key: &str, value: &SettingValue) -> Result<Stri
     let new: Value = match value {
         SettingValue::Bool(b) => (*b).into(),
         SettingValue::Int(n) => (*n).into(),
+        SettingValue::Float(f) => (*f).into(),
         SettingValue::Text(s) => s.as_str().into(),
     };
 
@@ -212,9 +185,78 @@ pub fn write_setting(text: &str, key: &str, value: &SettingValue) -> Result<Stri
             *existing = new;
             *existing.decor_mut() = decor;
         }
-        None => item[*last] = Item::Value(new),
+        None => item[last] = Item::Value(new),
     }
     Ok(doc.to_string())
+}
+
+/// Replace the whole array at `key` with `values`.
+///
+/// The counterpart to [`set_array_member`] for a set the plug-in cannot
+/// enumerate — host names, window titles — where the user types the
+/// members rather than ticking them. The entry's own decor survives, so
+/// a trailing comment on the line is kept; the previous members do not,
+/// because "what is in this list" is exactly what the user just said.
+pub fn write_string_array(text: &str, key: &str, values: &[String]) -> Result<String, PluginError> {
+    let mut doc: Document = text
+        .parse()
+        .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
+    let (item, last) = reach_mut(&mut doc, key)?;
+
+    if item
+        .get(last)
+        .is_some_and(|existing| existing.is_table_like())
+    {
+        return Err(PluginError::BadPane(format!(
+            "config key {key:?} names a table, not a list"
+        )));
+    }
+
+    let mut array = toml_edit::Array::new();
+    for v in values {
+        array.push(v.as_str());
+    }
+    match item.get_mut(last).and_then(|i| i.as_value_mut()) {
+        Some(existing) => {
+            let decor = existing.decor().clone();
+            *existing = Value::Array(array);
+            *existing.decor_mut() = decor;
+        }
+        None => item[last] = Item::Value(Value::Array(array)),
+    }
+    Ok(doc.to_string())
+}
+
+/// Walk a dotted key down to the table holding its last segment,
+/// creating the tables in between.
+///
+/// Shared by every writer so they agree on what a key means. Missing
+/// tables are created because a plug-in's config may omit anything it
+/// has a default for; a segment that is a *value* is refused rather
+/// than replaced, since turning it into a table would throw away
+/// whatever the user had there.
+fn reach_mut<'a>(
+    doc: &'a mut Document,
+    key: &'a str,
+) -> Result<(&'a mut Item, &'a str), PluginError> {
+    let parts: Vec<&str> = key.split('.').collect();
+    let (last, tables) = parts
+        .split_last()
+        .ok_or_else(|| PluginError::BadPane(format!("empty config key {key:?}")))?;
+
+    let mut item: &mut Item = doc.as_item_mut();
+    for part in tables {
+        if !item.is_table_like() && !item.is_none() {
+            return Err(PluginError::BadPane(format!(
+                "config key {key:?} runs through {part:?}, which is not a table"
+            )));
+        }
+        if item.get(part).is_none() {
+            item[*part] = toml_edit::table();
+        }
+        item = &mut item[*part];
+    }
+    Ok((item, last))
 }
 
 #[cfg(test)]

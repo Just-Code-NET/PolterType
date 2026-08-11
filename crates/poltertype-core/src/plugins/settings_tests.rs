@@ -102,7 +102,7 @@ fn writing_leaves_every_other_setting_alone() {
     );
     assert_eq!(
         read_setting(&out, "act.model.temperature"),
-        Some(SettingValue::Text("0.4".to_owned())),
+        Some(SettingValue::Float(0.4)),
         "a float should survive untouched"
     );
     assert_eq!(
@@ -256,4 +256,82 @@ fn adding_twice_or_removing_what_is_absent_changes_nothing() {
 fn a_key_that_is_not_an_array_is_refused_rather_than_overwritten() {
     let text = "[capture]\nallow_apps = \"code\"\n";
     assert!(set_array_member(text, "capture.allow_apps", "firefox", true).is_err());
+}
+
+#[test]
+fn a_float_stays_a_float_through_a_round_trip() {
+    // The one that matters: a decimal key handed back as an integer is
+    // a config the plug-in refuses to parse at all.
+    let value = read_setting(COMMENTED, "act.model.temperature").unwrap();
+    assert_eq!(value, SettingValue::Float(0.4));
+
+    let updated = write_setting(COMMENTED, "act.model.temperature", &value).unwrap();
+    assert!(updated.contains("temperature = 0.4"), "{updated}");
+
+    let round = write_setting(
+        COMMENTED,
+        "act.model.temperature",
+        &SettingValue::Float(1.0),
+    )
+    .unwrap();
+    assert!(round.contains("temperature = 1.0"), "{round}");
+}
+
+#[test]
+fn a_round_float_still_shows_its_point() {
+    assert_eq!(SettingValue::Float(25.0).as_display(), "25.0");
+    assert_eq!(SettingValue::Float(0.35).as_display(), "0.35");
+}
+
+#[test]
+fn writing_a_list_replaces_the_members_and_keeps_the_prose() {
+    let text =
+        "# which hosts may be opened\n[act.links]\nallow_hosts = [\"a.example\"]  # for now\n";
+    let updated = write_string_array(
+        text,
+        "act.links.allow_hosts",
+        &["github.com".to_owned(), "docs.rs".to_owned()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        read_string_array(&updated, "act.links.allow_hosts"),
+        vec!["github.com".to_owned(), "docs.rs".to_owned()]
+    );
+    assert!(updated.contains("# which hosts may be opened"), "{updated}");
+    assert!(updated.contains("# for now"), "{updated}");
+}
+
+#[test]
+fn writing_a_list_into_a_file_that_has_no_table_yet() {
+    let updated = write_string_array(
+        "",
+        "chat.apps.Element.reply.rooms",
+        &["Піккатцо".to_owned()],
+    )
+    .unwrap();
+    assert_eq!(
+        read_string_array(&updated, "chat.apps.Element.reply.rooms"),
+        vec!["Піккатцо".to_owned()]
+    );
+}
+
+#[test]
+fn emptying_a_list_writes_an_empty_array_rather_than_removing_it() {
+    // "No hosts" and "the key is absent, so the plug-in's default
+    // applies" are different permissions, and only one of them is what
+    // the user just asked for.
+    let updated = write_string_array(
+        "[act.links]\nallow_hosts = [\"a.example\"]\n",
+        "act.links.allow_hosts",
+        &[],
+    )
+    .unwrap();
+    assert!(updated.contains("allow_hosts = []"), "{updated}");
+}
+
+#[test]
+fn a_list_key_that_names_a_table_is_refused() {
+    let err = write_string_array("[act.links]\n", "act.links", &["x".to_owned()]).unwrap_err();
+    assert!(matches!(err, PluginError::BadPane(_)), "{err}");
 }
