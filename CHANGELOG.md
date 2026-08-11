@@ -4,6 +4,70 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] — a settings pane big enough for a plug-in
+
+### Added — the Plug-ins pane can hold a whole configuration
+
+- **A plug-in's settings are navigable instead of endless.** The pane
+  was one flat column of labels with boxes after them, which was fine
+  for the five controls a plug-in declared and unusable for the entire
+  config surface of one. A plug-in can now declare `section` headings,
+  and PolterType turns them into a navigation list beside the window's
+  own, showing one page at a time. Two new control kinds come with it:
+  `decimal`, which always writes a float because TOML's two number
+  types are not interchangeable to the program reading the file back —
+  a plug-in expecting `0.35` refuses to start on `1` — and `strings`,
+  a list edited as one comma-separated line for the sets nobody can
+  offer rows for.
+
+  As before, **a plug-in never draws anything**. Every control is
+  rendered by PolterType from a static declaration, which is what
+  stops a third-party pane imitating a system prompt or another
+  plug-in's settings.
+
+- **Typing no longer writes on every keystroke.** A value settles when
+  you move on, and at the latest when the window closes. The old
+  behaviour put every prefix of what you were typing into a file a
+  running plug-in was reading: a threshold on its way from `0.9` to
+  `0.95` passes through `0`, and for the length of a keystroke a gate
+  in that plug-in was wide open.
+
+- **A section nobody is looking at is never asked.** Controls whose
+  rows come from the plug-in do not spawn it until their page is on
+  screen, and two controls sharing one command now ask once — so
+  opening this pane no longer reads every chat client's sidebar twice
+  over.
+
+### Fixed
+
+- **The Settings window no longer re-reads a plug-in's config once per
+  list row.** Deciding whether a row's box was ticked meant reading the
+  plug-in's whole config file and running a format-preserving TOML
+  parse — for every row, every time the window rebuilt. A plug-in
+  showing two lists of 34 entries read **1.2 MB and ran 68 parses on
+  every click**, against a file the click itself had just written.
+  Membership is now held and refreshed where the file can actually have
+  changed: on load, on every write the pane makes, and on reaching a
+  section. Measured on that pane, 1216 KB per interaction became 34 KB.
+
+- **Exactly one region of the Plug-ins pane scrolls.** Reports and row
+  lists grew their own scrollbars a few pixels from the page's own, and
+  a wheel over the boundary moved whichever one the pointer happened to
+  be inside. They now grow to their content and the page scrolls once.
+  The pane also drops its card frame and its own padding, which had it
+  sitting further from the window edge than every other page.
+
+### Changed
+
+- **Dependencies are optimised in debug builds** (`[profile.dev.package
+  ."*"] opt-level = 3`). This is a contributor-facing change with a
+  user-visible reason: the Settings window is rendered on the CPU, so
+  unoptimised `tiny-skia` and `cosmic-text` are the whole frame budget.
+  The same scroll costs 97% of a core in a stock debug build and 20% in
+  release. Our own crates stay unoptimised, so stepping and backtraces
+  still work where the bugs are; the cost is one slow build after
+  pulling this.
+
 ## [0.15.0] — the Mac learns where to look
 
 ### Added — macOS can finally show you the suggestion
