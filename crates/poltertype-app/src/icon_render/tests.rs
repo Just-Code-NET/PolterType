@@ -37,3 +37,28 @@ fn paused_icon_differs_from_active_icon() {
     draw_pause_indicator(&mut paused);
     assert_ne!(normal, paused);
 }
+
+#[test]
+fn the_waiting_badge_leaves_the_layout_code_alone() {
+    // The icon's job is to name the layout; the badge is a guest on it.
+    // Every pixel the two glyphs occupy must read the same with the mark
+    // as without, or a "UK" with drafts waiting is a different word.
+    let plain = render(b"UK", [0x4F, 0x9D, 0xFF, 0xFF]);
+    let mut marked = plain.clone();
+    draw_waiting_badge(&mut marked);
+    let px = |buf: &[u8], x: u32, y: u32| {
+        let i = ((y * W + x) * 4) as usize;
+        [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
+    };
+    for y in 5..11 {
+        for x in 3..12 {
+            assert_eq!(
+                px(&plain, x, y),
+                px(&marked, x, y),
+                "the badge touched the glyphs at {x},{y}"
+            );
+        }
+    }
+    // …and it does mark it somewhere, or it would be a no-op that passes.
+    assert_ne!(plain, marked);
+}

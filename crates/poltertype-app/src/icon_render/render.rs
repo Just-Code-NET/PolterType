@@ -143,9 +143,10 @@ pub(crate) fn draw_waiting_badge(buf: &mut [u8]) {
     let dot = [0xFF, 0x3B, 0x30, 0xFF];
     let ring = [0xFF, 0xFF, 0xFF, 0xFF];
     let cx = (W as i32) - 4;
-    let cy = 3i32;
-    // A 4x4 dot with a one-pixel ring around it: 6x6 all told, which is
-    // the largest mark that does not touch the two glyphs.
+    // Rows 0..4. The glyphs start at row 5, and the ring has to clear
+    // them: at row 3 its bottom edge sat on the second glyph's top-right
+    // corner, which on a two-letter code reads as part of the letter.
+    let cy = 2i32;
     for dy in -2..=2i32 {
         for dx in -2..=2i32 {
             if dx.abs() == 2 && dy.abs() == 2 {
