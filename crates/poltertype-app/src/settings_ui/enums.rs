@@ -167,6 +167,9 @@ pub enum Message {
     /// A row of a list control was ticked or unticked: add or remove
     /// that name in the plug-in's own config array.
     PluginListToggled(usize, usize, String, bool),
+    /// Tick (or untick) every row a list control is showing — the plug-in
+    /// index, the control index, and which way.
+    PluginListAll(usize, usize, bool),
     /// A section was chosen in the plug-in's own navigation list.
     PluginSectionSelected(usize, usize),
     LanguageToggled(LayoutId, bool),

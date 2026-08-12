@@ -116,6 +116,22 @@ pub fn set_array_member(
     member: &str,
     present: bool,
 ) -> Result<String, PluginError> {
+    set_array_members(text, key, std::slice::from_ref(&member), present)
+}
+
+/// The same for a whole set at once.
+///
+/// One parse and one write, not one per member. A pane offering sixty
+/// conversations and a "select all" that wrote the file sixty times
+/// would be sixty chances for another program reading the same file to
+/// catch it half-finished, and sixty rewrites of comments it does not
+/// own — for one action the user thinks of as single.
+pub fn set_array_members(
+    text: &str,
+    key: &str,
+    members: &[&str],
+    present: bool,
+) -> Result<String, PluginError> {
     let mut doc: Document = text
         .parse()
         .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
@@ -129,15 +145,17 @@ pub fn set_array_member(
         .and_then(|i| i.as_array_mut())
         .ok_or_else(|| PluginError::BadPane(format!("config key {key:?} is not an array")))?;
 
-    let at = array
-        .iter()
-        .position(|v| v.as_str().is_some_and(|s| s == member));
-    match (present, at) {
-        (true, None) => array.push(member),
-        (false, Some(i)) => {
-            array.remove(i);
+    for member in members {
+        let at = array
+            .iter()
+            .position(|v| v.as_str().is_some_and(|s| s == *member));
+        match (present, at) {
+            (true, None) => array.push(*member),
+            (false, Some(i)) => {
+                array.remove(i);
+            }
+            _ => {}
         }
-        _ => {}
     }
     Ok(doc.to_string())
 }

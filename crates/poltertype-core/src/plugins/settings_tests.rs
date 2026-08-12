@@ -335,3 +335,63 @@ fn a_list_key_that_names_a_table_is_refused() {
     let err = write_string_array("[act.links]\n", "act.links", &["x".to_owned()]).unwrap_err();
     assert!(matches!(err, PluginError::BadPane(_)), "{err}");
 }
+
+#[test]
+fn selecting_all_writes_the_whole_set_once_and_keeps_the_rest() {
+    // "Select all" is one action to the person taking it, so it is one
+    // edit to the file — and it must not disturb what was already there,
+    // including a name the plug-in did not offer this time.
+    let text = "[chat.apps.WhatsApp.reply]\nrooms = [\"Чех\", \"a chat that is offline today\"]\n";
+    let out = set_array_members(
+        text,
+        "chat.apps.WhatsApp.reply.rooms",
+        &["Чех", "122 ОБЗ", "Бронза"],
+        true,
+    )
+    .unwrap();
+    assert_eq!(
+        read_string_array(&out, "chat.apps.WhatsApp.reply.rooms"),
+        ["Чех", "a chat that is offline today", "122 ОБЗ", "Бронза"],
+        "already-ticked rows are not duplicated, and unoffered ones stay"
+    );
+}
+
+#[test]
+fn clearing_removes_only_what_was_offered() {
+    // The user is acting on the list they can see. A conversation stored
+    // for a client that is not running is not on screen, and taking it
+    // out would be the one surprise this control must not spring.
+    let text = "[chat.apps.WhatsApp.reply]\nrooms = [\"Чех\", \"122 ОБЗ\", \"offline chat\"]\n";
+    let out = set_array_members(
+        text,
+        "chat.apps.WhatsApp.reply.rooms",
+        &["Чех", "122 ОБЗ"],
+        false,
+    )
+    .unwrap();
+    assert_eq!(
+        read_string_array(&out, "chat.apps.WhatsApp.reply.rooms"),
+        ["offline chat"]
+    );
+}
+
+#[test]
+fn a_batch_edit_leaves_the_comments_alone_too() {
+    let text = "\
+[chat.apps.WhatsApp.reply]
+# only one-to-one chats belong here
+rooms = [
+    \"Чех\",  # verified one-to-one
+]
+";
+    let out = set_array_members(
+        text,
+        "chat.apps.WhatsApp.reply.rooms",
+        &["Чех", "122 ОБЗ"],
+        true,
+    )
+    .unwrap();
+    assert!(out.contains("only one-to-one chats belong here"), "{out}");
+    assert!(out.contains("# verified one-to-one"), "{out}");
+    assert!(out.contains("122 ОБЗ"), "{out}");
+}

@@ -474,6 +474,45 @@ impl PluginPane {
         }
     }
 
+    /// Tick, or untick, every row this control is currently offering.
+    ///
+    /// The rows on screen and nothing else. A list can hold names the
+    /// plug-in did not offer this time — a conversation in a client that
+    /// is not running, one typed in by hand — and clearing what cannot
+    /// be seen is the worse surprise of the two: the user is acting on a
+    /// list they are looking at.
+    ///
+    /// One write for the whole set, so the file another program is
+    /// reading is never caught half-updated.
+    pub fn set_array_all(&mut self, index: usize, present: bool) {
+        let Some(control) = self.ext.manifest.pane.get(index) else {
+            return;
+        };
+        if control.key.is_empty() {
+            return;
+        }
+        let key = control.key.clone();
+        let members: Vec<String> = self
+            .list_rows(index)
+            .iter()
+            .map(|row| row.id.clone())
+            .collect();
+        if members.is_empty() {
+            return;
+        }
+        let borrowed: Vec<&str> = members.iter().map(String::as_str).collect();
+        let current = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        match poltertype_core::plugins::set_array_members(&current, &key, &borrowed, present) {
+            Ok(updated) => {
+                self.write(updated);
+            }
+            Err(e) => {
+                warn!(key = %key, "cannot edit plug-in config array: {e}");
+                self.status = Some(format!("Could not change {key}: {e}"));
+            }
+        }
+    }
+
     /// Write the plug-in's config file back, reporting either way, and
     /// say whether it landed.
     ///

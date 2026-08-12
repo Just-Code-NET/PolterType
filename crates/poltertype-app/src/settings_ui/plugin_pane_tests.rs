@@ -589,3 +589,48 @@ fn a_trailing_comma_does_not_put_an_empty_name_in_the_list() {
     let written = std::fs::read_to_string(&pane.config_path).unwrap();
     assert!(written.contains("rooms = [\"Піккатцо\"]"), "{written}");
 }
+
+#[test]
+fn select_all_ticks_every_row_on_screen_in_one_write() {
+    // Sixty conversations is what this exists for: the user thinks of it
+    // as one action, so it is one edit of the file another program is
+    // reading.
+    let root = scratch("listall");
+    let mut pane = PluginPane::load(
+        extension(vec![PaneControl {
+            kind: ControlKind::List,
+            key: "chat.apps.WhatsApp.reply.rooms".to_owned(),
+            command: "rows".to_owned(),
+            ..PaneControl::default()
+        }]),
+        &root,
+    );
+    pane.set_output(
+        0,
+        CommandOutput::Ready("Чех\tЧех\t\n122 ОБЗ\t122 ОБЗ\tunread\n".to_owned()),
+    );
+
+    pane.set_array_all(0, true);
+    assert!(pane.in_array(0, "Чех"), "{:?}", pane.status);
+    assert!(pane.in_array(0, "122 ОБЗ"));
+
+    pane.set_array_all(0, false);
+    assert!(!pane.in_array(0, "Чех"));
+    assert!(!pane.in_array(0, "122 ОБЗ"));
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn select_all_with_nothing_offered_writes_nothing() {
+    // No rows means the plug-in has not answered — or has nothing to
+    // say. Either way there is nothing to tick, and a write would only
+    // create an empty array in somebody else's file.
+    let root = scratch("listallempty");
+    let mut pane = PluginPane::load(
+        extension(vec![control(ControlKind::List, "capture.allow_apps")]),
+        &root,
+    );
+    pane.set_array_all(0, true);
+    assert!(pane.status.is_none(), "{:?}", pane.status);
+    std::fs::remove_dir_all(&root).unwrap();
+}

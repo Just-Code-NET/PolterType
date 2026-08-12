@@ -451,7 +451,11 @@ impl SettingsApp {
     ) -> Element<'a, Message> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
-        let column = self.output_heading(plugin, index, control);
+        // Rows have to exist before "select all" means anything, and
+        // while the plug-in is still being asked there is nothing to act
+        // on — so the buttons appear with the boxes they act on.
+        let has_rows = !pane.list_rows(index).is_empty();
+        let column = self.output_heading_with(plugin, index, control, has_rows);
 
         let body: Element<'a, Message> = match pane.output(index) {
             None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
@@ -579,23 +583,56 @@ impl SettingsApp {
         index: usize,
         control: &'a poltertype_core::plugins::PaneControl,
     ) -> Column<'a, Message> {
+        self.output_heading_with(plugin, index, control, false)
+    }
+
+    /// The same, with the two batch buttons a tick-box list needs.
+    ///
+    /// Only a list gets them, and only when it has rows: a plug-in can
+    /// offer sixty conversations, and ticking sixty boxes by hand to say
+    /// "all of them" is the kind of work a settings window exists to
+    /// spare somebody. They are not on a report, which has nothing to
+    /// tick, and not on an empty list, where they would be two dead
+    /// controls explaining nothing.
+    fn output_heading_with<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        control: &'a poltertype_core::plugins::PaneControl,
+        batch: bool,
+    ) -> Column<'a, Message> {
         let b = self.brand();
-        let mut column = Column::new().spacing(6).push(
-            Row::new()
-                .spacing(10)
-                .align_y(Alignment::Center)
-                .push(Text::new(control.label.as_str()).size(13).font(FONT_BOLD))
+        let small = Padding {
+            top: 3.0,
+            right: 9.0,
+            bottom: 3.0,
+            left: 9.0,
+        };
+        let mut heading = Row::new()
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(Text::new(control.label.as_str()).size(13).font(FONT_BOLD))
+            .push(
+                Button::new(Text::new("Refresh").size(11))
+                    .padding(small)
+                    .on_press(Message::PluginOutputRefresh(plugin, index)),
+            );
+        if batch {
+            heading = heading
                 .push(
-                    Button::new(Text::new("Refresh").size(11))
-                        .padding(Padding {
-                            top: 3.0,
-                            right: 9.0,
-                            bottom: 3.0,
-                            left: 9.0,
-                        })
-                        .on_press(Message::PluginOutputRefresh(plugin, index)),
-                ),
-        );
+                    Button::new(Text::new("Select all").size(11))
+                        .padding(small)
+                        .style(iced::widget::button::secondary)
+                        .on_press(Message::PluginListAll(plugin, index, true)),
+                )
+                .push(
+                    Button::new(Text::new("Clear").size(11))
+                        .padding(small)
+                        .style(iced::widget::button::secondary)
+                        .on_press(Message::PluginListAll(plugin, index, false)),
+                );
+        }
+        let mut column = Column::new().spacing(6).push(heading);
         if !control.help.is_empty() {
             column = column.push(
                 Text::new(control.help.as_str())

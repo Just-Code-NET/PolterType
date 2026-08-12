@@ -77,6 +77,11 @@ impl SettingsApp {
                     pane.set_array_member(control, &member, on);
                 }
             }
+            Message::PluginListAll(plugin, control, on) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set_array_all(control, on);
+                }
+            }
             Message::PluginOutputRefresh(plugin, control) => {
                 let sharing = self
                     .plugins
