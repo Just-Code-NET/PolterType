@@ -467,8 +467,8 @@ fn main() -> Result<()> {
     // flash a "??" before the first LayoutChanged event arrives.
     let initial_layout: Option<LayoutId> = layout_switcher.current().ok();
     let initial_icon = match initial_layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, false)?,
-        None => icon_render::unknown()?,
+        Some(l) => icon_render::for_layout(l, false, false)?,
+        None => icon_render::unknown(false)?,
     };
 
     // Before the tray exists: the GTK backend greets its construction
@@ -482,6 +482,7 @@ fn main() -> Result<()> {
             initial_layout.as_ref(),
             false,
             input_alert.is_some(),
+            0,
         ))
         .with_icon(initial_icon)
         .build()
@@ -622,6 +623,7 @@ fn main() -> Result<()> {
         layout: initial_layout,
         paused: false,
         input_alert: input_alert.is_some(),
+        attention: 0,
     };
 
     info!("entering event loop");
@@ -655,6 +657,13 @@ fn main() -> Result<()> {
                 // would keep showing a mode nothing is enforcing.
                 announce_departed(supervisor.reap());
                 plugin_menu.refresh();
+                // The count the icon shows comes from the refresh that
+                // just ran, so the mark appears in the same beat as the
+                // entry it stands for.
+                if tray_state.attention != plugin_menu.attention() {
+                    tray_state.attention = plugin_menu.attention();
+                    tray::refresh_tray(&tray, &item_pause, &tray_state);
+                }
             }
             Event::UserEvent(UserEvent::Menu(id)) => {
                 // A service that died since the last heartbeat is

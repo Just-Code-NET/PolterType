@@ -260,3 +260,40 @@ fn nothing_is_active_when_the_plugin_could_not_be_asked() {
     assert!(!item.is_active(None));
     assert!(item.is_active(Some(&state(&[("mode", "ask")]))));
 }
+
+#[test]
+fn a_row_is_an_id_a_label_and_as_much_detail_as_it_prints() {
+    let rows = parse_rows(
+        "43\tElement · Піккатцо · 20m\treplying to: Лєший\t«То що це за айпейс?»\n\
+         44\tWhatsApp · Котовод · 20m\n\
+         \n\
+         45\n",
+    );
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].id, "43");
+    assert_eq!(rows[0].label, "Element · Піккатцо · 20m");
+    assert_eq!(
+        rows[0].details,
+        vec!["replying to: Лєший", "«То що це за айпейс?»"]
+    );
+    // A row may carry nothing but a label…
+    assert!(rows[1].details.is_empty());
+    // …or nothing but an id, which then has to stand as its own label:
+    // an unlabelled entry is unclickable in practice.
+    assert_eq!(rows[2].label, "45");
+}
+
+#[test]
+fn a_row_without_an_id_is_dropped_rather_than_shown() {
+    // There would be nothing to hand back to the plug-in, so the entry
+    // could only ever act on the wrong thing or on nothing.
+    assert!(parse_rows("\tno id here\tdetail").is_empty());
+}
+
+#[test]
+fn the_count_reaches_the_title_with_or_without_a_placeholder() {
+    assert_eq!(count_label("Drafts waiting ({})", 3), "Drafts waiting (3)");
+    // No placeholder: appended rather than dropped, because the whole
+    // point of the count is not having to open the menu to see it.
+    assert_eq!(count_label("Drafts waiting", 0), "Drafts waiting (0)");
+}

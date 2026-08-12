@@ -60,6 +60,64 @@ pub struct ExtensionManifest {
     /// A menu showing the config value would confidently display the
     /// wrong thing.
     pub state_args: Vec<String>,
+
+    /// Menus built from rows the plug-in produces at runtime, rather
+    /// than from entries the manifest could name in advance.
+    pub tray_lists: Vec<TrayList>,
+
+    /// Which key of the reported state means "this plug-in is waiting
+    /// for you", counted rather than merely present.
+    ///
+    /// Empty — the plug-in never marks the icon, which is the default
+    /// and the polite answer. Set, and a value above zero puts a mark on
+    /// PolterType's own tray icon. The icon is the only thing a
+    /// tray-only application can say without being opened, and it is
+    /// shared: a plug-in gets to raise a dot on it, never to replace it,
+    /// draw on it or choose what it looks like.
+    pub attention_state_key: String,
+}
+
+/// A tray submenu whose entries the plug-in supplies while the menu is
+/// being opened.
+///
+/// [`TrayItem`] covers everything a manifest can know in advance. This
+/// covers what it cannot: a queue, an inbox, a list of things that
+/// arrived since the file was written. The plug-in prints rows;
+/// PolterType draws them, in its own menu, with its own separators, and
+/// runs only the commands the manifest declared — so "produced at
+/// runtime" extends to the *text*, never to what clicking it does.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct TrayList {
+    /// Title of the submenu. `{}` is replaced by the number of rows, so
+    /// a count is visible without opening it.
+    pub label: String,
+    /// Shown, disabled, in place of the submenu when there are no rows.
+    /// Empty means the whole thing is hidden while it is empty.
+    pub empty_label: String,
+    /// Id of the [`PluginCommand`] whose output is the rows, in the same
+    /// tab-separated form the pane's tick-box lists use: `id`, then a
+    /// label, then any number of detail fields.
+    pub command: String,
+    /// What may be done to one row. Each becomes an entry inside that
+    /// row's own submenu, under its details.
+    pub actions: Vec<TrayListAction>,
+    /// What may be done to the whole list — emptying it, accepting all
+    /// of it. Drawn once, below the rows, behind a separator.
+    pub bulk: Vec<TrayListAction>,
+}
+
+/// One thing a [`TrayList`] can do, to a row or to all of them.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct TrayListAction {
+    /// What the user reads.
+    pub label: String,
+    /// Id of the [`PluginCommand`] to run. For a per-row action, any
+    /// argument equal to `{id}` is replaced by that row's id — the only
+    /// substitution there is, and a whole argument rather than a
+    /// fragment of one, so a row id can never become part of a flag.
+    pub command: String,
 }
 
 /// A command the plug-in exposes, run as `<exe> <args…>`.

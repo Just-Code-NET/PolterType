@@ -26,6 +26,11 @@ pub(crate) struct TrayState {
     /// recovery is fixing permissions and relaunching, so this never
     /// flips back at runtime.
     pub(crate) input_alert: bool,
+    /// How many things a plug-in is waiting on the user for — the count
+    /// behind the mark on the tray icon. Zero draws nothing at all: the
+    /// icon says what layout is in force, and that has to stay the thing
+    /// it says.
+    pub(crate) attention: u32,
 }
 
 /// Type alias for the shared profile dictionary cache. Behind an

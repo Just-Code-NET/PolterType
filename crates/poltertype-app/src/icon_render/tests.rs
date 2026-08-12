@@ -22,8 +22,8 @@ fn render_produces_expected_buffer_size() {
 
 #[test]
 fn icon_is_buildable_for_known_layouts() {
-    assert!(for_layout(&LayoutId::from("en-US"), false).is_ok());
-    assert!(for_layout(&LayoutId::from("uk-UA"), false).is_ok());
+    assert!(for_layout(&LayoutId::from("en-US"), false, false).is_ok());
+    assert!(for_layout(&LayoutId::from("uk-UA"), false, true).is_ok());
 }
 
 #[test]

@@ -10,20 +10,26 @@ use tray_icon::Icon;
 /// can't extract two, we fall back to "??". When `paused` is true
 /// the icon is rendered in a desaturated grey style with a small
 /// pause indicator dot — visually obvious at-a-glance.
-pub fn for_layout(layout: &LayoutId, paused: bool) -> Result<Icon> {
+pub fn for_layout(layout: &LayoutId, paused: bool, waiting: bool) -> Result<Icon> {
     let code = layout_short_code(layout);
     let bg = if paused { PAUSED_BG } else { color_for(layout) };
     let mut buf = render(code.as_bytes(), bg);
     if paused {
         draw_pause_indicator(&mut buf);
     }
+    if waiting {
+        draw_waiting_badge(&mut buf);
+    }
     Icon::from_rgba(buf, W, H).context("build tray icon")
 }
 
 /// Generic boot-time icon for "no layout known yet".
-pub fn unknown() -> Result<Icon> {
-    Icon::from_rgba(render(b"??", [0x55, 0x55, 0x55, 0xFF]), W, H)
-        .context("build placeholder tray icon")
+pub fn unknown(waiting: bool) -> Result<Icon> {
+    let mut buf = render(b"??", [0x55, 0x55, 0x55, 0xFF]);
+    if waiting {
+        draw_waiting_badge(&mut buf);
+    }
+    Icon::from_rgba(buf, W, H).context("build placeholder tray icon")
 }
 
 pub(crate) fn layout_short_code(id: &LayoutId) -> String {
@@ -123,6 +129,35 @@ pub(crate) fn draw_pause_indicator(buf: &mut [u8]) {
     for dy in 0..4i32 {
         put_pixel(buf, x0, y0 + dy, bar);
         put_pixel(buf, x0 + 2, y0 + dy, bar);
+    }
+}
+
+/// A dot in the TOP-right corner: something is waiting for the user.
+///
+/// Top-right because the bottom-right is the pause indicator, and the two
+/// are independent — a paused PolterType with drafts waiting has to be
+/// able to say both. Ringed in the background colour rather than drawn
+/// flat, so it reads as a badge against any tray background and does not
+/// merge into a light layout colour.
+pub(crate) fn draw_waiting_badge(buf: &mut [u8]) {
+    let dot = [0xFF, 0x3B, 0x30, 0xFF];
+    let ring = [0xFF, 0xFF, 0xFF, 0xFF];
+    let cx = (W as i32) - 4;
+    let cy = 3i32;
+    // A 4x4 dot with a one-pixel ring around it: 6x6 all told, which is
+    // the largest mark that does not touch the two glyphs.
+    for dy in -2..=2i32 {
+        for dx in -2..=2i32 {
+            if dx.abs() == 2 && dy.abs() == 2 {
+                continue;
+            }
+            put_pixel(buf, cx + dx, cy + dy, ring);
+        }
+    }
+    for dy in -1..=1i32 {
+        for dx in -1..=1i32 {
+            put_pixel(buf, cx + dx, cy + dy, dot);
+        }
     }
 }
 

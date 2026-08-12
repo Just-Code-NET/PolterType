@@ -224,6 +224,67 @@ pub fn run_command(ext: &DiscoveredExtension, command_id: &str) -> Result<(), St
         .map_err(|e| format!("could not run {command_id:?}: {e}"))
 }
 
+/// Run a declared command with one row id substituted into it — what a
+/// per-row tray entry does.
+///
+/// Substitution is by whole argument: an argument that *is* `{id}`
+/// becomes the row id, and nothing else is touched. Not string
+/// interpolation, deliberately — a row id arrives from the plug-in's own
+/// output, and pasting it into the middle of an argument is how it would
+/// turn into a second flag.
+pub fn run_command_for_row(
+    ext: &DiscoveredExtension,
+    command_id: &str,
+    row_id: &str,
+) -> Result<(), String> {
+    let cmd = ext
+        .manifest
+        .commands
+        .iter()
+        .find(|c| c.id == command_id)
+        .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
+    let args: Vec<String> = cmd
+        .args
+        .iter()
+        .map(|a| {
+            if a == ROW_ID_PLACEHOLDER {
+                row_id.to_owned()
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+
+    spawn(&ext.exe, &args, &ext.dir, None)
+        .map(|child| {
+            info!(id = %ext.id, command = %command_id, row = %row_id, pid = child.id(), "plug-in row command started");
+        })
+        .map_err(|e| format!("could not run {command_id:?}: {e}"))
+}
+
+/// The one argument a per-row command may have substituted.
+pub const ROW_ID_PLACEHOLDER: &str = "{id}";
+
+/// Ask a plug-in for the rows of one of its runtime menus.
+///
+/// Waited on with a deadline, like the state read and for the same
+/// reason: this runs while a menu is being built. An empty answer and a
+/// failed one are both "no rows" here — the menu says so either way, and
+/// the log carries the difference.
+pub fn read_rows(ext: &DiscoveredExtension, command_id: &str) -> Vec<super::menu::MenuRow> {
+    let Some(cmd) = ext.manifest.commands.iter().find(|c| c.id == command_id) else {
+        warn!(id = %ext.id, "no command {command_id:?} to list from");
+        return Vec::new();
+    };
+    match capture_output(ext, &cmd.args, STATE_TIMEOUT, "list command") {
+        Ok(out) => super::menu::parse_rows(&out),
+        Err(e) => {
+            warn!(id = %ext.id, "cannot read plug-in menu rows: {e}");
+            Vec::new()
+        }
+    }
+}
+
 /// Ask a plug-in what state it is in, for the tray to reflect.
 ///
 /// Unlike [`run_command`] this **is** waited on, so it carries a

@@ -9,17 +9,29 @@ use crate::consts::*;
 use crate::icon_render;
 use crate::types::*;
 
-pub(crate) fn tooltip_for(layout: Option<&LayoutId>, paused: bool, input_alert: bool) -> String {
+pub(crate) fn tooltip_for(
+    layout: Option<&LayoutId>,
+    paused: bool,
+    input_alert: bool,
+    attention: u32,
+) -> String {
     let base = match (layout, paused) {
         (Some(l), false) => format!("{APP_NAME} — {l}"),
         (Some(l), true) => format!("{APP_NAME} — {l} (paused)"),
         (None, false) => APP_NAME.to_owned(),
         (None, true) => format!("{APP_NAME} (paused)"),
     };
-    if input_alert {
+    let base = if input_alert {
         format!("{base} — ⚠ no keyboard access, see Setup Guide")
     } else {
         base
+    };
+    // The mark on the icon says *that* something is waiting; the tooltip
+    // is the only place the count fits without opening anything.
+    match attention {
+        0 => base,
+        1 => format!("{base} — 1 draft waiting"),
+        n => format!("{base} — {n} drafts waiting"),
     }
 }
 
@@ -27,9 +39,10 @@ pub(crate) fn tooltip_for(layout: Option<&LayoutId>, paused: bool, input_alert: 
 /// `TrayState`. Cheap (no allocation in the icon-rendering path beyond
 /// a 16x16 RGBA buffer); safe to call on every state change.
 pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayState) {
+    let waiting = state.attention > 0;
     let icon_result = match state.layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, state.paused),
-        None => icon_render::unknown(),
+        Some(l) => icon_render::for_layout(l, state.paused, waiting),
+        None => icon_render::unknown(waiting),
     };
     match icon_result {
         Ok(icon) => {
@@ -43,6 +56,7 @@ pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayS
         state.layout.as_ref(),
         state.paused,
         state.input_alert,
+        state.attention,
     ))) {
         warn!(?e, "could not update tray tooltip");
     }
