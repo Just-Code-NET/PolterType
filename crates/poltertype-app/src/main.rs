@@ -82,6 +82,26 @@ use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
 /// subprocess per reporting plug-in.
 const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// Move the mark on the tray icon to match what the plug-ins are waiting
+/// on, redrawing only when the number actually changed.
+///
+/// Called from both places that can change it — the heartbeat and a menu
+/// click — because a click is the one the user is watching. The icon is
+/// rasterised from scratch on every redraw, so "only when it changed"
+/// is doing real work, not tidiness.
+fn sync_attention(
+    tray: &TrayIcon,
+    item_pause: &tray_icon::menu::MenuItem,
+    state: &mut TrayState,
+    menu: &plugins::PluginMenu,
+) {
+    if state.attention == menu.attention() {
+        return;
+    }
+    state.attention = menu.attention();
+    tray::refresh_tray(tray, item_pause, state);
+}
+
 fn main() -> Result<()> {
     // Before `init_tracing` / single-instance on purpose: the settings
     // UI is a child process that would hit the lock and steal the
@@ -657,20 +677,20 @@ fn main() -> Result<()> {
                 // would keep showing a mode nothing is enforcing.
                 announce_departed(supervisor.reap());
                 plugin_menu.refresh();
-                // The count the icon shows comes from the refresh that
-                // just ran, so the mark appears in the same beat as the
-                // entry it stands for.
-                if tray_state.attention != plugin_menu.attention() {
-                    tray_state.attention = plugin_menu.attention();
-                    tray::refresh_tray(&tray, &item_pause, &tray_state);
-                }
+                sync_attention(&tray, &item_pause, &mut tray_state, &plugin_menu);
             }
             Event::UserEvent(UserEvent::Menu(id)) => {
                 // A service that died since the last heartbeat is
                 // reported now rather than at the next one.
                 announce_departed(supervisor.reap());
                 if plugin_menu.handle(&id) {
-                    // Belonged to a plug-in; nothing of ours to do.
+                    // Belonged to a plug-in. It has already re-read its
+                    // state, and the mark on the icon has to move with it:
+                    // clearing a queue and watching the dot stay put for
+                    // another fifteen seconds reads as the click not having
+                    // worked, which is the one thing a direct action must
+                    // never look like.
+                    sync_attention(&tray, &item_pause, &mut tray_state, &plugin_menu);
                 } else if id == quit_id {
                     info!("Quit clicked — shutting down");
                     if let Some(mut listener) = input_listener.take() {
