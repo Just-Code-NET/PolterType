@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::plugins::enums::PluginKind;
-use crate::plugins::types::{ExtensionManifest, PaneControl, PluginCommand, TrayItem};
+use crate::plugins::types::{ExtensionManifest, PaneControl, PaneOption, PluginCommand, TrayItem};
 
 fn command(id: &str) -> PluginCommand {
     PluginCommand {
@@ -115,7 +115,7 @@ fn a_stored_control_must_name_its_key() {
                 kind,
                 key: String::new(),
                 label: "Something".to_owned(),
-                options: vec!["a".to_owned()],
+                options: vec![PaneOption::Value("a".to_owned())],
                 ..PaneControl::default()
             }],
             ..base()
@@ -149,12 +149,121 @@ fn a_dotted_config_key_is_accepted() {
             kind: ControlKind::Choice,
             key: "act.mode".to_owned(),
             label: "Mode".to_owned(),
-            options: vec!["learn".to_owned(), "ask".to_owned()],
+            options: vec![
+                PaneOption::Value("learn".to_owned()),
+                PaneOption::Value("ask".to_owned()),
+            ],
             ..PaneControl::default()
         }],
         ..base()
     };
     assert!(check_extension(&m).is_ok());
+}
+
+/// A choice control carrying whatever options are handed to it.
+fn choice_with(options: Vec<PaneOption>) -> ExtensionManifest {
+    ExtensionManifest {
+        pane: vec![PaneControl {
+            kind: ControlKind::Choice,
+            key: "act.model.name".to_owned(),
+            label: "Model".to_owned(),
+            options,
+            ..PaneControl::default()
+        }],
+        ..base()
+    }
+}
+
+#[test]
+fn an_option_may_describe_itself_and_the_plain_form_still_works() {
+    let m = choice_with(vec![
+        PaneOption::Value("off".to_owned()),
+        PaneOption::Described {
+            value: "qwen3:8b".to_owned(),
+            label: "Qwen3 8B".to_owned(),
+            detail: "Fits an 8 GB card whole.".to_owned(),
+            link: "https://ollama.com/library/qwen3".to_owned(),
+        },
+    ]);
+    assert!(check_extension(&m).is_ok());
+
+    let opts = &m.pane[0].options;
+    // A bare value is its own label and says nothing more.
+    assert_eq!(opts[0].value(), "off");
+    assert_eq!(opts[0].label(), "off");
+    assert!(!opts[0].is_described());
+    // A described one keeps the two apart: what is written into the
+    // config is never the friendly name.
+    assert_eq!(opts[1].value(), "qwen3:8b");
+    assert_eq!(opts[1].label(), "Qwen3 8B");
+    assert!(opts[1].is_described());
+}
+
+#[test]
+fn both_forms_of_option_parse_from_one_array() {
+    // The point of the untagged form: a plug-in describes the options
+    // that need it and leaves the rest as strings, in one list, with no
+    // parallel array to keep in step.
+    let toml = r#"
+        id = "x"
+        name = "X"
+        version = "1"
+        kind = "extension"
+        [extension]
+        exe = "x"
+        [[extension.pane]]
+        kind = "choice"
+        key = "act.model.name"
+        label = "Model"
+        options = [
+          "off",
+          { value = "qwen3:8b", detail = "Fits.", link = "https://ollama.com/library/qwen3" },
+        ]
+    "#;
+    let m: ExtensionManifest = toml::from_str::<toml::Value>(toml)
+        .unwrap()
+        .get("extension")
+        .unwrap()
+        .clone()
+        .try_into()
+        .unwrap();
+    let opts = &m.pane[0].options;
+    assert_eq!(opts.len(), 2);
+    assert_eq!(opts[0].value(), "off");
+    assert_eq!(opts[1].value(), "qwen3:8b");
+    assert_eq!(opts[1].detail(), "Fits.");
+}
+
+#[test]
+fn a_link_that_is_not_https_is_refused_rather_than_drawn() {
+    // A link in a manifest is a third party naming a place PolterType
+    // will send somebody. A `file://` or a `javascript:` beside an
+    // innocuous label is the whole reason this pane draws everything
+    // itself, so the check belongs at load, not at click.
+    for bad in [
+        "http://example.com",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+        "ollama.com/library/qwen3",
+    ] {
+        let m = choice_with(vec![PaneOption::Described {
+            value: "v".to_owned(),
+            label: String::new(),
+            detail: String::new(),
+            link: bad.to_owned(),
+        }]);
+        assert!(
+            matches!(check_extension(&m), Err(PluginError::BadPane(_))),
+            "{bad:?} should have been refused"
+        );
+    }
+}
+
+#[test]
+fn an_option_with_no_value_is_refused() {
+    // It would draw a radio button that writes an empty setting.
+    let m = choice_with(vec![PaneOption::Value("  ".to_owned())]);
+    assert!(matches!(check_extension(&m), Err(PluginError::BadPane(_))));
 }
 
 #[test]

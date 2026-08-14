@@ -245,6 +245,145 @@ pub fn write_string_array(text: &str, key: &str, values: &[String]) -> Result<St
     Ok(doc.to_string())
 }
 
+/// How many rows the array of tables at `key` has.
+///
+/// Zero for a missing key, which is right: a plug-in whose config has no
+/// `[[schedule.sends]]` has no scheduled sends.
+pub fn count_records(text: &str, key: &str) -> usize {
+    let Ok(doc) = text.parse::<Document>() else {
+        return 0;
+    };
+    let mut item: &Item = doc.as_item();
+    for part in key.split('.') {
+        match item.get(part) {
+            Some(next) => item = next,
+            None => return 0,
+        }
+    }
+    item.as_array_of_tables().map_or(0, |a| a.len())
+}
+
+/// Read one field of one row of an array of tables — `schedule.sends`,
+/// row 2, field `room`.
+///
+/// The pane's repeating-group control is one of these per field per row.
+/// `None` for a row that does not exist or a field the row omits, which
+/// is the same "the plug-in has a default and we do not know it" the
+/// scalar reader already reports.
+pub fn read_record_field(text: &str, key: &str, row: usize, field: &str) -> Option<SettingValue> {
+    let doc: Document = text.parse().ok()?;
+    let mut item: &Item = doc.as_item();
+    for part in key.split('.') {
+        item = item.get(part)?;
+    }
+    let table = item.as_array_of_tables()?.get(row)?;
+    match table.get(field)?.as_value()? {
+        Value::Boolean(b) => Some(SettingValue::Bool(*b.value())),
+        Value::Integer(n) => Some(SettingValue::Int(*n.value())),
+        Value::String(s) => Some(SettingValue::Text(s.value().clone())),
+        Value::Float(f) => Some(SettingValue::Float(*f.value())),
+        _ => None,
+    }
+}
+
+/// Set one field of one row.
+///
+/// Refuses a row that is not there rather than growing the array to
+/// reach it: the pane draws the rows it read, and an index past the end
+/// means the file changed underneath it — in which case inventing three
+/// empty scheduled messages to make room for the fourth is the worst
+/// available answer.
+pub fn write_record_field(
+    text: &str,
+    key: &str,
+    row: usize,
+    field: &str,
+    value: &SettingValue,
+) -> Result<String, PluginError> {
+    let mut doc: Document = text
+        .parse()
+        .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
+    let table = record_mut(&mut doc, key, row)?;
+    let new: Value = match value {
+        SettingValue::Bool(b) => (*b).into(),
+        SettingValue::Int(n) => (*n).into(),
+        SettingValue::Float(f) => (*f).into(),
+        SettingValue::Text(s) => s.as_str().into(),
+    };
+    // The same decor-preserving replacement the scalar writer does, and
+    // for the same reason: the comment after `when = "weekdays 09:00"`
+    // is the user's note to themselves about why.
+    match table.get_mut(field).and_then(|i| i.as_value_mut()) {
+        Some(existing) => {
+            let decor = existing.decor().clone();
+            *existing = new;
+            *existing.decor_mut() = decor;
+        }
+        None => table[field] = Item::Value(new),
+    }
+    Ok(doc.to_string())
+}
+
+/// Append an empty row to the array of tables at `key`, creating the
+/// array if it is not there yet.
+///
+/// Empty rather than pre-filled: the plug-in's own defaults apply to
+/// every field left out, and guessing at them here would write a
+/// scheduled message with an hour nobody chose.
+pub fn add_record(text: &str, key: &str) -> Result<String, PluginError> {
+    let mut doc: Document = text
+        .parse()
+        .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
+    let (item, last) = reach_mut(&mut doc, key)?;
+    if item.get(last).is_none() {
+        item[last] = Item::ArrayOfTables(toml_edit::ArrayOfTables::new());
+    }
+    let array = item
+        .get_mut(last)
+        .and_then(|i| i.as_array_of_tables_mut())
+        .ok_or_else(|| {
+            PluginError::BadPane(format!("config key {key:?} is not an array of tables"))
+        })?;
+    array.push(toml_edit::Table::new());
+    Ok(doc.to_string())
+}
+
+/// Delete row `row` of the array of tables at `key`.
+///
+/// A row that is not there is a no-op, not an error — the pane and the
+/// file can disagree for a moment, and the user's intent ("this one is
+/// gone") is already satisfied.
+pub fn remove_record(text: &str, key: &str, row: usize) -> Result<String, PluginError> {
+    let mut doc: Document = text
+        .parse()
+        .map_err(|e| PluginError::BadManifest(format!("plug-in config is not valid TOML: {e}")))?;
+    let (item, last) = reach_mut(&mut doc, key)?;
+    if let Some(array) = item.get_mut(last).and_then(|i| i.as_array_of_tables_mut()) {
+        if row < array.len() {
+            array.remove(row);
+        }
+    }
+    Ok(doc.to_string())
+}
+
+fn record_mut<'a>(
+    doc: &'a mut Document,
+    key: &'a str,
+    row: usize,
+) -> Result<&'a mut toml_edit::Table, PluginError> {
+    let (item, last) = reach_mut(doc, key)?;
+    let array = item
+        .get_mut(last)
+        .and_then(|i| i.as_array_of_tables_mut())
+        .ok_or_else(|| {
+            PluginError::BadPane(format!("config key {key:?} is not an array of tables"))
+        })?;
+    let len = array.len();
+    array
+        .get_mut(row)
+        .ok_or_else(|| PluginError::BadPane(format!("{key:?} has {len} row(s), not {}", row + 1)))
+}
+
 /// Walk a dotted key down to the table holding its last segment,
 /// creating the tables in between.
 ///

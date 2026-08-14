@@ -108,6 +108,22 @@ pub enum ControlKind {
     ///
     /// `key` is the array. `command` produces the rows.
     List,
+    /// A repeating group: an array of tables in the plug-in's config,
+    /// drawn as one card per entry with the plug-in's declared fields
+    /// inside, plus Add and Remove.
+    ///
+    /// The control for a setting that is a *list of things*, each with
+    /// several parts — scheduled messages, each with an application, a
+    /// conversation, a time and a text. Nothing else here can express
+    /// that: a `Strings` list gives one line per entry with no structure,
+    /// and a fixed number of numbered slots caps at whatever number
+    /// somebody guessed.
+    ///
+    /// `key` is the array of tables (`schedule.sends`); `fields` declares
+    /// what one row holds. The fields are ordinary controls with keys
+    /// relative to the row, so everything that already knows how to draw
+    /// a toggle or a text box draws them.
+    Records,
     /// A control this PolterType does not know.
     ///
     /// Here so a plug-in written for a newer PolterType still *loads* on

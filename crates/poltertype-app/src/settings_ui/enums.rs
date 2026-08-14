@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use iced::widget::text_editor;
+use poltertype_core::plugins::SettingValue;
 use poltertype_layout::LayoutId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +149,25 @@ pub enum Message {
     PluginToggled(usize, usize, bool),
     PluginChoiceSelected(usize, usize, String),
     PluginTextChanged(usize, usize, String),
+    // ── Repeating groups ───────────────────────────────────────────
+    // (plug-in, control, row, field name, value). The field is named
+    // rather than indexed because a row is a table and its fields are
+    // keys; the control index still says which group, so a message
+    // cannot write into a key the manifest never declared.
+    PluginRecordChanged(usize, usize, usize, String, SettingValue),
+    /// Text being typed into a record's field. Written to the file when
+    /// something settles, not per keystroke.
+    PluginRecordTyped(usize, usize, usize, String, String),
+    PluginRecordAdded(usize, usize),
+    PluginRecordRemoved(usize, usize, usize),
+    /// Open a link a plug-in put beside one of its choices.
+    ///
+    /// Carries the address rather than a `&'static str` like
+    /// [`Self::OpenUrl`], because this one comes out of a manifest.
+    /// Which is also why it is opened only after being checked: `https`
+    /// only, and the pane shows the address as the link text, so what is
+    /// clicked is what was read.
+    PluginOpenLink(String),
     /// Runs one of the plug-in's declared commands by id.
     PluginCommandClicked(usize, String),
     /// Ask a plug-in to run a control's command again — the pane's

@@ -97,7 +97,23 @@ pub struct PluginPane {
     /// The rows a list control is drawing, parsed once when the
     /// plug-in's answer arrives rather than re-split on every rebuild.
     rows: std::collections::HashMap<usize, Vec<ListRow>>,
+    /// What each repeating-group control holds, by control index: one
+    /// entry per row, each mapping the declared field names to what the
+    /// file says. Cached for the same reason `arrays` is — `view`
+    /// rebuilds on every keystroke, and reading a field at a time would
+    /// be a whole format-preserving TOML parse per field per row.
+    records: std::collections::HashMap<usize, Vec<RecordRow>>,
+    /// What is being typed into a record's field, before it is a value —
+    /// the per-row counterpart of `edits`, and there for the same reason:
+    /// a pane that saved on every keystroke would put every prefix of a
+    /// message into a file the plug-in is reading.
+    record_edits: std::collections::HashMap<(usize, usize, String), String>,
 }
+
+/// One row of a repeating group: its declared fields, and what the file
+/// holds for each. `None` for a field the row omits — the plug-in's own
+/// default applies and this pane does not know it.
+pub type RecordRow = std::collections::HashMap<String, Option<SettingValue>>;
 
 impl PluginPane {
     /// Which controls need a command run and have not had one yet.
@@ -310,9 +326,158 @@ impl PluginPane {
             edits: std::collections::HashMap::new(),
             arrays: std::collections::HashMap::new(),
             rows: std::collections::HashMap::new(),
+            records: std::collections::HashMap::new(),
+            record_edits: std::collections::HashMap::new(),
         };
         pane.reload_arrays();
+        pane.reload_records();
         pane
+    }
+
+    /// Re-read every repeating group from the file.
+    ///
+    /// Called wherever the file can have changed under us, exactly like
+    /// [`Self::reload_arrays`]: adding a row, removing one, and setting a
+    /// field all rewrite the document, and a stale cache would draw the
+    /// row that was just deleted.
+    fn reload_records(&mut self) {
+        let groups: Vec<(usize, String, Vec<String>)> = self
+            .ext
+            .manifest
+            .pane
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.kind == ControlKind::Records && !c.key.is_empty())
+            .map(|(i, c)| {
+                (
+                    i,
+                    c.key.clone(),
+                    c.fields.iter().map(|f| f.key.clone()).collect(),
+                )
+            })
+            .collect();
+        if groups.is_empty() {
+            return;
+        }
+        let text = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        self.records = groups
+            .into_iter()
+            .map(|(i, key, fields)| {
+                let n = poltertype_core::plugins::count_records(&text, &key);
+                let rows = (0..n)
+                    .map(|row| {
+                        fields
+                            .iter()
+                            .map(|f| {
+                                (
+                                    f.clone(),
+                                    poltertype_core::plugins::read_record_field(
+                                        &text, &key, row, f,
+                                    ),
+                                )
+                            })
+                            .collect()
+                    })
+                    .collect();
+                (i, rows)
+            })
+            .collect();
+    }
+
+    /// The rows a repeating group is drawing.
+    pub fn record_rows(&self, index: usize) -> &[RecordRow] {
+        self.records.get(&index).map_or(&[], Vec::as_slice)
+    }
+
+    /// What one field of one row should show: what is being typed, else
+    /// what the file holds, else nothing.
+    pub fn record_display(&self, index: usize, row: usize, field: &str) -> Option<String> {
+        if let Some(raw) = self.record_edits.get(&(index, row, field.to_owned())) {
+            return Some(raw.clone());
+        }
+        self.records
+            .get(&index)?
+            .get(row)?
+            .get(field)?
+            .as_ref()
+            .map(SettingValue::as_display)
+    }
+
+    /// The stored value of one field, for a control that renders a value
+    /// rather than text — a toggle, a chosen option.
+    pub fn record_value(&self, index: usize, row: usize, field: &str) -> Option<SettingValue> {
+        self.records.get(&index)?.get(row)?.get(field)?.clone()
+    }
+
+    /// Note what is being typed into a record's field. Written to the
+    /// file by [`Self::flush_edits`], not here.
+    pub fn set_record_text(&mut self, index: usize, row: usize, field: &str, raw: String) {
+        self.record_edits
+            .insert((index, row, field.to_owned()), raw);
+    }
+
+    /// Write one field of one row.
+    pub fn set_record(&mut self, index: usize, row: usize, field: &str, value: SettingValue) {
+        let Some(control) = self.ext.manifest.pane.get(index) else {
+            return;
+        };
+        let key = control.key.clone();
+        if key.is_empty() {
+            return;
+        }
+        let current = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        match poltertype_core::plugins::write_record_field(&current, &key, row, field, &value) {
+            Ok(updated) => {
+                if self.write(updated) {
+                    self.reload_records();
+                }
+            }
+            Err(e) => self.status = Some(format!("{e}")),
+        }
+    }
+
+    /// Append an empty row.
+    pub fn add_record(&mut self, index: usize) {
+        let Some(control) = self.ext.manifest.pane.get(index) else {
+            return;
+        };
+        let key = control.key.clone();
+        if key.is_empty() {
+            return;
+        }
+        let current = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        match poltertype_core::plugins::add_record(&current, &key) {
+            Ok(updated) => {
+                if self.write(updated) {
+                    self.reload_records();
+                }
+            }
+            Err(e) => self.status = Some(format!("{e}")),
+        }
+    }
+
+    /// Delete a row, and everything being typed into it.
+    pub fn remove_record(&mut self, index: usize, row: usize) {
+        let Some(control) = self.ext.manifest.pane.get(index) else {
+            return;
+        };
+        let key = control.key.clone();
+        if key.is_empty() {
+            return;
+        }
+        let current = std::fs::read_to_string(&self.config_path).unwrap_or_default();
+        match poltertype_core::plugins::remove_record(&current, &key, row) {
+            Ok(updated) => {
+                if self.write(updated) {
+                    // Half-typed text belonging to rows that have just
+                    // shifted up would otherwise be flushed into the
+                    // wrong row the next time anything settles.
+                    self.record_edits.retain(|(i, _, _), _| *i != index);
+                    self.reload_records();
+                }
+            }
+            Err(e) => self.status = Some(format!("{e}")),
+        }
     }
 
     /// What a text-shaped control's box should show: what is being
@@ -386,6 +551,60 @@ impl PluginPane {
             };
             if settled {
                 self.edits.remove(&index);
+            }
+        }
+        self.flush_record_edits();
+    }
+
+    /// The same deferral for the boxes inside a repeating group.
+    ///
+    /// Not filtered by "still typing": a record's boxes are addressed by
+    /// row and field where the top-level ones are addressed by control
+    /// index, and the caller only knows the latter. The cost is that a
+    /// scheduled message settles when anything else on the pane does
+    /// rather than when this particular box is left — still not on every
+    /// keystroke, which is the property that matters.
+    fn flush_record_edits(&mut self) {
+        let pending: Vec<((usize, usize, String), String)> = self
+            .record_edits
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        for ((index, row, field), raw) in pending {
+            let kind = self
+                .ext
+                .manifest
+                .pane
+                .get(index)
+                .and_then(|c| c.fields.iter().find(|f| f.key == field))
+                .map(|f| f.kind);
+            let trimmed = raw.trim().to_owned();
+            let settled = match kind {
+                Some(ControlKind::Number) => match trimmed.parse::<i64>() {
+                    Ok(n) => {
+                        self.set_record(index, row, &field, SettingValue::Int(n));
+                        true
+                    }
+                    Err(_) => false,
+                },
+                Some(ControlKind::Decimal) => match trimmed.parse::<f64>() {
+                    Ok(f) if f.is_finite() => {
+                        self.set_record(index, row, &field, SettingValue::Float(f));
+                        true
+                    }
+                    _ => false,
+                },
+                // A field the manifest does not declare cannot be
+                // written anywhere sensible; drop what was typed rather
+                // than keep retrying it for the life of the window.
+                None => true,
+                _ => {
+                    self.set_record(index, row, &field, SettingValue::Text(trimmed));
+                    true
+                }
+            };
+            if settled {
+                self.record_edits.remove(&(index, row, field));
             }
         }
     }

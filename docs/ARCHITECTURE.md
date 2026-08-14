@@ -274,11 +274,11 @@ whole isolation story on the UI side — a plug-in cannot render a pixel,
 so it cannot imitate a system prompt, PolterType's own dialogs or
 another plug-in. What it can declare is a small closed set of controls
 (toggle, choice, text, number, decimal, list-of-strings, button,
-report, list, section) bound to dotted keys in **its own** config file.
-Edits go through `toml_edit`, so the prose in that file — which is
-where a plug-in explains what each switch costs — survives.
+report, list, records, section) bound to dotted keys in **its own**
+config file. Edits go through `toml_edit`, so the prose in that file —
+which is where a plug-in explains what each switch costs — survives.
 
-Three decisions worth keeping:
+Five decisions worth keeping:
 
 - **A decimal is not a number.** TOML's integer and float are different
   types to the program reading the file back, and a plug-in expecting
@@ -297,3 +297,27 @@ Three decisions worth keeping:
   opening this pane from waking every chat client on the machine.
   Exactly one region of the pane scrolls, so a wheel never lands on an
   ambiguous boundary.
+- **An option may explain itself, and then it stops being a drop-down.**
+  A `choice` between `ask`, `auto` and `off` is three words and a
+  drop-down is right. A choice between nine language models is not: they
+  have to be *compared*, and a drop-down shows one at a time with
+  nowhere to put the sentence saying what each is for. So an option can
+  be a table carrying a `detail` and a `link`, and a choice with any
+  described option is drawn as a column of radio rows instead. The link
+  is `https` only — refused at manifest load, checked again at the click
+  — and its **visible text is the address**, because a plug-in supplying
+  a destination is a third party deciding where PolterType sends
+  somebody, and a friendly label over an arbitrary URL is exactly the
+  shape of thing the draw-it-ourselves rule exists to prevent.
+- **`records` is for a setting that is a list of composite things.**
+  Scheduled messages, each with an application, a conversation, a time
+  and a text: a `strings` list gives one line per entry with no
+  structure, and numbered slots cap at whatever number somebody guessed.
+  A `records` control names an array of tables in the plug-in's config
+  and declares what one row holds; PolterType draws one card per entry
+  with Add and Remove. Row fields are single names, not dotted paths,
+  and cannot themselves be sections, buttons, reports or more records —
+  a pane that nests is a config editor, and this is not one. A new row
+  is written **empty**: the plug-in's own defaults apply to every field
+  left out, and guessing at them would schedule a message at an hour
+  nobody chose.
