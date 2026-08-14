@@ -17,7 +17,7 @@ use crate::engine::consts::{
     INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
 };
 use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
-use crate::engine::heuristics::{is_paste_shortcut, is_submission_scancode};
+use crate::engine::heuristics::{boundary_key_for, is_paste_shortcut, is_submission_scancode};
 use crate::engine::types::{Correction, HeldKeys, LastWord, WindowDrain};
 
 use super::engine::SwitcherEngine;
@@ -634,15 +634,7 @@ impl SwitcherEngine {
     /// word (they are on screen after the corrected boundary).
     fn seed_buffer(&self, tail: &[KeyEvent], buffer: &mut WordBuffer) {
         for ev in tail {
-            let letter = self
-                .layouts
-                .is_letter_in_any_layout(ev.scancode, ev.modifiers.shift);
-            let produced = if letter {
-                None
-            } else {
-                self.translate_via_current_layout(ev.scancode, ev.modifiers.shift)
-            };
-            let _ = buffer.feed(*ev, produced, letter);
+            let _ = self.feed_buffer(*ev, buffer);
         }
     }
 
@@ -770,10 +762,17 @@ impl SwitcherEngine {
         let mut corrected = restored.clone();
         corrected.push(last.boundary_char);
         // Replay the boundary the user typed — except Enter/Tab, where
-        // a re-press would submit the line or move focus.
+        // a re-press would submit the line or move focus. Which *key*
+        // that is depends on the target layout: see `boundary_key_for`.
         let (boundary_sc, boundary_shift) = match last.boundary_scancode {
             0x1C | 0x0F | 0x60 => (0x39, false),
-            sc => (sc, last.boundary_shift),
+            sc => boundary_key_for(
+                &self.layouts,
+                &target,
+                sc,
+                last.boundary_shift,
+                last.boundary_char,
+            ),
         };
         let mut replay: Vec<ReplayKey> = last
             .keys

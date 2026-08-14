@@ -4,6 +4,35 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.16.0
+
+### Fixed — a comma that came back as a question mark
+
+- **The separator that closes a word survives the correction.** Typing
+  a word and then `,` under uk-UA could come back as `Photos?` — the
+  word retyped and the comma replaced. The word is deliberately
+  re-emitted as scancodes so it re-reads under the new layout; the key
+  that *closed* it went out the same way and picked up the new layout's
+  glyph too. `Shift`+`0x35` is `,` in uk-UA and `?` in en-US, so the
+  punctuation the user typed was rewritten by a correction that had no
+  business touching it. The boundary is now looked up by character in
+  the target layout and replayed on whichever key produces it there
+  (`,` moves to a bare `0x33` under en-US). Where the target cannot
+  produce the character at all — a few layouts reach some punctuation
+  through AltGr, which PolterType does not track — the key is replayed
+  as typed, exactly as before.
+
+- **Switching the layout by hand no longer invites a correction.** Type
+  `Photos` in en-US, switch to uk-UA, then press the key that closes the
+  word: the engine read a word it had watched being typed in English as
+  though it were Ukrainian, found gibberish, and "fixed" it — retyping
+  text that was already right and pulling the layout back off the one
+  just chosen. The buffer holds scancodes, so a word only means anything
+  against the layout that was active while it was typed; each word is
+  now stamped with that layout at its first key, and a word that ends
+  under a different one is left alone. The manual switch-last hotkey
+  still works on it.
+
 ## [0.16.0] — a settings pane big enough for a plug-in
 
 ### Added — the Plug-ins pane can hold a whole configuration

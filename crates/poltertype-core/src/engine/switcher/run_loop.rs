@@ -191,6 +191,40 @@ impl SwitcherEngine {
         }
     }
 
+    /// Feed one keystroke into the word buffer, stamping each new word
+    /// with the layout it is being typed under.
+    ///
+    /// Every path that grows the buffer goes through here — the run loop
+    /// and the post-correction re-seed alike — because a word that
+    /// starts without a stamp inherits the previous one's and reads as a
+    /// layout change that never happened. See
+    /// [`SwitcherEngine::word_layout`].
+    pub(super) fn feed_buffer(&self, ev: KeyEvent, buffer: &mut WordBuffer) -> WordBoundary {
+        // Cross-layout letter hint: keeps Cyrillic words intact under
+        // en-US (`б` at 0x33 would otherwise read as a `,` boundary).
+        // Shift-aware, so adding layouts cannot reclassify genuine
+        // en-US punctuation. See `WordBuffer::feed`.
+        let letter_in_any_layout = self
+            .layouts
+            .is_letter_in_any_layout(ev.scancode, ev.modifiers.shift);
+        // The character this scancode produces under the *currently
+        // active* layout, which the buffer needs to classify. Only when
+        // classification depends on it — the cross-layout hint settles
+        // letters, and releases never reach the classifier.
+        let produced = if ev.direction == KeyDirection::Press && !letter_in_any_layout {
+            self.translate_via_current_layout(ev.scancode, ev.modifiers.shift)
+        } else {
+            None
+        };
+
+        let was_empty = buffer.keys().is_empty();
+        let outcome = buffer.feed(ev, produced, letter_in_any_layout);
+        if was_empty && !buffer.keys().is_empty() {
+            *self.word_layout.write() = self.layout_switcher.current().ok();
+        }
+        outcome
+    }
+
     pub(super) fn handle_key(
         &self,
         ev: KeyEvent,
@@ -241,24 +275,7 @@ impl SwitcherEngine {
             self.freeze_suggestion_for_click(buffer);
         }
 
-        // Cross-layout letter hint: keeps Cyrillic words intact under
-        // en-US (`б` at 0x33 would otherwise read as a `,` boundary).
-        // Shift-aware, so adding layouts cannot reclassify genuine
-        // en-US punctuation. See `WordBuffer::feed`.
-        let letter_in_any_layout = self
-            .layouts
-            .is_letter_in_any_layout(ev.scancode, ev.modifiers.shift);
-        // The character this scancode produces under the *currently
-        // active* layout, which the buffer needs to classify. Only when
-        // classification depends on it — the cross-layout hint settles
-        // letters, and releases never reach the classifier.
-        let produced = if ev.direction == KeyDirection::Press && !letter_in_any_layout {
-            self.translate_via_current_layout(ev.scancode, ev.modifiers.shift)
-        } else {
-            None
-        };
-
-        match buffer.feed(ev, produced, letter_in_any_layout) {
+        match self.feed_buffer(ev, buffer) {
             WordBoundary::InProgress => {}
             WordBoundary::Abandoned => {
                 // Caret went somewhere unknown (click / nav / Esc), so

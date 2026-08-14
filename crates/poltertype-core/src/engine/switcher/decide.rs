@@ -12,8 +12,8 @@ use crate::commands::{erase_len, find_matching_command};
 use crate::engine::buffer::WordBuffer;
 use crate::engine::enums::SwitcherEvent;
 use crate::engine::heuristics::{
-    app_is_disabled, is_layout_eligible, is_structural_boundary, is_submission_boundary,
-    looks_like_all_caps, render_for_code_check,
+    app_is_disabled, boundary_key_for, is_layout_eligible, is_structural_boundary,
+    is_submission_boundary, looks_like_all_caps, render_for_code_check,
 };
 use crate::engine::types::{Correction, LastWord};
 
@@ -84,12 +84,23 @@ impl SwitcherEngine {
             .map(|(id, m)| (id.clone(), m.translate_buffer(&keys)))
             .collect();
 
+        // The layout the word was typed under, which is not necessarily
+        // the one active now — the user may have switched by hand
+        // between the last letter and the key that closed the word. See
+        // `word_layout`.
+        let typed_layout = self
+            .word_layout
+            .read()
+            .clone()
+            .unwrap_or_else(|| current_layout.clone());
+
         // Stashed early: "force switch last" needs it whether or not
-        // the auto-decision proceeds.
-        let current_text = candidates
-            .iter()
-            .find(|(l, _)| l == &current_layout)
-            .map(|(_, t)| t.clone())
+        // the auto-decision proceeds. Rendered under the layout it was
+        // typed in, because that is what is on screen.
+        let current_text = self
+            .layouts
+            .get(&typed_layout)
+            .map(|m| m.translate_buffer(&keys))
             .unwrap_or_default();
 
         // Stored even if the decision below is skipped, so the manual
@@ -115,7 +126,7 @@ impl SwitcherEngine {
         *self.last_word.write() = Some(LastWord {
             keys: keys.clone(),
             rendered: current_text.clone(),
-            layout: current_layout.clone(),
+            layout: typed_layout.clone(),
             boundary_char,
             boundary_scancode,
             boundary_shift,
@@ -123,6 +134,30 @@ impl SwitcherEngine {
             // before the decision is made.
             corrected_to: None,
         });
+
+        // A layout switch between the word and the key that closed it.
+        // The word on screen is still the *old* layout's rendering, so
+        // reading it under the new one turns correct text into
+        // gibberish — and correcting that gibberish retypes a word that
+        // was already right and pulls the layout back off the one the
+        // user had just chosen by hand. Nothing below can tell the two
+        // halves apart, so the automatic path stops here; the stash
+        // above keeps the manual switch-last hotkey working.
+        if typed_layout != current_layout {
+            debug!(
+                typed = %typed_layout,
+                current = %current_layout,
+                "skipping auto-switch: layout changed while this word was being typed"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "layout changed from {typed_layout} to {current_layout} while {} was being \
+                     typed",
+                    logsafe::redact_word(&current_text)
+                ),
+            });
+            return;
+        }
 
         // Smart commands run before the auto-switch filters: expansion
         // is a direct user intent, not a guess. Matching is on the
@@ -368,9 +403,19 @@ impl SwitcherEngine {
                         shift: k.shift,
                     })
                     .collect();
+                // Not the key as typed: under the target layout that
+                // scancode may well be another character. See
+                // `boundary_key_for`.
+                let (replay_sc, replay_shift) = boundary_key_for(
+                    &self.layouts,
+                    &target_layout,
+                    boundary_scancode,
+                    boundary_shift,
+                    boundary_char,
+                );
                 replay.push(ReplayKey {
-                    scancode: boundary_scancode,
-                    shift: boundary_shift,
+                    scancode: replay_sc,
+                    shift: replay_shift,
                 });
                 self.apply_correction(
                     &Correction {

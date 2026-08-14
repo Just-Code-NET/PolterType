@@ -149,6 +149,42 @@ pub fn is_layout_eligible(
     allowed && !blocked && os_ok
 }
 
+/// Which key reproduces the boundary character `ch` under `target`.
+///
+/// A correction replays the boundary key *after* the layout has flipped,
+/// so its glyph follows the new mapping rather than the one the user
+/// typed against: `Shift`+`0x35` is `,` under uk-UA and `?` under en-US,
+/// and a corrected word came out ending in a question mark the user
+/// never pressed. The word itself is meant to be re-read under the new
+/// layout — that is the whole correction — but the separator that closed
+/// it is not part of the mistake and has to survive it unchanged.
+///
+/// The scancode is kept as typed when the target produces the same
+/// character anyway, when the key is layout-independent (space, Enter,
+/// Tab are in no mapping table), and when the target cannot produce the
+/// character at all — there the old glyph still beats abandoning an
+/// otherwise correct fix.
+pub fn boundary_key_for(
+    layouts: &LayoutDb,
+    target: &LayoutId,
+    scancode: u32,
+    shift: bool,
+    ch: char,
+) -> (u32, bool) {
+    let Some(mapping) = layouts.get(target) else {
+        return (scancode, shift);
+    };
+    let as_typed = mapping.translate_key(poltertype_types::WordKey {
+        scancode,
+        shift,
+        timestamp_ms: 0,
+    });
+    if as_typed == Some(ch) {
+        return (scancode, shift);
+    }
+    mapping.key_for_char(ch).unwrap_or((scancode, shift))
+}
+
 /// Render the buffer through the current layout, skipping every
 /// *cross-layout artifact* — punctuation under the current layout whose
 /// scancode is a letter somewhere else.

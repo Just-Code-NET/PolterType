@@ -56,6 +56,11 @@ mod engine_integration_tests {
         ops: Mutex<Vec<EmitOp>>,
         emitted: Mutex<Vec<EmittedKey>>,
         echo_copy: Mutex<Vec<EmittedKey>>,
+        /// Every replay burst with its shift levels intact.
+        /// `EmitOp::Keys` keeps scancodes only, and which *shift level*
+        /// the boundary key went out at is the whole point of one
+        /// regression below.
+        replays: Mutex<Vec<Vec<(u32, bool)>>>,
         /// Called from `send_keys` once the burst is on the wire: a
         /// test's stand-in for a physical keystroke the compositor
         /// interleaves with our replay.
@@ -95,6 +100,9 @@ mod engine_integration_tests {
             self.ops
                 .lock()
                 .push(EmitOp::Keys(keys.iter().map(|k| k.scancode).collect()));
+            self.replays
+                .lock()
+                .push(keys.iter().map(|k| (k.scancode, k.shift)).collect());
             for k in keys {
                 if k.shift {
                     self.log(0x2A, KeyDirection::Press);
@@ -548,6 +556,65 @@ mod engine_integration_tests {
                 EmitOp::Keys(GHBDSN.iter().copied().chain([SPACE]).collect()),
             ]
         );
+    }
+
+    /// The separator that closed a word is not part of the mistake and
+    /// must survive the correction as the character the user saw.
+    ///
+    /// Reported as: typing `Photos` and then `,` under uk-UA came out
+    /// `Photos?`, because the boundary key was replayed by scancode
+    /// against the *new* layout. The reported key was `Shift`+`0x35`
+    /// (`,` in uk-UA, `?` in en-US); this harness loads all fifteen
+    /// bundled layouts and bg-BG carries a letter there, which makes it
+    /// a word key rather than a boundary, so the test uses the same trap
+    /// one row up: `Shift`+`0x08` is `?` under uk-UA and `&` under
+    /// en-US, and `?` lives on `Shift`+`0x35` in en-US.
+    #[test]
+    fn boundary_character_survives_the_layout_flip() {
+        let h = Harness::start(60_000);
+        *h.switcher.current.lock() = LayoutId::from("uk-UA");
+        type_word(&h, &GHBDSN);
+        h.key(0x08, KeyDirection::Press, true);
+        h.key(0x08, KeyDirection::Release, true);
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("en-US")],
+            "the word itself still has to be corrected"
+        );
+        let replays = h.emitter.replays.lock().clone();
+        let last = replays.last().expect("a replay burst").clone();
+        assert_eq!(
+            last.last().copied(),
+            Some((0x35, true)),
+            "the `?` the user typed must be re-emitted on the key that \
+             produces `?` under en-US, not on the one they pressed: {last:?}"
+        );
+    }
+
+    /// Switching the layout by hand between a word and the key that
+    /// closes it must not make the engine "correct" text that is
+    /// already right — the word on screen is still the old layout's
+    /// rendering, and re-reading it under the new one only finds
+    /// gibberish. Reported as: type `Photos` in en-US, switch to uk-UA,
+    /// press `,` — and the whole word is retyped.
+    #[test]
+    fn manual_switch_before_the_boundary_suppresses_the_correction() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        // The engine must have seen the word's first key before the
+        // layout moves, or it stamps the word with the new layout and
+        // there is nothing to notice.
+        h.settle();
+        *h.switcher.current.lock() = LayoutId::from("uk-UA");
+        h.tap(SPACE);
+        h.settle();
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "the user's own choice of layout must stand"
+        );
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty(), "nothing should have been retyped: {ops:?}");
     }
 
     /// If the layout switch fails, the correction must abort BEFORE
@@ -1825,6 +1892,102 @@ mod code_check_render_tests {
         let nonexistent = LayoutId::from("xx-YY");
         let cleaned = render_for_code_check(&[], &nonexistent, &db, "fallback");
         assert_eq!(cleaned, "fallback");
+    }
+}
+
+mod boundary_key_tests {
+    use super::boundary_key_for;
+    use crate::layouts::LayoutDb;
+    use poltertype_layout::LayoutId;
+
+    /// The reported bug: `,` lives on `Shift`+`0x35` in uk-UA and on a
+    /// bare `0x33` in en-US, so replaying the key as typed turned the
+    /// comma that closed a corrected word into `?`.
+    #[test]
+    fn comma_moves_to_the_targets_own_key() {
+        let db = LayoutDb::load_embedded();
+        assert_eq!(
+            boundary_key_for(&db, &LayoutId::from("en-US"), 0x35, true, ','),
+            (0x33, false)
+        );
+        // …and back the other way, for a word corrected into uk-UA.
+        assert_eq!(
+            boundary_key_for(&db, &LayoutId::from("uk-UA"), 0x33, false, ','),
+            (0x35, true)
+        );
+    }
+
+    /// The dot is on `0x35` unshifted in uk-UA and on `0x34` in en-US —
+    /// the same trap, one key over.
+    #[test]
+    fn dot_moves_too() {
+        let db = LayoutDb::load_embedded();
+        assert_eq!(
+            boundary_key_for(&db, &LayoutId::from("en-US"), 0x35, false, '.'),
+            (0x34, false)
+        );
+    }
+
+    /// A character the target produces on the very key that was typed
+    /// must keep it, rather than wandering to some other key that
+    /// happens to carry the same glyph.
+    #[test]
+    fn key_is_kept_when_the_target_agrees() {
+        let db = LayoutDb::load_embedded();
+        assert_eq!(
+            boundary_key_for(&db, &LayoutId::from("en-US"), 0x35, true, '?'),
+            (0x35, true)
+        );
+    }
+
+    /// Space, Enter and Tab are in no mapping table at all; they are
+    /// the same physical key everywhere and must pass through.
+    #[test]
+    fn layout_independent_keys_pass_through() {
+        let db = LayoutDb::load_embedded();
+        let en = LayoutId::from("en-US");
+        assert_eq!(boundary_key_for(&db, &en, 0x39, false, ' '), (0x39, false));
+        assert_eq!(boundary_key_for(&db, &en, 0x1C, false, '\n'), (0x1C, false));
+        assert_eq!(boundary_key_for(&db, &en, 0x0F, false, '\t'), (0x0F, false));
+    }
+
+    /// Nothing to remap to (unknown layout, or a character the target
+    /// cannot type) leaves the key as it was — the correction is still
+    /// worth making with the wrong separator, which is what shipped
+    /// before this function existed.
+    #[test]
+    fn falls_back_to_the_typed_key() {
+        let db = LayoutDb::load_embedded();
+        assert_eq!(
+            boundary_key_for(&db, &LayoutId::from("xx-YY"), 0x35, true, ','),
+            (0x35, true)
+        );
+        assert_eq!(
+            boundary_key_for(&db, &LayoutId::from("en-US"), 0x35, true, 'ї'),
+            (0x35, true)
+        );
+    }
+
+    /// Every bundled layout can type the two separators that close
+    /// almost every word — otherwise the fallback above quietly becomes
+    /// the normal path for that language.
+    ///
+    /// Deliberately just these two: the bundled tables cover the plain
+    /// and shift levels only, and a few layouts reach some punctuation
+    /// through AltGr, which PolterType does not track at all (bg-BG has
+    /// no `(`, pt-BR no `?`). Those fall back to the key as typed, the
+    /// same as before this function existed.
+    #[test]
+    fn every_bundled_layout_can_type_a_full_stop_and_a_comma() {
+        let db = LayoutDb::load_embedded();
+        for (id, mapping) in db.iter() {
+            for ch in ['.', ','] {
+                assert!(
+                    mapping.key_for_char(ch).is_some(),
+                    "{id} cannot type {ch:?}"
+                );
+            }
+        }
     }
 }
 

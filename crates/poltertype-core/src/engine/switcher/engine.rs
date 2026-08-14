@@ -10,7 +10,7 @@ use crossbeam_channel::Sender;
 use parking_lot::{Mutex, RwLock};
 use poltertype_detect::{Detector, SuggestionProvider};
 use poltertype_input::{FocusTracker, KeyEmitter, KeyGate};
-use poltertype_layout::LayoutSwitcher;
+use poltertype_layout::{LayoutId, LayoutSwitcher};
 use poltertype_types::Modifiers;
 
 use crate::audio::AudioPlayer;
@@ -54,6 +54,19 @@ pub struct SwitcherEngine {
     pub(super) word_history: Arc<RwLock<WordHistory>>,
     /// Buffer of the previous fully-completed word (for "switch-last").
     pub(super) last_word: Arc<RwLock<Option<LastWord>>>,
+    /// Layout in effect when the in-progress word's first key arrived.
+    ///
+    /// The buffer holds scancodes, so what a word *reads* as depends
+    /// entirely on the layout that was active while it was typed — and
+    /// the user may have switched by hand since. Without this stamp
+    /// `decide` reads the word under whatever is active at the boundary,
+    /// finds gibberish where the screen holds perfectly good text, and
+    /// "corrects" it: the word is retyped and the layout dragged back
+    /// off the one the user had just chosen.
+    ///
+    /// `None` when the OS could not be asked, which reads as "assume it
+    /// never changed" — the pre-0.16 behaviour.
+    pub(super) word_layout: RwLock<Option<LayoutId>>,
     /// Expected echoes of our own injected keystrokes: the scancode of
     /// every *press* the emitter put on the wire, oldest first, each
     /// with an expiry deadline.
@@ -151,6 +164,7 @@ impl SwitcherEngine {
             paused: Arc::new(RwLock::new(false)),
             word_history: Arc::new(RwLock::new(WordHistory::default())),
             last_word: Arc::new(RwLock::new(None)),
+            word_layout: RwLock::new(None),
             expected_echo: Mutex::new(VecDeque::new()),
             keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),
             suggester,
