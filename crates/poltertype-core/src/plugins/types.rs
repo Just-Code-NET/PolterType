@@ -218,6 +218,91 @@ impl TrayItem {
     }
 }
 
+/// One alternative offered by a [`ControlKind::Choice`].
+///
+/// Either a bare value — what every manifest wrote before an option could
+/// explain itself — or a table that adds a sentence and a link. Both
+/// forms live in the same `options` array, so a plug-in can describe the
+/// three choices that need it and leave the other two as strings:
+///
+/// ```toml
+/// options = [
+///   "off",
+///   { value = "qwen3:8b", label = "Qwen3 8B",
+///     detail = "Fits an 8 GB card whole.",
+///     link = "https://ollama.com/library/qwen3" },
+/// ]
+/// ```
+///
+/// The alternative was parallel arrays (`options`, `option_details`,
+/// `option_links`) kept in step by hand, which is a defect waiting for
+/// somebody to insert a line in the middle of one of them.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum PaneOption {
+    /// Just the value; it is its own label and says nothing more.
+    Value(String),
+    Described {
+        /// What is written into the plug-in's config when this is chosen.
+        value: String,
+        /// What to show instead of the raw value. Empty means the value.
+        #[serde(default)]
+        label: String,
+        /// A sentence about this alternative, shown under it.
+        #[serde(default)]
+        detail: String,
+        /// Where its makers describe it. `https` only — see
+        /// `validate::check_pane`.
+        #[serde(default)]
+        link: String,
+    },
+}
+
+impl PaneOption {
+    /// The string written into the config.
+    pub fn value(&self) -> &str {
+        match self {
+            Self::Value(v) => v,
+            Self::Described { value, .. } => value,
+        }
+    }
+
+    /// What the user reads. The value itself unless the plug-in named
+    /// something friendlier.
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Value(v) => v,
+            Self::Described { value, label, .. } => {
+                if label.trim().is_empty() {
+                    value
+                } else {
+                    label
+                }
+            }
+        }
+    }
+
+    pub fn detail(&self) -> &str {
+        match self {
+            Self::Value(_) => "",
+            Self::Described { detail, .. } => detail,
+        }
+    }
+
+    pub fn link(&self) -> &str {
+        match self {
+            Self::Value(_) => "",
+            Self::Described { link, .. } => link,
+        }
+    }
+
+    /// Does this option carry anything beyond its value? A choice where
+    /// none do is drawn as a drop-down, as it always was.
+    pub fn is_described(&self) -> bool {
+        !self.detail().trim().is_empty() || !self.link().trim().is_empty()
+    }
+}
+
 /// One control in the plug-in's settings pane.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -230,10 +315,21 @@ pub struct PaneControl {
     /// Longer explanation rendered under the control.
     pub help: String,
     /// Allowed values for [`ControlKind::Choice`].
-    pub options: Vec<String>,
+    pub options: Vec<PaneOption>,
     /// Id of a [`PluginCommand`] — the one a [`ControlKind::Button`]
     /// runs, or the one whose output a [`ControlKind::Report`] shows.
     pub command: String,
+    /// What one row of a [`ControlKind::Records`] holds.
+    ///
+    /// Ordinary controls, whose `key` is a single field name relative to
+    /// the row rather than a dotted path — a row is one table, and a
+    /// dotted key inside it would be a table inside a table, which is not
+    /// a shape this draws. Nested records are refused for the same
+    /// reason: a pane that can nest is a config editor, and this is not
+    /// one.
+    pub fields: Vec<PaneControl>,
+    /// Label for the button that appends a row. Empty gets "Add".
+    pub add_label: String,
 }
 
 impl Default for PaneControl {
@@ -245,6 +341,8 @@ impl Default for PaneControl {
             help: String::new(),
             options: Vec::new(),
             command: String::new(),
+            fields: Vec::new(),
+            add_label: String::new(),
         }
     }
 }

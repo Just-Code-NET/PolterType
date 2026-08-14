@@ -61,6 +61,31 @@ impl SettingsApp {
                     pane.set_text(index, text);
                 }
             }
+            Message::PluginRecordChanged(plugin, index, row, field, value) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set_record(index, row, &field, value);
+                }
+            }
+            Message::PluginRecordTyped(plugin, index, row, field, text) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set_record_text(index, row, &field, text);
+                }
+            }
+            Message::PluginRecordAdded(plugin, index) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    // Anything half-typed settles first: adding a row
+                    // rewrites the file, and a flush afterwards would
+                    // write yesterday's text against the new numbering.
+                    pane.flush_edits(None);
+                    pane.add_record(index);
+                }
+            }
+            Message::PluginRecordRemoved(plugin, index, row) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.flush_edits(None);
+                    pane.remove_record(index, row);
+                }
+            }
             Message::PluginSectionSelected(plugin, index) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.select_section(index);
@@ -414,6 +439,17 @@ impl SettingsApp {
             Message::OpenUrl(url) => {
                 // `opener` routes http(s) URLs to the default browser.
                 let _ = opener::open(url);
+            }
+            Message::PluginOpenLink(url) => {
+                // Checked once more at the point of opening, not only at
+                // manifest load. The validator is the reason this can
+                // only ever be `https`, and repeating the test here means
+                // a future path that reaches this message without going
+                // through the validator cannot hand `opener` a `file://`
+                // or a shell-ish scheme.
+                if url.starts_with("https://") {
+                    let _ = opener::open(&url);
+                }
             }
 
             // ── Setup pane ─────────────────────────────────────────

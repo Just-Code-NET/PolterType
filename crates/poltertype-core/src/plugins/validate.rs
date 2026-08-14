@@ -95,6 +95,26 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                         control.label
                     )));
                 }
+                for option in &control.options {
+                    if option.value().trim().is_empty() {
+                        return Err(PluginError::BadPane(format!(
+                            "choice {:?} has an option with no value",
+                            control.label
+                        )));
+                    }
+                    // A link in a manifest is a third party naming a
+                    // place PolterType will send somebody. `https` only,
+                    // and the pane shows the address as the link text —
+                    // so what is clicked is what is read, and a plug-in
+                    // cannot label a destination as something it is not.
+                    let link = option.link().trim();
+                    if !link.is_empty() && !link.starts_with("https://") {
+                        return Err(PluginError::BadPane(format!(
+                            "choice {:?} links to {link:?} — only https:// links are shown",
+                            control.label
+                        )));
+                    }
+                }
                 check_key(control.key.trim(), &control.label)?;
             }
             ControlKind::Toggle
@@ -124,6 +144,50 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                         "list {:?} refers to unknown command {:?}",
                         control.label, control.command
                     )));
+                }
+            }
+            ControlKind::Records => {
+                check_key(control.key.trim(), &control.label)?;
+                if control.fields.is_empty() {
+                    return Err(PluginError::BadPane(format!(
+                        "records {:?} declares no fields — a row would be an empty card",
+                        control.label
+                    )));
+                }
+                for field in &control.fields {
+                    // A row is one table. A dotted key inside it would be
+                    // a table inside a table, and nesting is the point at
+                    // which a settings pane becomes a config editor.
+                    let key = field.key.trim();
+                    if key.contains('.') {
+                        return Err(PluginError::BadPane(format!(
+                            "records {:?} has a field keyed {key:?} — a row's field is one \
+                             name, not a path",
+                            control.label
+                        )));
+                    }
+                    check_key(key, &field.label)?;
+                    match field.kind {
+                        ControlKind::Toggle
+                        | ControlKind::Text
+                        | ControlKind::Number
+                        | ControlKind::Decimal
+                        | ControlKind::Choice
+                        | ControlKind::Strings => {}
+                        other => {
+                            return Err(PluginError::BadPane(format!(
+                                "records {:?} has a {other:?} field — a row holds values, not \
+                                 sections, buttons, reports or more rows",
+                                control.label
+                            )));
+                        }
+                    }
+                    if field.kind == ControlKind::Choice && field.options.is_empty() {
+                        return Err(PluginError::BadPane(format!(
+                            "records {:?} has a choice field {:?} with no options",
+                            control.label, field.label
+                        )));
+                    }
                 }
             }
             // Nothing to check: we do not know what this control is, and

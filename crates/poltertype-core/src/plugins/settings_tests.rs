@@ -395,3 +395,140 @@ rooms = [
     assert!(out.contains("# verified one-to-one"), "{out}");
     assert!(out.contains("122 ОБЗ"), "{out}");
 }
+
+// ── Repeating groups ────────────────────────────────────────────────
+
+/// Two scheduled messages, with the comments a user would have left.
+const SCHEDULE: &str = "\
+[schedule]
+enabled = true
+
+# the morning one
+[[schedule.sends]]
+name = \"Ранкове\"
+room = \"Бронза\"   # the work room
+when = \"weekdays 09:00\"
+enabled = true
+
+[[schedule.sends]]
+name = \"Пʼятниця\"
+room = \"Бронза\"
+when = \"fri 17:30\"
+enabled = false
+";
+
+#[test]
+fn rows_are_counted_and_read_field_by_field() {
+    assert_eq!(count_records(SCHEDULE, "schedule.sends"), 2);
+    assert_eq!(
+        read_record_field(SCHEDULE, "schedule.sends", 0, "name"),
+        Some(SettingValue::Text("Ранкове".to_owned()))
+    );
+    assert_eq!(
+        read_record_field(SCHEDULE, "schedule.sends", 1, "enabled"),
+        Some(SettingValue::Bool(false))
+    );
+    // A field the row omits reads as absent, not as a default we invented.
+    assert_eq!(
+        read_record_field(SCHEDULE, "schedule.sends", 0, "text"),
+        None
+    );
+    // So does a row that is not there.
+    assert_eq!(
+        read_record_field(SCHEDULE, "schedule.sends", 9, "name"),
+        None
+    );
+    // And a key with no array at all is no rows, not an error.
+    assert_eq!(count_records(SCHEDULE, "schedule.nothing"), 0);
+}
+
+#[test]
+fn editing_one_field_leaves_the_other_rows_and_the_comments_alone() {
+    let out = write_record_field(
+        SCHEDULE,
+        "schedule.sends",
+        0,
+        "when",
+        &SettingValue::Text("weekdays 08:45".to_owned()),
+    )
+    .unwrap();
+    assert_eq!(
+        read_record_field(&out, "schedule.sends", 0, "when"),
+        Some(SettingValue::Text("weekdays 08:45".to_owned()))
+    );
+    // The second entry is untouched…
+    assert_eq!(
+        read_record_field(&out, "schedule.sends", 1, "when"),
+        Some(SettingValue::Text("fri 17:30".to_owned()))
+    );
+    // …and so is everything the user wrote around them.
+    assert!(out.contains("# the morning one"), "{out}");
+    assert!(out.contains("# the work room"), "{out}");
+}
+
+#[test]
+fn a_field_the_row_does_not_have_yet_is_added_to_it() {
+    let out = write_record_field(
+        SCHEDULE,
+        "schedule.sends",
+        0,
+        "text",
+        &SettingValue::Text("Доброго ранку!".to_owned()),
+    )
+    .unwrap();
+    assert_eq!(
+        read_record_field(&out, "schedule.sends", 0, "text"),
+        Some(SettingValue::Text("Доброго ранку!".to_owned()))
+    );
+    assert_eq!(count_records(&out, "schedule.sends"), 2);
+}
+
+#[test]
+fn writing_past_the_end_is_refused_rather_than_padded() {
+    // Reaching row 5 of a two-row array by growing it would invent three
+    // empty scheduled messages. The file changed underneath the pane, and
+    // saying so is the only honest answer.
+    let e = write_record_field(
+        SCHEDULE,
+        "schedule.sends",
+        5,
+        "name",
+        &SettingValue::Text("x".to_owned()),
+    );
+    assert!(e.is_err());
+    assert_eq!(count_records(SCHEDULE, "schedule.sends"), 2);
+}
+
+#[test]
+fn a_row_is_added_empty_and_the_plug_ins_own_defaults_apply() {
+    let out = add_record(SCHEDULE, "schedule.sends").unwrap();
+    assert_eq!(count_records(&out, "schedule.sends"), 3);
+    // Nothing invented in it: guessing at an hour would schedule a
+    // message nobody chose the time of.
+    assert_eq!(read_record_field(&out, "schedule.sends", 2, "when"), None);
+    assert!(out.contains("# the morning one"), "{out}");
+}
+
+#[test]
+fn the_first_row_can_be_added_where_there_is_no_array_yet() {
+    let out = add_record("[schedule]\nenabled = false\n", "schedule.sends").unwrap();
+    assert_eq!(count_records(&out, "schedule.sends"), 1);
+}
+
+#[test]
+fn removing_a_row_takes_that_one_and_leaves_the_rest() {
+    let out = remove_record(SCHEDULE, "schedule.sends", 0).unwrap();
+    assert_eq!(count_records(&out, "schedule.sends"), 1);
+    assert_eq!(
+        read_record_field(&out, "schedule.sends", 0, "name"),
+        Some(SettingValue::Text("Пʼятниця".to_owned()))
+    );
+}
+
+#[test]
+fn removing_a_row_that_is_not_there_changes_nothing() {
+    // The pane and the file can disagree for a moment, and "this one is
+    // gone" is already satisfied.
+    let out = remove_record(SCHEDULE, "schedule.sends", 7).unwrap();
+    assert_eq!(count_records(&out, "schedule.sends"), 2);
+}

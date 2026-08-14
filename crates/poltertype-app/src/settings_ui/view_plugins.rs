@@ -313,10 +313,28 @@ impl SettingsApp {
                     .into(),
             ),
 
+            // A drop-down is right for a handful of words — `ask`,
+            // `auto`, `off` — and wrong for alternatives that have to be
+            // *compared*: it shows one at a time, hides the rest behind a
+            // click, and has nowhere to put a sentence saying what each
+            // one is for. When the plug-in has described its options,
+            // they are drawn as a column that can be read.
+            ControlKind::Choice if control.options.iter().any(|o| o.is_described()) => self
+                .plugin_choice_cards(
+                    plugin,
+                    index,
+                    control,
+                    stored.as_ref().map(SettingValue::as_display),
+                ),
+
             ControlKind::Choice => self.field(
                 control,
                 PickList::new(
-                    control.options.clone(),
+                    control
+                        .options
+                        .iter()
+                        .map(|o| o.value().to_owned())
+                        .collect::<Vec<_>>(),
                     stored.as_ref().map(SettingValue::as_display),
                     move |chosen| Message::PluginChoiceSelected(plugin, index, chosen),
                 )
@@ -366,6 +384,8 @@ impl SettingsApp {
             ControlKind::Report => self.plugin_report(plugin, index, control),
 
             ControlKind::List => self.plugin_list(plugin, index, control),
+
+            ControlKind::Records => self.plugin_records(plugin, index, control),
 
             // Said plainly, in place of the control. The alternative —
             // rendering nothing — leaves a plug-in looking like it
@@ -443,6 +463,262 @@ impl SettingsApp {
     ///
     /// It still draws only boxes — a row contributes a name, a label
     /// and a line of detail, and nothing about how any of it looks.
+    /// A repeating group: one card per entry, with the plug-in's declared
+    /// fields inside it, plus Add and Remove.
+    ///
+    /// The card is what makes a list of *composite* things readable. Laid
+    /// out as flat rows, six scheduled messages of five fields each are
+    /// thirty controls in one column and no way to see where one message
+    /// ends; boxed and numbered, they are six things.
+    fn plugin_records<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        control: &'a poltertype_core::plugins::PaneControl,
+    ) -> Element<'a, Message> {
+        let b = self.brand();
+        let pane = &self.plugins[plugin];
+        let rows = pane.record_rows(index);
+        let mut column = self.described(control).spacing(10);
+
+        if rows.is_empty() {
+            column = column.push(
+                Text::new("Nothing here yet.")
+                    .size(12)
+                    .color(b.muted)
+                    .width(Length::Fill),
+            );
+        }
+
+        for row in 0..rows.len() {
+            let mut card = Column::new().spacing(8).width(Length::Fill).push(
+                Row::new()
+                    .align_y(Alignment::Center)
+                    .push(
+                        Text::new(format!("{}", row + 1))
+                            .size(12)
+                            .font(FONT_BOLD)
+                            .color(b.muted)
+                            .width(Length::Fill),
+                    )
+                    .push(
+                        Button::new(Text::new("Remove").size(12))
+                            .style(theme::danger)
+                            .padding(Padding {
+                                top: 3.0,
+                                right: 8.0,
+                                bottom: 3.0,
+                                left: 8.0,
+                            })
+                            .on_press(Message::PluginRecordRemoved(plugin, index, row)),
+                    ),
+            );
+            for field in &control.fields {
+                card = card.push(self.plugin_record_field(plugin, index, row, field));
+            }
+            column = column.push(
+                Container::new(card)
+                    .style(theme::card)
+                    .padding(12)
+                    .width(Length::Fill),
+            );
+        }
+
+        column
+            .push(
+                Button::new(
+                    Text::new(if control.add_label.trim().is_empty() {
+                        "Add"
+                    } else {
+                        control.add_label.trim()
+                    })
+                    .size(12),
+                )
+                .style(theme::secondary)
+                .padding(Padding {
+                    top: 4.0,
+                    right: 10.0,
+                    bottom: 4.0,
+                    left: 10.0,
+                })
+                .on_press(Message::PluginRecordAdded(plugin, index)),
+            )
+            .width(Length::Fill)
+            .into()
+    }
+
+    /// One field inside one row of a repeating group.
+    ///
+    /// The same shapes the top-level controls use, addressed by (row,
+    /// field) instead of by control index. Laid out label-above-box
+    /// rather than on the two-column grid: inside a card there is no
+    /// value column to line up with, and a text field for a whole
+    /// message wants the width.
+    fn plugin_record_field<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        row: usize,
+        field: &'a poltertype_core::plugins::PaneControl,
+    ) -> Element<'a, Message> {
+        let b = self.brand();
+        let pane = &self.plugins[plugin];
+        let key = field.key.clone();
+        let typed = pane.record_display(index, row, &field.key);
+        let stored = pane.record_value(index, row, &field.key);
+
+        let widget: Element<'a, Message> = match field.kind {
+            ControlKind::Toggle => Checkbox::new(
+                field.label.as_str(),
+                matches!(stored, Some(SettingValue::Bool(true))),
+            )
+            .text_size(12)
+            .on_toggle({
+                let key = key.clone();
+                move |on| {
+                    Message::PluginRecordChanged(
+                        plugin,
+                        index,
+                        row,
+                        key.clone(),
+                        SettingValue::Bool(on),
+                    )
+                }
+            })
+            .into(),
+
+            ControlKind::Choice => PickList::new(
+                field
+                    .options
+                    .iter()
+                    .map(|o| o.value().to_owned())
+                    .collect::<Vec<_>>(),
+                stored.as_ref().map(SettingValue::as_display),
+                {
+                    let key = key.clone();
+                    move |chosen| {
+                        Message::PluginRecordChanged(
+                            plugin,
+                            index,
+                            row,
+                            key.clone(),
+                            SettingValue::Text(chosen),
+                        )
+                    }
+                },
+            )
+            .text_size(12)
+            .placeholder(PLUGIN_DEFAULT)
+            .width(Length::Fill)
+            .into(),
+
+            _ => TextInput::new(PLUGIN_DEFAULT_SHORT, &typed.unwrap_or_default())
+                .size(12)
+                .width(Length::Fill)
+                .on_input({
+                    let key = key.clone();
+                    move |text| Message::PluginRecordTyped(plugin, index, row, key.clone(), text)
+                })
+                .into(),
+        };
+
+        // A toggle carries its own label; anything else gets one above.
+        let mut column = Column::new().spacing(3).width(Length::Fill);
+        if field.kind != ControlKind::Toggle {
+            column = column.push(Text::new(field.label.as_str()).size(11).color(b.muted));
+        }
+        let mut column = column.push(widget);
+        if !field.help.trim().is_empty() {
+            column = column.push(
+                Text::new(field.help.as_str())
+                    .size(10)
+                    .color(b.muted)
+                    .width(Length::Fill),
+            );
+        }
+        column.into()
+    }
+
+    /// A choice whose alternatives need reading, not just naming: one row
+    /// each, with the sentence the plug-in wrote and a link to where its
+    /// makers describe it.
+    ///
+    /// The link's text is the address. A plug-in supplying a destination
+    /// is a third party deciding where PolterType sends somebody, so what
+    /// is clicked has to be what is read — a friendly label over an
+    /// arbitrary URL is exactly the shape of the thing this pane's whole
+    /// draw-it-ourselves rule exists to prevent. `validate` has already
+    /// refused anything that is not `https`.
+    fn plugin_choice_cards<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        control: &'a poltertype_core::plugins::PaneControl,
+        chosen: Option<String>,
+    ) -> Element<'a, Message> {
+        let b = self.brand();
+        let mut list = Column::new().spacing(10).width(Length::Fill);
+
+        for (slot, option) in control.options.iter().enumerate() {
+            let picked = chosen.as_deref() == Some(option.value());
+            // A radio rather than a checkbox: these are alternatives, and
+            // a row of tick-boxes reads as "any of these", which for a
+            // model is the wrong promise. Keyed on the row's position,
+            // because the widget wants a `Copy` value and the thing being
+            // chosen is a string.
+            let mut entry = Column::new().spacing(3).push(
+                iced::widget::Radio::new(option.label(), slot, picked.then_some(slot), {
+                    let v = option.value().to_owned();
+                    move |_| Message::PluginChoiceSelected(plugin, index, v.clone())
+                })
+                .text_size(13)
+                .size(15),
+            );
+            if !option.detail().trim().is_empty() {
+                entry = entry.push(
+                    Row::new()
+                        .push(Space::with_width(Length::Fixed(26.0)))
+                        .push(
+                            Text::new(option.detail())
+                                .size(11)
+                                .color(b.muted)
+                                .width(Length::Fill),
+                        ),
+                );
+            }
+            let link = option.link().trim();
+            if !link.is_empty() {
+                entry = entry.push(
+                    Row::new()
+                        .push(Space::with_width(Length::Fixed(22.0)))
+                        .push(
+                            Button::new(Text::new(link.to_owned()).size(11))
+                                .style(theme::link)
+                                .padding(Padding {
+                                    top: 0.0,
+                                    right: 4.0,
+                                    bottom: 0.0,
+                                    left: 4.0,
+                                })
+                                .on_press(Message::PluginOpenLink(link.to_owned())),
+                        ),
+                );
+            }
+            list = list.push(entry);
+        }
+
+        self.described(control)
+            .spacing(8)
+            .push(
+                Container::new(list)
+                    .style(theme::card)
+                    .padding(12)
+                    .width(Length::Fill),
+            )
+            .width(Length::Fill)
+            .into()
+    }
+
     fn plugin_list<'a>(
         &'a self,
         plugin: usize,
