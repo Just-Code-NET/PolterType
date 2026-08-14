@@ -4,7 +4,51 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.16.0
+## [0.17.0] — the tray learns what is waiting
+
+### Added — the tray can show a plug-in's work, not just its settings
+
+- **A plug-in may fill a menu with rows it produces on the spot.** The
+  tray could show a plug-in's settings and its state; it could not show
+  the things that arrived while nobody was looking and are waiting on
+  an answer, because a manifest written months earlier cannot name
+  them. A manifest now declares a list whose rows come from a command
+  run while the menu is being opened — printed in the same
+  tab-separated form the settings pane's tick-box lists already use.
+  Each row becomes a submenu of its own: the label is what fits on one
+  line, and everything the row actually holds is one hover away, which
+  is the only place in a tray menu detail can live at all.
+
+  **A plug-in supplies text, never markup, and never actions.** What a
+  row can do was declared before that row existed, and `{id}` is
+  substituted as a whole argument rather than into one — so a row's own
+  text can never become a second flag. The same boundary as the
+  settings pane, one storey down: a third party that can draw can
+  imitate PolterType's own dialogs.
+
+- **The icon can say that something is waiting.** A plug-in names the
+  state key that counts, and a value above zero puts a mark in the tray
+  icon's top-right corner, with the count in the tooltip. Top-right
+  because the bottom-right is the pause indicator, and a paused
+  PolterType with work waiting has to be able to say both at once. A
+  plug-in gets to raise that mark; it never gets to replace the icon,
+  draw on it, or choose what it looks like.
+
+### Added — a tick-box list can be answered all at once
+
+- **"Select all" and "Clear", beside the Refresh a list already had.**
+  A plug-in can offer sixty conversations, and saying "all of them" by
+  clicking sixty boxes is the work a settings window exists to spare
+  somebody. Only a list carries the two buttons — a report has nothing
+  to tick.
+
+  Both act on the rows **currently on screen** and nothing else: a list
+  can hold names the plug-in did not offer this time (a conversation in
+  a client that is not running, one typed in by hand), and silently
+  clearing what cannot be seen is the worse surprise of the two. It is
+  also one edit of the file rather than one per row, so the program
+  that owns that file cannot catch it half-written, and its comments
+  are read past once instead of sixty times.
 
 ### Fixed — a comma that came back as a question mark
 
