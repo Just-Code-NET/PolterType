@@ -153,6 +153,16 @@ Backends with a real Unicode-emit API (`KEYEVENTF_UNICODE`,
 `CGEventKeyboardSetUnicodeString`) answer `Unsupported` and fall back
 to `send_text`.
 
+**The boundary key is the exception, and has to be.** Re-reading the
+*word* under the new layout is the entire correction; re-reading the
+key that closed it is a second, unasked-for edit. `Shift`+`0x35` is
+`,` in uk-UA and `?` in en-US, so replaying it as pressed rewrote the
+user's punctuation. The separator is therefore looked up by character
+in the target layout and replayed on whichever key produces it there
+(`boundary_key_for`), falling back to the key as typed when the target
+cannot produce that character at all — a few layouts reach some
+punctuation through AltGr, which PolterType does not track.
+
 **Intrusion probe**, for when the gate is unavailable: anything on the
 wire after the replay was pressed during it, so it is on screen
 somewhere inside the text just typed. The position is unknown but the
@@ -232,6 +242,30 @@ Every call into a plug-in is bounded. The state read runs on the UI
 thread while a menu is drawn, so its deadline is short; a report runs
 off it and gets longer. A pane that says "it did not answer" is
 honest, one that never renders is not.
+
+### The tray menu a plug-in declares
+
+The same rule one storey down: a plug-in supplies text, PolterType
+draws the menu. A manifest can name its entries in advance, but not a
+queue — the things that arrived while nobody was looking — so a
+`tray_list` names a command whose *rows* are produced while the menu
+is being opened, in the same tab-separated form the pane's tick-box
+lists use. Each row becomes a submenu of its own: the label is what
+fits on one line, and the detail is one hover away, which is the only
+place in a tray menu detail can live at all.
+
+What a row can *do* comes from the manifest and nowhere else. The
+plug-in supplies the row's text, never its actions, and `{id}` is
+substituted as a whole argument rather than into one — so a row's own
+text can never become a second flag.
+
+The icon is shared, and stays PolterType's. A plug-in names the state
+key that counts, and a value above zero puts a mark in the icon's
+top-right corner — top, because the bottom-right is the pause
+indicator and a paused PolterType with work waiting has to be able to
+say both. The count itself goes in the tooltip. A plug-in gets to
+raise that mark; it never gets to replace the icon, draw on it, or
+choose what it looks like.
 
 ### The settings pane a plug-in declares
 

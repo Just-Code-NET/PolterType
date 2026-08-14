@@ -2436,3 +2436,82 @@ like any other doc — except that nobody re-checks it, because it reads
 as an explanation rather than as a fact. State the *shape* of the cost
 in a comment and put the number next to the measurement that produced
 it.
+
+## 2026-08-13 — A plug-in supplies rows; the menu and the icon stay ours
+
+The tray could show a plug-in's settings and its state. It could not
+show its *work* — a queue, an inbox, the things that arrived while
+nobody was looking — because a manifest written months earlier cannot
+name them.
+
+So a manifest may now declare a list whose rows the plug-in prints
+while the menu is being opened. The obvious alternative was to let a
+plug-in hand over menu markup, and that is exactly what the whole
+plug-in design refuses on the pane side: a third party that can draw
+can imitate PolterType's own dialogs, another plug-in, or a system
+prompt. The split is the same one storey down — the plug-in supplies
+*text*, PolterType supplies the menu, the separators and the layout.
+
+Two boundaries fall out of it, and both are the point rather than
+implementation detail:
+
+* **Actions come from the manifest, never from the row.** What a row
+  can do was decided before that row existed. `{id}` is substituted as
+  a whole argument, not into one, so a row's own text cannot become a
+  second flag — the same reasoning that keeps smart commands from
+  substituting typed text into `run_shell`.
+* **The icon is shared, and it stays ours.** A plug-in names the state
+  key that counts and a value above zero raises a mark; it never
+  replaces the icon, draws on it or picks what it looks like. The mark
+  went to the top-right because the bottom-right is the pause
+  indicator, and a paused PolterType with work waiting has to be able
+  to say both at once. Rendered at 16 px the mark's ring sat on the
+  second glyph and a layout code stopped being readable, so the glyphs
+  moved down a row — the icon's first job is to name the layout, and
+  the badge is a guest on it.
+
+## 2026-08-14 — A word means something only against the layout it was typed in
+
+Two bugs arrived in one report: type a word under en-US, switch the
+layout by hand, close the word with `,` — and PolterType retyped the
+whole word and put `?` where the comma had been.
+
+The comma half is narrow and was simply wrong. A correction replays
+the word as scancodes so it re-reads under the new layout, and the key
+that *closed* the word went out the same way and picked up the new
+layout's glyph too: `Shift`+`0x35` is `,` in uk-UA and `?` in en-US.
+Re-reading the word is the correction; re-reading its separator is a
+second edit nobody asked for. The boundary is now resolved by
+character against the target layout and replayed on whichever key
+produces it there. Where the target cannot produce that character at
+all the key goes out as typed — a wrong separator is a worse outcome
+than an uncorrected word only if you have never seen the alternative,
+which is refusing to fix the word.
+
+The other half is the one worth defending. The word buffer holds
+**scancodes**, deliberately: that is what makes a correction work in
+terminals and Wayland-native apps without a compose dance. But it also
+means a buffer is meaningless on its own — it renders into text only
+against a layout, and `decide` was reading it against whatever was
+active when the word *ended*. Switch by hand in between and the engine
+reads perfectly good English as Cyrillic gibberish, "fixes" it, and
+drags the layout back off the one the user had just chosen. The user's
+own switch is the strongest possible statement of intent, and the
+engine was overruling it with a guess.
+
+Every word is therefore stamped with the layout in effect at its first
+key, and a word that ends under a different one skips the automatic
+path entirely — no correction, no suggestion offer. The stash the
+manual switch-last hotkey reads is still written, and now rendered
+under the layout the word was typed in rather than the one that
+happens to be current, so the deliberate gesture still works on
+exactly the words the automatic one now leaves alone.
+
+The stamp costs one `current()` query per word, which on Linux is
+served by the 200 ms TTL cache in front of every backend. That cache
+is also the limit of the fix: a switch made inside 200 ms of the
+previous word's boundary can be sampled stale, and the engine then
+either misses a real change or invents one. Physically that means
+pressing the layout chord and the next letter almost together, which
+is rare — and the honest alternative, an uncached query per word,
+spawns a `hyprctl` per word for a case nobody has hit.
