@@ -510,6 +510,33 @@ impl SettingsApp {
         }
     }
 
+    /// The short form of [`Self::suggest_note`], for the label line of a
+    /// box inside a card.
+    ///
+    /// A `suggest` renders as a text box — there is no arrow, because the
+    /// list appears under what is typed rather than replacing it — so
+    /// nothing on screen would otherwise say that ninety-five
+    /// conversations are one keystroke away. Six words beside the label
+    /// say it; a note under every box in a six-card group would be
+    /// eighteen lines of the same sentence.
+    fn suggest_hint<'a>(&'a self, plugin: usize, slot: Slot) -> Option<Element<'a, Message>> {
+        let b = self.brand();
+        let pane = &self.plugins[plugin];
+        pane.command_id(slot)?;
+        let (text, colour) = match pane.output(slot) {
+            Some(CommandOutput::Failed(_)) => ("· could not ask the plug-in".to_owned(), b.warn),
+            None | Some(CommandOutput::Loading) => ("· asking…".to_owned(), b.muted),
+            Some(CommandOutput::Ready(_)) => (
+                match pane.list_rows(slot).len() {
+                    0 => "· nothing offered — type it in".to_owned(),
+                    n => format!("· {n} to pick from, or write your own"),
+                },
+                b.muted,
+            ),
+        };
+        Some(Text::new(text).size(10).color(colour).into())
+    }
+
     /// One row of the form: what the setting is on the left, with its
     /// explanation under it, and what it is set to on the right.
     ///
@@ -763,12 +790,20 @@ impl SettingsApp {
         };
 
         // A toggle carries its own label; anything else gets one above.
+        let slot = Slot::field(index, row, position);
         let mut column = Column::new().spacing(3).width(Length::Fill);
         if field.kind != ControlKind::Toggle {
-            column = column.push(Text::new(field.label.as_str()).size(11).color(b.muted));
+            let mut heading = Row::new()
+                .spacing(6)
+                .align_y(Alignment::Center)
+                .push(Text::new(field.label.as_str()).size(11).color(b.muted));
+            if let Some(hint) = self.suggest_hint(plugin, slot) {
+                heading = heading.push(hint);
+            }
+            column = column.push(heading);
         }
         let mut column = column.push(widget);
-        if let Some(note) = self.suggest_note(plugin, Slot::field(index, row, position)) {
+        if let Some(note) = self.suggest_note(plugin, slot) {
             column = column.push(note);
         }
         if !field.help.trim().is_empty() {
