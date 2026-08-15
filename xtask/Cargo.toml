@@ -27,11 +27,11 @@ base64            = { workspace = true }
 serde_json        = { workspace = true }
 getrandom         = "0.2"
 
-# Used by the `assets icon-png` subcommand to generate the placeholder
-# 1024×1024 source PNG that release CI then converts to per-platform
-# icon formats (.ico, .icns) — keeps the repo binary-asset-free while
-# still letting the installers ship with a non-default icon.
-png    = "0.17"
+# Backs the `assets icon-png` / `assets icon-ico` subcommands. The
+# geometry is shared with `poltertype-app`'s build script, which embeds
+# the same mark into the executable — keeps the repo binary-asset-free
+# while still letting the installers and the exe agree on one icon.
+poltertype-icon = { workspace = true }
 
 # Bulk wordlist outputs are gzipped (`data/wordlists/<id>.txt.gz`)
 # because uk_ua alone hits 84 MB raw after Hunspell affix expansion.

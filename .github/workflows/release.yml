@@ -211,17 +211,21 @@ jobs:
       - name: Build release binary
         run: cargo build --release --locked --features ai,poltertype-ai/remote --target x86_64-pc-windows-msvc -p poltertype-app
 
-      - name: Render icon and convert to .ico
-        # ImageMagick is preinstalled on windows-latest. We bake all
-        # the sizes Windows Explorer wants into the .ico so the file
-        # looks crisp from 16×16 (taskbar) to 256×256 (Vista+ shell).
+      - name: Render the installer icon
+        # `poltertype.exe` already carries this icon — its build script
+        # embeds one drawn from the same geometry, and that is what the
+        # Start menu, Explorer, the taskbar and Alt-Tab read. This copy
+        # is only for the MSI's Add/Remove Programs entry, which is a
+        # property of the *installation* rather than of the file.
+        #
+        # Rendered by xtask rather than converted by ImageMagick: every
+        # size comes straight off the vector mark instead of being
+        # box-filtered down from one 1024 px master, and CI stops
+        # depending on `magick` being preinstalled.
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force target/dist | Out-Null
-          cargo xtask assets icon-png target/dist/icon-1024.png --size 1024
-          magick target/dist/icon-1024.png `
-            -define icon:auto-resize=256,128,64,48,32,16 `
-            target/dist/AppIcon.ico
+          cargo xtask assets icon-ico target/dist/AppIcon.ico
 
       - name: Build MSI
         shell: pwsh

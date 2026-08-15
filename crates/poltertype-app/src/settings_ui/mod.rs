@@ -91,10 +91,14 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
         .theme(SettingsApp::theme)
         .subscription(SettingsApp::subscription)
         .exit_on_close_request(false)
-        // Sized so Commands and Wordlists render without scrolling on
-        // 1080p; anything smaller clips their forms.
-        .window_size((860.0, 680.0))
-        .centered();
+        .window(iced::window::Settings {
+            // Sized so Commands and Wordlists render without scrolling
+            // on 1080p; anything smaller clips their forms.
+            size: iced::Size::new(860.0, 680.0),
+            position: iced::window::Position::Centered,
+            icon: helpers::window_icon(),
+            ..Default::default()
+        });
 
     let store_for_init = Arc::clone(&store);
     app.run_with(move || {

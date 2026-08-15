@@ -13,11 +13,12 @@ members = [
     "crates/poltertype-shell",
     "crates/poltertype-tray",
     "crates/poltertype-types",
+    "crates/poltertype-icon",
     "xtask",
 ]
 
 [workspace.package]
-version       = "0.17.0"
+version       = "0.17.1"
 edition       = "2024"
 license       = "MIT"
 authors       = ["PolterType contributors"]
@@ -52,6 +53,9 @@ poltertype-shell  = { path = "crates/poltertype-shell" }
 poltertype-ai     = { path = "crates/poltertype-ai" }
 poltertype-popup  = { path = "crates/poltertype-popup" }
 poltertype-tray   = { path = "crates/poltertype-tray" }
+# Build-time only: the app's icon resource and the installers' images
+# are drawn from the same geometry, so they cannot drift apart.
+poltertype-icon   = { path = "crates/poltertype-icon" }
 
 # Logging
 tracing            = "0.1"
@@ -171,6 +175,15 @@ wayland-client         = "0.31"
 # Win32 API bindings (Microsoft official). Per-target deps in the
 # crates that need them — features there select narrow modules.
 windows-version = "0.1"
+
+# Icon plumbing, build-time only — none of this is linked into the
+# shipped binary. `png` encodes the installers' images and the `.ico`'s
+# 256 px entry; `winresource` runs the Windows SDK's `rc.exe` over a
+# generated resource script so `poltertype.exe` carries an icon and a
+# VERSIONINFO block. Without that the Start menu draws a placeholder
+# and the Details tab is blank.
+png         = "0.17"
+winresource = "0.1"
 
 [profile.release]
 lto           = "thin"
