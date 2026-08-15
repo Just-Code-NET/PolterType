@@ -6,7 +6,7 @@
 //! keeps the whole icon a few lines of arithmetic: no path flattener,
 //! no rasteriser crate.
 
-use super::*;
+use crate::*;
 
 pub(crate) fn in_round_rect(x: f32, y: f32, rect: &RoundRect) -> bool {
     let (x0, y0) = (rect.x, rect.y);

@@ -1,0 +1,19 @@
+[package]
+name                  = "poltertype-icon"
+description           = "The PolterType brand mark, drawn procedurally: RGBA, PNG and ICO."
+version.workspace     = true
+edition.workspace     = true
+license.workspace     = true
+authors.workspace     = true
+rust-version.workspace = true
+repository.workspace  = true
+publish.workspace     = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# One PNG, one pixel format, one direction. The `image` crate would
+# bring decoders for a dozen formats we never read.
+png       = { workspace = true }
+thiserror = { workspace = true }

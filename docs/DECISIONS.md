@@ -6,6 +6,60 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-15 — The executable carries its own icon, drawn at build time
+
+A user installed the MSI and found the Start-menu entry wearing the
+shell's placeholder. Measured on the installed binary: **zero** icon
+resources and **no `VERSIONINFO` block at all** — empty FileVersion,
+empty ProductName, blank Details tab.
+
+The cause is that we only ever produced an icon for the *installer*.
+`ARPPRODUCTICON` in the WiX template covers Add/Remove Programs and
+nothing else; the Start-menu shortcut is authored non-advertised with
+an empty `IconLocation`, which means "ask the target file" — and the
+target had nothing to give. Every surface that reads the file rather
+than the install (Explorer, Alt-Tab, the taskbar, the pinned entry)
+was in the same position.
+
+**Decision:** embed the icon in `poltertype.exe`. `poltertype-app`
+gains a build script that renders an `.ico` into `OUT_DIR` and hands
+it to `rc.exe` via `winresource`, together with a `VERSIONINFO` block
+naming the product rather than the crate. The shortcut then inherits
+it with no change to the WiX template at all — the fix is upstream of
+the installer, which is why the installer does not mention it.
+
+**The mark is rendered, not checked in.** The geometry moved out of
+`xtask` into a new `poltertype-icon` crate so the build script and the
+installers draw from one source. This keeps the repo's
+no-binary-assets property and, more usefully, makes it impossible for
+the exe's icon and the installers' icon to drift apart — which is a
+thing that happens the first time someone regenerates one of them.
+The crate is a **build**-dependency: nothing in it is linked into the
+shipped binary.
+
+*Alternative considered:* check an `.ico` into the repo and point the
+build script at it. Rejected for the drift, not for the bytes — a
+checked-in icon is a third copy of a mark that already exists twice
+(here and in the site's `favicon.svg`), and nothing would ever tell us
+the three had diverged.
+
+**Two traps, both silent.** `.ico` entries below 256 px are raw DIBs
+whose header declares *twice* the real height and whose rows run
+bottom-up, and they still need an AND mask even though the alpha
+channel makes it redundant. Get any of that wrong and the file parses,
+the sizes look right, and the shell quietly declines to draw it —
+which is indistinguishable from the bug being fixed. Hence
+`ico/tests.rs` reading the bytes back the way Windows does. The build
+script's platform test is `CARGO_CFG_TARGET_OS`, not `cfg!`: a build
+script runs on the machine doing the building, and the question is
+about the machine that will run the binary.
+
+Dropping ImageMagick from release CI came free with it — every size is
+now rasterised from the vector mark instead of box-filtered down from
+one 1024 px master.
+
+---
+
 ## 2026-08-08 — Windows keymaps are read from the OS, not declared in a TOML
 
 Closing #20. A Windows layout is identified by its language, so all

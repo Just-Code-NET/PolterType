@@ -1,9 +1,7 @@
 //! App-icon rasteriser.
 
-use super::*;
-use anyhow::{Context, Result};
-use std::fs::{self, File};
-use std::io::BufWriter;
+use crate::*;
+use std::fs;
 use std::path::Path;
 
 /// Samples per axis inside one pixel. 4×4 is plenty once a pixel is
@@ -20,16 +18,18 @@ const FINE_DETAIL_SIZE: u32 = 64;
 const ADAPTIVE_FROM: u32 = 256;
 
 /// Render `size`×`size` RGBA PNG of the app icon to `out`.
-pub fn render_app_icon(size: u32, out: &Path) -> Result<()> {
-    if size < 32 {
-        anyhow::bail!("icon size must be ≥ 32 px (got {size})");
+pub fn render_png(size: u32, out: &Path) -> Result<(), IconError> {
+    if size < MIN_PNG_SIZE {
+        return Err(IconError::TooSmall {
+            min: MIN_PNG_SIZE,
+            got: size,
+        });
     }
-    let buf = rasterise(size);
-    write_png(out, &buf, size, size)
+    write_file(out, &encode_png(&rasterise(size), size)?)
 }
 
 /// Rasterise the icon into a `size`×`size` RGBA buffer.
-pub(crate) fn rasterise(size: u32) -> Vec<u8> {
+pub fn rasterise(size: u32) -> Vec<u8> {
     let n = size as usize;
     let scale = UNITS / size as f32;
     let samples = if size <= FINE_DETAIL_SIZE {
@@ -112,20 +112,34 @@ fn layer_at(u: f32, v: f32) -> [u8; 4] {
     }
 }
 
-pub(crate) fn write_png(out: &Path, rgba: &[u8], w: u32, h: u32) -> Result<()> {
+/// Encode a square RGBA buffer as PNG bytes.
+///
+/// Returns the bytes rather than writing them: the `.ico` container
+/// stores its large entries as whole PNG files, so this is the same
+/// encoder feeding both outputs.
+pub(crate) fn encode_png(rgba: &[u8], size: u32) -> Result<Vec<u8>, IconError> {
+    let mut bytes = Vec::new();
+    let mut enc = png::Encoder::new(&mut bytes, size, size);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut writer = enc.write_header()?;
+    writer.write_image_data(rgba)?;
+    writer.finish()?;
+    Ok(bytes)
+}
+
+/// Write `bytes` to `out`, creating the parent directory if needed.
+pub(crate) fn write_file(out: &Path, bytes: &[u8]) -> Result<(), IconError> {
     if let Some(parent) = out.parent()
         && !parent.as_os_str().is_empty()
     {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("create_dir_all {}", parent.display()))?;
+        fs::create_dir_all(parent).map_err(|source| IconError::Write {
+            path: parent.to_path_buf(),
+            source,
+        })?;
     }
-    let f = File::create(out).with_context(|| format!("create {}", out.display()))?;
-    let mut enc = png::Encoder::new(BufWriter::new(f), w, h);
-    enc.set_color(png::ColorType::Rgba);
-    enc.set_depth(png::BitDepth::Eight);
-    let mut writer = enc.write_header().context("png write_header")?;
-    writer
-        .write_image_data(rgba)
-        .context("png write_image_data")?;
-    Ok(())
+    fs::write(out, bytes).map_err(|source| IconError::Write {
+        path: out.to_path_buf(),
+        source,
+    })
 }

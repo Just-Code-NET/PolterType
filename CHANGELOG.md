@@ -4,6 +4,43 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.17.1] — the app gets a face on Windows
+
+### Fixed
+
+- **`poltertype.exe` now carries its own icon.** Installed from the
+  MSI, PolterType sat in the Start menu wearing the shell's
+  placeholder. The binary had **zero** icon resources: the only icon
+  we ever produced was the installer's, and `ARPPRODUCTICON` reaches
+  exactly one screen — Add/Remove Programs. The Start-menu shortcut is
+  authored to take its icon from the file it points at, and the file
+  had nothing to give, so Explorer, Alt-Tab, the taskbar and every
+  pinned entry showed the same placeholder.
+
+  The executable is now built with the PolterType mark embedded at six
+  sizes (16 through 256), rendered from the same geometry the
+  installers use rather than a checked-in image, so the two cannot
+  drift apart. Nothing in the installer changed — the shortcut simply
+  has something to inherit now.
+
+- **The Settings window wears the mark too.** It had no icon of its
+  own, so its title bar and its Alt-Tab card drew the placeholder as
+  well. Same geometry again, rendered at 64 px when the window opens.
+
+- **The Details tab is no longer blank.** The exe had no `VERSIONINFO`
+  block either, so Windows could not say what version it was, who
+  published it or what it does — and neither could anyone deciding
+  whether to trust an unsigned binary. It now names the product, the
+  version, the company and the licence.
+
+### Changed
+
+- Release CI renders the Windows icon with `cargo xtask assets
+  icon-ico` instead of converting a PNG with ImageMagick. Every size
+  comes straight off the vector mark rather than being box-filtered
+  down from one 1024 px master, and the workflow stops assuming
+  `magick` is preinstalled.
+
 ## [0.17.0] — the tray learns what is waiting
 
 ### Added — the tray can show a plug-in's work, not just its settings

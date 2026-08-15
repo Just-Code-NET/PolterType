@@ -16,6 +16,15 @@ workspace = true
 name = "poltertype"
 path = "src/main.rs"
 
+# Build-time only — neither of these is linked into the binary. They
+# put an icon and a VERSIONINFO block into `poltertype.exe`; see
+# build.rs. Unconditional rather than `[target.'cfg(windows)']`,
+# because build-dependency cfgs are evaluated against the *host* and
+# the question here is about the target.
+[build-dependencies]
+poltertype-icon = { workspace = true }
+winresource     = { workspace = true }
+
 [features]
 default = []
 ai      = ["dep:poltertype-ai"]
@@ -31,6 +40,10 @@ poltertype-popup  = { workspace = true }
 poltertype-tray   = { workspace = true }
 poltertype-autostart = { workspace = true }
 poltertype-shell  = { workspace = true }
+# The brand mark, for the Settings window's own icon. Same geometry
+# build.rs embeds into the executable — one source, so the window and
+# the Start-menu entry can never wear different marks.
+poltertype-icon   = { workspace = true }
 
 # Both poltertype-input and poltertype-layout already depend on this; we re-pull it
 # here so Cargo's feature unification keeps everyone on the same view.
