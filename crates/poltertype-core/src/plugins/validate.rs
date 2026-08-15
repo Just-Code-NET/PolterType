@@ -117,6 +117,10 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                 }
                 check_key(control.key.trim(), &control.label)?;
             }
+            ControlKind::Suggest => {
+                check_key(control.key.trim(), &control.label)?;
+                check_suggestions(m, control, "suggest")?;
+            }
             ControlKind::Toggle
             | ControlKind::Text
             | ControlKind::Number
@@ -173,6 +177,7 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                         | ControlKind::Number
                         | ControlKind::Decimal
                         | ControlKind::Choice
+                        | ControlKind::Suggest
                         | ControlKind::Strings => {}
                         other => {
                             return Err(PluginError::BadPane(format!(
@@ -188,7 +193,11 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                             control.label, field.label
                         )));
                     }
+                    if field.kind == ControlKind::Suggest {
+                        check_suggestions(m, field, "records field")?;
+                    }
                 }
+                check_row_actions(m, control)?;
             }
             // Nothing to check: we do not know what this control is, and
             // refusing a manifest for containing one would defeat the
@@ -204,6 +213,73 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
         )));
     }
 
+    Ok(())
+}
+
+/// A box that suggests has to have something to suggest — from the
+/// manifest, from a command, or from both. With neither it is a plain
+/// text box wearing a drop-down arrow that never opens.
+fn check_suggestions(
+    m: &ExtensionManifest,
+    control: &super::types::PaneControl,
+    what: &str,
+) -> Result<(), PluginError> {
+    let command = control.command.trim();
+    if !command.is_empty() && !m.commands.iter().any(|c| c.id == command) {
+        return Err(PluginError::BadPane(format!(
+            "{what} {:?} refers to unknown command {command:?}",
+            control.label
+        )));
+    }
+    if command.is_empty() && control.options.is_empty() {
+        return Err(PluginError::BadPane(format!(
+            "{what} {:?} suggests nothing — give it options, a command, or both",
+            control.label
+        )));
+    }
+    for option in &control.options {
+        if option.value().trim().is_empty() {
+            return Err(PluginError::BadPane(format!(
+                "{what} {:?} has an option with no value",
+                control.label
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Buttons on a row must run something that exists, and must know which
+/// field names the row — a `{id}` nothing fills in would run the command
+/// against the literal string, which for "send this message now" is a
+/// thing to refuse at load rather than discover at the click.
+fn check_row_actions(
+    m: &ExtensionManifest,
+    control: &super::types::PaneControl,
+) -> Result<(), PluginError> {
+    if control.actions.is_empty() {
+        return Ok(());
+    }
+    let id_field = control.id_field.trim();
+    if id_field.is_empty() {
+        return Err(PluginError::BadPane(format!(
+            "records {:?} has row actions but no id_field saying which field names a row",
+            control.label
+        )));
+    }
+    if !control.fields.iter().any(|f| f.key.trim() == id_field) {
+        return Err(PluginError::BadPane(format!(
+            "records {:?} names {id_field:?} as its id_field, which is not one of its fields",
+            control.label
+        )));
+    }
+    for action in &control.actions {
+        if !m.commands.iter().any(|c| c.id == action.command) {
+            return Err(PluginError::BadPane(format!(
+                "records {:?} action {:?} refers to unknown command {:?}",
+                control.label, action.label, action.command
+            )));
+        }
+    }
     Ok(())
 }
 

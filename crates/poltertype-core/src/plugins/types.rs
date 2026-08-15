@@ -107,7 +107,13 @@ pub struct TrayList {
     pub bulk: Vec<TrayListAction>,
 }
 
-/// One thing a [`TrayList`] can do, to a row or to all of them.
+/// One thing a runtime row can do: to a row of a [`TrayList`], to all of
+/// them, or to one card of a repeating group in the settings pane.
+///
+/// One shape for both places on purpose. What has to be identical is the
+/// substitution rule below — a row's identity reaching a command line is
+/// exactly the step where a plug-in's own output could turn into a flag,
+/// and that is not an argument worth having twice.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct TrayListAction {
@@ -330,6 +336,23 @@ pub struct PaneControl {
     pub fields: Vec<PaneControl>,
     /// Label for the button that appends a row. Empty gets "Add".
     pub add_label: String,
+
+    /// What may be done to one row of a [`ControlKind::Records`] group,
+    /// beyond editing and removing it — sending a standing message now
+    /// rather than waiting until Tuesday to find out whether it works.
+    ///
+    /// Each becomes a small button on that row's card, running the
+    /// declared command with `{id}` replaced by the row's
+    /// [`Self::id_field`]. A settings pane that can only describe an
+    /// action leaves the only way to try it in a terminal, which for a
+    /// pane that exists so the terminal is not needed is a gap rather
+    /// than a restraint.
+    pub actions: Vec<TrayListAction>,
+
+    /// Which field of a row supplies the `{id}` its [`Self::actions`]
+    /// are given. Required as soon as there is an action; a row has no
+    /// identity of its own that a plug-in would recognise.
+    pub id_field: String,
 }
 
 impl Default for PaneControl {
@@ -343,6 +366,8 @@ impl Default for PaneControl {
             command: String::new(),
             fields: Vec::new(),
             add_label: String::new(),
+            actions: Vec::new(),
+            id_field: String::new(),
         }
     }
 }

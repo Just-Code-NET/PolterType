@@ -204,20 +204,23 @@ fn reports_are_asked_for_once_and_not_on_every_draw() {
     );
     assert_eq!(
         pane.unasked_commands(),
-        vec![1],
+        vec![Slot::control(1)],
         "the report, not the toggle"
     );
 
-    pane.set_output(1, CommandOutput::Loading);
+    pane.set_output(Slot::control(1), CommandOutput::Loading);
     assert!(
         pane.unasked_commands().is_empty(),
         "asking twice would run the command twice"
     );
 
-    pane.set_output(1, CommandOutput::Ready("42 episodes".to_owned()));
+    pane.set_output(
+        Slot::control(1),
+        CommandOutput::Ready("42 episodes".to_owned()),
+    );
     assert!(pane.unasked_commands().is_empty());
     assert_eq!(
-        pane.output(1),
+        pane.output(Slot::control(1)),
         Some(&CommandOutput::Ready("42 episodes".to_owned()))
     );
     std::fs::remove_dir_all(&root).unwrap();
@@ -245,7 +248,10 @@ fn a_failed_report_is_remembered_rather_than_retried_forever() {
         }]),
         &root,
     );
-    pane.set_output(0, CommandOutput::Failed("it exited 1".to_owned()));
+    pane.set_output(
+        Slot::control(0),
+        CommandOutput::Failed("it exited 1".to_owned()),
+    );
     assert!(pane.unasked_commands().is_empty());
     std::fs::remove_dir_all(&root).unwrap();
 }
@@ -267,14 +273,14 @@ fn list_rows_are_parsed_leniently() {
         &root,
     );
     pane.set_output(
-        0,
+        Slot::control(0),
         CommandOutput::Ready(
             "code\tVS Code\t150 episodes\n\nfirefox\n  \nslack\tSlack\tnothing yet\textra\n"
                 .to_owned(),
         ),
     );
 
-    let rows = pane.list_rows(0);
+    let rows = pane.list_rows(Slot::control(0));
     assert_eq!(rows.len(), 3);
     assert_eq!(
         (rows[0].id.as_str(), rows[0].label.as_str()),
@@ -302,10 +308,10 @@ fn a_list_that_was_never_asked_has_no_rows() {
         }]),
         &root,
     );
-    assert!(pane.list_rows(0).is_empty());
+    assert!(pane.list_rows(Slot::control(0)).is_empty());
     assert_eq!(
         pane.unasked_commands(),
-        vec![0],
+        vec![Slot::control(0)],
         "and it is still to be asked"
     );
     std::fs::remove_dir_all(&root).unwrap();
@@ -372,19 +378,29 @@ fn rows_follow_the_answer_they_were_parsed_from() {
         extension(vec![control(ControlKind::List, "capture.allow_apps")]),
         &root,
     );
-    pane.set_output(0, CommandOutput::Ready("code\tVS Code\n".to_owned()));
-    assert_eq!(pane.list_rows(0).len(), 1);
+    pane.set_output(
+        Slot::control(0),
+        CommandOutput::Ready("code\tVS Code\n".to_owned()),
+    );
+    assert_eq!(pane.list_rows(Slot::control(0)).len(), 1);
 
     pane.set_output(
-        0,
+        Slot::control(0),
         CommandOutput::Ready("code\tVS Code\nslack\tSlack\n".to_owned()),
     );
-    assert_eq!(pane.list_rows(0).len(), 2, "a refresh redraws the list");
+    assert_eq!(
+        pane.list_rows(Slot::control(0)).len(),
+        2,
+        "a refresh redraws the list"
+    );
 
     // And a failure clears them: rows from a previous answer under an
     // error message would be the pane inventing a state.
-    pane.set_output(0, CommandOutput::Failed("it exited 1".to_owned()));
-    assert!(pane.list_rows(0).is_empty());
+    pane.set_output(
+        Slot::control(0),
+        CommandOutput::Failed("it exited 1".to_owned()),
+    );
+    assert!(pane.list_rows(Slot::control(0)).is_empty());
     std::fs::remove_dir_all(&root).unwrap();
 }
 
@@ -401,7 +417,10 @@ fn listed(key: &str) -> PaneControl {
         kind: ControlKind::List,
         key: key.to_owned(),
         label: key.to_owned(),
-        command: String::new(),
+        // A list without a command is refused at manifest load — it has
+        // no rows to tick — so a fixture that leaves it empty is testing
+        // a pane that cannot exist.
+        command: "rooms".to_owned(),
         ..PaneControl::default()
     }
 }
@@ -455,7 +474,7 @@ fn a_section_nobody_opened_costs_no_process() {
     assert!(pane.unasked_commands().is_empty());
 
     pane.select_section(2);
-    assert_eq!(pane.unasked_commands(), vec![3]);
+    assert_eq!(pane.unasked_commands(), vec![Slot::control(3)]);
 }
 
 #[test]
@@ -471,8 +490,14 @@ fn two_controls_on_one_command_ask_once() {
         ]),
         &root,
     );
-    assert_eq!(pane.unasked_by_command(), vec![vec![1, 2]]);
-    assert_eq!(pane.sharing_command(1), vec![1, 2]);
+    assert_eq!(
+        pane.unasked_by_command(),
+        vec![vec![Slot::control(1), Slot::control(2)]]
+    );
+    assert_eq!(
+        pane.sharing_command(Slot::control(1)),
+        vec![Slot::control(1), Slot::control(2)]
+    );
 }
 
 #[test]
@@ -502,7 +527,7 @@ fn typing_reaches_the_file_only_once_it_settles() {
 
     for prefix in ["0", "0.", "0.8", "0.85"] {
         pane.set_text(0, prefix.to_owned());
-        pane.flush_edits(Some(0));
+        pane.flush_edits(Some(&Typing::Control(0)));
         assert!(
             !pane.config_path.exists(),
             "still typing: nothing should have been written yet"
@@ -606,7 +631,7 @@ fn select_all_ticks_every_row_on_screen_in_one_write() {
         &root,
     );
     pane.set_output(
-        0,
+        Slot::control(0),
         CommandOutput::Ready("Чех\tЧех\t\n122 ОБЗ\t122 ОБЗ\tunread\n".to_owned()),
     );
 
@@ -632,5 +657,190 @@ fn select_all_with_nothing_offered_writes_nothing() {
     );
     pane.set_array_all(0, true);
     assert!(pane.status.is_none(), "{:?}", pane.status);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// A repeating group whose rows carry a name, a conversation picked from
+/// what the plug-in offers, and a button to act on one row.
+fn schedule_group() -> PaneControl {
+    PaneControl {
+        kind: ControlKind::Records,
+        key: "schedule.sends".to_owned(),
+        label: "The messages".to_owned(),
+        id_field: "name".to_owned(),
+        actions: vec![poltertype_core::plugins::TrayListAction {
+            label: "Send now".to_owned(),
+            command: "schedule-run".to_owned(),
+        }],
+        fields: vec![
+            control(ControlKind::Text, "name"),
+            PaneControl {
+                kind: ControlKind::Suggest,
+                key: "room".to_owned(),
+                label: "Conversation".to_owned(),
+                command: "chat-rooms".to_owned(),
+                ..PaneControl::default()
+            },
+        ],
+        ..PaneControl::default()
+    }
+}
+
+#[test]
+fn one_answer_serves_every_card() {
+    // Which conversations exist is a question about the chat client, not
+    // about the row. Asking it once per card is that client's sidebar
+    // read once per scheduled message.
+    let root = scratch("records-ask-once");
+    let dir = root.join("demo-plugin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "[[schedule.sends]]\nname = \"morning\"\nroom = \"Чех\"\n\n\
+         [[schedule.sends]]\nname = \"standup\"\nroom = \"\"\n",
+    )
+    .unwrap();
+
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    assert_eq!(pane.record_rows(0).len(), 2);
+    assert_eq!(
+        pane.unasked_commands(),
+        vec![Slot {
+            control: 0,
+            field: Some(1),
+            row: None,
+        }],
+        "one question for the group, not one per card"
+    );
+
+    pane.set_output(
+        Slot {
+            control: 0,
+            field: Some(1),
+            row: None,
+        },
+        CommandOutput::Ready("Чех\tЧех\tone-to-one\n122 ОБЗ\t122 ОБЗ\tgroup\n".to_owned()),
+    );
+    // …and both cards can pick from it.
+    for row in 0..2 {
+        let combo = pane.combo(Slot::field(0, row, 1)).expect("a box per card");
+        assert_eq!(combo.options(), ["Чех".to_owned(), "122 ОБЗ".to_owned()]);
+    }
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn picking_a_suggestion_writes_the_id_not_the_label() {
+    // What is picked is what is stored. A friendlier label in the list
+    // would be a box that saves something other than what it shows —
+    // and for a conversation name, one that names nobody.
+    let root = scratch("records-pick");
+    let dir = root.join("demo-plugin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "[[schedule.sends]]\nname = \"morning\"\nroom = \"\"\n",
+    )
+    .unwrap();
+
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    pane.set_output(
+        Slot {
+            control: 0,
+            field: Some(1),
+            row: None,
+        },
+        CommandOutput::Ready("Чех\tЧех (3 unread)\tone-to-one\n".to_owned()),
+    );
+    pane.set_suggestion(Slot::field(0, 0, 1), "Чех");
+
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(written.contains("room = \"Чех\""), "{written}");
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_card_with_no_name_cannot_be_acted_on() {
+    // A row action is a command run against a name the plug-in knows.
+    let root = scratch("records-id");
+    let dir = root.join("demo-plugin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "[[schedule.sends]]\nname = \"morning\"\n\n[[schedule.sends]]\nname = \"  \"\n",
+    )
+    .unwrap();
+
+    let pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    assert_eq!(pane.record_id(0, 0).as_deref(), Some("morning"));
+    assert_eq!(pane.record_id(0, 1), None);
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_message_reaches_the_file_when_it_is_finished_not_while_it_is_typed() {
+    // Every keystroke used to settle the previous one, so a message on
+    // its way to being written arrived in the plug-in's config one
+    // prefix at a time — and the plug-in reads that file to find out
+    // what it was asked to send.
+    let root = scratch("records-typing");
+    let dir = root.join("demo-plugin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "[[schedule.sends]]\nname = \"morning\"\nroom = \"\"\n",
+    )
+    .unwrap();
+
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    let held = Typing::Record {
+        control: 0,
+        row: 0,
+        field: "room".to_owned(),
+    };
+    pane.set_record_text(0, 0, "room", "Чех".to_owned());
+    pane.flush_edits(Some(&held));
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(!written.contains("Чех"), "still being typed: {written}");
+
+    // Anything else on the pane settles it.
+    pane.flush_edits(None);
+    let written = std::fs::read_to_string(&pane.config_path).unwrap();
+    assert!(written.contains("room = \"Чех\""), "{written}");
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn suggestions_are_the_manifests_first_then_the_plugins_without_repeats() {
+    let root = scratch("suggest-merge");
+    let mut pane = PluginPane::load(
+        extension(vec![PaneControl {
+            kind: ControlKind::Suggest,
+            key: "act.model.base_url".to_owned(),
+            label: "Model endpoint".to_owned(),
+            command: "endpoints".to_owned(),
+            options: vec![poltertype_core::plugins::PaneOption::Value(
+                "http://127.0.0.1:11434/v1".to_owned(),
+            )],
+            ..PaneControl::default()
+        }]),
+        &root,
+    );
+    pane.set_output(
+        Slot::control(0),
+        CommandOutput::Ready(
+            "http://127.0.0.1:11434/v1\thttp://127.0.0.1:11434/v1\tanswering\n\
+             http://127.0.0.1:11435/v1\thttp://127.0.0.1:11435/v1\tanswering\n"
+                .to_owned(),
+        ),
+    );
+    let combo = pane.combo(Slot::control(0)).unwrap();
+    assert_eq!(
+        combo.options(),
+        [
+            "http://127.0.0.1:11434/v1".to_owned(),
+            "http://127.0.0.1:11435/v1".to_owned()
+        ]
+    );
     std::fs::remove_dir_all(&root).unwrap();
 }

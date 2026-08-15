@@ -24,13 +24,13 @@
 
 use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
-    horizontal_rule,
+    combo_box, horizontal_rule,
 };
 use iced::{Alignment, Element, Length, Padding};
 use poltertype_core::plugins::{ControlKind, SettingValue};
 
 use super::enums::*;
-use super::plugin_pane::CommandOutput;
+use super::plugin_pane::{CommandOutput, Slot};
 use super::state::*;
 use super::theme::{self, FONT_BOLD, FONT_MONO};
 use super::view::section_title;
@@ -47,6 +47,10 @@ const PLUGIN_LIST_HINT: &str = "(empty — separate with commas)";
 
 /// The same for a number box, which is too narrow to say it in full.
 const PLUGIN_DEFAULT_SHORT: &str = "default";
+
+/// Placeholder for a box that suggests. It has to say both halves —
+/// that there is a list, and that you are not confined to it.
+const SUGGEST_HINT: &str = "type, or pick from the list";
 
 /// Width of the value column. Every switch, picker and number lands on
 /// the same right-hand edge — which is the whole difference between a
@@ -358,6 +362,21 @@ impl SettingsApp {
                     .into(),
             ),
 
+            // A box you can type into with the answers offered beside
+            // it. Wide, like the text box it is a better version of.
+            ControlKind::Suggest => {
+                let slot = Slot::control(index);
+                let widget =
+                    self.plugin_suggest(plugin, slot, pane.display_of(index), move |text| {
+                        Message::PluginTextChanged(plugin, index, text)
+                    });
+                let mut column = self.described(control).spacing(6).push(widget);
+                if let Some(note) = self.suggest_note(plugin, slot) {
+                    column = column.push(note);
+                }
+                column.width(Length::Fill).into()
+            }
+
             // Wide by itself: an endpoint URL or a list of host names
             // does not fit in the value column, and a box you have to
             // scroll sideways to read is worse than a wider row.
@@ -397,6 +416,97 @@ impl SettingsApp {
             .size(12)
             .color(b.warn)
             .into(),
+        }
+    }
+
+    /// A box you can type into, with what the plug-in knows of offered
+    /// beside it and narrowing as you type.
+    ///
+    /// Free text is still free text: what is typed is what is written,
+    /// and the list is a way to avoid retyping a name that is on screen
+    /// in another window rather than a set of permitted answers. A
+    /// conversation in a client that is not running has no row here, and
+    /// naming it must stay possible.
+    ///
+    /// While the plug-in has not answered — or could not be asked — this
+    /// is a plain text box rather than a dead drop-down: the value is
+    /// editable throughout, which is the whole difference between
+    /// suggestions and a choice.
+    fn plugin_suggest<'a>(
+        &'a self,
+        plugin: usize,
+        slot: Slot,
+        current: Option<String>,
+        on_typed: impl Fn(String) -> Message + 'static,
+    ) -> Element<'a, Message> {
+        let pane = &self.plugins[plugin];
+        let Some(state) = pane.combo(slot) else {
+            return TextInput::new(PLUGIN_DEFAULT, current.as_deref().unwrap_or_default())
+                .size(13)
+                .width(Length::Fill)
+                .on_input(on_typed)
+                .into();
+        };
+        combo_box(state, SUGGEST_HINT, current.as_ref(), move |picked| {
+            Message::PluginSuggestPicked(plugin, slot, picked)
+        })
+        .on_input(on_typed)
+        .size(13.0)
+        .width(Length::Fill)
+        .into()
+    }
+
+    /// What a suggestion box has to say for itself under the box.
+    ///
+    /// Only where it is worth the line. A box inside a card says nothing
+    /// while it is working — a Refresh button per card, six cards deep,
+    /// is six ways to ask one question — but it does say when the answer
+    /// failed, because "nothing is offered" and "the client is not
+    /// running" look identical in an empty list.
+    fn suggest_note<'a>(&'a self, plugin: usize, slot: Slot) -> Option<Element<'a, Message>> {
+        let b = self.brand();
+        let pane = &self.plugins[plugin];
+        pane.command_id(slot)?;
+        let in_a_card = slot.row.is_some();
+        match pane.output(slot) {
+            Some(CommandOutput::Failed(why)) => Some(
+                Text::new(format!("Could not ask the plug-in: {why}"))
+                    .size(11)
+                    .color(b.warn)
+                    .width(Length::Fill)
+                    .into(),
+            ),
+            _ if in_a_card => None,
+            None | Some(CommandOutput::Loading) => Some(
+                Text::new("Asking the plug-in…")
+                    .size(11)
+                    .color(b.muted)
+                    .into(),
+            ),
+            Some(CommandOutput::Ready(_)) => Some(
+                Row::new()
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(
+                        Text::new(match pane.list_rows(slot).len() {
+                            0 => "The plug-in offered nothing — type it in.".to_owned(),
+                            n => format!("{n} offered · type to narrow, or write your own"),
+                        })
+                        .size(11)
+                        .color(b.muted),
+                    )
+                    .push(
+                        Button::new(Text::new("Refresh").size(11))
+                            .padding(Padding {
+                                top: 3.0,
+                                right: 9.0,
+                                bottom: 3.0,
+                                left: 9.0,
+                            })
+                            .on_press(Message::PluginOutputRefresh(plugin, slot)),
+                    )
+                    .into(),
+            ),
         }
     }
 
@@ -490,31 +600,52 @@ impl SettingsApp {
             );
         }
 
+        let small = Padding {
+            top: 3.0,
+            right: 8.0,
+            bottom: 3.0,
+            left: 8.0,
+        };
         for row in 0..rows.len() {
-            let mut card = Column::new().spacing(8).width(Length::Fill).push(
-                Row::new()
-                    .align_y(Alignment::Center)
-                    .push(
-                        Text::new(format!("{}", row + 1))
-                            .size(12)
-                            .font(FONT_BOLD)
-                            .color(b.muted)
-                            .width(Length::Fill),
-                    )
-                    .push(
-                        Button::new(Text::new("Remove").size(12))
-                            .style(theme::danger)
-                            .padding(Padding {
-                                top: 3.0,
-                                right: 8.0,
-                                bottom: 3.0,
-                                left: 8.0,
-                            })
-                            .on_press(Message::PluginRecordRemoved(plugin, index, row)),
-                    ),
+            // The card's own header: which one this is, what may be done
+            // to it, and then Remove — last and apart, because it is the
+            // one button here that cannot be undone.
+            let mut header = Row::new().spacing(6).align_y(Alignment::Center).push(
+                Text::new(format!("{}", row + 1))
+                    .size(12)
+                    .font(FONT_BOLD)
+                    .color(b.muted)
+                    .width(Length::Fill),
             );
-            for field in &control.fields {
-                card = card.push(self.plugin_record_field(plugin, index, row, field));
+            let named = pane.record_id(index, row).is_some();
+            for action in &control.actions {
+                let mut button = Button::new(Text::new(action.label.as_str()).size(12))
+                    .style(theme::secondary)
+                    .padding(small);
+                // A row with nothing in its naming field is a row the
+                // plug-in has never heard of. The button stays visible
+                // and stays dead, which says "fill this in" where a
+                // hidden button would say nothing at all.
+                if named {
+                    button = button.on_press(Message::PluginRecordAction(
+                        plugin,
+                        index,
+                        row,
+                        action.command.clone(),
+                    ));
+                }
+                header = header.push(button);
+            }
+            let mut card = Column::new().spacing(8).width(Length::Fill).push(
+                header.push(
+                    Button::new(Text::new("Remove").size(12))
+                        .style(theme::danger)
+                        .padding(small)
+                        .on_press(Message::PluginRecordRemoved(plugin, index, row)),
+                ),
+            );
+            for (position, field) in control.fields.iter().enumerate() {
+                card = card.push(self.plugin_record_field(plugin, index, row, position, field));
             }
             column = column.push(
                 Container::new(card)
@@ -559,6 +690,7 @@ impl SettingsApp {
         plugin: usize,
         index: usize,
         row: usize,
+        position: usize,
         field: &'a poltertype_core::plugins::PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
@@ -568,6 +700,14 @@ impl SettingsApp {
         let stored = pane.record_value(index, row, &field.key);
 
         let widget: Element<'a, Message> = match field.kind {
+            ControlKind::Suggest => {
+                let slot = Slot::field(index, row, position);
+                let key = key.clone();
+                self.plugin_suggest(plugin, slot, typed.clone(), move |text| {
+                    Message::PluginRecordTyped(plugin, index, row, key.clone(), text)
+                })
+            }
+
             ControlKind::Toggle => Checkbox::new(
                 field.label.as_str(),
                 matches!(stored, Some(SettingValue::Bool(true))),
@@ -612,7 +752,7 @@ impl SettingsApp {
             .width(Length::Fill)
             .into(),
 
-            _ => TextInput::new(PLUGIN_DEFAULT_SHORT, &typed.unwrap_or_default())
+            _ => TextInput::new(PLUGIN_DEFAULT_SHORT, typed.as_deref().unwrap_or_default())
                 .size(12)
                 .width(Length::Fill)
                 .on_input({
@@ -628,6 +768,9 @@ impl SettingsApp {
             column = column.push(Text::new(field.label.as_str()).size(11).color(b.muted));
         }
         let mut column = column.push(widget);
+        if let Some(note) = self.suggest_note(plugin, Slot::field(index, row, position)) {
+            column = column.push(note);
+        }
         if !field.help.trim().is_empty() {
             column = column.push(
                 Text::new(field.help.as_str())
@@ -730,10 +873,10 @@ impl SettingsApp {
         // Rows have to exist before "select all" means anything, and
         // while the plug-in is still being asked there is nothing to act
         // on — so the buttons appear with the boxes they act on.
-        let has_rows = !pane.list_rows(index).is_empty();
+        let has_rows = !pane.list_rows(Slot::control(index)).is_empty();
         let column = self.output_heading_with(plugin, index, control, has_rows);
 
-        let body: Element<'a, Message> = match pane.output(index) {
+        let body: Element<'a, Message> = match pane.output(Slot::control(index)) {
             None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
                 .size(12)
                 .color(b.muted)
@@ -746,7 +889,7 @@ impl SettingsApp {
                     .into()
             }
             Some(CommandOutput::Ready(_)) => {
-                let rows = pane.list_rows(index);
+                let rows = pane.list_rows(Slot::control(index));
                 if rows.is_empty() {
                     Text::new("The plug-in offered nothing to choose from.")
                         .size(12)
@@ -811,7 +954,7 @@ impl SettingsApp {
         control: &'a poltertype_core::plugins::PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
-        let state = self.plugins[plugin].output(index);
+        let state = self.plugins[plugin].output(Slot::control(index));
         let body: Element<'a, Message> = match state {
             None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
                 .size(12)
@@ -891,7 +1034,7 @@ impl SettingsApp {
             .push(
                 Button::new(Text::new("Refresh").size(11))
                     .padding(small)
-                    .on_press(Message::PluginOutputRefresh(plugin, index)),
+                    .on_press(Message::PluginOutputRefresh(plugin, Slot::control(index))),
             );
         if batch {
             heading = heading

@@ -273,12 +273,13 @@ A plug-in describes its settings; PolterType draws them. That is the
 whole isolation story on the UI side — a plug-in cannot render a pixel,
 so it cannot imitate a system prompt, PolterType's own dialogs or
 another plug-in. What it can declare is a small closed set of controls
-(toggle, choice, text, number, decimal, list-of-strings, button,
-report, list, records, section) bound to dotted keys in **its own**
-config file. Edits go through `toml_edit`, so the prose in that file —
-which is where a plug-in explains what each switch costs — survives.
+(toggle, choice, suggest, text, number, decimal, list-of-strings,
+button, report, list, records, section) bound to dotted keys in **its
+own** config file. Edits go through `toml_edit`, so the prose in that
+file — which is where a plug-in explains what each switch costs —
+survives.
 
-Five decisions worth keeping:
+Seven decisions worth keeping:
 
 - **A decimal is not a number.** TOML's integer and float are different
   types to the program reading the file back, and a plug-in expecting
@@ -321,3 +322,29 @@ Five decisions worth keeping:
   is written **empty**: the plug-in's own defaults apply to every field
   left out, and guessing at them would schedule a message at an hour
   nobody chose.
+- **A `suggest` is a text box that knows the answers, not a choice with
+  an escape hatch.** Which conversation a standing message goes to has
+  candidates — the ones the plug-in can see — but no closed set: the
+  conversation somebody wants may be in a client that is not running,
+  and a `choice` would offer no way to say so. So `suggest` is free text
+  with the candidates listed beside it, narrowing as it is typed into;
+  they come from the manifest's own `options`, from a `command` (the
+  same tab-separated rows a `list` ticks), or from both. **The row's id
+  is what gets written, never its label** — what is picked has to be
+  what is stored, and a conversation name that reads well but names
+  nobody is a message sent to nobody. While the plug-in has not answered
+  the box is a plain text box rather than a dead drop-down, because the
+  value has to stay editable throughout. The whole reason it exists: the
+  conversation names in this pane were typed by hand until it did, and a
+  name typed one character wrong is a message that never goes out.
+- **A row of a `records` group can be acted on.** A group may declare
+  `actions` and an `id_field`; each action is a button on that row's
+  card, running a declared command with `{id}` replaced by that field's
+  value — one whole argument, never pasted into one, exactly as a tray
+  list's per-row action works. Without it a settings pane can describe
+  "send this at nine on Tuesday" and offer no way to find out before
+  Tuesday whether it works, which for the one feature here that writes
+  to another person unattended is the wrong trade. A row whose naming
+  field is empty gets the button **visibly disabled** rather than
+  hidden: a command run against a nameless row is a command run against
+  nothing.

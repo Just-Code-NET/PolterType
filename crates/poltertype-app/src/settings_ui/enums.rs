@@ -6,6 +6,8 @@ use iced::widget::text_editor;
 use poltertype_core::plugins::SettingValue;
 use poltertype_layout::LayoutId;
 
+use super::plugin_pane::Slot;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
     /// Permission walkthrough. First in the list and first on open
@@ -160,6 +162,12 @@ pub enum Message {
     PluginRecordTyped(usize, usize, usize, String, String),
     PluginRecordAdded(usize, usize),
     PluginRecordRemoved(usize, usize, usize),
+    /// A button on one card of a repeating group: the plug-in, the
+    /// control, the row, and the id of the command to run. What the row
+    /// is called is read out of the row itself — the manifest says which
+    /// field names it, and the pane never invents an identity a plug-in
+    /// would not recognise.
+    PluginRecordAction(usize, usize, usize, String),
     /// Open a link a plug-in put beside one of its choices.
     ///
     /// Carries the address rather than a `&'static str` like
@@ -173,7 +181,7 @@ pub enum Message {
     /// Ask a plug-in to run a control's command again — the pane's
     /// refresh button, and what opening the pane sends for each
     /// command-backed control it has not asked for yet.
-    PluginOutputRefresh(usize, usize),
+    PluginOutputRefresh(usize, Slot),
     /// A command answered, for every control that asked for it. `Err`
     /// carries why it could not be had, which the pane shows rather
     /// than swallowing: a plug-in that cannot answer is something the
@@ -183,7 +191,10 @@ pub enum Message {
     /// the room list a chat app learns from and the one it replies in
     /// are the same rooms — and running the plug-in twice to ask the
     /// same question means reading a chat client's sidebar twice.
-    PluginOutputLoaded(usize, Vec<usize>, Result<String, String>),
+    PluginOutputLoaded(usize, Vec<Slot>, Result<String, String>),
+    /// One of a suggestion box's candidates was picked: the plug-in, the
+    /// box, and the value — which is the row's id, not its label.
+    PluginSuggestPicked(usize, Slot, String),
     /// A row of a list control was ticked or unticked: add or remove
     /// that name in the plug-in's own config array.
     PluginListToggled(usize, usize, String, bool),
