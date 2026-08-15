@@ -171,6 +171,14 @@ pub fn install_desktop_entry() {}
 /// somebody else's job — and a copy of ours in `XDG_DATA_HOME` would
 /// take precedence over theirs, which is the wrong way round for a
 /// file the package manager keeps up to date.
+///
+/// Deliberately blind to the AppImage integrators (AppImageLauncher,
+/// Gear Lever), which write their own entry under a mangled stem
+/// (`appimagekit_<hash>-poltertype.desktop`) in the same directory we
+/// do. A user who ran one gets two menu entries, both correct and both
+/// launching the same file — which is a cosmetic annoyance, where
+/// guessing at their naming and skipping wrongly is the original bug
+/// back again.
 #[cfg(target_os = "linux")]
 fn packaged_entry() -> Option<PathBuf> {
     let dirs = std::env::var("XDG_DATA_DIRS")
