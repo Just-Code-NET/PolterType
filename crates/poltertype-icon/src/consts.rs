@@ -1,4 +1,4 @@
-//! Palette and geometry of the PolterType app icon.
+//! Palette, geometry and output sizes of the PolterType app icon.
 //!
 //! Every length below is in **design units** on a 64×64 canvas — the
 //! same `viewBox` the site's `poltertype-web/public/favicon.svg` is
@@ -6,10 +6,34 @@
 //! the two marks stay identical. `render` scales them to the requested
 //! output size.
 
-use super::RoundRect;
+use crate::RoundRect;
 
 /// Side of the design canvas, in design units.
 pub(crate) const UNITS: f32 = 64.0;
+
+// ── output ────────────────────────────────────────────────────────────
+
+/// Every size baked into the `.ico`, because Windows picks a different
+/// one for the taskbar, the Start menu, Explorer's views and Alt-Tab,
+/// and scales the nearest match when the exact size is absent — which
+/// is the difference between a crisp icon and a smeared one.
+///
+/// Rendered directly at each size rather than downsampled from one
+/// large image: the sampler already anti-aliases by coverage, and a
+/// box filter over a 256 px master throws away exactly the contrast
+/// the 16 px entry needs.
+pub const ICO_SIZES: &[u32] = &[16, 32, 48, 64, 128, 256];
+
+/// Sizes at or above this go into the `.ico` PNG-compressed; smaller
+/// ones as raw DIBs. The split is the shell's own convention — a
+/// 256×256 BMP entry alone is 264 KB, and everything that reads a
+/// 256 px icon at all is new enough to decode PNG.
+pub(crate) const ICO_PNG_FROM: u32 = 256;
+
+/// Floor for [`crate::render_png`]. Below this the smile's stroke is
+/// well under a pixel and the mark stops being itself; the `.ico`'s
+/// 16 px entry is deliberate and goes through a different door.
+pub const MIN_PNG_SIZE: u32 = 32;
 
 // ── palette ───────────────────────────────────────────────────────────
 

@@ -9,8 +9,30 @@ use poltertype_core::commands::{CommandAction, UserCommand};
 use poltertype_layout::LayoutId;
 use tracing::warn;
 
+use super::consts::*;
 use super::enums::*;
 use super::state::*;
+
+/// The window's own icon: title bar, Alt-Tab and the taskbar button.
+///
+/// Drawn here rather than loaded, from the same geometry the
+/// executable's icon resource is built from — so the window and the
+/// Start-menu entry cannot end up wearing different marks. A window
+/// with no icon at all is what the shell draws its placeholder for,
+/// which was half of what issue "no icon on Windows" was about.
+///
+/// Best-effort: a window that opens with the wrong icon beats one that
+/// refuses to open.
+pub fn window_icon() -> Option<iced::window::Icon> {
+    let px = WINDOW_ICON_PX;
+    match iced::window::icon::from_rgba(poltertype_icon::rasterise(px), px, px) {
+        Ok(icon) => Some(icon),
+        Err(e) => {
+            warn!(?e, "could not build the window icon; using the shell's");
+            None
+        }
+    }
+}
 
 /// Banner text for the explicit per-pane Save button outcome.
 pub fn banner_for_wordlist_save(outcome: WordlistFlushOutcome) -> SaveBanner {

@@ -62,7 +62,13 @@ cargo xtask wordlists fetch # re-fetch + Hunspell-expand bundled dictionaries
 cargo xtask hooks install   # see below
 cargo xtask hooks uninstall
 cargo xtask assets icon-png <out> [--size N]   # render the app icon (the PolterType mark)
+cargo xtask assets icon-ico <out>              # …as a multi-size Windows .ico
 ```
+
+`poltertype.exe` embeds its own copy of that icon at build time (see
+`crates/poltertype-app/build.rs`), so these two commands are for the
+*installers* — the Windows one only needs `.ico` for the Add/Remove
+Programs entry.
 
 ## Git hooks (one-time per clone)
 

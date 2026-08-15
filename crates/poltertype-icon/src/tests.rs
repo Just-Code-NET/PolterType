@@ -1,4 +1,4 @@
-use super::*;
+use crate::*;
 
 const N: u32 = 256;
 
@@ -14,7 +14,7 @@ fn at(buf: &[u8], size: u32, u: f32, v: f32) -> [u8; 4] {
 #[test]
 fn rejects_sizes_too_small_to_carry_the_mark() {
     let out = std::path::Path::new("unused.png");
-    assert!(render_app_icon(31, out).is_err());
+    assert!(render_png(MIN_PNG_SIZE - 1, out).is_err());
 }
 
 #[test]
