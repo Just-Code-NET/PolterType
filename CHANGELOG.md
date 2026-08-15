@@ -4,6 +4,54 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.17.1
+
+### Fixed
+
+- **The Settings window now wears the mark on Linux too.** 0.17.1 gave
+  it an icon; on a Wayland session that icon never arrived. Two things
+  were in the way, and neither was the icon itself — the AppImage has
+  shipped `poltertype.png` all along.
+
+  The window declared no application id. `iced` passes one to winit
+  whether or not you set it, so ours went out as the empty string: an
+  empty Wayland `app_id`, and an empty X11 `WM_CLASS` — which is worse
+  than omitting it, because winit's fallback to the binary's own name
+  runs only when nothing is passed at all. Measured on Hyprland,
+  `hyprctl clients` reported `class: ""`. Pinning, grouping and every
+  "which app is this window?" question had nothing to go on.
+
+  And on Wayland the app id is the *only* route an icon has: the
+  protocol has no window icon, so the compositor looks the app up in
+  the installed `.desktop` entries instead — which is why winit
+  implements setting one there as an empty function. The window now
+  declares `poltertype`, matching the entry every Linux package
+  installs.
+
+- **A downloaded AppImage installs its own desktop entry.** Nothing in
+  the un-packaged path ever put a file where the desktop looks, so a
+  user who did what the site says — download, `chmod +x`, run — had no
+  menu entry and no icon anywhere. PolterType now writes
+  `poltertype.desktop` and the mark at five sizes into
+  `$XDG_DATA_HOME` at startup, rendered from the same geometry as the
+  Windows resource and the macOS `.icns`. It steps aside when a
+  distribution package already installed one, rewrites only when the
+  entry is missing or stamped with an older version, and points `Exec`
+  at the AppImage the user downloaded rather than at the temporary
+  mount it is running from.
+
+- **The autostart entry and desktop notifications name an icon.** Both
+  drew a placeholder for the same reason — there was no installed icon
+  to name. There is now.
+
+### Notes
+
+- macOS was checked and needed nothing: the `.app` carries
+  `AppIcon.icns` at ten sizes, `CFBundleIconFile` names it, and
+  `LSUIElement` keeps the app out of the Dock and the app switcher on
+  purpose, so the surfaces that showed a placeholder on Windows do not
+  exist there.
+
 ## [0.17.1] — the app gets a face on Windows
 
 ### Fixed

@@ -87,6 +87,7 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
                 poltertype_autostart::App {
                     id: crate::consts::APP_ID,
                     name: crate::consts::APP_NAME,
+                    icon: poltertype_shell::DESKTOP_ID,
                 },
             );
 

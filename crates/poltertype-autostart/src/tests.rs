@@ -70,12 +70,16 @@ mod linux {
             App {
                 id: "dev.opensource.poltertype",
                 name: "PolterType",
+                icon: "poltertype",
             },
             Path::new("/home/a b/poltertype"),
         );
         assert!(body.starts_with("[Desktop Entry]\n"));
         assert!(body.contains("\nName=PolterType\n"), "{body}");
         assert!(body.contains("\nExec=\"/home/a b/poltertype\"\n"), "{body}");
+        // The icon is keyed on the theme name, not the reverse-DNS id
+        // the file itself is named after.
+        assert!(body.contains("\nIcon=poltertype\n"), "{body}");
         assert!(body.contains("\nTerminal=false\n"));
         assert!(body.ends_with('\n'), "desktop entries are line-based");
     }

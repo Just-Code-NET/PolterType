@@ -61,7 +61,7 @@ copy that tree into the install location:
 
 ## What the app writes outside its own directories
 
-Everything above is data the app *reads*. Three things it *writes* sit
+Everything above is data the app *reads*. Four things it *writes* sit
 outside both the data and config directories, so they are easy to miss
 when auditing what PolterType leaves on a machine:
 
@@ -70,11 +70,20 @@ when auditing what PolterType leaves on a machine:
 | Autostart entry | macOS `~/Library/LaunchAgents/dev.opensource.poltertype.plist`<br>Windows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `dev.opensource.poltertype`<br>Linux `$XDG_CONFIG_HOME/autostart/dev.opensource.poltertype.desktop` | `[general].autostart` is true, refreshed at every launch; deleted when it is false |
 | Instance lock | macOS `<config-dir>/dev.opensource.poltertype.lock` | every launch — the `single-instance` crate `flock`s a real file on macOS, unlike the abstract socket (Linux) and named mutex (Windows) it uses elsewhere, so macOS is the only platform where a file appears |
 | Staged update | `<data_local_dir>/poltertype/updates/` | see "Staged updates" below |
+| Desktop entry + icon | Linux only: `$XDG_DATA_HOME/applications/poltertype.desktop` and `$XDG_DATA_HOME/icons/hicolor/{32,48,64,128,256}x…/apps/poltertype.png` | every launch, but written only when absent, stale or stamped with an older version — and skipped entirely when a package already installed `poltertype.desktop` under `$XDG_DATA_DIRS` |
 
 None of these need elevation and none live outside the user's own
 profile. The autostart entry is derived state, never a source of
 truth: `config.toml` owns the setting, and a hand-deleted entry comes
 back on the next launch.
+
+The desktop entry is derived state too, and for a blunter reason:
+Linux is the only platform where an application's name and icon live
+in a *third file* rather than in the executable, so without one the
+Settings window has no icon at all on Wayland. Deleting it is
+harmless; the next launch writes it back. Windows and macOS write
+nothing here — their equivalent is compiled into `poltertype.exe` and
+sealed inside `poltertype.app`.
 
 ## Resolution at runtime
 

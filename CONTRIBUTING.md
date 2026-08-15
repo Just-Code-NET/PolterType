@@ -166,7 +166,8 @@ crates/
   poltertype-autostart/ library — run at login: LaunchAgent (macOS),
                       HKCU run key (Windows), XDG entry (Linux)
   poltertype-shell/   library — per-OS app-shell quirks: instance-lock
-                      identity, Dock activation policy, keycap glyphs
+                      identity, Dock activation policy, keycap glyphs,
+                      the Linux desktop entry a window's icon comes from
   poltertype-tray/    library — per-OS tray quirks (Linux: keeps the GTK
                                 backend's deprecation warning off stderr)
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)

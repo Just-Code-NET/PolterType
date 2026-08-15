@@ -6,6 +6,60 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-16 — On Linux the icon comes from a third file, so we write one
+
+The Windows fix below closed one platform and immediately raised the
+question for the other two. macOS turned out to be clean: the DMG's
+bundle carries `Resources/AppIcon.icns`, `CFBundleIconFile` names it,
+and `LSUIElement` keeps the app out of the Dock and the app switcher
+on purpose — the surfaces that showed a placeholder on Windows do not
+exist there. Linux was not clean, in two separate ways, and the icon
+*shipping* was never the problem: the AppImage has carried
+`usr/share/icons/hicolor/256x256/apps/poltertype.png` all along.
+
+**The window belonged to no application.** `iced` passes its
+`application_id` to winit unconditionally, and we never set one, so
+what it passed was `Some("")`. On Wayland that is an empty `app_id`;
+on X11 it is an empty `WM_CLASS`, and worse than leaving it out —
+winit's fallback to `argv[0]` runs only when nothing is passed at all.
+Measured on Hyprland before the fix, `hyprctl clients` reported
+`class: ""`.
+
+**And on Wayland an app id is the only route an icon has.** winit's
+Wayland backend implements `set_window_icon` as an empty function,
+because the protocol has no window icon: the compositor looks the app
+up by id in the installed `.desktop` entries instead. So the icon
+`window_icon()` builds — the fix from the entry below — reaches
+Windows and X11 and is dropped on the floor on Wayland.
+
+**Decision:** `poltertype-shell` gains both halves.
+`window_platform_specific()` fills in the one field the binary cannot
+name itself (the struct behind `PlatformSpecific` is a different type
+per platform, and `poltertype-app` holds no `#[cfg]`), and
+`install_desktop_entry()` writes an entry and the mark into
+`$XDG_DATA_HOME` at startup — after checking `$XDG_DATA_DIRS`, so a
+distribution package that already installed one keeps ownership. The
+entry carries an `X-PolterType-Version` stamp, which is what makes an
+ordinary launch a single read-and-compare and an upgrade a rewrite.
+
+**Why not a setting, when autostart is one.** Autostart changes what
+the machine does at login; this only answers a question the desktop is
+already asking about a window that already exists. A toggle for "may
+PolterType tell your desktop what PolterType looks like" is a config
+key nobody would ever have a reason to turn off.
+
+*Alternative considered:* set the app id and stop there, leaving the
+entry to packagers. That fixes X11 fully and Wayland only for people
+who installed from the AUR or ran an AppImage integrator — which is
+not how the download button on the site behaves.
+
+*Correction to the entry below:* it states that `poltertype-icon` is a
+build-dependency with nothing linked into the shipped binary. That
+stopped being true in the same commit, which gave the Settings window
+a runtime-rendered icon, and is now doubly untrue.
+
+---
+
 ## 2026-08-15 — The executable carries its own icon, drawn at build time
 
 A user installed the MSI and found the Start-menu entry wearing the

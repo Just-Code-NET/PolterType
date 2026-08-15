@@ -96,12 +96,15 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
             n.summary("PolterType")
                 .body(&format!("Switched to {pretty}"))
                 .appname(APP_NAME)
+                .icon(poltertype_shell::DESKTOP_ID)
                 .timeout(notify_rust::Timeout::Milliseconds(2000));
-            // `icon` is best-effort — passing an OS-specific identifier
-            // works on Linux/Windows when a matching theme icon exists,
-            // and is silently ignored otherwise. We don't ship our own
-            // installed icon yet, so leave it out and let the platform's
-            // default app-notification glyph render.
+            // `icon` names a theme entry, and there now is one:
+            // `poltertype_shell::install_desktop_entry` writes the mark
+            // into the user's `hicolor` theme at startup, and every
+            // Linux package installs it too. Ignored where the concept
+            // does not exist (macOS keys the icon on the sending app),
+            // which is why it is set unconditionally rather than
+            // behind a platform check.
             if let Err(e) = n.show() {
                 warn!(?e, layout = %to_owned, "could not show layout-change notification");
             }
@@ -140,6 +143,7 @@ pub(crate) fn spawn_dictionary_add_notification(
             n.summary(APP_NAME)
                 .body(&body)
                 .appname(APP_NAME)
+                .icon(poltertype_shell::DESKTOP_ID)
                 .timeout(notify_rust::Timeout::Milliseconds(4000));
             if let Err(e) = n.show() {
                 warn!(?e, "could not show dictionary-add notification");
@@ -164,6 +168,7 @@ pub(crate) fn spawn_error_notification(body: String) {
             n.summary(APP_NAME)
                 .body(&body)
                 .appname(APP_NAME)
+                .icon(poltertype_shell::DESKTOP_ID)
                 .timeout(notify_rust::Timeout::Milliseconds(8000));
             if let Err(e) = n.show() {
                 warn!(?e, %body, "could not show error notification");
@@ -193,6 +198,7 @@ pub(crate) fn spawn_update_notification(version: &str) {
             n.summary(APP_NAME)
                 .body(&body)
                 .appname(APP_NAME)
+                .icon(poltertype_shell::DESKTOP_ID)
                 .timeout(notify_rust::Timeout::Milliseconds(8000));
             if let Err(e) = n.show() {
                 warn!(?e, "could not show the update-ready notification");

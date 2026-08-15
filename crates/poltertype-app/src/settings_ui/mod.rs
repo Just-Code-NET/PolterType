@@ -97,6 +97,12 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
             size: iced::Size::new(860.0, 680.0),
             position: iced::window::Position::Centered,
             icon: helpers::window_icon(),
+            // Which application this window belongs to. Left at its
+            // default it is the empty string, which on Linux is not
+            // "unset" but "no application" — and there the desktop
+            // entry it names is the only place a Wayland session can
+            // find an icon at all.
+            platform_specific: poltertype_shell::window_platform_specific(),
             ..Default::default()
         });
 

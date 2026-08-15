@@ -12,7 +12,7 @@
 //! wearing last season's logo — exactly how the icon went on reading
 //! `kb` long after the rename.
 //!
-//! Three consumers, one geometry:
+//! Five consumers, one geometry:
 //!
 //! * `poltertype-app`'s build script embeds [`render_ico`]'s output as
 //!   the executable's icon resource — what Explorer, the Start menu,
@@ -21,9 +21,15 @@
 //!   Add/Remove Programs entry.
 //! * `cargo xtask assets icon-png` writes a PNG that release CI turns
 //!   into `.icns` for macOS and uses as-is for the AppImage.
+//! * The Settings window builds its own icon from [`rasterise`] when it
+//!   opens.
+//! * `poltertype-shell` renders [`render_png`] into the user's
+//!   `hicolor` theme on Linux, where an app's icon lives in a shared
+//!   directory rather than in the executable.
 //!
-//! This crate is a **build-time** dependency of the app, not a runtime
-//! one: nothing here is linked into the shipped binary.
+//! The last two make this a **runtime** dependency of the app as well
+//! as a build-time one — it was build-time only until v0.17.1 gave the
+//! Settings window an icon of its own.
 //!
 //! Swapping in a hand-designed image later is "delete `consts`,
 //! `shapes` and `render`, and decode a checked-in PNG instead" — the

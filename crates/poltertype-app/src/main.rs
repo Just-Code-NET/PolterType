@@ -170,8 +170,16 @@ fn main() -> Result<()> {
         poltertype_autostart::App {
             id: APP_ID,
             name: APP_NAME,
+            icon: poltertype_shell::DESKTOP_ID,
         },
     );
+
+    // Make sure the desktop can draw this app: a menu entry and an
+    // icon, written only where nothing has installed them already.
+    // Not a setting like autostart above — this changes nothing about
+    // what the machine does, and without it a Wayland session has no
+    // icon for our windows to wear at all.
+    poltertype_shell::install_desktop_entry();
 
     // ─── Layout switcher (built first so we can query active OS
     //                     layouts before loading the DB) ────────────

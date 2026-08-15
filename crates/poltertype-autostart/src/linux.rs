@@ -42,18 +42,22 @@ pub(crate) fn exec_quote(exe: &Path) -> String {
 
 pub(crate) fn desktop_body(app: App<'_>, exe: &Path) -> String {
     // `Name` lands in the DE's own "Startup Applications" list, so it
-    // is the human name, not the id. Terminal=false keeps a terminal
-    // emulator from being spawned around a tray app.
+    // is the human name, not the id — and `Icon` is what that list
+    // draws beside it, which is the only reason a NoDisplay entry has
+    // one. Terminal=false keeps a terminal emulator from being spawned
+    // around a tray app.
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
          Name={name}\n\
          Comment=Fix text typed in the wrong keyboard layout\n\
          Exec={exec}\n\
+         Icon={icon}\n\
          Terminal=false\n\
          NoDisplay=true\n\
          X-GNOME-Autostart-enabled=true\n",
         name = app.name,
+        icon = app.icon,
         exec = exec_quote(exe),
     )
 }

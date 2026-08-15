@@ -21,6 +21,13 @@ use super::state::*;
 /// with no icon at all is what the shell draws its placeholder for,
 /// which was half of what issue "no icon on Windows" was about.
 ///
+/// **Windows and X11 only, whatever it returns.** winit implements
+/// `set_window_icon` as an empty function on Wayland, where the
+/// protocol has no window icon to set: there the icon comes from the
+/// `.desktop` entry named by the window's app id, which is what
+/// `poltertype_shell::install_desktop_entry` is for. macOS has no
+/// per-window icon either — its icon is the bundle's.
+///
 /// Best-effort: a window that opens with the wrong icon beats one that
 /// refuses to open.
 pub fn window_icon() -> Option<iced::window::Icon> {

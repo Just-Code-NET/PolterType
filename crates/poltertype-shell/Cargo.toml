@@ -20,9 +20,20 @@ tracing = { workspace = true }
 # argument. `tao` already reaches the binary as the event-loop crate,
 # so this is a handle on something already linked.
 tao = { workspace = true }
+# Not the GUI, only its window-settings types: `application_id` lives
+# in a struct whose shape is per-platform, so the one line that fills
+# it in cannot be written in the binary crate. Already linked there,
+# so this costs nothing but the name.
+iced = { workspace = true }
 
 # Only the platforms whose primitive is already close-on-exec. Linux
 # binds its own abstract socket with `std` instead — see src/instance.rs
 # for why that is not a preference but a bug fix.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 single-instance = { workspace = true }
+
+# The brand mark, rendered into the user's icon theme. Linux only:
+# it is the one platform that reads an app's icon out of a shared
+# directory rather than out of the executable.
+[target.'cfg(target_os = "linux")'.dependencies]
+poltertype-icon = { workspace = true }

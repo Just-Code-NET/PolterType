@@ -76,3 +76,157 @@ fn annotation_keeps_the_name_the_config_uses() {
     // "Space (Space)".
     assert_eq!(key_name_with_glyph("Space"), "Space");
 }
+
+#[test]
+fn a_linux_window_declares_the_app_id_and_others_declare_nothing() {
+    // The regression this whole module exists for. Empty is not a
+    // neutral value here: it is passed on as an empty Wayland
+    // `app_id` and an empty X11 `WM_CLASS`, and the window ends up
+    // belonging to no application at all.
+    #[cfg(target_os = "linux")]
+    {
+        let ps = crate::window_platform_specific();
+        assert_eq!(ps.application_id, crate::DESKTOP_ID);
+        assert!(!ps.application_id.is_empty());
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // Nothing to assert about the value — the struct has no such
+        // field. What matters is that the call compiles and the binary
+        // needs no `#[cfg]` of its own to make it.
+        let _ = crate::window_platform_specific();
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod desktop {
+    use std::path::{Path, PathBuf};
+
+    use crate::DESKTOP_ID;
+    use crate::desktop::{entry_body, exec_quote};
+
+    /// The entry the AppImage and the AUR package install.
+    fn packaged_entry() -> String {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../installers/linux/poltertype.desktop");
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"))
+    }
+
+    fn keys(body: &str) -> Vec<(String, String)> {
+        body.lines()
+            .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+            .filter_map(|l| l.split_once('='))
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect()
+    }
+
+    #[test]
+    fn exec_quote_wraps_and_escapes() {
+        assert_eq!(
+            exec_quote(Path::new("/usr/bin/poltertype")),
+            "\"/usr/bin/poltertype\""
+        );
+        assert_eq!(
+            exec_quote(Path::new("/home/a b/poltertype")),
+            "\"/home/a b/poltertype\"",
+            "a space must survive inside the quotes, not split the value"
+        );
+        assert_eq!(exec_quote(Path::new(r"/tmp/a\b")), r#""/tmp/a\\b""#);
+        assert_eq!(exec_quote(Path::new("/tmp/a$b")), r#""/tmp/a\$b""#);
+        assert_eq!(exec_quote(Path::new("/tmp/a`b")), r#""/tmp/a\`b""#);
+    }
+
+    #[test]
+    fn the_written_entry_agrees_with_the_packaged_one() {
+        // Two files describe the same application to the same desktop:
+        // this one, and the one the AppImage ships. `Exec` is the only
+        // key that legitimately differs — a package can say
+        // `poltertype` because it put the binary on `PATH`, and we
+        // cannot. Anything else drifting means a user sees one name in
+        // the menu and another in the switcher depending on how they
+        // installed.
+        let ours = keys(&entry_body(&PathBuf::from("/opt/poltertype")));
+        for (key, value) in keys(&packaged_entry()) {
+            if key == "Exec" {
+                continue;
+            }
+            let mine = ours.iter().find(|(k, _)| *k == key);
+            assert_eq!(
+                mine.map(|(_, v)| v.as_str()),
+                Some(value.as_str()),
+                "key {key} disagrees with installers/linux/poltertype.desktop"
+            );
+        }
+    }
+
+    #[test]
+    fn the_entry_names_the_icon_and_the_window_with_one_id() {
+        let body = entry_body(&PathBuf::from("/home/a b/poltertype"));
+        assert!(body.starts_with("[Desktop Entry]\n"));
+        assert!(body.contains(&format!("\nIcon={DESKTOP_ID}\n")), "{body}");
+        // X11 matches a window to its entry by `WM_CLASS`. The stem
+        // already matches, but saying it outright costs one line and
+        // covers desktops that only look at this key.
+        assert!(
+            body.contains(&format!("\nStartupWMClass={DESKTOP_ID}\n")),
+            "{body}"
+        );
+        assert!(body.contains("\nExec=\"/home/a b/poltertype\"\n"), "{body}");
+        assert!(body.ends_with('\n'), "desktop entries are line-based");
+    }
+
+    #[test]
+    fn installing_writes_an_entry_and_every_icon_size_then_stops() {
+        let root = std::env::temp_dir().join(format!("pt-desktop-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let exec = PathBuf::from("/opt/poltertype/poltertype");
+
+        assert!(
+            crate::desktop::install_into(&root, &exec),
+            "the first install must write"
+        );
+
+        let entry = root.join("applications").join("poltertype.desktop");
+        assert_eq!(
+            std::fs::read_to_string(&entry).expect("entry not written"),
+            entry_body(&exec)
+        );
+        for &size in crate::desktop::HICOLOR_SIZES {
+            let icon = root
+                .join("icons/hicolor")
+                .join(format!("{size}x{size}"))
+                .join("apps")
+                .join("poltertype.png");
+            let bytes = std::fs::read(&icon).unwrap_or_else(|e| panic!("read {icon:?}: {e}"));
+            assert_eq!(
+                &bytes[..4],
+                b"\x89PNG",
+                "{icon:?} is not a PNG the desktop can read"
+            );
+        }
+
+        // The second call is what runs on every subsequent launch, and
+        // it must be a read and a compare — not five rasterisations of
+        // an icon that is already on disk.
+        assert!(
+            !crate::desktop::install_into(&root, &exec),
+            "an up-to-date install must not rewrite anything"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_body_carries_the_version_that_makes_an_upgrade_refresh_it() {
+        // Without this key an installed entry never changes, and a
+        // redrawn mark would reach new users only.
+        let body = entry_body(&PathBuf::from("/opt/poltertype"));
+        assert!(
+            body.contains(&format!(
+                "\nX-PolterType-Version={}\n",
+                env!("CARGO_PKG_VERSION")
+            )),
+            "{body}"
+        );
+    }
+}

@@ -16,4 +16,12 @@ pub struct App<'a> {
     /// Human-readable name, for the places an OS shows the entry to
     /// the user — today only the Linux `.desktop` `Name=`.
     pub name: &'a str,
+    /// Icon-theme name, for the same places — today only the Linux
+    /// `.desktop` `Icon=`. Not the same string as [`id`](Self::id):
+    /// what an icon theme is keyed on is whatever the packages
+    /// installed the mark under, which is `poltertype` and not the
+    /// reverse-DNS form. An entry with no `Icon=` at all is how the
+    /// session's "Startup Applications" list ends up showing a
+    /// placeholder next to our name.
+    pub icon: &'a str,
 }
