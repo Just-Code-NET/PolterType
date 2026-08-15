@@ -337,6 +337,12 @@ Seven decisions worth keeping:
   value has to stay editable throughout. The whole reason it exists: the
   conversation names in this pane were typed by hand until it did, and a
   name typed one character wrong is a message that never goes out.
+  Its matches are drawn **inline and bounded** — at most a handful under
+  the box, the rest counted — rather than in an overlay: iced's own
+  combo box sizes its overlay to its options, and ninety-five
+  conversations covered the whole form. Typing opens the list and
+  narrows it; a small `↓` opens it without typing. Nothing here scrolls
+  on its own, for the reason at the top of `view_plugins.rs`.
 - **A row of a `records` group can be acted on.** A group may declare
   `actions` and an `id_field`; each action is a button on that row's
   card, running a declared command with `{id}` replaced by that field's
@@ -347,4 +353,11 @@ Seven decisions worth keeping:
   to another person unattended is the wrong trade. A row whose naming
   field is empty gets the button **visibly disabled** rather than
   hidden: a command run against a nameless row is a command run against
-  nothing.
+  nothing. The button **waits for its command and shows what it
+  printed**: "did it go?" is the only question it is pressed to answer,
+  and a detached run answers it nowhere. It runs off the UI thread with
+  a deadline long enough for an action that opens another application
+  and types (90 s, against a report's 6), then refreshes the reports it
+  just invalidated — the reports only, since re-asking a conversation
+  list would wake a chat client for a press that had nothing to do with
+  it. One at a time: these steal focus.
