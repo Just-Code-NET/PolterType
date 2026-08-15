@@ -159,17 +159,22 @@ pub struct PluginPane {
     /// The rows a command-backed box is drawing, parsed once when the
     /// plug-in's answer arrives rather than re-split on every rebuild.
     rows: std::collections::HashMap<Slot, Vec<ListRow>>,
-    /// The searching state behind every suggestion box: what has been
-    /// typed into it, and which candidates that leaves.
+    /// Which suggestion box has its list open, if any.
     ///
-    /// It has to survive a rebuild — `view` runs again on every
-    /// keystroke, and a state built fresh each time would drop the
-    /// filter the keystroke was narrowing. So it is rebuilt only when
-    /// the *candidates* change, which `combo_sources` is what detects.
-    combos: std::collections::HashMap<Slot, iced::widget::combo_box::State<String>>,
-    /// What each of those states was built from, so an answer that says
-    /// the same thing twice does not clear a half-typed name.
-    combo_sources: std::collections::HashMap<Slot, Vec<String>>,
+    /// One at a time, and *inline* rather than in an overlay: the pane
+    /// draws the matches under the box, bounded to a handful of rows.
+    /// An overlay sized to its options — which is what iced's own combo
+    /// box draws — covered the entire form with ninety-five
+    /// conversations, and a list you cannot see the form behind is not a
+    /// list, it is a modal nobody asked for.
+    open_suggest: Option<Slot>,
+    /// Which card's button is running, and what came of the last one.
+    ///
+    /// A row action is the one thing a pane starts that takes seconds and
+    /// changes the world — the card says so while it runs, because a
+    /// button that goes quiet for twenty seconds reads as a button that
+    /// did nothing.
+    running_action: Option<(usize, usize)>,
     /// What each repeating-group control holds, by control index: one
     /// entry per row, each mapping the declared field names to what the
     /// file says. Cached for the same reason `arrays` is — `view`
@@ -346,7 +351,6 @@ impl PluginPane {
             self.rows.insert(slot, parse_list_rows(text));
         }
         self.outputs.insert(slot, state);
-        self.sync_combos();
     }
 
     /// What a command-backed box is showing, for the pane to draw.
@@ -365,8 +369,10 @@ impl PluginPane {
     /// The plug-in's rows contribute their **id**, never their label —
     /// what is picked is what is written, and a friendlier name in the
     /// list would be a box that stores something other than what it
-    /// shows.
-    fn suggestions(&self, slot: Slot) -> Vec<String> {
+    /// shows. The label's *detail* comes along beside it, because
+    /// "which of these ninety-five" is a question a name alone often
+    /// cannot answer.
+    pub fn suggestions(&self, slot: Slot) -> Vec<(String, String)> {
         let Some(control) = self.control(slot.control) else {
             return Vec::new();
         };
@@ -377,62 +383,69 @@ impl PluginPane {
             },
             None => control,
         };
-        let mut out: Vec<String> = declared
+        let mut out: Vec<(String, String)> = declared
             .options
             .iter()
-            .map(|o| o.value().to_owned())
+            .map(|o| (o.value().to_owned(), o.detail().to_owned()))
             .collect();
         for row in self.list_rows(slot) {
-            if !out.contains(&row.id) {
-                out.push(row.id.clone());
+            if !out.iter().any(|(seen, _)| *seen == row.id) {
+                out.push((row.id.clone(), row.detail.clone()));
             }
         }
         out
     }
 
-    /// The searching state behind one suggestion box.
-    pub fn combo(&self, slot: Slot) -> Option<&iced::widget::combo_box::State<String>> {
-        self.combos.get(&slot)
+    /// The ones worth drawing under the box right now: everything when
+    /// nothing has been typed into it, and what matches when something
+    /// has.
+    ///
+    /// Matched case-insensitively on the value, both ways round — the
+    /// same loose match every room allow-list in these plug-ins uses, so
+    /// picking from this list and typing the name by hand mean the same
+    /// thing.
+    pub fn suggestions_matching(&self, slot: Slot) -> Vec<(String, String)> {
+        let needle = self.pending(slot).unwrap_or_default().trim().to_lowercase();
+        self.suggestions(slot)
+            .into_iter()
+            .filter(|(value, _)| needle.is_empty() || value.to_lowercase().contains(&needle))
+            .collect()
     }
 
-    /// Build a searching state for every suggestion box that needs one,
-    /// and leave the rest alone.
-    ///
-    /// "Leave the rest alone" is the whole subtlety. Rebuilding a state
-    /// resets what has been typed into it, and this runs whenever an
-    /// answer arrives or a card is added — so a state is replaced only
-    /// when the candidates behind it actually changed.
-    fn sync_combos(&mut self) {
-        let mut wanted: Vec<Slot> = Vec::new();
-        for (i, control) in self.ext.manifest.pane.iter().enumerate() {
-            match control.kind {
-                ControlKind::Suggest => wanted.push(Slot::control(i)),
-                ControlKind::Records => {
-                    let rows = self.records.get(&i).map_or(0, Vec::len);
-                    for (f, field) in control.fields.iter().enumerate() {
-                        if field.kind != ControlKind::Suggest {
-                            continue;
-                        }
-                        for row in 0..rows {
-                            wanted.push(Slot::field(i, row, f));
-                        }
-                    }
-                }
-                _ => {}
+    /// What is being typed into a box, if anything — the difference
+    /// between "opened to look" and "narrowing".
+    pub fn pending(&self, slot: Slot) -> Option<String> {
+        match (slot.row, slot.field) {
+            (Some(row), Some(field)) => {
+                let key = self
+                    .control(slot.control)?
+                    .fields
+                    .get(field)
+                    .map(|f| f.key.clone())?;
+                self.record_edits.get(&(slot.control, row, key)).cloned()
             }
+            _ => self.edits.get(&slot.control).cloned(),
         }
+    }
 
-        self.combos.retain(|slot, _| wanted.contains(slot));
-        self.combo_sources.retain(|slot, _| wanted.contains(slot));
-        for slot in wanted {
-            let options = self.suggestions(slot);
-            if self.combo_sources.get(&slot) == Some(&options) {
-                continue;
-            }
-            self.combos
-                .insert(slot, iced::widget::combo_box::State::new(options.clone()));
-            self.combo_sources.insert(slot, options);
-        }
+    /// Is this box's list open? Typing opens it — narrowing a list you
+    /// cannot see is not narrowing anything.
+    pub fn suggest_open(&self, slot: Slot) -> bool {
+        self.open_suggest == Some(slot) || self.pending(slot).is_some()
+    }
+
+    /// The button beside the box, which opens the list without typing,
+    /// and closes it again.
+    pub fn toggle_suggest(&mut self, slot: Slot) {
+        self.open_suggest = if self.open_suggest == Some(slot) {
+            None
+        } else {
+            Some(slot)
+        };
+    }
+
+    pub fn close_suggest(&mut self) {
+        self.open_suggest = None;
     }
 
     /// Re-read every list control's array from the plug-in's config.
@@ -504,10 +517,10 @@ impl PluginPane {
             edits: std::collections::HashMap::new(),
             arrays: std::collections::HashMap::new(),
             rows: std::collections::HashMap::new(),
-            combos: std::collections::HashMap::new(),
-            combo_sources: std::collections::HashMap::new(),
+            open_suggest: None,
             records: std::collections::HashMap::new(),
             record_edits: std::collections::HashMap::new(),
+            running_action: None,
         };
         pane.reload_arrays();
         pane.reload_records();
@@ -563,10 +576,6 @@ impl PluginPane {
                 (i, rows)
             })
             .collect();
-        // A card that has just appeared needs a searching state; one
-        // that has just gone must not leave a stale one behind for the
-        // card that shifted up into its place.
-        self.sync_combos();
     }
 
     /// The rows a repeating group is drawing.
@@ -592,6 +601,38 @@ impl PluginPane {
     /// rather than text — a toggle, a chosen option.
     pub fn record_value(&self, index: usize, row: usize, field: &str) -> Option<SettingValue> {
         self.records.get(&index)?.get(row)?.get(field)?.clone()
+    }
+
+    /// The report controls on screen, one slot each.
+    ///
+    /// What to re-ask after a row action: a report is the plug-in
+    /// describing state that the action just changed. A conversation
+    /// list is not — re-asking one reads a chat client's sidebar, and a
+    /// button press about a scheduled message is no reason to do that.
+    pub fn reports_on_screen(&self) -> Vec<Slot> {
+        self.ext
+            .manifest
+            .pane
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| c.kind == ControlKind::Report && self.is_visible(*i))
+            .map(|(i, _)| Slot::control(i))
+            .collect()
+    }
+
+    /// Is this card's button running right now?
+    pub fn action_running(&self, index: usize, row: usize) -> bool {
+        self.running_action == Some((index, row))
+    }
+
+    /// Anything running at all — one at a time, because these steal
+    /// focus and two of them would type into each other's window.
+    pub fn any_action_running(&self) -> bool {
+        self.running_action.is_some()
+    }
+
+    pub fn set_action_running(&mut self, running: Option<(usize, usize)>) {
+        self.running_action = running;
     }
 
     /// What one card calls itself: the value of the field the manifest
@@ -699,8 +740,9 @@ impl PluginPane {
                     // searching box would go on showing what was being
                     // looked for in the card above it.
                     self.record_edits.retain(|(i, _, _), _| *i != index);
-                    self.combos.retain(|slot, _| slot.control != index);
-                    self.combo_sources.retain(|slot, _| slot.control != index);
+                    // The list that was open belonged to a card that has
+                    // just shifted; it would reopen under the wrong one.
+                    self.open_suggest = None;
                     self.reload_records();
                 }
             }

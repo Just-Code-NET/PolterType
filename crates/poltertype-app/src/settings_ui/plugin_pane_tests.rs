@@ -723,8 +723,12 @@ fn one_answer_serves_every_card() {
     );
     // …and both cards can pick from it.
     for row in 0..2 {
-        let combo = pane.combo(Slot::field(0, row, 1)).expect("a box per card");
-        assert_eq!(combo.options(), ["Чех".to_owned(), "122 ОБЗ".to_owned()]);
+        let offered: Vec<String> = pane
+            .suggestions(Slot::field(0, row, 1))
+            .into_iter()
+            .map(|(value, _)| value)
+            .collect();
+        assert_eq!(offered, ["Чех".to_owned(), "122 ОБЗ".to_owned()]);
     }
     std::fs::remove_dir_all(&root).unwrap();
 }
@@ -834,13 +838,111 @@ fn suggestions_are_the_manifests_first_then_the_plugins_without_repeats() {
                 .to_owned(),
         ),
     );
-    let combo = pane.combo(Slot::control(0)).unwrap();
+    let offered: Vec<String> = pane
+        .suggestions(Slot::control(0))
+        .into_iter()
+        .map(|(value, _)| value)
+        .collect();
     assert_eq!(
-        combo.options(),
+        offered,
         [
             "http://127.0.0.1:11434/v1".to_owned(),
             "http://127.0.0.1:11435/v1".to_owned()
         ]
     );
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn typing_narrows_the_list_and_opens_it() {
+    // The list is drawn under the box, so narrowing something you cannot
+    // see is not narrowing anything: typing opens it.
+    let root = scratch("suggest-narrow");
+    let dir = root.join("demo-plugin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "[[schedule.sends]]\nname = \"morning\"\nroom = \"\"\n",
+    )
+    .unwrap();
+
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    let field = Slot {
+        control: 0,
+        field: Some(1),
+        row: None,
+    };
+    pane.set_output(
+        field,
+        CommandOutput::Ready(
+            "Чех\tЧех\tone-to-one\n122 ОБЗ\t122 ОБЗ\tgroup\nБронза\tБронза\tgroup\n".to_owned(),
+        ),
+    );
+    let slot = Slot::field(0, 0, 1);
+    assert!(!pane.suggest_open(slot), "closed until asked for");
+    assert_eq!(pane.suggestions_matching(slot).len(), 3, "all of them");
+
+    pane.set_record_text(0, 0, "room", "ОБ".to_owned());
+    assert!(pane.suggest_open(slot), "typing opens it");
+    let matching = pane.suggestions_matching(slot);
+    assert_eq!(matching.len(), 1);
+    assert_eq!(matching[0].0, "122 ОБЗ");
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn the_button_beside_the_box_opens_the_list_without_typing() {
+    let root = scratch("suggest-toggle");
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    let slot = Slot::field(0, 0, 1);
+    assert!(!pane.suggest_open(slot));
+    pane.toggle_suggest(slot);
+    assert!(pane.suggest_open(slot));
+    pane.toggle_suggest(slot);
+    assert!(!pane.suggest_open(slot), "and closes it again");
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn picking_closes_the_list_and_settles_the_box() {
+    // Leaving it up would leave it filtered by a name that is now the
+    // answer — a list with one thing in it.
+    let root = scratch("suggest-close");
+    let dir = root.join("demo-plugin");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        "[[schedule.sends]]\nname = \"morning\"\nroom = \"\"\n",
+    )
+    .unwrap();
+
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    let slot = Slot::field(0, 0, 1);
+    pane.set_record_text(0, 0, "room", "Че".to_owned());
+    assert!(pane.suggest_open(slot));
+
+    pane.set_suggestion(slot, "Чех");
+    pane.close_suggest();
+    assert!(
+        !pane.suggest_open(slot),
+        "the half-typed filter went with it"
+    );
+    assert_eq!(pane.record_display(0, 0, "room").as_deref(), Some("Чех"));
+    std::fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn only_one_card_may_be_acting_at_a_time() {
+    // These steal focus. Two at once would type into each other's
+    // window, so the second button is dead while the first runs.
+    let root = scratch("action-running");
+    let mut pane = PluginPane::load(extension(vec![schedule_group()]), &root);
+    assert!(!pane.any_action_running());
+    pane.set_action_running(Some((0, 1)));
+    assert!(pane.any_action_running());
+    assert!(pane.action_running(0, 1));
+    assert!(!pane.action_running(0, 0));
+    pane.set_action_running(None);
+    assert!(!pane.any_action_running());
     std::fs::remove_dir_all(&root).unwrap();
 }

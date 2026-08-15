@@ -265,6 +265,47 @@ pub fn run_command_for_row(
 /// The one argument a per-row command may have substituted.
 pub const ROW_ID_PLACEHOLDER: &str = "{id}";
 
+/// The same substitution as [`run_command_for_row`], but waiting for the
+/// answer — what a pane's own row button needs.
+///
+/// A tray entry can afford to fire and forget: the menu closes and the
+/// user is looking at whatever the plug-in does next. A button on a card
+/// cannot. "Send this message now" that produces no visible outcome
+/// leaves the one question it was pressed to answer — did it go? —
+/// answered nowhere, and the pane's report only says so after somebody
+/// thinks to press Refresh.
+///
+/// So this waits, off the UI thread, with a deadline of its own:
+/// [`ACTION_TIMEOUT`] rather than a report's six seconds, because the
+/// action behind such a button is not a query. Sending a standing
+/// message opens a chat client, waits for the conversation to switch and
+/// types a sentence at human speed.
+pub fn run_command_for_row_waiting(
+    ext: &DiscoveredExtension,
+    command_id: &str,
+    row_id: &str,
+) -> Result<String, String> {
+    let cmd = ext
+        .manifest
+        .commands
+        .iter()
+        .find(|c| c.id == command_id)
+        .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
+    let args: Vec<String> = cmd
+        .args
+        .iter()
+        .map(|a| {
+            if a == ROW_ID_PLACEHOLDER {
+                row_id.to_owned()
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+    info!(id = %ext.id, command = %command_id, row = %row_id, "plug-in row action running");
+    capture_output(ext, &args, ACTION_TIMEOUT, "row action")
+}
+
 /// Ask a plug-in for the rows of one of its runtime menus.
 ///
 /// Waited on with a deadline, like the state read and for the same
@@ -418,6 +459,13 @@ const STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1_50
 /// the answer may cost real work. Still bounded: a pane that says "it
 /// did not answer" is honest, one that never renders is not.
 const REPORT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// How long a row's own button gets. Much longer than a report, because
+/// it is not a query: the action behind one may steal focus, wait for
+/// another application to switch conversation, and type a sentence at
+/// human speed. Bounded all the same — a button that can hang for ever
+/// is a pane that can never say what happened.
+const ACTION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(90);
 
 fn spawn(
     exe: &PathBuf,

@@ -24,7 +24,7 @@
 
 use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
-    combo_box, horizontal_rule,
+    horizontal_rule,
 };
 use iced::{Alignment, Element, Length, Padding};
 use poltertype_core::plugins::{ControlKind, SettingValue};
@@ -48,9 +48,13 @@ const PLUGIN_LIST_HINT: &str = "(empty — separate with commas)";
 /// The same for a number box, which is too narrow to say it in full.
 const PLUGIN_DEFAULT_SHORT: &str = "default";
 
-/// Placeholder for a box that suggests. It has to say both halves —
-/// that there is a list, and that you are not confined to it.
-const SUGGEST_HINT: &str = "type, or pick from the list";
+/// How many suggestions are drawn under a box at once.
+///
+/// Enough to browse, few enough that the form under it stays on screen.
+/// The rest are counted, not scrolled — this pane has exactly one
+/// scrolling region, and typing reaches them faster than a scrollbar
+/// would.
+const SUGGEST_ROWS: usize = 8;
 
 /// Width of the value column. Every switch, picker and number lands on
 /// the same right-hand edge — which is the whole difference between a
@@ -419,8 +423,8 @@ impl SettingsApp {
         }
     }
 
-    /// A box you can type into, with what the plug-in knows of offered
-    /// beside it and narrowing as you type.
+    /// A box you can type into, with what the plug-in knows of listed
+    /// under it and narrowing as you type.
     ///
     /// Free text is still free text: what is typed is what is written,
     /// and the list is a way to avoid retyping a name that is on screen
@@ -428,10 +432,14 @@ impl SettingsApp {
     /// conversation in a client that is not running has no row here, and
     /// naming it must stay possible.
     ///
-    /// While the plug-in has not answered — or could not be asked — this
-    /// is a plain text box rather than a dead drop-down: the value is
-    /// editable throughout, which is the whole difference between
-    /// suggestions and a choice.
+    /// **Drawn inline, and bounded.** iced's own combo box puts its
+    /// options in an overlay sized to fit them — with ninety-five
+    /// conversations that covered the entire form, which is a modal
+    /// nobody asked for. So the matches are drawn under the box, at most
+    /// [`SUGGEST_ROWS`] of them, with the remainder counted rather than
+    /// scrolled: this pane has exactly one scrolling region, and a
+    /// second bar a few pixels from the first is a wheel that moves
+    /// whichever one the pointer happened to be over.
     fn plugin_suggest<'a>(
         &'a self,
         plugin: usize,
@@ -439,21 +447,102 @@ impl SettingsApp {
         current: Option<String>,
         on_typed: impl Fn(String) -> Message + 'static,
     ) -> Element<'a, Message> {
+        let b = self.brand();
         let pane = &self.plugins[plugin];
-        let Some(state) = pane.combo(slot) else {
-            return TextInput::new(PLUGIN_DEFAULT, current.as_deref().unwrap_or_default())
+        let has_list = pane.command_id(slot).is_some() || !pane.suggestions(slot).is_empty();
+
+        let mut box_row = Row::new().spacing(6).align_y(Alignment::Center).push(
+            TextInput::new(PLUGIN_DEFAULT, current.as_deref().unwrap_or_default())
                 .size(13)
                 .width(Length::Fill)
-                .on_input(on_typed)
-                .into();
-        };
-        combo_box(state, SUGGEST_HINT, current.as_ref(), move |picked| {
-            Message::PluginSuggestPicked(plugin, slot, picked)
-        })
-        .on_input(on_typed)
-        .size(13.0)
-        .width(Length::Fill)
-        .into()
+                .on_input(on_typed),
+        );
+        if has_list {
+            // A word would be clearer than a glyph, and would also be a
+            // word on every one of these boxes. The arrow is one of the
+            // handful the bundled font actually has — see the font note
+            // in DECISIONS.
+            box_row = box_row.push(
+                Button::new(Text::new("↓").size(12))
+                    .style(theme::secondary)
+                    .padding(Padding {
+                        top: 4.0,
+                        right: 9.0,
+                        bottom: 4.0,
+                        left: 9.0,
+                    })
+                    .on_press(Message::PluginSuggestToggled(plugin, slot)),
+            );
+        }
+
+        let mut column = Column::new().spacing(4).width(Length::Fill).push(box_row);
+        if has_list && pane.suggest_open(slot) {
+            column = column.push(self.suggest_list(plugin, slot));
+        }
+        // Under the box rather than beside the label when the list is
+        // closed: this is where the eye already is.
+        if let Some(note) = self.suggest_note(plugin, slot) {
+            column = column.push(note);
+        }
+        let _ = b;
+        column.into()
+    }
+
+    /// The matches themselves: one press each, writing the value.
+    fn suggest_list<'a>(&'a self, plugin: usize, slot: Slot) -> Element<'a, Message> {
+        let b = self.brand();
+        let pane = &self.plugins[plugin];
+        let matches = pane.suggestions_matching(slot);
+        let mut list = Column::new().spacing(2).width(Length::Fill);
+
+        if matches.is_empty() {
+            list = list.push(
+                Text::new(match pane.pending(slot) {
+                    // Not an error: a name the plug-in has never seen is
+                    // exactly what this box exists to still allow.
+                    Some(_) => "Nothing here matches — what you typed is used as written.",
+                    None => "The plug-in offered nothing — type it in.",
+                })
+                .size(11)
+                .color(b.muted),
+            );
+        }
+        for (value, detail) in matches.iter().take(SUGGEST_ROWS) {
+            let mut label = Column::new()
+                .spacing(1)
+                .push(Text::new(value.clone()).size(12).color(b.ink));
+            if !detail.trim().is_empty() {
+                label = label.push(Text::new(detail.clone()).size(10).color(b.muted));
+            }
+            list = list.push(
+                Button::new(label)
+                    .style(theme::nav(false))
+                    .width(Length::Fill)
+                    .padding(Padding {
+                        top: 4.0,
+                        right: 8.0,
+                        bottom: 4.0,
+                        left: 8.0,
+                    })
+                    .on_press(Message::PluginSuggestPicked(plugin, slot, value.clone())),
+            );
+        }
+        if matches.len() > SUGGEST_ROWS {
+            list = list.push(
+                Text::new(format!(
+                    "…and {} more — type to narrow",
+                    matches.len() - SUGGEST_ROWS
+                ))
+                .size(10)
+                .color(b.muted),
+            );
+        }
+
+        Container::new(list)
+            .style(theme::card)
+            .padding(6)
+            .width(Length::Fill)
+            .into()
     }
 
     /// What a suggestion box has to say for itself under the box.
@@ -645,15 +734,27 @@ impl SettingsApp {
                     .width(Length::Fill),
             );
             let named = pane.record_id(index, row).is_some();
+            let running = pane.action_running(index, row);
             for action in &control.actions {
-                let mut button = Button::new(Text::new(action.label.as_str()).size(12))
+                // While it runs, the button says so and stops being
+                // pressable — twice is not what anybody meant by "send
+                // this now", and these steal focus, so two at once would
+                // type into each other's window. The label changes rather
+                // than the button vanishing: a control that disappears
+                // under the pointer is worse than one that waits.
+                let label = if running {
+                    format!("{}…", action.label)
+                } else {
+                    action.label.clone()
+                };
+                let mut button = Button::new(Text::new(label).size(12))
                     .style(theme::secondary)
                     .padding(small);
                 // A row with nothing in its naming field is a row the
                 // plug-in has never heard of. The button stays visible
                 // and stays dead, which says "fill this in" where a
                 // hidden button would say nothing at all.
-                if named {
+                if named && !pane.any_action_running() {
                     button = button.on_press(Message::PluginRecordAction(
                         plugin,
                         index,

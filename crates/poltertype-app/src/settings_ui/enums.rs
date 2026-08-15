@@ -168,6 +168,10 @@ pub enum Message {
     /// field names it, and the pane never invents an identity a plug-in
     /// would not recognise.
     PluginRecordAction(usize, usize, usize, String),
+    /// That button's command finished, and what it printed. Shown as the
+    /// plug-in's status line: "did it go?" is the question the button was
+    /// pressed to answer, and the answer is the plug-in's own sentence.
+    PluginRecordActionDone(usize, String, Result<String, String>),
     /// Open a link a plug-in put beside one of its choices.
     ///
     /// Carries the address rather than a `&'static str` like
@@ -195,6 +199,10 @@ pub enum Message {
     /// One of a suggestion box's candidates was picked: the plug-in, the
     /// box, and the value — which is the row's id, not its label.
     PluginSuggestPicked(usize, Slot, String),
+    /// Show, or stop showing, what a box has to suggest. Typing opens
+    /// the list on its own; this is the way to open it without typing,
+    /// and the way to put it away again.
+    PluginSuggestToggled(usize, Slot),
     /// A row of a list control was ticked or unticked: add or remove
     /// that name in the plug-in's own config array.
     PluginListToggled(usize, usize, String, bool),

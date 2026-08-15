@@ -431,3 +431,51 @@ pub fn key_to_string(key: &Key) -> String {
         other => format!("{other:?}"),
     }
 }
+
+/// The first few lines of what a plug-in printed, for a status line.
+///
+/// A status line is one row of a settings pane, and a command that
+/// prints a paragraph would push everything under it down the page. The
+/// tail is not lost — it is in the report the same command feeds.
+pub fn first_lines(text: &str, n: usize) -> String {
+    let kept: Vec<&str> = text
+        .lines()
+        .map(str::trim_end)
+        .filter(|l| !l.trim().is_empty())
+        .take(n)
+        .collect();
+    let total = text.lines().filter(|l| !l.trim().is_empty()).count();
+    if total > n {
+        format!("{} …", kept.join(" · "))
+    } else {
+        kept.join(" · ")
+    }
+}
+
+#[cfg(test)]
+mod status_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+    use super::first_lines;
+
+    #[test]
+    fn a_short_answer_is_shown_whole() {
+        assert_eq!(
+            first_lines("Ранкове: sent to Бронза in Element.\n", 3),
+            "Ранкове: sent to Бронза in Element."
+        );
+    }
+
+    #[test]
+    fn a_long_one_is_cut_and_says_so() {
+        // A status line is one row of a form; a command that prints a
+        // paragraph would push everything under it down the page.
+        let out = first_lines("a\nb\nc\nd\ne\n", 3);
+        assert_eq!(out, "a · b · c …");
+    }
+
+    #[test]
+    fn blank_lines_do_not_count_as_answers() {
+        assert_eq!(first_lines("\n\nsent\n\n", 3), "sent");
+    }
+}

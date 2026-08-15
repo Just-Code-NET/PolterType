@@ -105,33 +105,79 @@ impl SettingsApp {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.flush_edits(None);
                 }
-                if let Some(pane) = self.plugins.get(plugin) {
-                    match pane.record_id(index, row) {
-                        Some(id) => {
-                            if let Err(e) =
-                                crate::plugins::run_command_for_row(&pane.ext, &command, &id)
-                            {
-                                warn!("plug-in row action failed: {e}");
-                            }
-                        }
-                        // Nothing to run it against: the field the
-                        // manifest named as the row's identity is empty,
-                        // which for "send the message called X" would be
-                        // a command run against no message at all.
-                        None => {
-                            if let Some(pane) = self.plugins.get_mut(plugin) {
-                                pane.status = Some(
-                                    "This one has no name yet — give it one before acting on it."
-                                        .to_owned(),
-                                );
-                            }
-                        }
-                    }
-                }
+                let Some(pane) = self.plugins.get_mut(plugin) else {
+                    return Task::none();
+                };
+                // Nothing to run it against: the field the manifest named
+                // as the row's identity is empty, which for "send the
+                // message called X" would be a command run against no
+                // message at all.
+                let Some(id) = pane.record_id(index, row) else {
+                    pane.status = Some(
+                        "This one has no name yet — give it one before acting on it.".to_owned(),
+                    );
+                    return Task::none();
+                };
+                pane.set_action_running(Some((index, row)));
+                pane.status = Some(format!("Running “{id}”…"));
+                let ext = pane.ext.clone();
+
+                // Waited on, off the UI thread. The action behind such a
+                // button steals focus, switches somebody else's chat
+                // client and types a sentence — seconds, not
+                // milliseconds — and the whole reason it is here is to be
+                // watched once.
+                let (tx, rx) = iced::futures::channel::oneshot::channel();
+                let handed = id.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(crate::plugins::run_command_for_row_waiting(
+                        &ext, &command, &handed,
+                    ));
+                });
+                return Task::perform(
+                    async move {
+                        rx.await
+                            .unwrap_or_else(|_| Err("the action task went away".to_owned()))
+                    },
+                    move |outcome| Message::PluginRecordActionDone(plugin, id.clone(), outcome),
+                );
+            }
+            Message::PluginRecordActionDone(plugin, id, outcome) => {
+                let refresh = {
+                    let Some(pane) = self.plugins.get_mut(plugin) else {
+                        return Task::none();
+                    };
+                    pane.set_action_running(None);
+                    pane.status = Some(match &outcome {
+                        // The plug-in's own words, not ours. It is the
+                        // only thing here that knows whether the message
+                        // went, and it says so in a sentence written for
+                        // a person.
+                        Ok(text) if !text.trim().is_empty() => first_lines(text, 3),
+                        Ok(_) => format!("“{id}” finished without saying anything."),
+                        Err(why) => format!("“{id}” could not be run: {why}"),
+                    });
+                    // Whatever the plug-in reports about this group is now
+                    // out of date — it just changed it. Only the reports:
+                    // re-asking a conversation list would read a chat
+                    // client's sidebar for a button press that had
+                    // nothing to do with it.
+                    pane.reports_on_screen()
+                };
+                return self.load_output(plugin, refresh);
             }
             Message::PluginSuggestPicked(plugin, slot, value) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.set_suggestion(slot, &value);
+                    // Picking is the end of choosing. Leaving the list up
+                    // would leave it filtered by a name that is now the
+                    // answer, which reads as a list with one thing in it.
+                    pane.close_suggest();
+                }
+            }
+            Message::PluginSuggestToggled(plugin, slot) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.toggle_suggest(slot);
                 }
             }
             Message::PluginSectionSelected(plugin, index) => {
