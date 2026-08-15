@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use super::enums::*;
 use super::helpers::*;
-use super::plugin_pane::CommandOutput;
+use super::plugin_pane::{CommandOutput, Slot, Typing};
 use super::state::*;
 
 impl SettingsApp {
@@ -25,11 +25,22 @@ impl SettingsApp {
         // the window, which is why this sits above the match rather
         // than in each arm. See [`PluginPane::flush_edits`].
         let typing = match &msg {
-            Message::PluginTextChanged(plugin, control, _) => Some((*plugin, *control)),
+            Message::PluginTextChanged(plugin, control, _) => {
+                Some((*plugin, Typing::Control(*control)))
+            }
+            Message::PluginRecordTyped(plugin, control, row, field, _) => Some((
+                *plugin,
+                Typing::Record {
+                    control: *control,
+                    row: *row,
+                    field: field.clone(),
+                },
+            )),
             _ => None,
         };
         for (i, pane) in self.plugins.iter_mut().enumerate() {
-            pane.flush_edits(typing.filter(|(p, _)| *p == i).map(|(_, c)| c));
+            let held = typing.as_ref().filter(|(p, _)| *p == i).map(|(_, t)| t);
+            pane.flush_edits(held);
         }
 
         match msg {
@@ -86,6 +97,43 @@ impl SettingsApp {
                     pane.remove_record(index, row);
                 }
             }
+            // A row's own button. Everything typed settles first: the
+            // plug-in reads its config file to find out what it was
+            // asked to do, so a message still sitting in a text box
+            // would be a message it is not going to send.
+            Message::PluginRecordAction(plugin, index, row, command) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.flush_edits(None);
+                }
+                if let Some(pane) = self.plugins.get(plugin) {
+                    match pane.record_id(index, row) {
+                        Some(id) => {
+                            if let Err(e) =
+                                crate::plugins::run_command_for_row(&pane.ext, &command, &id)
+                            {
+                                warn!("plug-in row action failed: {e}");
+                            }
+                        }
+                        // Nothing to run it against: the field the
+                        // manifest named as the row's identity is empty,
+                        // which for "send the message called X" would be
+                        // a command run against no message at all.
+                        None => {
+                            if let Some(pane) = self.plugins.get_mut(plugin) {
+                                pane.status = Some(
+                                    "This one has no name yet — give it one before acting on it."
+                                        .to_owned(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Message::PluginSuggestPicked(plugin, slot, value) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set_suggestion(slot, &value);
+                }
+            }
             Message::PluginSectionSelected(plugin, index) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.select_section(index);
@@ -107,22 +155,22 @@ impl SettingsApp {
                     pane.set_array_all(control, on);
                 }
             }
-            Message::PluginOutputRefresh(plugin, control) => {
+            Message::PluginOutputRefresh(plugin, slot) => {
                 let sharing = self
                     .plugins
                     .get(plugin)
-                    .map(|p| p.sharing_command(control))
+                    .map(|p| p.sharing_command(slot))
                     .unwrap_or_default();
                 return self.load_output(plugin, sharing);
             }
-            Message::PluginOutputLoaded(plugin, controls, outcome) => {
+            Message::PluginOutputLoaded(plugin, slots, outcome) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     let state = match outcome {
                         Ok(text) => CommandOutput::Ready(text),
                         Err(why) => CommandOutput::Failed(why),
                     };
-                    for control in controls {
-                        pane.set_output(control, state.clone());
+                    for slot in slots {
+                        pane.set_output(slot, state.clone());
                     }
                 }
             }
@@ -568,19 +616,20 @@ impl SettingsApp {
     /// as a message. A plain thread rather than anything cleverer: the
     /// work is one blocking wait on a child process, and the runtime
     /// under iced is not ours to assume.
-    pub(super) fn load_output(&mut self, plugin: usize, controls: Vec<usize>) -> Task<Message> {
+    pub(super) fn load_output(&mut self, plugin: usize, slots: Vec<Slot>) -> Task<Message> {
         let Some(pane) = self.plugins.get_mut(plugin) else {
             return Task::none();
         };
-        let Some(declared) = controls
+        let Some(command) = slots
             .first()
-            .and_then(|c| pane.ext.manifest.pane.get(*c))
+            .and_then(|slot| pane.command_id(*slot))
+            .map(str::to_owned)
         else {
             return Task::none();
         };
-        let (ext, command) = (pane.ext.clone(), declared.command.clone());
-        for control in &controls {
-            pane.set_output(*control, CommandOutput::Loading);
+        let ext = pane.ext.clone();
+        for slot in &slots {
+            pane.set_output(*slot, CommandOutput::Loading);
         }
 
         let (tx, rx) = iced::futures::channel::oneshot::channel();
@@ -592,7 +641,7 @@ impl SettingsApp {
                 rx.await
                     .unwrap_or_else(|_| Err("the report task went away".to_owned()))
             },
-            move |outcome| Message::PluginOutputLoaded(plugin, controls.clone(), outcome),
+            move |outcome| Message::PluginOutputLoaded(plugin, slots.clone(), outcome),
         )
     }
 

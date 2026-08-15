@@ -2,7 +2,9 @@
 
 use super::*;
 use crate::plugins::enums::PluginKind;
-use crate::plugins::types::{ExtensionManifest, PaneControl, PaneOption, PluginCommand, TrayItem};
+use crate::plugins::types::{
+    ExtensionManifest, PaneControl, PaneOption, PluginCommand, TrayItem, TrayListAction,
+};
 
 fn command(id: &str) -> PluginCommand {
     PluginCommand {
@@ -425,4 +427,99 @@ fn a_typed_list_and_a_decimal_both_need_a_key() {
             "{kind:?} without a key must be refused"
         );
     }
+}
+
+fn suggest(key: &str) -> PaneControl {
+    PaneControl {
+        kind: ControlKind::Suggest,
+        key: key.to_owned(),
+        label: key.to_owned(),
+        command: "run".to_owned(),
+        ..PaneControl::default()
+    }
+}
+
+#[test]
+fn a_box_that_suggests_must_have_something_to_suggest() {
+    // Neither a list nor a command is a plain text box wearing a
+    // drop-down arrow that never opens.
+    let m = ExtensionManifest {
+        pane: vec![PaneControl {
+            command: String::new(),
+            ..suggest("schedule.sends")
+        }],
+        ..base()
+    };
+    assert!(matches!(check_extension(&m), Err(PluginError::BadPane(_))));
+
+    // Either one on its own is enough.
+    let from_command = ExtensionManifest {
+        pane: vec![suggest("act.model.base_url")],
+        ..base()
+    };
+    assert!(check_extension(&from_command).is_ok());
+
+    let from_options = ExtensionManifest {
+        pane: vec![PaneControl {
+            command: String::new(),
+            options: vec![PaneOption::Value("weekdays 09:00".to_owned())],
+            ..suggest("act.model.base_url")
+        }],
+        ..base()
+    };
+    assert!(check_extension(&from_options).is_ok());
+}
+
+#[test]
+fn a_box_that_suggests_may_not_name_a_command_nobody_declared() {
+    let m = ExtensionManifest {
+        pane: vec![PaneControl {
+            command: "rooms".to_owned(),
+            ..suggest("schedule.room")
+        }],
+        ..base()
+    };
+    assert!(matches!(check_extension(&m), Err(PluginError::BadPane(_))));
+}
+
+fn group_with_actions(id_field: &str, command: &str) -> ExtensionManifest {
+    ExtensionManifest {
+        pane: vec![PaneControl {
+            kind: ControlKind::Records,
+            key: "schedule.sends".to_owned(),
+            label: "The messages".to_owned(),
+            id_field: id_field.to_owned(),
+            actions: vec![TrayListAction {
+                label: "Send now".to_owned(),
+                command: command.to_owned(),
+            }],
+            fields: vec![PaneControl {
+                kind: ControlKind::Text,
+                key: "name".to_owned(),
+                label: "Name".to_owned(),
+                ..PaneControl::default()
+            }],
+            ..PaneControl::default()
+        }],
+        ..base()
+    }
+}
+
+#[test]
+fn a_row_action_must_know_what_the_row_is_called() {
+    // `{id}` with nothing to fill it in would run "send the message
+    // called X" against the literal string.
+    assert!(check_extension(&group_with_actions("name", "run")).is_ok());
+    assert!(matches!(
+        check_extension(&group_with_actions("", "run")),
+        Err(PluginError::BadPane(_))
+    ));
+    assert!(matches!(
+        check_extension(&group_with_actions("title", "run")),
+        Err(PluginError::BadPane(_))
+    ));
+    assert!(matches!(
+        check_extension(&group_with_actions("name", "send")),
+        Err(PluginError::BadPane(_))
+    ));
 }

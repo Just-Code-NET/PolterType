@@ -54,6 +54,24 @@ pub enum ControlKind {
     Choice,
     /// Free text, one line.
     Text,
+    /// Free text with the answers somebody is likely to want offered
+    /// beside it, in a box that narrows the list as it is typed into.
+    ///
+    /// The control for a value that has *candidates* but no closed set:
+    /// which conversation a standing message goes to, which endpoint
+    /// serves the model, when to send it. A [`Self::Choice`] would be a
+    /// lie — the conversation wanted may be in a client that is not
+    /// running, and a drop-down offers no way to say so — while a
+    /// [`Self::Text`] box makes somebody retype, exactly, a name they
+    /// can see on screen in another window. Every conversation name in
+    /// this pane was typed by hand until this existed, and a name typed
+    /// one character wrong is a message that never goes out.
+    ///
+    /// The candidates come from `options`, from `command` — the same
+    /// tab-separated rows a [`Self::List`] ticks — or from both. The
+    /// **id** is what gets written, never the label, so what is picked
+    /// is what is stored.
+    Suggest,
     /// A whole number, bound to an integer key.
     Number,
     /// A fractional number, bound to a floating-point key.
