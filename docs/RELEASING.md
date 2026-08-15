@@ -497,7 +497,59 @@ Two rules that are easy to get wrong:
 Leave open anything the release only partly addresses, and say in a
 comment which part moved.
 
-## 9. Common mistakes and how to recover
+## 9. Point the packages and the site at it (~5 min)
+
+Two things outside the release still name the *previous* version after
+you publish, and neither fails when it is wrong.
+
+### The staged packaging manifests
+
+Nothing in `packaging/` is live — every target there waits on a human
+step against a third-party system (see `packaging/README.md`) — but the
+files are reviewed and version-controlled, and a manifest carrying last
+release's checksum is a bug waiting for the day somebody publishes it.
+Take the checksums from the manifest you just signed, not from a fresh
+download:
+
+```bash
+gh release view "v$NEW" --json assets --jq '.assets[].name'
+curl -sL "https://github.com/Just-Code-NET/PolterType/releases/download/v$NEW/latest.json"
+```
+
+Update, in one `packaging: point the manifests at v$NEW` commit:
+
+| File | What moves |
+|---|---|
+| `packaging/aur/poltertype/PKGBUILD` | `pkgver` |
+| `packaging/aur/poltertype-bin/PKGBUILD` | `pkgver`, and `sha256sums[0]` — the **x86_64 AppImage** |
+| `packaging/homebrew/poltertype.rb` | `version`, `sha256` — the **DMG** (the URL interpolates `#{version}`) |
+| `packaging/winget/*.yaml` | `PackageVersion` in all three, plus `InstallerUrl`, `InstallerSha256` (**uppercase hex**) and `ReleaseDate` in the installer manifest |
+
+### The site's fallback version pin
+
+`poltertype-web` resolves the latest tag from the GitHub API **at build
+time**, so in principle it follows the release on its own — the `Site`
+workflow fires a Vercel deploy hook the moment you publish. In practice
+that call is anonymous and rate-limited per build IP, and when it is
+throttled the build silently ships `FALLBACK_VERSION` from
+`src/lib/app-release.ts` instead. That is not hypothetical: on **v0.17.1
+the release-triggered rebuild fell back to the pin**, and poltertype.com
+went on offering 0.17.0 with nothing anywhere reporting a failure.
+
+So the pin is not a backstop, it is what half the builds actually
+advertise. Bump it every release, in its own commit in the site's own
+repo (`web: pin the fallback version to v$NEW`), and **check the live
+page afterwards** — that check is the only thing that catches a build
+which quietly disagreed with you:
+
+```bash
+curl -s "https://poltertype.com?cb=$RANDOM" | grep -o '0\.[0-9]*\.[0-9]*' | sort -u
+```
+
+If the release changed a user-visible claim, that copy change goes in
+the same commit — the site may only promise what the app does.
+
+## 10. Common mistakes and how to recover
 
 **Shipped with stale docs.** The most common one, and the only
 one on this list that nothing will ever warn you about. There is
@@ -585,6 +637,12 @@ gh release edit "v$NEW" --draft=false
 # 9. Close what this release fixed — after publishing, not before.
 #    A comment saying "fixed in vX" is not a close.
 gh issue list --state open
+
+# 10. Point the staged packaging manifests at the new version, and
+#     bump the site's fallback pin in its own repo. The pin is not a
+#     backstop: a rate-limited build ships it, and on v0.17.1 that is
+#     exactly what the site advertised. Check the live page after.
+curl -s "https://poltertype.com?cb=$RANDOM" | grep -o '0\.[0-9]*\.[0-9]*' | sort -u
 ```
 
 [release-yml]: ../.github/workflows/release.yml
