@@ -155,7 +155,11 @@ impl SettingsApp {
                         // a person.
                         Ok(text) if !text.trim().is_empty() => first_lines(text, 3),
                         Ok(_) => format!("“{id}” finished without saying anything."),
-                        Err(why) => format!("“{id}” could not be run: {why}"),
+                        // The plug-in usually names the row itself —
+                        // saying it twice reads as two different things
+                        // having gone wrong.
+                        Err(why) if why.contains(id.as_str()) => why.clone(),
+                        Err(why) => format!("“{id}”: {why}"),
                     });
                     // Whatever the plug-in reports about this group is now
                     // out of date — it just changed it. Only the reports:

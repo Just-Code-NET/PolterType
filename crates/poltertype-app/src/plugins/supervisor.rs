@@ -409,19 +409,31 @@ fn capture_output(
         .current_dir(&ext.dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        // Drained but never *shown* on success. A program says why it
+        // failed on stderr, and "exited with status 1" is the one
+        // sentence that tells the user nothing they can act on — while
+        // the plug-in was, one pipe away, explaining that the
+        // conversation is not on the allow-list.
+        .stderr(Stdio::piped());
     // The state read runs every time the tray menu is drawn, so a
     // console window here would flash on every click, not once at
     // startup.
     poltertype_shell::configure_child(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| e.to_string())?;
 
-    // Drained on its own thread: a plug-in printing more than a pipe
-    // buffer would block forever if we polled without reading.
-    let mut pipe = child.stdout.take().ok_or("no stdout")?;
+    // Each on its own thread: a plug-in printing more than a pipe
+    // buffer would block forever if we polled without reading, and two
+    // pipes can fill in either order.
+    let mut out_pipe = child.stdout.take().ok_or("no stdout")?;
     let reader = std::thread::spawn(move || {
         let mut buf = String::new();
-        let _ = pipe.read_to_string(&mut buf);
+        let _ = out_pipe.read_to_string(&mut buf);
+        buf
+    });
+    let mut err_pipe = child.stderr.take().ok_or("no stderr")?;
+    let err_reader = std::thread::spawn(move || {
+        let mut buf = String::new();
+        let _ = err_pipe.read_to_string(&mut buf);
         buf
     });
 
@@ -430,10 +442,19 @@ fn capture_output(
         match child.try_wait() {
             Ok(Some(status)) => {
                 let out = reader.join().unwrap_or_default();
+                let err = err_reader.join().unwrap_or_default();
                 return if status.success() {
                     Ok(out)
                 } else {
-                    Err(format!("{what} exited {status}"))
+                    // The plug-in's own sentence, unprefixed: the caller
+                    // knows what it ran, and "row action: Ранкове: …"
+                    // stacks three names in front of the one thing worth
+                    // reading. The prefix stays where there are no words
+                    // to quote and the status code is all there is.
+                    Err(match last_words(&err) {
+                        Some(why) => why,
+                        None => format!("{what} exited {status}"),
+                    })
                 };
             }
             Ok(None) if std::time::Instant::now() >= deadline => {
@@ -448,6 +469,22 @@ fn capture_output(
             Err(e) => return Err(e.to_string()),
         }
     }
+}
+
+/// The last thing a failing plug-in said, cleaned up enough to put in a
+/// sentence.
+///
+/// The *last* line rather than the first: a program that logs while it
+/// works ends with the thing that stopped it. Bounded, because this goes
+/// into a status line and a plug-in's stack trace would take the window.
+fn last_words(stderr: &str) -> Option<String> {
+    let line = stderr.lines().map(str::trim).rfind(|l| !l.is_empty())?;
+    let line = line.strip_prefix("Error: ").unwrap_or(line);
+    let mut trimmed: String = line.chars().take(160).collect();
+    if line.chars().count() > 160 {
+        trimmed.push('…');
+    }
+    Some(trimmed)
 }
 
 /// How long a plug-in gets to report its state. Short on purpose: this

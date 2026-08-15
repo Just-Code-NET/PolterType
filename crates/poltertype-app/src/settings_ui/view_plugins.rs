@@ -458,20 +458,28 @@ impl SettingsApp {
                 .on_input(on_typed),
         );
         if has_list {
-            // A word would be clearer than a glyph, and would also be a
-            // word on every one of these boxes. The arrow is one of the
-            // handful the bundled font actually has — see the font note
-            // in DECISIONS.
+            // A word, not an arrow. `↓` is in the bundled Fira Sans —
+            // and still drew an empty box here, measured on screen: what
+            // the renderer resolves `Font::DEFAULT` to is not what the
+            // file says. A glyph nobody can read is worse than four
+            // letters, and these four also say which way it goes.
             box_row = box_row.push(
-                Button::new(Text::new("↓").size(12))
-                    .style(theme::secondary)
-                    .padding(Padding {
-                        top: 4.0,
-                        right: 9.0,
-                        bottom: 4.0,
-                        left: 9.0,
+                Button::new(
+                    Text::new(if pane.suggest_open(slot) {
+                        "hide"
+                    } else {
+                        "list"
                     })
-                    .on_press(Message::PluginSuggestToggled(plugin, slot)),
+                    .size(11),
+                )
+                .style(theme::secondary)
+                .padding(Padding {
+                    top: 4.0,
+                    right: 9.0,
+                    bottom: 4.0,
+                    left: 9.0,
+                })
+                .on_press(Message::PluginSuggestToggled(plugin, slot)),
             );
         }
 
