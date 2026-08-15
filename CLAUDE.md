@@ -185,18 +185,35 @@ push, force-push, branch deletion, or anything else destructive.
 - The AI/detector pipeline is a deliberate exception — extensibility
   there is a product requirement, not over-engineering.
 
-## Known gaps (as of v0.14.3)
+## Known gaps (as of v0.17.2)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
 **Re-stamp this heading and re-verify every bullet at every release —
 `docs/RELEASING.md` step 2 makes that a blocker, not a chore.**
 
-The 0.14.3 pass re-verified the **Windows** bullets on real hardware
-and left the rest standing on their own dated evidence. Say which
-platform a pass actually covered rather than re-stamping silently: a
-heading that claims more than was checked is worse than a stale one,
-because nobody can tell which bullets it means.
+Say which platform a pass actually covered rather than re-stamping
+silently: a heading that claims more than was checked is worse than a
+stale one, because nobody can tell which bullets it means. It also went
+three releases without a stamp (0.14.3 → 0.17.2), which is what the
+sentence above exists to prevent.
+
+**What the 0.17.2 pass actually checked**, all of it re-run rather than
+recalled:
+
+- the **manifest-signature** bullet — six releases' `latest.json`
+  fetched through the live redirector, all signed, and the constant
+  flipped as a result;
+- the **Linux** desktop-integration claims — on this machine, against
+  a real Wayland session (`hyprctl clients` before and after);
+- the **macOS artefact** claims — read out of the published v0.17.1
+  DMG (`AppIcon.icns`, `Info.plist`, `_CodeSignature/`), not out of
+  Apple's documentation.
+
+Everything else — the layout tables, the key gate, focus tracking, the
+tooltip backends, the macOS runtime paths — stands on its own earlier
+dated evidence and was **not** re-run here. The 0.14.3 pass is still
+what backs the Windows bullets.
 
 - **Nine of the fifteen bundled layouts have never been typed on.**
   0.9.0 added pl, cs, el, he, tr, bg, it, pt-PT and pt-BR. The
@@ -435,28 +452,32 @@ because nobody can tell which bullets it means.
   It also strips `com.apple.quarantine` from the installed bundle —
   defensible only while the app is unsigned, and it must come out the
   day we ship notarised builds.
-- **Manifest signatures are verified but not yet required.** Since
-  0.7.0 `latest.json` carries a detached ed25519 signature, checked
-  against a key compiled into the binary before any URL in the
-  manifest is read; the private half is on the maintainer's machine
-  and never enters CI, so a compromised GitHub account cannot forge
-  it. But `poltertype-update::consts::REQUIRE_SIGNATURE` is **false**:
-  a wrong signature is refused, a *missing* one is accepted with a
-  warning, because flipping it early strands every user whose updater
-  resolves to the last unsigned manifest.
-  **Rollout state (checked 2026-08-16, live through the real
-  redirector): every release from v0.7.0 to v0.17.1 is signed, and the
-  flag was never flipped.** The condition it was waiting on — a signed
-  manifest published as `latest.json` for a full cycle, so **0.9.0 at
-  the earliest** — has been met for eight releases. Flipping is a
-  release of its own with a changelog line, because from then on a
-  forgotten signature is an outage for every updater; raise it, don't
-  slip it into an unrelated change. Until that flip,
-  **don't describe the updater as "signed" anywhere, least of all on
-  the site** — say what the README says. Signing is also a manual
-  release step (`cargo xtask manifest sign`, see `docs/RELEASING.md`),
-  which means it can be forgotten silently; that is the trade for
-  keeping the key out of CI.
+- **Manifest signatures are mandatory from v0.17.2 — which turns a
+  forgotten signing step into an outage.** This is no longer a gap in
+  the product; it is a gap in *us*, so it stays on this list. Since
+  0.7.0 `latest.json` has carried a detached ed25519 signature, checked
+  against a key compiled into the binary before any URL in the manifest
+  is read; the private half is on the maintainer's machine and never
+  enters CI, so a compromised GitHub account cannot forge it.
+  `REQUIRE_SIGNATURE` was `false` until v0.17.2 — a wrong signature
+  refused, a missing one warned about — because flipping early would
+  have stranded users whose updater still resolved to an unsigned
+  manifest.
+  **Checked live through the real redirector on 2026-08-16: every
+  release from v0.7.0 to v0.17.1 is signed.** The rollout condition (a
+  signed `latest.json` for a full cycle, so 0.9.0 at the earliest) had
+  therefore held eight times over, and the constant is now `true`.
+  What that costs: signing stays a **manual** step
+  (`cargo xtask manifest sign`, `docs/RELEASING.md` §7) because the key
+  must not be a CI secret, so publishing a release without signing it
+  is now every v0.17.2+ updater reporting "cannot update" until
+  somebody signs and re-uploads the manifest. Nothing automated checks
+  this. Builds older than v0.17.2 carry their own `false` and are
+  unaffected.
+  **The updater may now be described as verifying signed manifests —
+  the installers still may not be called signed.** Those need
+  certificates we do not hold; see `docs/CODE_SIGNING.md` and say what
+  the README says.
 - **An install that isn't ours can't self-update.** A distro package,
   a `cargo run` dev build, or a bare binary has no AppImage to swap
   (`$APPIMAGE` is unset) and no bundle to replace. Those users get a

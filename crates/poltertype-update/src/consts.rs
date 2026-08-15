@@ -69,19 +69,29 @@ pub(crate) const PAYLOAD_HEADER: &str = "poltertype-manifest-v1";
 
 /// Whether a manifest without a signature is refused.
 ///
-/// Signing and verifying land together but cannot become mandatory in
-/// the same release, since a user on that release would be checking a
-/// manifest published before anyone signed one. So the rollout is two
-/// releases:
+/// Signing and verifying landed together in v0.7.0 but could not
+/// become mandatory in the same release: a user on that build would
+/// have been checking a manifest published before anyone signed one.
+/// So the rollout was two stages, and **v0.17.2 is the second**.
 ///
-/// 1. **`false` (now)** — a signature that is *present* must verify,
-///    and a wrong one is refused loudly; a missing one warns. This is
-///    when signed manifests start being published.
-/// 2. **`true` (later)** — flip once the manifest that
-///    `releases/latest/download/latest.json` resolves to has been
-///    signed for a full release cycle. From then on an attacker who can
-///    publish a GitHub release can no longer publish an update.
+/// 1. **`false`, v0.7.0 → v0.17.1** — a signature that is *present*
+///    must verify and a wrong one is refused loudly; a missing one
+///    only warns. This is when signed manifests start being published.
+/// 2. **`true`, from v0.17.2** — every release from v0.7.0 to v0.17.1
+///    was in fact signed, checked live through the redirector, so the
+///    manifest a user's updater resolves to has carried a signature
+///    for eighteen releases. From here an attacker who can publish a
+///    GitHub release can no longer publish an update.
 ///
-/// Flipping early strands every user on "cannot update" until the next
-/// signed release. Flipping never makes the signature decorative.
-pub(crate) const REQUIRE_SIGNATURE: bool = false;
+/// **What this now costs us:** a release whose manifest nobody signs
+/// is not a warning any more, it is every updater on v0.17.2+ refusing
+/// to see it — an outage that lasts until somebody signs and re-uploads
+/// `latest.json`. Signing stays a manual step by design (the private
+/// key must not be a CI secret, since the attacker it defends against
+/// is someone who can publish a release), so the thing standing
+/// between us and that outage is `docs/RELEASING.md` §7. Nothing else
+/// checks.
+///
+/// Older builds are unaffected: they carry their own copy of this
+/// constant, still `false`, and go on accepting what they always did.
+pub(crate) const REQUIRE_SIGNATURE: bool = true;

@@ -154,16 +154,20 @@ updater is a normal (non-optional) part of the default build.
 
 Three caveats worth stating plainly:
 
-- **Signature checking is on, but not yet required.** Every download is
-  verified against the SHA-256 in the release manifest, which catches a
-  corrupted transfer or a tampered CDN — but not a compromised GitHub
-  account, since the checksum lives in the same release as the
-  installer. The manifest is now signed with an ed25519 key that is
-  *not* in CI, and the app verifies it against a public key compiled
-  into the binary. Until every published manifest has been signed for a
-  full release cycle, an *absent* signature is still accepted (a
-  **wrong** one never is), so don't read this as "signed updates" yet —
-  see [docs/DECISIONS.md](docs/DECISIONS.md) for the rollout.
+- **Updates are signed, and since v0.17.2 an unsigned one is
+  refused.** Every download is verified against the SHA-256 in the
+  release manifest, which catches a corrupted transfer or a tampered
+  CDN — but not a compromised GitHub account, since the checksum lives
+  in the same release as the installer. The manifest carries a detached
+  ed25519 signature made with a key that is *not* in CI, verified
+  against a public key compiled into the binary before any URL in the
+  manifest is read. From v0.17.2 a missing signature is an error rather
+  than a warning, which it could only become once every manifest a
+  user's updater resolves to had been signed for a full cycle — see
+  [docs/DECISIONS.md](docs/DECISIONS.md) for the rollout. Note what
+  this does *not* cover: the installers themselves are still unsigned
+  (see [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md)), so a first launch
+  still meets an OS warning.
 - **Only our own installers self-update.** If you installed from a
   distro package, or you're running a `cargo build` binary, PolterType
   won't overwrite it — those files aren't ours. You'll get a

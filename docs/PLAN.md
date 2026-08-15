@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-14 (v0.17.0).
+> Created: 2026-05-02. Last updated: 2026-08-16 (v0.17.2).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -58,6 +58,8 @@
 | 2026-07-13 | **Linux `FocusTracker`**: Hyprland IPC + X11 EWMH, identity = executable basename via `/proc`, 150 ms TTL cache. GNOME/KDE Wayland stay noop (no compositor-agnostic query). | Closes the "quietest hole" from §3.9 on the two Linux paths that can answer honestly. Details in `DECISIONS.md` (2026-07-13). |
 | 2026-07-13 | **Hook-failure alert instead of a silent tray**: menu entry → setup guide, tooltip suffix, one-shot notification. A "Run setup" button that invokes `sudo` itself was rejected. | The listener returned a descriptive error since day one; the tray just never showed it. Self-`sudo` is the scary pattern the docs warn against. |
 | 2026-07-31 | **Update manifests are signed by a human, not by CI** (ed25519, key never in Actions). Verification ships one release ahead of enforcement. | An Actions secret is readable by exactly the attacker a signature defends against. Details in `DECISIONS.md` (2026-07-31). |
+| 2026-08-16 | **Enforcement arrives: `REQUIRE_SIGNATURE = true` in 0.17.2.** Every release from 0.7.0 to 0.17.1 was signed — checked live — so the "one release ahead" condition had held eight times over. | Nothing fails while a rollout flag is `false`, which is why it sat unflipped. The cost moves to us: an unsigned release is now an outage. Details in `DECISIONS.md` (2026-08-16). |
+| 2026-08-16 | **On Linux the app installs its own `.desktop` entry and icon.** The Settings window also declares an app id, which iced was passing as `""`. | Wayland has no window icon: the compositor resolves one through the desktop entry the window's app id names, so without both the app has no icon at all. Details in `DECISIONS.md` (2026-08-16). |
 | 2026-07-31 | **The hook-failure alert opens a Setup pane, not a browser tab.** Four states, including "set up, but this session predates it". Still no self-`sudo` — the button copies the command. | A document cannot tell the user which of the two Linux failure states they are in; a probe can. |
 | 2026-07-31 | **No Flatpak, decided rather than left open.** `uinput` is not grantable short of `--device=all`, and no portal exists. | Deciding once with evidence costs less than answering the question every few months. Details in `DECISIONS.md` (2026-07-31). |
 | 2026-07-24 | **Spelling suggestions**: dictionary-driven tooltip for mistyped same-layout words (`poltertype-popup` crate, `[suggestions]`, on by default). Below-threshold layout verdicts surface as the leading tooltip entry instead of being dropped. | Extends the correction promise to plain typos with the data we already bundle. Details in `DECISIONS.md` (2026-07-24). |
@@ -726,8 +728,11 @@ install` wires `.githooks/` into a clone, and they run the same
   place to add any. `[updates].enabled = false` switches it off
   entirely. The trust boundary *was* the GitHub account that publishes
   releases; since 0.7.0 `Manifest.signature` is a real detached ed25519
-  signature, verified before any URL in the manifest is read. It is not
-  yet mandatory — see `docs/DECISIONS.md`, 2026-07-13 and 2026-07-31.
+  signature, verified before any URL in the manifest is read, and since
+  **0.17.2 a manifest without one is refused** rather than accepted
+  with a warning — so that boundary has actually moved, not just been
+  described. See `docs/DECISIONS.md`, 2026-07-13, 2026-07-31 and
+  2026-08-16.
 - **An update is never installed while the app runs.** We hold a global
   keyboard hook; the swap happens on Quit or on an explicit "Restart to
   update".

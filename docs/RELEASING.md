@@ -408,15 +408,27 @@ release built with it → only then sign with the new private key.
 Signing before that release is out means every existing install
 sees a signature it cannot check.
 
-> **Signatures are not yet mandatory.**
-> `poltertype-update`'s `REQUIRE_SIGNATURE` is `false`, so an
-> unsigned manifest still works — that is deliberate, since users
-> on older builds would otherwise be stranded. It is also why
-> forgetting to sign fails silently. Flip the constant to `true`
-> only once a signed manifest has been the published `latest.json`
-> for a full release cycle, and note the flip in the changelog:
-> from then on, a forgotten signature is an outage for everyone's
-> updater.
+> **Signatures ARE mandatory as of v0.17.2 — this step can now
+> take the update path down.**
+> `poltertype-update`'s `REQUIRE_SIGNATURE` is `true`. Until
+> v0.17.1 an unsigned manifest still worked and forgetting to sign
+> failed *silently*; from v0.17.2 it fails *loudly and for
+> everyone* — every updater on that build or newer refuses the
+> manifest and reports "cannot update" until somebody signs and
+> re-uploads `latest.json`.
+>
+> So this is no longer the step you can discover you skipped a week
+> later. Sign before you publish, and if you find a published
+> release whose `latest.json` has no `"signature"` field, fix that
+> first and worry about everything else after:
+>
+> ```bash
+> curl -sL https://github.com/Just-Code-NET/PolterType/releases/latest/download/latest.json \
+>     | grep -c '"signature"'      # must print 1
+> ```
+>
+> Older builds are unaffected — they carry their own `false` and go
+> on accepting what they always did.
 
 When the run completes:
 

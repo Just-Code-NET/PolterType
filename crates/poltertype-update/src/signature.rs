@@ -31,10 +31,11 @@
 //! rejected on both the signing and the verifying side. That is the
 //! whole ambiguity surface of the format.
 //!
-//! [`consts::REQUIRE_SIGNATURE`](crate::consts) is the rollout switch:
-//! while `false`, an unsigned manifest is accepted with a warning and a
-//! *present* signature must still verify. Flipping it can only be done
-//! once a signed release is the one users' updaters resolve to.
+//! [`consts::REQUIRE_SIGNATURE`](crate::consts) was the rollout
+//! switch, and it flipped in v0.17.2: an unsigned manifest is now
+//! refused outright, where it used to be accepted with a warning. The
+//! condition for flipping — a signed manifest being the one users'
+//! updaters actually resolve to — had held since v0.7.0.
 
 use std::collections::BTreeMap;
 
@@ -113,12 +114,11 @@ pub(crate) fn verify_with(manifest: &Manifest, key: &VerifyingKey) -> Result<(),
         if REQUIRE_SIGNATURE {
             return Err(UpdateError::UnsignedManifest);
         }
-        // Not an error yet, but it is the thing that would become one:
-        // say so at a level a bug report will carry.
-        warn!(
-            "release manifest carries no signature — accepted because this build \
-             predates mandatory signing"
-        );
+        // Unreachable while `REQUIRE_SIGNATURE` is true, which it has
+        // been since v0.17.2. Both arms stay so that turning the
+        // rollout back — the recovery path if a signing key is ever
+        // lost — is one constant, not a rewrite of this function.
+        warn!("release manifest carries no signature — accepted because signing is optional here");
         return Ok(());
     };
 

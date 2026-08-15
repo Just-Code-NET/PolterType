@@ -5,7 +5,8 @@
 > can read is not a policy — and because SignPath Foundation requires
 > one from projects it signs for.
 >
-> Last updated: 2026-08-10 (v0.14.4).
+> Last updated: 2026-08-16 (v0.17.2 — manifest signatures became
+> mandatory; nothing else on this page changed).
 
 PolterType asks for an unusual amount of trust: it reads every
 keystroke on the machine and can type. A signature is how a user checks
@@ -16,7 +17,7 @@ each signature covers and, just as importantly, what it does not.
 
 | Artifact | Signature | Status |
 |---|---|---|
-| Release manifest (`latest.json`) | detached ed25519, key on the maintainer's machine | **live since v0.7.0** |
+| Release manifest (`latest.json`) | detached ed25519, key on the maintainer's machine | **live since v0.7.0; required since v0.17.2** — an unsigned manifest is refused, not warned about |
 | Windows `.msi` | OV certificate (SignPath Foundation HSM) | **applied for** |
 | macOS `.app` | ad-hoc (`codesign --sign -`), no identity | **live since v0.14.4** — required for Accessibility to work at all, see below |
 | macOS `.dmg` / notarisation | Apple Developer ID | **not held** — no free path, see below |
@@ -76,12 +77,19 @@ trusts any download URL.
   run is what decides which key to trust.
 - **Signing happens** on the draft release, before publication, via
   `cargo xtask manifest sign`. See `docs/RELEASING.md` §7.
-- **Not yet mandatory.** `poltertype-update::consts::REQUIRE_SIGNATURE`
-  is `false`: a wrong signature is refused, a missing one is accepted
-  with a warning. It is flipped only once a signed manifest has been
-  the published `latest.json` for a full release cycle, because
-  flipping early strands every user whose updater still resolves to an
-  unsigned one.
+- **Mandatory since v0.17.2.** `poltertype-update::consts::
+  REQUIRE_SIGNATURE` is `true`: a wrong signature is refused and so is
+  a missing one. It could only flip once a signed manifest had been the
+  published `latest.json` for a full release cycle — every release from
+  v0.7.0 to v0.17.1 was signed, so the condition had held eighteen
+  times over. Builds older than v0.17.2 carry their own copy of the
+  constant, still `false`, and are unaffected.
+
+  **The cost is on us, not on users:** publishing a release and
+  forgetting to sign its manifest is now an outage for every updater on
+  v0.17.2+, until somebody signs and re-uploads `latest.json`. Signing
+  stays manual for the reason above, so `docs/RELEASING.md` §7 is the
+  only thing preventing it.
 
 ### Windows OV certificate — applied for
 

@@ -6,6 +6,50 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-16 — Manifest signatures become mandatory, eight releases late
+
+`REQUIRE_SIGNATURE` was written as a two-stage rollout with an explicit
+condition for stage two: flip once a signed manifest has been the
+published `latest.json` for a full release cycle, so **v0.9.0 at the
+earliest**. Checked live through the real redirector on 2026-08-16:
+v0.9.0, v0.12.0, v0.14.4, v0.16.0, v0.17.0 and v0.17.1 all carry a
+`"signature"`, and so does every release back to v0.7.0. The condition
+was met eight releases ago and nobody flipped the constant, because
+nothing anywhere fails while it is `false` — which is the same shape of
+silence as the entry below, in a different file.
+
+**Decision:** flip it in v0.17.2.
+
+**What we are buying.** An attacker who compromises the GitHub account
+can publish a release, and until now could publish an *update*: the
+updater accepted a manifest with no signature at all. The checksums in
+that manifest are no defence — they live in the same release as the
+installer they describe. From v0.17.2 the manifest must be signed by a
+key that has never been in CI, and is checked before any URL in it is
+read.
+
+**What it costs, stated plainly because it is now load-bearing.**
+Signing is a manual step, deliberately: the private key must not be a
+GitHub secret, since the person it defends against is exactly the
+person who can read those secrets. So publishing a release and
+forgetting to sign it is no longer a warning in somebody's log — it is
+every updater on v0.17.2 or newer refusing that release until somebody
+signs and re-uploads `latest.json`. `RELEASING.md` §7 is the whole
+mechanism preventing that, which is why this release also rewrites the
+blockquote there from "nothing fails if you skip it" to the opposite.
+
+*Alternative considered:* leave it `false` and rely on "a wrong
+signature is refused" as the real protection. That defends against a
+tampered CDN and not against the attacker the design names — anyone who
+can publish a release can also publish a manifest with the signature
+field simply absent.
+
+*Not affected:* every build older than v0.17.2 compiles its own copy of
+the constant as `false` and goes on accepting what it always did. The
+flip protects new installs forward, and strands nobody.
+
+---
+
 ## 2026-08-16 — On Linux the icon comes from a third file, so we write one
 
 The Windows fix below closed one platform and immediately raised the

@@ -4,7 +4,81 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.17.1
+## [0.17.2] — the same face on Linux, and an updater that insists
+
+### Changed — an unsigned update is now refused, not merely noted
+
+- **`REQUIRE_SIGNATURE` is `true`.** Since v0.7.0 the release manifest
+  has carried a detached ed25519 signature, made with a key that has
+  never been in CI and checked against a public key compiled into the
+  binary before any URL in the manifest is read. Until now a *wrong*
+  signature was refused and a *missing* one only warned — a two-stage
+  rollout, because the users of the release that introduced signing
+  would otherwise have been checking manifests published before anyone
+  signed one.
+
+  Stage two was due at v0.9.0 and arrives here. Every release from
+  v0.7.0 to v0.17.1 was in fact signed, verified live through the
+  `releases/latest/download/latest.json` redirector, so the condition
+  had held eighteen times before the constant moved. What it buys:
+  whoever can publish a GitHub release can no longer publish an
+  *update*, because the checksums in a manifest are no defence when
+  they ship in the same release as the file they describe.
+
+  **Builds older than v0.17.2 are unaffected** — each carries its own
+  copy of the constant, still `false`. And note what is still not
+  signed: the installers themselves. That needs certificates we do not
+  hold (`docs/CODE_SIGNING.md`), so a first launch still meets an OS
+  warning.
+
+### Added — a plug-in's settings pane can describe more than a text box
+
+- **An option that explains itself.** A choice between `ask`, `auto`
+  and `off` is three words and a drop-down is right; a choice between
+  nine language models is not, because they have to be compared and a
+  picker shows one at a time with nowhere to put the sentence saying
+  what each is for. An entry in `options` may now be a table carrying
+  `detail` and `link` beside its value, mixed freely with plain
+  strings, and a choice with any described option is drawn as a column
+  of radio rows. A plug-in supplying a link is a third party deciding
+  where PolterType sends somebody, so: `https` only, refused at
+  manifest load and again at the click, and the visible text **is** the
+  address.
+
+- **A setting that is a list of composite things.** Scheduled
+  messages — each an application, a conversation, a time and a text —
+  had no shape: a `strings` list gives one line per entry with no
+  structure. A `records` group names an array of tables and declares
+  what one row holds; the pane draws a card per entry with Add and
+  Remove, and every comment in the file survives the edit, including
+  the ones inside rows nobody touched. A row's fields are single names
+  rather than paths and cannot nest — a pane that nests is a config
+  editor.
+
+- **A box that suggests, and a card you can act on.** Every
+  conversation name used to be typed by hand off another window, and a
+  name one character wrong is a message that never goes out. A
+  `suggest` field is free text with the answers offered beneath it,
+  narrowing as it is typed into, filled from the manifest's `options`,
+  from a command, or both — and what gets stored is the row's **id**,
+  never its label. It is deliberately not a `choice`: the conversation
+  somebody wants may be in a client that is not running, and a
+  drop-down offers no way to say so. A `records` group may declare
+  `actions` and an `id_field`, giving each card a button that runs a
+  declared command with `{id}` replaced by that field — because a pane
+  that can describe "send this at nine on Tuesday" and offers no way to
+  try it before Tuesday is the wrong trade for the one thing here that
+  writes to another person unattended.
+
+- **The suggestion list is drawn inline and bounded**, at most eight
+  rows with the remainder counted rather than scrolled: iced's overlay
+  sized itself to ninety-five conversations and covered the whole form,
+  and a second scrollbar beside the pane's only one is a wheel that
+  moves whichever region the pointer happened to be over. Each row
+  carries the detail line the plug-in sent with it. Six muted words
+  beside the label say that answers are behind the box and which state
+  it is in — "asking the plug-in" and "the plug-in offered nothing"
+  look identical in an empty list.
 
 ### Fixed
 
@@ -43,6 +117,29 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - **The autostart entry and desktop notifications name an icon.** Both
   drew a placeholder for the same reason — there was no installed icon
   to name. There is now.
+
+- **A row's button waits, and says what happened.** It ran detached
+  and its output went nowhere, so "did it go?" — the only question
+  "Send now" is pressed to answer — was answered nowhere, and the
+  report below told you only if somebody thought to press Refresh. It
+  now runs off the UI thread with a deadline of its own (90 s: this is
+  not a query, it opens a chat client and types at human speed), shows
+  the plug-in's own sentence as the status, and re-asks the reports it
+  just invalidated. While one runs, every such button is dead — they
+  steal focus, and two at once would type into each other's window.
+
+- **A failed row action no longer stacks three names in front of the
+  one worth reading.** «Ранкове» could not be run: row action: Ранкове:
+  … — the plug-in's own sentence now comes through unprefixed when
+  there is one to quote, and the pane does not add a row's name to a
+  message that already carries it.
+
+- **The button beside a suggestion box says `list`, not `↓`.** The
+  arrow is in the bundled Fira Sans — its `cmap` says so — and still
+  drew an empty box, because what the renderer resolves `Font::DEFAULT`
+  to is not the file the crate ships. Four letters nobody has to guess
+  at, and `hide` while the list is open, which also says which way the
+  press goes.
 
 ### Notes
 
