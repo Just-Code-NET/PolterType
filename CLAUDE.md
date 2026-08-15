@@ -36,7 +36,7 @@ Stack:
 | `crates/poltertype-update` | GitHub-Releases updater: manifest fetch, checksum-verified download, staging, per-OS install (MSI / DMG / AppImage) |
 | `crates/poltertype-popup` | suggestion tooltip: focus-stealing-free overlay (Wayland layer-shell / X11 override-redirect; noop elsewhere) |
 | `crates/poltertype-autostart` | run at login: LaunchAgent (macOS), `HKCU` run key (Windows), XDG entry (Linux). No per-OS dependency, `forbid(unsafe_code)`; never calls `launchctl bootout` — see `docs/DECISIONS.md`, 2026-07-30 |
-| `crates/poltertype-shell` | per-OS app-shell quirks: `instance_lock_id` (`single-instance` means a path on macOS, a name elsewhere), `keep_out_of_dock`, keycap glyphs |
+| `crates/poltertype-shell` | per-OS app-shell quirks: `instance_lock_id` (`single-instance` means a path on macOS, a name elsewhere), `keep_out_of_dock`, keycap glyphs, and the two halves of "which application is this window?" on Linux — `window_platform_specific` (the app id iced would otherwise pass as `""`) and `install_desktop_entry` (the `.desktop` + `hicolor` icon a Wayland session takes the window's icon from) |
 | `crates/poltertype-tray` | per-OS tray quirks — today only quieting the GTK backend's deprecation warning; the `TrayIcon` itself is still built in the app |
 | `crates/poltertype-ai` | optional AI/LLM detectors & rewriters (`feature = "ai"`) |
 | `crates/poltertype-types` | shared types (`LayoutId`, `KeyEvent`, …) |
@@ -444,10 +444,14 @@ because nobody can tell which bullets it means.
   a wrong signature is refused, a *missing* one is accepted with a
   warning, because flipping it early strands every user whose updater
   resolves to the last unsigned manifest.
-  **Rollout state:** v0.7.0 was the first signed release and 0.8.0 is
-  the second. The flip becomes safe once a signed manifest has been the
-  published `latest.json` for a full cycle — so **0.9.0 at the
-  earliest**, and only if 0.8.0 was in fact signed. Until that flip,
+  **Rollout state (checked 2026-08-16, live through the real
+  redirector): every release from v0.7.0 to v0.17.1 is signed, and the
+  flag was never flipped.** The condition it was waiting on — a signed
+  manifest published as `latest.json` for a full cycle, so **0.9.0 at
+  the earliest** — has been met for eight releases. Flipping is a
+  release of its own with a changelog line, because from then on a
+  forgotten signature is an outage for every updater; raise it, don't
+  slip it into an unrelated change. Until that flip,
   **don't describe the updater as "signed" anywhere, least of all on
   the site** — say what the README says. Signing is also a manual
   release step (`cargo xtask manifest sign`, see `docs/RELEASING.md`),
