@@ -15,7 +15,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.17.0 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.17.3 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland), **on Windows since
@@ -89,7 +89,10 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 | Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Layout switching via the DE backends above, falling back to XKB group locking on bare WMs (i3, openbox, …). |
 
 See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
-permissions story.
+permissions story, and
+[docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) for what "working" does not
+cover — which platform each claim was actually checked on, and what is
+reasoned rather than observed.
 
 ## Install
 
