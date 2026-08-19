@@ -512,6 +512,25 @@ what backs the Windows bullets.
   hold-back — the key gate is Linux/evdev only, so on macOS as on
   Windows a keystroke can still land inside a correction.
   `focused_exe()` remains `None` there.
+- **The Settings window can crash on a sudden large resize, in debug
+  builds only.** Reproduced 2026-08-19 on Linux/Hyprland: a big enough
+  jump (not specifically narrow↔wide — a same-direction shrink to
+  300×300 did it too) trips an `iced_tiny_skia` 0.13
+  `debug_assert!("Quad with non-normal height!")` — some quad's height
+  lands on exactly 0.0 for one frame — and the process dies
+  (`iced_tiny_skia-0.13.0/src/engine.rs:43`). Not app code: no
+  `unwrap`/`panic!` anywhere in `settings_ui`, and it reproduces
+  identically on every pane tried (Languages, Plugins), so it's the
+  shared window chrome or a scrollbar, not one pane's content. The
+  assert compiles out of `--release`, so an installed build never hits
+  this exact panic — but the *dev* autostart people actually run day to
+  day is a debug build, so it is a live nuisance there.
+  `min_size` on the window (`settings_ui/mod.rs`) is a hint, added on
+  the chance it helps a real click-and-drag resize; a compositor-driven
+  resize (`hyprctl dispatch`, the only way this was tested) ignores it
+  outright, so treat it as unverified, not fixed. Root cause is still
+  open — bisecting which widget (a scrollbar is the leading suspect) is
+  the next step if this gets prioritised.
 
 Deliberately out of scope (not gaps):
 
