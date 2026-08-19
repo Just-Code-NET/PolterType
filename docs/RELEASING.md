@@ -64,7 +64,7 @@ file or convince yourself it genuinely didn't change.
 |---|---|
 | `README.md` | anything user-facing changes — **especially the Status line, the Goals bullets, the install table, and the hotkey table** |
 | `README.<lang>.md` | the translations carry their own copy of the install table and the caveats, so **anything that changes a row of the English one changes theirs**. They hold no version numbers by design, which bounds this to structural changes: an installer added or renamed, a permission step altered, a caveat that stops being true. A translation nobody speaks is the easiest doc to leave rotting — if there is no one to update it, delete it rather than ship a lie in a language we cannot read |
-| the maintainer's known-gaps list | kept out of tree, but it is a release blocker all the same: re-stamp its version heading and re-verify every bullet; a gap that closed must come out, and whatever it says must match `README.md` |
+| `docs/KNOWN-GAPS.md` | it is a release blocker: re-stamp its version heading and re-verify every bullet; a gap that closed must come out, and whatever it says must match `README.md` |
 | `docs/PLAN.md` | the `Last updated:` line, the phase checkboxes, and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there) |
 | `docs/DECISIONS.md` | you made a call worth defending later — append an entry; don't rewrite history |
 | `docs/CODE_SIGNING.md` | a signing key is added, rotated or retired, or a platform's signing status changes — it is a **published** policy and a stale one misleads users, not just us |
@@ -609,7 +609,7 @@ cargo test --workspace
 
 # 2. SYNC THE DOCS — mandatory, own commit, before the bump.
 #    Walk the table in step 2. At minimum: README Status line +
-#    Goals bullets, the known-gaps list's version heading,
+#    Goals bullets, `docs/KNOWN-GAPS.md`'s version heading,
 #    PLAN.md's `Last updated` + settings schema, a
 #    DECISIONS.md entry, and the site if any user-facing claim
 #    moved. If the release changed what the app CAN do, grep for
