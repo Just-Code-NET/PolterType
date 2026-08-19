@@ -34,12 +34,10 @@ impl SettingsStore {
         let inner = match fs::read_to_string(&path) {
             Ok(s) => match toml::from_str::<Settings>(&s) {
                 Ok(mut parsed) => {
-                    // Retire the default app skip-list that older
-                    // builds wrote into this file. Persisted rather
-                    // than fixed up in memory: a config that says one
-                    // thing while the app does another is its own bug,
-                    // and the user has to be able to see — and undo —
-                    // what we did to their file.
+                    // Persisted rather than fixed up in memory: a config
+                    // that says one thing while the app does another is
+                    // its own bug, and the user has to be able to see —
+                    // and undo — what we did to their file.
                     if retire_default_skip_list(&mut parsed) {
                         match write_atomically(&path, &parsed) {
                             Ok(()) => info!(?path, "migrated config.toml"),
@@ -59,12 +57,11 @@ impl SettingsStore {
                 }
             },
             Err(e) if e.kind() == ErrorKind::NotFound => {
-                // No config yet — this may be an upgrade from the
-                // pre-rebrand kb-switcher install; adopt its config
-                // tree before falling back to defaults. The re-entry
-                // is bounded: migration returns `true` only when
-                // config.toml now exists, so the second call takes
-                // the `Ok` branch.
+                // No config yet — adopt a pre-rebrand kb-switcher tree
+                // before falling back to defaults. The re-entry is
+                // bounded: migration returns `true` only when
+                // config.toml now exists, so the second call takes the
+                // `Ok` branch.
                 if migrate_legacy_config(&path) {
                     return Self::load_or_default();
                 }

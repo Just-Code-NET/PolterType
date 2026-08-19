@@ -2,16 +2,10 @@
 //! caret coordinates on Linux.
 //!
 //! No Wayland protocol or X11 property exposes where the text caret is;
-//! the accessibility stack is the one API that does. Toolkit a11y
-//! backends emit `object:text-caret-moved` on the a11y bus, and their
-//! `org.a11y.atspi.Text` objects answer `GetCharacterExtents` with the
-//! glyph rect, screen-global under `ATSPI_COORD_TYPE_SCREEN`.
-//!
-//! A background thread owns a *blocking* zbus connection and folds
-//! every caret event into one mutex slot holding the freshest
-//! [`CaretSample`], read once per tooltip show via
-//! [`AtspiCaretWatcher::latest`]. A missing bus or registry fails
-//! [`AtspiCaretWatcher::try_new`], and callers fall back to window
+//! the accessibility stack is the one API that does. A background
+//! thread folds every `object:text-caret-moved` event into one mutex
+//! slot holding the freshest [`CaretSample`]; a missing bus or registry
+//! fails [`AtspiCaretWatcher::try_new`] and callers fall back to window
 //! anchoring.
 //!
 //! PRIVACY: this module must never read or log *text*. Offsets and
@@ -58,9 +52,9 @@ pub(crate) struct CaretSample {
 }
 
 impl CaretSample {
-    /// Public-API view of the sample; `age` is computed at read time
-    /// so the caller can judge staleness (an old sample usually means
-    /// the focused app emits no a11y events at all).
+    /// `age` is computed at read time so the caller can judge staleness
+    /// — an old sample usually means the focused app emits no a11y
+    /// events at all.
     pub(crate) fn into_hint(self) -> CaretHint {
         CaretHint {
             x: self.x,
@@ -143,14 +137,13 @@ impl AtspiCaretWatcher {
         // Raise `org.a11y.Status.IsEnabled`, best-effort: toolkits keep
         // their accessibility bridge dormant while it is false, so on a
         // desktop without a screen reader nothing emits caret events
-        // until an AT client sets it — and we are one. Session-scoped,
-        // and never unset, since clearing it on exit would break a real
-        // AT that arrived while we ran.
+        // until an AT client sets it — and we are one. Never unset:
+        // clearing it on exit would break a real AT that arrived while
+        // we ran.
         //
-        // Deliberately after the a11y-bus round-trips above: a Set
-        // fired while `at-spi-bus-launcher` is still activating gets
-        // overwritten by the launcher's own initial state. Once
-        // RegisterEvent has answered, the write sticks.
+        // Must come after the a11y-bus round-trips above — a Set fired
+        // while `at-spi-bus-launcher` is still activating gets
+        // overwritten by the launcher's own initial state.
         if let Err(e) = session.call_method(
             Some("org.a11y.Bus"),
             "/org/a11y/bus",
@@ -211,10 +204,10 @@ fn watch(conn: &Connection, messages: MessageIterator, latest: &Mutex<Option<Car
     warn!("AT-SPI caret watcher: a11y bus stream ended; caret anchoring stops");
 }
 
-/// One `TextCaretMoved` signal → a screen-coordinate caret sample.
-/// The sender's unique bus name plus the signal's object path
-/// identify the accessible object; its `org.a11y.atspi.Text`
-/// interface answers the extents queries.
+/// One `TextCaretMoved` signal → a caret sample. The sender's unique
+/// bus name plus the signal's object path identify the accessible
+/// object; its `org.a11y.atspi.Text` interface answers the extents
+/// queries.
 fn sample_for_signal(conn: &Connection, msg: &Message) -> Option<CaretSample> {
     let header = msg.header();
     let sender = header.sender()?;
@@ -278,9 +271,10 @@ fn resolve_caret_point(
     (!is_degenerate(rect)).then(|| anchor_from_rect(rect, false))
 }
 
-/// `GetCharacterExtents` on the signal's accessible, in screen
-/// coordinates. Failures (app exited, object destroyed, interface
-/// not implemented) are normal churn — `None`, logged at debug.
+/// `GetCharacterExtents` on the signal's accessible, in [window
+/// coordinates](COORD_TYPE_WINDOW). Failures (app exited, object
+/// destroyed, interface not implemented) are normal churn — `None`,
+/// logged at debug.
 fn character_extents(
     conn: &Connection,
     sender: &str,

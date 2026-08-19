@@ -1,9 +1,8 @@
 //! Installing, verifying and removing plug-in language packs.
 //!
-//! The loader in [`crate::layouts::plugins`] has read
-//! `<data_dir>/plugins/<id>/` since v0.1; what was missing was a
-//! supported way to *get* a pack in there, so people copied directories
-//! by hand and no validation ran.
+//! The loader in [`crate::layouts::plugins`] reads
+//! `<data_dir>/plugins/<id>/`; this is the supported way to get a pack
+//! in there, with validation, instead of copying directories by hand.
 //!
 //! **There is no download.** `install` takes a directory already on the
 //! user's disk; fetching is the browser's job. That is the security
@@ -18,14 +17,12 @@
 //! symlinks, a size budget, and atomic replacement so an interrupted
 //! install leaves the old pack or none.
 
-//! An **extension** ([`PluginKind::Extension`]) is a second kind rather
-//! than a looser pack: it ships a program, and declaring that in the
-//! manifest makes the larger decision visible before anything is
-//! installed. It is never loaded into PolterType — it is spawned as a
-//! separate program — and what it contributes to the UI is declared
-//! statically and rendered by PolterType, so a plug-in never draws and
-//! can never imitate a system prompt. [`check_extension`] enforces the
-//! parts a manifest could lie about.
+//! An **extension** ([`PluginKind::Extension`]) ships a program, spawned
+//! as a separate process and never loaded into PolterType. What it
+//! contributes to the UI is declared statically and rendered by
+//! PolterType, so a plug-in never draws and can never imitate a system
+//! prompt. [`check_extension`] enforces the parts a manifest could lie
+//! about.
 
 mod consts;
 mod discover;

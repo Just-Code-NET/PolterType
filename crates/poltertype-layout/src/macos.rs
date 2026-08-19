@@ -169,7 +169,6 @@ fn list_active_impl() -> Result<Vec<LayoutId>, LayoutError> {
         let category_key = CFString::wrap_under_get_rule(kTISPropertyInputSourceCategory);
         let category_val = CFString::wrap_under_get_rule(kTISCategoryKeyboardInputSource);
         let select_key = CFString::wrap_under_get_rule(kTISPropertyInputSourceIsSelectCapable);
-        // Build a dictionary `{ category = keyboard, select = true }`.
         let true_val = core_foundation::boolean::CFBoolean::true_value();
         CFDictionary::from_CFType_pairs(&[
             (category_key.as_CFType(), category_val.as_CFType()),

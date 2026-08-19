@@ -60,9 +60,9 @@ pub fn extensions(data_dir: &Path) -> Vec<DiscoveredExtension> {
 }
 
 /// The same, with the development directories supplied rather than
-/// discovered. Split out so the precedence rules can be tested without
-/// reaching into the environment — which this crate could not do
-/// anyway, since it forbids `unsafe` and `set_var` is unsafe.
+/// discovered, so the precedence rules can be tested without touching
+/// the environment — which this crate cannot do anyway: it forbids
+/// `unsafe`, and `set_var` is unsafe.
 pub fn extensions_from(data_dir: &Path, extra: &[PathBuf]) -> Vec<DiscoveredExtension> {
     let mut found: Vec<DiscoveredExtension> = Vec::new();
 
@@ -127,18 +127,14 @@ pub fn load(dir: &Path) -> Result<Option<DiscoveredExtension>, PluginError> {
 
 /// The declared program inside one directory, if it is there.
 ///
-/// A manifest names its program with **no extension**, and
-/// [`check_extension`](super::validate::check_extension) refuses
-/// anything that is not a plain file name, so that one manifest
-/// describes a plug-in on all three platforms. Windows is where that
-/// promise has to be kept rather than assumed: Cargo writes `foo.exe`,
-/// so the bare `foo` a portable manifest declares named no file that
-/// existed and every extension was invisible there.
+/// A manifest names its program with **no extension**, so one manifest
+/// describes a plug-in on all three platforms. On Windows Cargo writes
+/// `foo.exe`, and the bare `foo` matched no file — every extension was
+/// invisible there until this fallback existed.
 ///
-/// The suffix comes from `std::env::consts::EXE_SUFFIX` — a runtime
-/// constant, not a `cfg` — so this crate keeps its zero platform
-/// conditionals. It is empty on Unix, so the second candidate is only
-/// ever tried where it differs.
+/// The suffix comes from `std::env::consts::EXE_SUFFIX`, a runtime
+/// constant rather than a `cfg`, so this crate keeps its zero platform
+/// conditionals.
 pub(crate) fn exe_in(dir: &Path, name: &str) -> Option<PathBuf> {
     let plain = dir.join(name);
     if plain.is_file() {

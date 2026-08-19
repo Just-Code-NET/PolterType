@@ -3,6 +3,8 @@
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
 use tracing::warn;
 
+/// Parse a `[hotkeys]` string, falling back to `default_str` on a bad
+/// value so a typo cannot silently cost the user their hotkeys.
 pub(crate) fn parse_hotkey_or_default(s: &str, default_str: &str) -> HotKey {
     match s.parse::<HotKey>() {
         Ok(h) => h,
@@ -13,9 +15,8 @@ pub(crate) fn parse_hotkey_or_default(s: &str, default_str: &str) -> HotKey {
                 fallback = default_str,
                 "could not parse hotkey; using fallback"
             );
-            // The fallback is itself a parse — built from a known-good
-            // literal. If even that fails we hard-code the matching
-            // (Ctrl+Shift)+key combo so we always return a real hotkey.
+            // The fallback is itself a parse; the hard-coded combo is
+            // the last resort, so a real hotkey always comes back.
             default_str
                 .parse::<HotKey>()
                 .unwrap_or_else(|_| HotKey::new(Some(HkMods::CONTROL | HkMods::SHIFT), Code::Space))

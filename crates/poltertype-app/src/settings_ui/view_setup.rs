@@ -6,12 +6,11 @@
 //! while "what does an unresolved step look like" is a design question
 //! and belongs here.
 //!
-//! Tone matters more than usual: this is the screen a user reaches when
-//! the app they just installed does nothing, and the two failure modes
-//! are equally bad — sounding alarmed about something that is fine, or
-//! vague about something that is broken. So every row states what the
-//! capability is *for*, and a step we cannot verify says so instead of
-//! guessing.
+//! Tone matters more than usual — this is the screen a user reaches
+//! when the app they just installed does nothing. Sounding alarmed
+//! about something fine and sounding vague about something broken are
+//! equally bad, so every row states what the capability is *for*, and a
+//! step we cannot verify says so instead of guessing.
 
 use iced::widget::{Button, Column, Container, Row, Space, Text};
 use iced::{Alignment, Element, Length, Padding};
@@ -43,10 +42,9 @@ impl SettingsApp {
             steps = steps.push(self.step_row(step));
         }
 
-        // The one sentence the `NeedsRelogin` state exists to say,
-        // printed once rather than per step: every step in that state
-        // has the same cause and the same fix, and repeating it makes
-        // a two-row pane look like a wall of text.
+        // Printed once rather than per step: every `NeedsRelogin` step
+        // has the same cause and the same fix, and repeating it turns a
+        // two-row pane into a wall of text.
         if report
             .steps
             .iter()
@@ -73,11 +71,10 @@ impl SettingsApp {
             ))
             .push(card(steps));
 
-        // The second failure mode, and a genuinely different one:
-        // hooks fine, no way to change the layout. The app then
-        // detects a wrong-layout word and corrects it *into the same
-        // layout*, which looks like the correction being wrong rather
-        // than missing. Only shown when it is actually true.
+        // The other failure mode: hooks fine, no way to change the
+        // layout. The app then corrects a wrong-layout word *into the
+        // same layout*, which reads as a wrong correction rather than a
+        // missing one.
         if self.layout_backend.is_none() {
             body = body.push(card(
                 Column::new()
@@ -136,10 +133,10 @@ impl SettingsApp {
         }
         body = body.push(footer);
 
-        // Changing a permission does not reach a process that already
-        // started without it — on every OS. Saying so here is the
-        // difference between "I granted it and nothing happened" and a
-        // ten-second fix.
+        // On every OS, a permission granted now does not reach a
+        // process that already started without it — saying so here is
+        // the difference between "I granted it and nothing happened"
+        // and a ten-second fix.
         body = body.push(tip(
             b,
             "Granted something just now? Quit PolterType from the tray and start it again — \
@@ -158,11 +155,9 @@ impl SettingsApp {
 
     fn step_row(&self, step: &poltertype_input::setup::SetupStep) -> Element<'_, Message> {
         let b = self.brand();
-        // A word, not a glyph. The bundled font renders ✓ and ↻ as
-        // tofu boxes on this stack (× and → happen to survive), and a
-        // status marker that shows as an empty rectangle is worse than
-        // no marker at all. Words also say which of "not yet" and
-        // "can't tell" this is, which a tick never could.
+        // A word, not a glyph: the bundled font renders ✓ and ↻ as tofu
+        // boxes on this stack (× and → happen to survive). Words also
+        // separate "not yet" from "can't tell", which a tick cannot.
         let (mark, mark_color) = match step.state {
             StepState::Done => ("Ready", b.ecto),
             StepState::Todo => ("Needs you", b.garble),

@@ -67,7 +67,6 @@ pub(crate) fn parse_sources(raw: &str) -> Vec<LayoutId> {
 pub(crate) fn take_quoted<I: Iterator<Item = char>>(
     chars: &mut std::iter::Peekable<I>,
 ) -> Option<String> {
-    // Skip until next single quote.
     for c in chars.by_ref() {
         if c == '\'' {
             break;

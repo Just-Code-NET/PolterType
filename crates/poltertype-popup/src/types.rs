@@ -8,7 +8,7 @@ use crate::enums::PopupAnchor;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PopupEntry {
     /// Replacement text, exactly as it would be typed — or the label
-    /// of an action row (`is_action`).
+    /// of an action row.
     pub text: String,
     /// Short badge for entries that also switch the keyboard layout
     /// (e.g. `"UK"`) — rendered right-aligned and muted. `None` for

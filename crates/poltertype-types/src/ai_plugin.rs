@@ -1,11 +1,10 @@
 //! Declaration of one AI plug-in, as it appears in `config.toml`.
 //!
 //! Here rather than in `poltertype-ai` because two crates that cannot
-//! see each other both need it: `poltertype-core` parses it as part of
-//! the settings file, and `poltertype-ai` turns it into a detector.
-//! Keeping the schema out of the optional crate also means a build
-//! *without* the `ai` feature still parses an `[[ai.plugins]]` entry
-//! instead of rejecting the user's config.
+//! see each other both need it: `poltertype-core` parses it, and
+//! `poltertype-ai` turns it into a detector. It also lets a build
+//! *without* the `ai` feature parse an `[[ai.plugins]]` entry instead
+//! of rejecting the user's config.
 
 use serde::{Deserialize, Serialize};
 
@@ -20,10 +19,8 @@ pub struct AiPluginConfig {
     /// Which backend to construct. Today there is exactly one: `llm`.
     ///
     /// PolterType ships the *interface*, never a model or a bundled
-    /// vendor client. Whatever answers at [`endpoint`](Self::endpoint)
-    /// is the user's own choice — an Ollama on their machine, an API
-    /// they hold the key to, a gateway of their own. We provide the
-    /// socket; they decide what is plugged into it, if anything.
+    /// vendor client — whatever answers at
+    /// [`endpoint`](Self::endpoint) is the user's own choice.
     pub r#type: String,
     /// Stable identifier, used in logs and to tell two entries of the
     /// same kind apart.
@@ -61,10 +58,9 @@ pub struct AiPluginConfig {
     /// `background` (default) or `blocking`.
     ///
     /// `judge` runs on the correction path, so `blocking` puts the
-    /// round-trip between the user finishing a word and the word being
-    /// fixed. `background` answers instantly from a cache and queries
-    /// off-thread for next time, which costs the first occurrence of
-    /// each word and nothing after it.
+    /// round-trip between finishing a word and fixing it. `background`
+    /// answers from a cache and queries off-thread for next time,
+    /// costing the first occurrence of each word and nothing after.
     #[serde(default)]
     pub mode: Option<String>,
     /// How many decided words to remember. `0` disables the cache,

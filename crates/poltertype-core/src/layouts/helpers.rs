@@ -61,9 +61,7 @@ pub fn derive_vowels(id: &LayoutId, script: Script) -> Vec<char> {
 /// malformed in a way that would not parse later either.
 ///
 /// Accepts either quote style, tolerates whitespace and skips `#`
-/// comments. An `id` inside a multi-line string would confuse it, but
-/// every real layout TOML has it on a top-level line, and this runs on
-/// layouts we are about to skip anyway.
+/// comments. An `id` inside a multi-line string would confuse it.
 pub fn peek_layout_id(toml: &str) -> Option<String> {
     for line in toml.lines() {
         let line = line.trim();
@@ -102,5 +100,3 @@ pub fn compute_letter_scancodes(by_id: &HashMap<LayoutId, LayoutMapping>) -> Has
     }
     out
 }
-
-// ─── Tests ───────────────────────────────────────────────────────────

@@ -56,9 +56,8 @@ pub(crate) fn show_suggestion_popup(
     });
 }
 
-/// Short badge for a cross-layout entry: the language subtag,
-/// uppercased — `uk-UA` → `UK`, `en-US` → `EN`. Falls back to the
-/// whole id for exotic single-part ids.
+/// Badge for a cross-layout entry: the language subtag, uppercased
+/// (`uk-UA` → `UK`); the whole id when it has no subtag.
 fn layout_badge(id: &LayoutId) -> String {
     id.as_str()
         .split('-')

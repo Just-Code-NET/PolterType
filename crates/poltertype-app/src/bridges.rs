@@ -41,10 +41,6 @@ pub(crate) fn handle_engine_event(
             // layout transition plus the already-redacted reason is the
             // whole diagnostic story.
             info!(%from_layout, %to_layout, %reason, "correction applied");
-            // System notification — the user explicitly opted into
-            // these via `[general].show_notifications`. The body
-            // shows only the layout transition, which is the useful
-            // "what just happened" signal.
             if settings.snapshot().general.show_notifications {
                 spawn_layout_change_notification(layouts, &to_layout);
             }
@@ -74,15 +70,11 @@ pub(crate) fn handle_engine_event(
 
 /// Show a 2-second toast that the engine auto-switched layout.
 ///
-/// On a worker thread because `notify-rust`'s `show()` is synchronous
-/// and its cost varies per platform, and nothing cosmetic should add
-/// latency to the tray's event loop. Failures are logged at warn and
-/// swallowed — a missing notification daemon must not propagate up, and
-/// the switch itself already happened.
+/// On a worker thread because `notify-rust`'s `show()` is synchronous:
+/// nothing cosmetic should add latency to the tray's event loop. Failures
+/// are logged and swallowed — a missing notification daemon must not
+/// propagate up.
 pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layout: &LayoutId) {
-    // Resolve the layout's display `name` if we have a mapping for it
-    // (`English (United States)` for `en-US`, etc.). Falls back to the
-    // raw BCP-47 id otherwise — never a panic, never a stale string.
     let pretty = layouts
         .get(to_layout)
         .map(|m| m.name.clone())
@@ -98,13 +90,9 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
                 .appname(APP_NAME)
                 .icon(poltertype_shell::DESKTOP_ID)
                 .timeout(notify_rust::Timeout::Milliseconds(2000));
-            // `icon` names a theme entry, and there now is one:
-            // `poltertype_shell::install_desktop_entry` writes the mark
-            // into the user's `hicolor` theme at startup, and every
-            // Linux package installs it too. Ignored where the concept
-            // does not exist (macOS keys the icon on the sending app),
-            // which is why it is set unconditionally rather than
-            // behind a platform check.
+            // `icon` names a `hicolor` theme entry, written at startup
+            // by `poltertype_shell::install_desktop_entry`. Set
+            // unconditionally: macOS has no such concept and ignores it.
             if let Err(e) = n.show() {
                 warn!(?e, layout = %to_owned, "could not show layout-change notification");
             }
@@ -116,16 +104,12 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
 ///
 /// Fires only for the implicit route into the dictionary — undoing a
 /// correction — and only with notifications on. The tooltip's own "Add
-/// to dictionary" row stays silent: pressing a button that says what it
-/// does needs no announcement, while a word that joined as a side
-/// effect of a different gesture does. A dictionary quietly growing
-/// behind the user's back is how "why did it stop correcting this?"
-/// starts.
+/// to dictionary" row stays silent: a word that joined as a side effect
+/// of a different gesture is the one that needs announcing.
 ///
 /// The word is in the body on purpose. It never reaches the log —
-/// `logsafe` sees to that — but this is the user's own text on their
-/// own screen, and "a word was added" without saying which is not
-/// something anyone can act on.
+/// `logsafe` sees to that — but "a word was added" without saying which
+/// is not something anyone can act on.
 pub(crate) fn spawn_dictionary_add_notification(
     layouts: &Arc<LayoutDb>,
     layout: &LayoutId,
@@ -152,12 +136,11 @@ pub(crate) fn spawn_dictionary_add_notification(
         .ok();
 }
 
-/// Tell the user that a tray action they just clicked did not happen.
+/// Tell the user that something they were waiting on did not happen.
 ///
 /// Deliberately **not** gated by `[general].show_notifications`: that
-/// toggle governs the cosmetic "we switched your layout" chatter. This
-/// fires only when a menu click produced nothing, and the user is
-/// sitting there waiting for a window that will never appear.
+/// toggle governs the cosmetic "we switched your layout" chatter, while
+/// this fires only when something is broken.
 ///
 /// Longer timeout than the others, because this text has to be read.
 pub(crate) fn spawn_error_notification(body: String) {
@@ -179,12 +162,10 @@ pub(crate) fn spawn_error_notification(body: String) {
 
 /// "PolterType 0.4.0 is ready — it will install when you restart."
 ///
-/// Not gated by `[general].show_notifications`, for the same reason the
-/// error notification is not. Fires at most once per released version,
-/// and it is the only thing that tells a user who never opens the tray
-/// menu that an update is waiting. A silent update that installs on
-/// some future quit is exactly what people mean when they complain that
-/// software updates itself behind their back.
+/// Not gated by `[general].show_notifications`, for the same reason
+/// [`spawn_error_notification`] is not. Fires at most once per released
+/// version, and it is the only thing that tells a user who never opens
+/// the tray menu that an update is waiting.
 pub(crate) fn spawn_update_notification(version: &str) {
     let body = format!(
         "Version {version} is downloaded and ready.\n\
@@ -258,8 +239,6 @@ pub(crate) fn spawn_event_bridges(
     Ok(())
 }
 
-/// Forward suggestion-tooltip interactions (clicks, timeouts) into
-/// the tao loop — same shape as the engine-event bridge.
 pub(crate) fn spawn_popup_bridge(
     proxy: EventLoopProxy<UserEvent>,
     popup_rx: Receiver<poltertype_popup::PopupUiEvent>,
@@ -277,11 +256,10 @@ pub(crate) fn spawn_popup_bridge(
     Ok(())
 }
 
-/// Poll the OS for the current layout every ~250 ms; emit a
-/// `LayoutChanged` event whenever the answer differs from last time.
-/// Catches manual switches done outside our engine (language bar,
-/// Win+Space, Alt+Shift, ibus / kde keyboard, …) so the tray icon
-/// stays in sync.
+/// Poll the OS for the current layout every ~250 ms and emit
+/// `LayoutChanged` when it differs from last time. The engine emits that
+/// event only for its own switches, so this is what catches user-driven
+/// ones (Win+Space, language bar, ibus…) and keeps the tray icon in sync.
 pub(crate) fn spawn_layout_poller(
     switcher: Arc<dyn poltertype_layout::LayoutSwitcher>,
     out_tx: crossbeam_channel::Sender<SwitcherEvent>,

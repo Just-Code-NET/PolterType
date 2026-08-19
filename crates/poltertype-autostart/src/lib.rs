@@ -13,10 +13,8 @@
 //!
 //! Each backend drives the mechanism the OS already ships — two
 //! `launchctl` calls, one `reg.exe` call, or a file write — which buys
-//! a crate with no per-OS dependency and `#![forbid(unsafe_code)]`, at
-//! the cost of a short-lived process at most twice per app start. On
-//! Windows the child is spawned with `CREATE_NO_WINDOW`, or a console
-//! would flash at every login.
+//! no per-OS dependency and `#![forbid(unsafe_code)]`, at the cost of a
+//! short-lived process at most twice per app start.
 //!
 //! It never *reads* the OS to discover intent: `config.toml` is the
 //! single source of truth and [`sync`] only pushes it outwards. Delete
@@ -54,10 +52,9 @@ pub use types::App;
 
 /// Make the OS autostart entry match `enabled`.
 ///
-/// Idempotent and safe to call often — at startup and after every
-/// settings reload. Never fails the caller: autostart is a
-/// convenience, and a home directory we cannot write to is not a
-/// reason to refuse to run, so problems are logged and swallowed.
+/// Idempotent and safe to call often. Never fails the caller — a home
+/// directory we cannot write to is no reason to refuse to run, so
+/// problems are logged and swallowed.
 pub fn sync(enabled: bool, app: App<'_>) {
     imp::sync(enabled, app);
 }

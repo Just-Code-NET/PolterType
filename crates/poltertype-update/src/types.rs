@@ -30,20 +30,17 @@ pub struct Manifest {
     pub schema: u32,
     /// Release version, without the `v` prefix the git tag carries.
     pub version: String,
-    /// Human-readable release notes — what the tray's "What's new"
-    /// link opens. Never fetched by the app, only handed to the
-    /// browser.
+    /// What the tray's "What's new" link opens. Never fetched by the
+    /// app, only handed to the browser.
     pub notes_url: String,
     /// Keyed by [`crate::platform_key`]: `windows-x86_64`,
-    /// `macos-universal`, `linux-x86_64`, `linux-aarch64`. A platform
-    /// missing from the map simply gets no update — that is how we ship
-    /// a release that deliberately skips an OS.
+    /// `macos-universal`, `linux-x86_64`, `linux-aarch64`. A missing
+    /// platform gets no update — that is how a release skips an OS.
     pub artifacts: HashMap<String, Artifact>,
-    /// Reserved for a detached ed25519 signature over the manifest
-    /// bytes. Absent today: the current trust model is HTTPS plus the
-    /// per-artifact checksum, which does not survive a compromised
-    /// GitHub account. Declared now so adding real signing later is a
-    /// value change, not a schema break.
+    /// Detached ed25519 signature over [`crate::signing_payload`], not
+    /// over the JSON. `Option` only so the `REQUIRE_SIGNATURE` rollout
+    /// switch has something to be lenient about; in this build a
+    /// `None` is refused.
     #[serde(default)]
     pub signature: Option<String>,
 }
@@ -60,11 +57,10 @@ pub struct Artifact {
     pub size: u64,
 }
 
-/// A verified artifact sitting in the staging directory, waiting for a
-/// moment when installing it won't yank the keyboard hook out from
-/// under the user. Serialised to `pending.json` so it survives a
-/// restart — a download interrupted by a reboot shouldn't have to
-/// happen twice.
+/// A verified artifact waiting in the staging directory for a moment
+/// when installing it won't yank the keyboard hook out from under the
+/// user. Serialised to `pending.json` so a reboot does not cost the
+/// download again.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PendingUpdate {
     /// Version of the *staged* artifact, not of the running binary.
@@ -72,9 +68,8 @@ pub struct PendingUpdate {
     pub notes_url: String,
     /// Absolute path of the downloaded, checksum-verified file.
     pub artifact: PathBuf,
-    /// How many times we have handed this file to the OS installer.
-    /// Incremented before each attempt, so a file that reliably kills
-    /// the installer still gets discarded after
+    /// Incremented *before* each hand-off to the OS installer, so a
+    /// file that reliably kills it is still discarded after
     /// `consts::MAX_INSTALL_ATTEMPTS` rather than retried forever.
     #[serde(default)]
     pub attempts: u32,

@@ -66,8 +66,6 @@ fn wayland_report() -> SetupReport {
     }
 }
 
-/// Turn "does this capability work" plus "what does the group database
-/// say" into a state and the one useful next action.
 fn step(title: &str, detail: &str, works: Option<bool>, group: GroupState) -> SetupStep {
     let (state, action) = match (works, group) {
         (Some(true), _) => (StepState::Done, None),
@@ -163,7 +161,6 @@ fn writable(path: &Path) -> Option<bool> {
     Some(std::fs::OpenOptions::new().write(true).open(path).is_ok())
 }
 
-/// gid of the `input` group from the group database.
 fn input_group_gid() -> Option<u32> {
     for line in std::fs::read_to_string("/etc/group").ok()?.lines() {
         let mut parts = line.split(':');

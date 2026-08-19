@@ -27,12 +27,10 @@ pub const ALLOWED_CONTENT: &[(&str, &[&str])] = &[
 /// other guarantee — no traversal, no symlinks, a size budget, atomic
 /// replacement — is identical.
 ///
-/// The extension list is empty rather than enumerating `.exe`, `.so`
-/// and friends: on Unix an executable has no extension, so such a list
-/// would only name the shapes we happened to think of. What bounds
-/// `bin/` instead is that nothing in it is ever *loaded* — it is
-/// spawned by the name the manifest declares, after the user installed
-/// it knowing it was an extension.
+/// The extension list is empty rather than enumerating `.exe`, `.so` and
+/// friends, since a Unix executable has no extension. What bounds `bin/`
+/// instead is that nothing in it is ever *loaded* — it is spawned by the
+/// name the manifest declares.
 pub const EXTENSION_CONTENT: &[(&str, &[&str])] = &[("bin", &[])];
 
 /// Files permitted at the top level of a pack, beyond the manifest.

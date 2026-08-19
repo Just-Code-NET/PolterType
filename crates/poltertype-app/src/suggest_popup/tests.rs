@@ -7,9 +7,9 @@ use poltertype_popup::PopupAnchor;
 
 use super::anchor::resolve_anchor;
 
-/// A window well inside a 2560×1440 output at origin (3488, 560) —
-/// the second monitor of the reporter's setup, so the tests exercise
-/// non-zero output origins rather than the easy (0, 0) case.
+/// A window well inside a 2560×1440 output at origin (3488, 560) — the
+/// reporter's second monitor, so the tests exercise a non-zero output
+/// origin rather than the easy (0, 0) case.
 fn window() -> FocusedWindowGeometry {
     FocusedWindowGeometry {
         x: 3540,
@@ -100,10 +100,8 @@ fn no_geometry_falls_back_to_the_screen_bottom() {
 }
 
 /// The regression this module exists for: with no caret available the
-/// tooltip lands on the *window*, never wherever the mouse happens to
-/// be parked. `resolve_anchor` no longer takes a pointer at all, so
-/// the guarantee is now structural — this pins the exact rect it falls
-/// back to, whatever the rest of the desktop looks like.
+/// tooltip lands on the *window* rect, never wherever the mouse
+/// happens to be parked.
 #[test]
 fn an_idle_pointer_cannot_drag_the_tooltip_across_the_screen() {
     let g = window();

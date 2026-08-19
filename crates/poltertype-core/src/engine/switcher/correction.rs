@@ -62,13 +62,10 @@ impl SwitcherEngine {
                 sent?;
                 continue;
             }
-            // Space is handled before the overlay because no overlay
-            // has it: a layout describes the 46 character keys. It is
-            // also the likeliest key to be held, being the boundary
-            // that triggers most corrections.
-            //
-            // Enter and Tab are deliberately absent — replaying them
-            // submits a line or moves focus.
+            // Before the overlay because no overlay has space, and it is
+            // the likeliest key to be held — the boundary that triggers
+            // most corrections. Enter and Tab are deliberately absent:
+            // replaying them submits a line or moves focus.
             let c = if k.scancode == SC_SPACE {
                 Some(' ')
             } else {
@@ -88,8 +85,7 @@ impl SwitcherEngine {
         self.flush_text(&mut text)?;
 
         if dropped > 0 {
-            // Counts only — never the characters, same rule as the rest
-            // of this path.
+            // Counts only, never the characters.
             debug!(
                 dropped,
                 "held keys that are neither text nor Backspace could not be replayed"
@@ -98,7 +94,6 @@ impl SwitcherEngine {
         Ok(())
     }
 
-    /// Emit whatever text has accumulated, and empty the buffer.
     fn flush_text(&self, text: &mut String) -> Result<(), InputError> {
         if text.is_empty() {
             return Ok(());
@@ -145,15 +140,15 @@ impl SwitcherEngine {
         // to flip; everything switch-related below is keyed off this.
         let switching = from != to;
 
-        // When the layout flip happened — the replay must not outrun
-        // the compositor's xkb propagation. See `LAYOUT_SETTLE`.
+        // See `LAYOUT_SETTLE`: the replay must not outrun the
+        // compositor's xkb propagation.
         let mut switched_at: Option<Instant> = None;
 
-        // Pre-flight the target layout BEFORE touching the user's text.
-        // `decide()` already filters candidates, but `force_switch_last`
-        // bypasses that filter, and settings or the OS layout list can
-        // change in between. On query failure fall through and let
-        // `switch_to` surface the error — still safe, nothing sent yet.
+        // Pre-flight BEFORE touching the user's text: `decide()` filters
+        // candidates but `force_switch_last` bypasses that filter, and
+        // settings or the OS layout list can change in between. On query
+        // failure fall through and let `switch_to` surface the error —
+        // still safe, nothing sent yet.
         if switching {
             match self.layout_switcher.list_active() {
                 Ok(list) if !list.contains(to) => {
@@ -185,11 +180,10 @@ impl SwitcherEngine {
         // ── Absorb: wait for the user's fingers to lift ─────────────
         //
         // Keystrokes landing while our burst is on the wire interleave
-        // with it at the compositor, and counting cannot fix that. So
-        // fold arriving presses into the plan until the stream has been
-        // empty three times running, then emit. A boundary means the
-        // user finished their next word too — include it and re-process
-        // it. A submission or anything murkier aborts, untouched.
+        // with it at the compositor, and no after-the-fact counting can
+        // fix that. So fold arriving presses into the plan until the
+        // stream comes back empty; a boundary means the user finished
+        // their next word too, a submission or anything murkier aborts.
         let mut live = live;
         let mut click_allowance = pointer_click_allowance;
         let mut tail: Vec<KeyEvent> = Vec::new();
@@ -217,13 +211,11 @@ impl SwitcherEngine {
                     quiet_probes = 0;
                 } else {
                     quiet_probes += 1;
-                    // Three empty probes, two 30 ms sleeps: ~60 ms,
-                    // past a fast typist's inter-key gap. A correction
-                    // fired by a chord waits for that chord to come up
-                    // as well — under a held `Ctrl` our replay produces
-                    // shortcuts, and releasing on our side is not
-                    // enough where a remapper keeps its own idea of
-                    // what is down. The deadline below bounds the wait.
+                    // Three empty probes, two 30 ms sleeps: ~60 ms, past
+                    // a fast typist's inter-key gap. Also waits for the
+                    // triggering chord to come up — releasing on our
+                    // side is not enough where a remapper keeps its own
+                    // idea of what is down.
                     if quiet_probes >= 3 && !self.modifiers_held() {
                         break;
                     }
@@ -266,7 +258,7 @@ impl SwitcherEngine {
         // burst; where it cannot run we probe for an intrusion
         // afterwards instead. Release whatever the user is holding
         // first — a replay under a held Ctrl produces shortcuts, not
-        // text, and the correction appears not to happen.
+        // text, and the correction appears not to happen at all.
         let holding = *self.held_modifiers.read();
         if holding.control || holding.shift || holding.alt || holding.meta {
             debug!(?holding, "releasing held modifiers before emitting");
@@ -302,8 +294,6 @@ impl SwitcherEngine {
                 if held.active() {
                     break;
                 }
-                // Give raced physical events time to travel
-                // device → listener thread → our channel.
                 std::thread::sleep(POST_EMIT_LAG);
                 let w = self.drain_correction_window(rx, &mut click_allowance);
                 suspicious |= w.suspicious;
@@ -333,8 +323,8 @@ impl SwitcherEngine {
             //
             // Original scancodes against the freshly switched layout —
             // the only path that works in Wayland-native and terminal
-            // apps. Unicode-emit backends answer `Unsupported` and get
-            // `send_text`.
+            // apps. Unicode-emit backends answer `Unsupported` and fall
+            // back to `send_text`.
             let extra_keys: Vec<ReplayKey> = tail
                 .iter()
                 .chain(resume.iter())
@@ -395,9 +385,6 @@ impl SwitcherEngine {
             // keeps typing, up to a bound.
             if held.active() {
                 let flush_deadline = Instant::now() + HELD_FLUSH;
-                // One empty sweep is shorter than an inter-key gap;
-                // letting go on it drops whatever is pressed in the hole
-                // between the sweep and the actual ungrab.
                 let mut quiet = 0u8;
                 loop {
                     std::thread::sleep(POST_EMIT_LAG);
@@ -423,11 +410,11 @@ impl SwitcherEngine {
                             resume = Some(r);
                         }
                     }
-                    // Backspace / arrows / Esc were swallowed too, and
-                    // they are the user editing — type them out after
-                    // our text, where they would have landed. A shortcut
-                    // needs modifiers we cannot reproduce and arrives as
-                    // `None`; all we can do is stop holding at once.
+                    // Backspace / arrows / Esc were swallowed too — type
+                    // them out after our text, where they would have
+                    // landed. A shortcut needs modifiers we cannot
+                    // reproduce and arrives as `None`; there all we can
+                    // do is stop holding at once.
                     if let Some(s) = w.stopper {
                         pending.push(ReplayKey {
                             scancode: s.scancode,
@@ -456,8 +443,7 @@ impl SwitcherEngine {
                 }
                 // Letting go is synchronous: everything already on the
                 // stream is ours to type out, everything after reaches
-                // the application by itself. One last sweep for the
-                // stragglers on our side of that line.
+                // the application by itself. Hence one last sweep.
                 held.release();
                 let w = self.drain_correction_window(rx, &mut click_allowance);
                 let mut last: Vec<ReplayKey> = w
@@ -502,8 +488,8 @@ impl SwitcherEngine {
             // Anything on the wire now landed inside the text we just
             // typed. The position is unknown, the character count is
             // not, so erase that many plus the intruders and retype.
-            // The repair is itself a burst, so wait for a pause; if none
-            // comes, leave the screen as it is and stop vouching for it.
+            // The repair is itself a burst, so it waits for a pause; if
+            // none comes, the screen is left as it is.
             if suspicious {
                 break;
             }
@@ -570,10 +556,9 @@ impl SwitcherEngine {
                 reason: reason.to_owned(),
             });
             let _ = self.out_tx.send(SwitcherEvent::LayoutChanged(to.clone()));
-            // The stashed word now reads differently than it was typed,
-            // so record where we took it — the manual hotkey undoes a
-            // correction rather than re-applying one. Here rather than
-            // in `decide`, because only now is it actually on screen.
+            // Record where we took the word, so the manual hotkey undoes
+            // this correction rather than re-applying it. Here rather
+            // than in `decide`: only now is it actually on screen.
             if let Some(last) = self.last_word.write().as_mut() {
                 last.corrected_to = Some(to.clone());
             }
@@ -582,9 +567,9 @@ impl SwitcherEngine {
         // ── Settle & seed ───────────────────────────────────────────
         if let Some((rx, buffer)) = live {
             // Drain our own echoes before the run loop resumes:
-            // `consume_echo` matches by scancode, so a real press of a
-            // scancode we just replayed would be swallowed while the
-            // queue is non-empty. Bounded, because backends that tag
+            // `consume_echo` matches by scancode, so while the queue is
+            // non-empty a real press of a scancode we just replayed
+            // would be swallowed. Bounded, because backends that tag
             // echoes injected never send them back at all.
             let mut post_tail: Vec<KeyEvent> = Vec::new();
             let mut post_resume: Option<KeyEvent> = None;
@@ -613,10 +598,9 @@ impl SwitcherEngine {
                 buffer.poison();
                 *self.last_word.write() = None;
             } else {
-                // Chronological re-assembly of what the user typed
-                // while we were busy: absorbed tail, its boundary
-                // (through the normal pipeline, so that word gets its
-                // own decision), then whatever arrived after the replay.
+                // Chronological re-assembly of what the user typed while
+                // we were busy. The boundary goes through the normal
+                // pipeline, so that word gets its own decision.
                 self.seed_buffer(&tail, buffer);
                 if let Some(r) = resume {
                     self.handle_key(r, buffer, rx);
@@ -630,8 +614,8 @@ impl SwitcherEngine {
         true
     }
 
-    /// Feed absorbed keystrokes into the buffer as the in-progress
-    /// word (they are on screen after the corrected boundary).
+    /// Feed absorbed keystrokes into the buffer as the in-progress word:
+    /// they are on screen, after the corrected boundary.
     fn seed_buffer(&self, tail: &[KeyEvent], buffer: &mut WordBuffer) {
         for ev in tail {
             let _ = self.feed_buffer(*ev, buffer);
@@ -654,8 +638,8 @@ impl SwitcherEngine {
                 continue;
             }
             if !ev.injected {
-                // Releases are dropped below, but they are the only
-                // sign the triggering chord has been let go of — see
+                // Before the release filter below: releases are the only
+                // sign the triggering chord has been let go of. See
                 // `modifiers_held`.
                 *self.held_modifiers.write() = ev.modifiers;
             }
@@ -673,9 +657,9 @@ impl SwitcherEngine {
                 *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
             }
             if ev.modifiers.is_command() {
-                // A shortcut needs its modifiers held to mean anything
-                // and the emitter only speaks Shift, so no faithful
-                // re-emit is possible.
+                // A shortcut means nothing without its modifiers held
+                // and the emitter only speaks Shift, so it cannot be
+                // re-emitted faithfully.
                 out.suspicious = true;
                 break;
             }
@@ -716,23 +700,22 @@ impl SwitcherEngine {
     /// pre-decision filter, because the user asking outranks our
     /// guesses.
     ///
-    /// **The engine already switched it**: put it back. Re-applying the
-    /// same correction made the one gesture a user reaches for when a
-    /// correction is wrong do visibly nothing. Undoing also teaches —
-    /// see [`Self::learn_undone_word`].
+    /// **The engine already switched it**: put it back, and teach the
+    /// word (see [`Self::learn_undone_word`]). Re-applying the same
+    /// correction would make the one gesture a user reaches for when a
+    /// correction is wrong do visibly nothing.
     pub(super) fn force_switch_last(
         &self,
         last: LastWord,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
-        // Where the word is now, and where this hotkey takes it.
         let (from, target) = match last.corrected_to.clone() {
             Some(applied) => (applied, last.layout.clone()),
             None => {
-                // Most plausible alternate layout. With two layouts
-                // "the other one" is fine; generalising means re-running
-                // the detector pipeline with `min_advantage = 0`.
+                // With two layouts "the other one" is fine; generalising
+                // means re-running the detector pipeline with
+                // `min_advantage = 0`.
                 let Some(other) = self.layouts.ids().find(|id| **id != last.layout).cloned() else {
                     warn!("only one layout known; can't force-switch");
                     return;
@@ -761,9 +744,9 @@ impl SwitcherEngine {
         let restored = target_mapping.translate_buffer(&last.keys);
         let mut corrected = restored.clone();
         corrected.push(last.boundary_char);
-        // Replay the boundary the user typed — except Enter/Tab, where
-        // a re-press would submit the line or move focus. Which *key*
-        // that is depends on the target layout: see `boundary_key_for`.
+        // Enter/Tab excepted, where a re-press would submit the line or
+        // move focus. Which *key* carries the character depends on the
+        // target layout: see `boundary_key_for`.
         let (boundary_sc, boundary_shift) = match last.boundary_scancode {
             0x1C | 0x0F | 0x60 => (0x39, false),
             sc => boundary_key_for(
@@ -810,16 +793,14 @@ impl SwitcherEngine {
         }
     }
 
-    /// Remember a word the user just rescued from a correction.
+    /// Remember a word the user just rescued from a correction — the
+    /// auto-correction path's only escape hatch, since "Add to
+    /// dictionary" lives on a tooltip that appears only for words the
+    /// engine *kept*.
     ///
-    /// Without this the auto-correction path has no escape hatch at
-    /// all: "Add to dictionary" lives on the suggestion tooltip, and
-    /// the tooltip only appears for words the engine *kept*.
-    ///
-    /// Short tokens are skipped — below three letters the dictionary
-    /// runs on the curated short-stop lists rather than the FST, and a
-    /// stray entry there disables correction for a whole class of real
-    /// words.
+    /// Short tokens are skipped: below three letters the dictionary runs
+    /// on the curated short-stop lists rather than the FST, and a stray
+    /// entry there disables correction for a whole class of real words.
     fn learn_undone_word(&self, layout: &LayoutId, word: &str) {
         let letters = poltertype_detect::letters_only_lower(word);
         if letters.chars().count() < MIN_LEARNED_LETTERS {

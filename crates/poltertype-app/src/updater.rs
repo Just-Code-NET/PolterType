@@ -2,10 +2,10 @@
 //!
 //! Policy here, mechanism in `poltertype-update`. The rule this module
 //! exists to enforce: **an update is never installed while the app is
-//! running.** Checking and downloading happen on a worker thread;
-//! installing happens only at a moment the user picked. Swapping the
-//! binary out from under a live keyboard hook is the one thing an app
-//! like this must never do.
+//! running** — swapping the binary out from under a live keyboard hook
+//! is the one thing an app like this must never do. Checking and
+//! downloading happen on a worker thread; installing happens only at a
+//! moment the user picked.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,21 +24,18 @@ use crate::enums::*;
 
 /// How long after startup the first check waits.
 ///
-/// Launch is the busiest moment this app has — layout DB, FSTs, hooks,
-/// tray — and it is also when a login-time autostart has every other
-/// app on the machine competing for the same disk and network. A minute
-/// of quiet costs nothing (the update has been out for hours) and keeps
-/// the updater off the critical path of "did my keyboard hook come up".
+/// Launch is the busiest moment this app has, and a login-time autostart
+/// has every other app competing for the same disk and network. A minute
+/// of quiet costs nothing — the update has been out for hours.
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(60);
 
 /// The staged update this build should actually offer, if any.
 ///
-/// Called at startup, before the tray is built. A `pending.json` that is
-/// no longer newer than us is the fingerprint of a *successful* install:
-/// we staged 0.4.0, the user quit, the installer ran, and this 0.4.0
-/// process is now looking at the record of its own arrival. Clearing it
-/// is what stops the tray showing "Restart to update — v0.4.0" to a user
-/// who is already running 0.4.0.
+/// A `pending.json` that is no longer newer than us is the fingerprint of
+/// a *successful* install: we staged 0.4.0, the user quit, the installer
+/// ran, and this 0.4.0 process is looking at the record of its own
+/// arrival. Clearing it is what stops the tray offering "Restart to
+/// update — v0.4.0" to a user already running 0.4.0.
 pub(crate) fn pending_for_this_build() -> Option<PendingUpdate> {
     let pending = poltertype_update::read_pending()?;
     let current = poltertype_update::current_version();
@@ -64,7 +61,6 @@ pub(crate) fn pending_for_this_build() -> Option<PendingUpdate> {
     }
 }
 
-/// Text for the tray's update entry, given what we currently know.
 pub(crate) fn menu_label(pending: Option<&PendingUpdate>) -> String {
     match pending {
         Some(p) => format!("⟳ Restart to update — v{}", p.version),
@@ -72,7 +68,6 @@ pub(crate) fn menu_label(pending: Option<&PendingUpdate>) -> String {
     }
 }
 
-/// Refresh the tray entry after the worker reports in.
 pub(crate) fn refresh_menu_item(item: &MenuItem, pending: Option<&PendingUpdate>) {
     item.set_text(menu_label(pending));
 }
@@ -119,10 +114,8 @@ pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) {
 
 /// Run the periodic check on its own thread.
 ///
-/// Arranged so the network happens *to* a background thread and never
-/// to the tray: `ureq` is blocking, a download can take minutes on a
-/// bad link, and the event loop only ever receives a finished result
-/// through the proxy.
+/// `ureq` is blocking and a download can take minutes on a bad link, so
+/// the event loop only ever receives a finished result through the proxy.
 ///
 /// `check_now` lets "Check for updates…" interrupt the sleep, so a user
 /// who wants to know now does not wait out a 24-hour timer.
@@ -137,8 +130,7 @@ pub(crate) fn spawn_update_worker(
             let mut delay = FIRST_CHECK_DELAY;
             loop {
                 // Sleeping on the channel rather than `thread::sleep` is
-                // what makes a manual check instant instead of "instant,
-                // in up to 24 hours".
+                // what makes a manual check instant.
                 match check_now.recv_timeout(delay) {
                     Ok(()) => info!("manual update check requested"),
                     Err(RecvTimeoutError::Timeout) => {}
@@ -173,10 +165,7 @@ pub(crate) fn spawn_update_worker(
                     Ok(None) => UpdateOutcome::UpToDate,
                     Err(e) => {
                         // A failed check is routine — laptops sleep,
-                        // planes have no wifi, corporate proxies exist.
-                        // It is logged, never shown: an app that pops a
-                        // dialog every time it can't reach GitHub is an
-                        // app people uninstall.
+                        // proxies exist. Logged, never shown.
                         warn!(?e, "update check failed");
                         UpdateOutcome::Failed
                     }

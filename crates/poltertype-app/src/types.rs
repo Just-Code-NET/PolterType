@@ -15,10 +15,9 @@ use poltertype_core::settings::SettingsStore;
 use poltertype_types::LayoutId;
 use tracing::debug;
 
-/// Snapshot of "what should the tray look like right now". We need
-/// all fields to render the icon / tooltip correctly — paused state
-/// affects styling regardless of layout, and vice versa — so we
-/// redraw from the whole struct on every relevant event.
+/// Snapshot of "what should the tray look like right now". Icon and
+/// tooltip each depend on more than one field, so a redraw always takes
+/// the whole struct.
 pub(crate) struct TrayState {
     pub(crate) layout: Option<LayoutId>,
     pub(crate) paused: bool,
@@ -28,23 +27,19 @@ pub(crate) struct TrayState {
     pub(crate) input_alert: bool,
     /// How many things a plug-in is waiting on the user for — the count
     /// behind the mark on the tray icon. Zero draws nothing at all: the
-    /// icon says what layout is in force, and that has to stay the thing
-    /// it says.
+    /// icon's job is to say what layout is in force.
     pub(crate) attention: u32,
 }
 
-/// Type alias for the shared profile dictionary cache. Behind an
-/// `Arc<RwLock<...>>` so the close-handler in `spawn_settings_ui`
-/// can rebuild it from disk after the user saves wordlist edits via
-/// the GUI. Watcher takes a read lock per tick; rebuilds (rare —
-/// only on Settings UI close) take a write lock briefly.
+/// The shared profile dictionary cache: the watcher takes a read lock per
+/// tick, and the close-handler in `spawn_settings_ui` a brief write lock
+/// to rebuild it from disk after the user saves wordlist edits.
 pub(crate) type ProfileDictCache =
     Arc<RwLock<HashMap<String, HashMap<LayoutId, poltertype_detect::LayoutDictionary>>>>;
 
-/// Bag of dependencies the settings-UI close handler needs to do
-/// the full reload (config.toml + global wordlists + per-profile
-/// cache + force-reapply on the watcher). Grouped as a struct so
-/// the call site at the menu handler isn't a wall of args.
+/// What the settings-UI close handler needs for the full reload:
+/// config.toml, global wordlists, the per-profile cache, and
+/// force-reapply on the watcher.
 pub(crate) struct SettingsCloseDeps {
     pub(crate) settings: Arc<SettingsStore>,
     pub(crate) layouts: Arc<LayoutDb>,

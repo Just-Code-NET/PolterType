@@ -2,16 +2,10 @@
 //! validated, and applying the replacement through the same
 //! absorb → delete → replay machinery as layout corrections.
 //!
-//! One offer's life: `decide()` kept the word and it is not in the
-//! dictionary → [`SwitcherEngine::maybe_offer_suggestions`] stamps a
-//! generation and emits [`SwitcherEvent::SuggestionsReady`] → the user
-//! clicks or presses the accept chord → [`SwitcherEngine::
-//! accept_suggestion`] re-validates generation, deadline and that the
-//! word is still the last one the buffer can vouch for → the
-//! replacement goes out through `apply_correction`.
-//!
-//! Anything that invalidates the word's screen position dismisses the
-//! offer via [`SwitcherEngine::dismiss_suggestions`].
+//! An accept is re-validated against generation, deadline and the
+//! buffer's own screen model before anything is emitted, and anything
+//! that invalidates the word's screen position dismisses the offer via
+//! [`SwitcherEngine::dismiss_suggestions`].
 
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -43,9 +37,7 @@ const CLICK_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl SwitcherEngine {
     /// Offer suggestions for a just-completed word the engine decided
-    /// to keep. Quiet unless every gate passes: feature enabled, a
-    /// provider wired, token long enough, not whitelisted, and not a
-    /// known word of the current language.
+    /// to keep. Silent unless every gate below passes.
     pub(super) fn maybe_offer_suggestions(
         &self,
         keys: &[WordKey],
@@ -102,17 +94,16 @@ impl SwitcherEngine {
         if entries.is_empty() {
             // Unknown word with no nearby dictionary entries either —
             // likely cross-layout gibberish or jargon. Stay quiet.
-            // (Length only — the token itself never reaches the log.)
+            // Length only: the token itself never reaches the log.
             debug!(
                 token_len = stripped.chars().count(),
                 "no suggestion candidates — staying quiet"
             );
             return;
         }
-        // Last row: "add to dictionary", the escape hatch for jargon
-        // and names. Rides along only when a tooltip shows anyway — one
-        // whose only content is this row would be the noise it exists
-        // to stop. Trimmed to stay digit-addressable (1..=9).
+        // "Add to dictionary" rides along only when a tooltip shows
+        // anyway — one whose only content is this row would be the
+        // noise it exists to stop. Trimmed to stay digit-addressable.
         entries.truncate(8);
         entries.push(SuggestionEntry {
             text: current_text.to_owned(),
@@ -151,9 +142,8 @@ impl SwitcherEngine {
         });
     }
 
-    /// Is a suggestion offer currently pending and within its
-    /// deadline? Consulted by the run loop's idle-hygiene path — a
-    /// live tooltip suspends the completed-word stash's idle expiry.
+    /// Is an offer pending and within its deadline? A live tooltip
+    /// suspends the run loop's idle-hygiene expiry.
     pub(super) fn has_live_suggestion(&self) -> bool {
         self.pending_suggestion
             .lock()
@@ -161,10 +151,10 @@ impl SwitcherEngine {
             .is_some_and(|p| Instant::now() <= p.deadline)
     }
 
-    /// A pointer press is about to abandon the buffer — freeze the
-    /// screen model into the pending offer first, in case the click
-    /// lands on the tooltip and its `Accepted` event arrives a beat
-    /// later. Only freezes while the buffer still vouches for the word.
+    /// Freeze the screen model into the pending offer before a pointer
+    /// press abandons the buffer, in case the click landed on the
+    /// tooltip and its `Accepted` event arrives a beat later. Only
+    /// freezes while the buffer still vouches for the word.
     pub(super) fn freeze_suggestion_for_click(&self, buffer: &WordBuffer) {
         let mut slot = self.pending_suggestion.lock();
         let Some(p) = slot.as_mut() else { return };
@@ -188,9 +178,8 @@ impl SwitcherEngine {
         });
     }
 
-    /// True while a click-grace window is open — the run loop skips
-    /// the pointer-abandon dismissal so a tooltip click can still be
-    /// honoured.
+    /// True while a click-grace window is open: the run loop then skips
+    /// its pointer-abandon dismissal.
     pub(super) fn has_click_grace(&self) -> bool {
         self.pending_suggestion
             .lock()
@@ -200,8 +189,8 @@ impl SwitcherEngine {
     }
 
     /// Per-event grace bookkeeping: a frozen offer dies on the first
-    /// non-pointer keypress (the user clicked elsewhere and moved on
-    /// — the caret is somewhere we can't vouch for) or once the grace
+    /// non-pointer keypress — the user clicked elsewhere and moved on,
+    /// so the caret is somewhere we cannot vouch for — or once the
     /// window lapses.
     pub(super) fn click_grace_tick(&self, ev: &KeyEvent) {
         let stale = {
@@ -254,8 +243,8 @@ impl SwitcherEngine {
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
-        // Atomic take — same duplicate-fire discipline as the manual
-        // switch-last hotkey: a second fire from auto-repeat or a
+        // Atomic take — same duplicate-fire discipline as
+        // `SwitchLastForcefully`: a second fire from auto-repeat or a
         // double-click finds `None` and exits.
         let taken = {
             let mut slot = self.pending_suggestion.lock();
@@ -269,9 +258,8 @@ impl SwitcherEngine {
             debug!(generation, "suggestion accept ignored: stale generation");
             return;
         };
-        // The offer is consumed whatever happens next — make sure the
-        // tooltip agrees (idempotent for the click path, where the
-        // popup hid itself optimistically).
+        // The offer is consumed whatever happens next, so the tooltip
+        // has to agree. Idempotent: the click path already hid itself.
         let _ = self
             .out_tx
             .send(SwitcherEvent::SuggestionsDismissed { generation });
@@ -288,9 +276,8 @@ impl SwitcherEngine {
             return;
         };
 
-        // "Add to dictionary" touches no text — no screen validation
-        // needed (it stays meaningful even after the user typed on).
-        // The app owns the overlay file and the dictionary reload.
+        // "Add to dictionary" touches no text, so it needs no screen
+        // validation — it stays meaningful even after the user typed on.
         if entry.action == SuggestionAction::AddToDictionary {
             let _ = self.out_tx.send(SwitcherEvent::AddToDictionary {
                 layout: pending.layout.clone(),
@@ -301,10 +288,10 @@ impl SwitcherEngine {
         }
 
         // Two ways the screen can be vouched for: the live buffer still
-        // holds the offered word, or the buffer was abandoned by the
-        // click's own pointer press but the state was frozen at that
-        // instant and the grace window is open. A click ON the overlay
-        // never reached the app, so the frozen copy is exact.
+        // holds the offered word, or the click's own pointer press
+        // abandoned the buffer but froze the state first and the grace
+        // window is open — a click ON the overlay never reached the app,
+        // so the frozen copy is exact.
         let same_word = buffer.completed().len() == pending.keys.len()
             && buffer
                 .completed()
@@ -326,10 +313,9 @@ impl SwitcherEngine {
             );
             return;
         };
-        // A click-sourced accept has exactly one physical click in
-        // flight, which the absorb machinery must swallow rather than
-        // abort on. An unused allowance is harmless: it only ever
-        // ignores pointer presses.
+        // The absorb machinery must swallow the one physical click in
+        // flight rather than abort on it. An unused allowance is
+        // harmless: it only ever ignores pointer presses.
         let click_allowance = usize::from(from_pointer);
         let Some(plan) =
             self.plan_suggestion_replacement(&pending, &entry, &run, &tail, typed_digit)
@@ -342,7 +328,7 @@ impl SwitcherEngine {
     /// Work out the replacement: which layout to end up in, how much of
     /// the screen to delete, what to replay, and how it reads once
     /// typed. `None` declines the accept — every reason to give up
-    /// lives here rather than half-way through emitting.
+    /// belongs here rather than half-way through emitting.
     fn plan_suggestion_replacement(
         &self,
         pending: &PendingSuggestion,
@@ -366,9 +352,8 @@ impl SwitcherEngine {
         let backspaces =
             pending.keys.len() + boundary_run.len() + tail_keys.len() + usize::from(typed_digit);
         if boundary_run.is_empty() {
-            // The separator the offer was made over is gone (it can
-            // only shrink via backspacing, which re-opens the word and
-            // clears `completed()` — but belt and braces).
+            // Belt and braces: the run can only shrink via backspacing,
+            // which re-opens the word and clears `completed()` anyway.
             debug!("suggestion accept declined: boundary run empty");
             return None;
         }
@@ -401,9 +386,9 @@ impl SwitcherEngine {
         };
 
         // Separators + the user's in-progress next word, re-emitted
-        // after the replacement. Enter/Tab in a separator run must
-        // not be re-pressed (submits the line) — substitute Space,
-        // same as the manual force-switch path.
+        // after the replacement. Enter/Tab in a separator run must not
+        // be re-pressed (submits the line) — substitute Space, same as
+        // `force_switch_last`.
         let extra: Vec<ReplayKey> = boundary_run
             .iter()
             .map(|&(sc, shift)| {
@@ -453,10 +438,9 @@ impl SwitcherEngine {
             "spelling suggestion accepted"
         };
 
-        // The replacement in scancodes, for re-pointing the buffer's
-        // stash afterwards — worked out here because the target mapping
-        // is in hand. `None` when the layout cannot type every
-        // character, which is exactly when the stash must be dropped.
+        // For re-pointing the buffer's stash afterwards. `None` when the
+        // layout cannot type every character, which is exactly when the
+        // stash must be dropped.
         let replacement_keys: Option<Vec<WordKey>> = {
             let keys: Vec<WordKey> = entry
                 .text
@@ -481,10 +465,9 @@ impl SwitcherEngine {
         })
     }
 
-    /// Emit the replacement. Reuses `apply_correction` wholesale: it
-    /// already owns the absorb window, echo bookkeeping, compensation
-    /// loop and buffer re-seeding, and every one of those hazards
-    /// applies here identically.
+    /// Emit the replacement through `apply_correction`: its absorb
+    /// window, echo bookkeeping, compensation loop and buffer re-seeding
+    /// all apply here identically.
     fn apply_suggestion_replacement(
         &self,
         pending: &PendingSuggestion,
@@ -518,11 +501,9 @@ impl SwitcherEngine {
             replacement: entry.text.clone(),
         });
 
-        // Keep the stashes coherent with the new screen contents. A
-        // cross-layout entry leaves the scancodes unchanged, so the
-        // buffer stash stays valid; a spelling entry changes them, so
-        // re-point the stash (or forget it when text injection left no
-        // scancode form) and backspacing re-opens the right thing.
+        // A cross-layout entry leaves the scancodes unchanged, so the
+        // buffer stash stays valid; a spelling entry changes them and
+        // the stash has to follow, or backspacing re-opens the old word.
         //
         // The manual switch-last stash is dropped either way:
         // re-transliterating a word the user just hand-picked is never
@@ -535,9 +516,8 @@ impl SwitcherEngine {
                     .zip(&pending.keys)
                     .all(|(a, b)| a.scancode == b.scancode && a.shift == b.shift);
             if still_same {
-                // `None` means text injection was used and no scancode
-                // form exists — forget the stash rather than point it
-                // at something that is not on screen.
+                // `None` (text injection, no scancode form) forgets the
+                // stash rather than pointing it off screen.
                 buffer.replace_completed(plan.replacement_keys.clone().unwrap_or_default());
             }
         }

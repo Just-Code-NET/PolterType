@@ -2,41 +2,31 @@
 //!
 //! The word buffer resets at every boundary, so `best regards ` needs
 //! the engine to remember that `best` came immediately before
-//! `regards`. This is that memory, and deliberately the smallest one
-//! that does the job.
+//! `regards`. This is that memory.
 //!
-//! Keeping what the user typed is exactly what the rest of this project
-//! works to avoid, so the history is bounded on three axes at once:
-//! **length** ([`MAX_HISTORY_WORDS`]), **time** ([`clear`] runs on the
-//! same idle timeout that clears the word buffer), and **context**
-//! (cleared on focus change, so words typed in one application cannot
-//! form a phrase with words typed in another).
-//!
-//! It never leaves this process, is never logged — every debug line
-//! goes through `redact_word` — and holds only words that ended at a
-//! boundary, never the one being typed now.
+//! It is the only place the engine keeps more of the user's text than
+//! the word being typed, so it is bounded on three axes at once:
+//! **length** ([`MAX_HISTORY_WORDS`]), **time** ([`WordHistory::clear`]
+//! runs on the idle timeout that clears the word buffer), and
+//! **context** (cleared on focus change). It never leaves this process,
+//! is never logged — every debug line goes through `redact_word` — and
+//! holds only words that ended at a boundary.
 
 use super::UserCommand;
 
-/// How many completed words to remember.
-///
-/// Four covers `best regards`, `kind regards`, `with best regards`
-/// and the like. A longer window would buy vanishingly rare triggers
-/// at the cost of holding more of the user's text in memory.
+/// How many completed words to remember. Four covers `with best
+/// regards` and the like; a longer window would buy vanishingly rare
+/// triggers at the cost of holding more of the user's text in memory.
 pub const MAX_HISTORY_WORDS: usize = 4;
 
 /// The most recent completed words, oldest first.
-///
-/// `Default` is an empty history, which is also the state after
-/// [`clear`] — there is no "uninitialised" case to handle.
 #[derive(Debug, Default, Clone)]
 pub struct WordHistory {
     words: Vec<String>,
-    /// The application these words were typed in, so a change of
-    /// focus can drop them. Kept inside the history rather than
-    /// beside it: "words from two applications never form a phrase"
-    /// is an invariant of this type, and a caller that forgot to
-    /// check would silently break it.
+    /// The application these words were typed in, so a change of focus
+    /// can drop them. Kept inside the history rather than beside it:
+    /// "words from two applications never form a phrase" is an
+    /// invariant of this type, not of its callers.
     context: Option<String>,
 }
 
@@ -47,8 +37,8 @@ impl WordHistory {
     /// A different `context` clears the history first: half a trigger
     /// typed in one window must not combine with a word from another.
     /// An unknown context (`None`, wherever focus tracking does not
-    /// answer) is its own single context, which keeps the feature
-    /// working there rather than disabling it on a technicality.
+    /// answer) is its own single context, so the feature still works
+    /// there.
     pub fn push_in(&mut self, context: Option<&str>, word: &str) {
         if self.context.as_deref() != context {
             self.words.clear();
@@ -108,8 +98,7 @@ pub fn trigger_tokens(trigger: &str) -> Vec<&str> {
 pub fn phrase_matches(cmd: &UserCommand, history: &WordHistory, current_word: &str) -> bool {
     let tokens = trigger_tokens(&cmd.trigger);
     let Some((last, earlier)) = tokens.split_last() else {
-        // An all-whitespace trigger matches nothing. Config
-        // validation rejects it too; this is the belt to that braces.
+        // An all-whitespace trigger matches nothing.
         return false;
     };
     if *last != current_word {

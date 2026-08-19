@@ -7,22 +7,19 @@
 //! Text::new(tr("languages.title", "Languages"))
 //! ```
 //!
-//! Passing the English at the call site is the load-bearing choice. It
-//! means English is compiled in and cannot go missing: a catalog that
-//! fails to load, an untranslated key, a file a packager forgot — each
-//! degrades to readable English rather than a blank button or a raw
-//! `languages.title`. It also keeps the source readable.
+//! Passing the English at the call site means it is compiled in and
+//! cannot go missing: a catalog that fails to load, an untranslated key,
+//! a file a packager forgot — each degrades to readable English rather
+//! than a blank button or a raw `languages.title`.
 //!
 //! Translations live in data like layouts and wordlists:
 //! `<data_dir>/i18n/<lang>.toml`, one flat table of `key = "text"`, so
 //! adding a language is a file rather than a rebuild.
 //!
-//! [`init`] runs once before any widget is built; after that [`tr`] is
-//! a hash lookup returning a `&'static str`, so the view function
+//! [`init`] runs once before any widget is built; after that [`tr`] is a
+//! hash lookup returning a `&'static str`, so the view function
 //! allocates nothing per frame. Calling [`tr`] earlier, or after an
-//! `init` that found no catalog, returns the English fallback — there
-//! is no failure mode that produces a wrong-looking UI, only a
-//! less-translated one.
+//! `init` that found no catalog, returns the English fallback.
 
 mod catalog;
 mod consts;
@@ -78,14 +75,11 @@ pub fn tr(key: &str, english: &'static str) -> &'static str {
 /// [`tr`] for a string with `{}` placeholders.
 ///
 /// `format!` needs a literal, so an interpolated sentence cannot be
-/// translated through the macro — and those are exactly the long
-/// explanatory ones that most need translating. Substitution is
-/// positional and deliberately dumb.
-///
-/// A translation with **fewer** placeholders than arguments is honoured
-/// as written, since some languages genuinely need to drop a number;
-/// one with more leaves the extras literal rather than panicking. The
-/// worst outcome is a sentence that reads oddly.
+/// translated through the macro. Substitution is positional and
+/// deliberately dumb: a translation with **fewer** placeholders than
+/// arguments is honoured as written, since some languages genuinely need
+/// to drop a number, and one with more leaves the extras literal rather
+/// than panicking.
 pub fn tr_args(key: &str, english: &'static str, args: &[&str]) -> String {
     let template = tr(key, english);
     let mut out = String::with_capacity(template.len() + 16);

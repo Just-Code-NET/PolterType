@@ -17,9 +17,7 @@ use super::state::*;
 ///
 /// Drawn here rather than loaded, from the same geometry the
 /// executable's icon resource is built from — so the window and the
-/// Start-menu entry cannot end up wearing different marks. A window
-/// with no icon at all is what the shell draws its placeholder for,
-/// which was half of what issue "no icon on Windows" was about.
+/// Start-menu entry cannot end up wearing different marks.
 ///
 /// **Windows and X11 only, whatever it returns.** winit implements
 /// `set_window_icon` as an empty function on Wayland, where the
@@ -63,13 +61,10 @@ pub fn banner_for_wordlist_save(outcome: WordlistFlushOutcome) -> SaveBanner {
     }
 }
 
-/// Banner text for the auto-save path (layout / profile / kind
-/// switch). Different phrasing than the explicit Save so the user
-/// understands the save happened as a side effect of switching, not
-/// because they clicked Save.
-///
-/// Returns `None` for the no-op case so we don't surface a banner
-/// at all on every navigation click. Failures are still surfaced.
+/// Banner text for the auto-save path (layout / profile / kind switch).
+/// Phrased differently from the explicit Save so the user sees the save
+/// happened as a side effect of switching. `None` for the no-op case,
+/// so navigation clicks don't each raise a banner; failures still do.
 pub fn banner_for_auto_save(outcome: WordlistFlushOutcome) -> Option<SaveBanner> {
     match outcome {
         WordlistFlushOutcome::Nothing | WordlistFlushOutcome::NoLayout => None,
@@ -87,11 +82,6 @@ pub fn banner_for_auto_save(outcome: WordlistFlushOutcome) -> Option<SaveBanner>
 /// Validate the "Add command" form and produce a [`UserCommand`] ready
 /// to push into `settings.commands`. `Err(message)` describes the first
 /// failed check and is shown in the Commands pane's status banner.
-///
-/// The trigger must be non-empty and whitespace-free (the buffer resets
-/// at every word boundary, so a multi-token trigger could never match),
-/// the param non-empty, a `SwitchLayout` id must match the loose BCP-47
-/// shape accepted elsewhere, and the generated id must be unique.
 pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String> {
     let trigger = app.command_draft_trigger.trim().to_owned();
     if trigger.is_empty() {
@@ -111,9 +101,8 @@ pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String
     let action = match app.command_draft_action_kind {
         CommandActionKind::TypeText => CommandAction::TypeText { text: param },
         CommandActionKind::SwitchLayout => {
-            // Loose BCP-47 sanity — reject strings that obviously
-            // can't be a layout id (whitespace, lowercase-only,
-            // wrong shape) to save the user a mystery silent-no-op.
+            // Reject what obviously can't be a layout id, to save the
+            // user a mystery silent no-op at switch time.
             if !looks_like_layout_id(&param) {
                 return Err(format!(
                     "`{param}` doesn't look like a layout id (e.g. `en-US`)."
@@ -151,26 +140,22 @@ pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String
     })
 }
 
-/// Loose validation of "this string could plausibly be a BCP-47
-/// layout id". Accepts `en-US`, `uk-UA`, `kk-Cyrl-KZ`, etc. —
-/// we let the OS reject genuinely-wrong values at switch time
-/// (the engine logs a warning + no-ops in that case).
+/// Loose validation of "this string could plausibly be a BCP-47 layout
+/// id" (`en-US`, `kk-Cyrl-KZ`, …). Genuinely-wrong values are left for
+/// the OS to reject at switch time; the engine warns and no-ops.
 pub fn looks_like_layout_id(s: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    // First segment must be 2-3 ascii letters; rest must contain
-    // at least one `-` and only ascii alphanumerics + dashes.
     if !s.contains('-') {
         return false;
     }
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// Generate a stable kebab-case id from the user's display name —
-/// or fall back to `cmd-<n>` if name is empty / collides. Handles
-/// the "I just want to add a hotkey, don't make me name it" case
-/// without forcing the user to pick an id manually.
+/// A stable kebab-case id derived from the user's display name, or from
+/// the action kind when the name is empty — so "I just want to add a
+/// hotkey" never turns into "pick an id first".
 pub fn derive_command_id(name: &str, action: &CommandAction, existing: &[UserCommand]) -> String {
     let from_name: String = name
         .chars()
@@ -196,7 +181,6 @@ pub fn derive_command_id(name: &str, action: &CommandAction, existing: &[UserCom
             CommandAction::RunShell(_) => "run-shell".into(),
         }
     };
-    // Disambiguate by appending `-2`, `-3`, … as needed.
     let mut candidate = base.clone();
     let mut n: u32 = 2;
     while existing.iter().any(|c| c.id == candidate) {
@@ -206,9 +190,8 @@ pub fn derive_command_id(name: &str, action: &CommandAction, existing: &[UserCom
     candidate
 }
 
-/// Single-line description of a command for the existing-list view.
-/// Renders the action concisely so the user can scan a long list of
-/// trigger rows and see what each does without expanding rows.
+/// Single-line description of a command, so a long list of trigger rows
+/// can be scanned without expanding anything.
 pub fn format_command_summary(cmd: &UserCommand) -> String {
     let display_name = if cmd.name.is_empty() {
         cmd.id.clone()
@@ -226,9 +209,8 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
         // as tofu on a clean Linux install).
         CommandAction::SwitchLayout { layout } => format!("-> {layout}"),
         CommandAction::OpenPath { path } => format!("open `{path}`"),
-        // Shown with its arguments so a reader of the list can see
-        // exactly what would run — the whole point of this action
-        // being visible rather than convenient.
+        // Shown with its arguments: a reader of the list must be able
+        // to see exactly what would run.
         CommandAction::RunShell(shell) => {
             let argv = std::iter::once(shell.program.as_str())
                 .chain(shell.args.iter().map(String::as_str))
@@ -251,9 +233,8 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
 /// file *stem* (`en_us`, `kk_cyrl_kz`).
 ///
 /// The convention matches both the bundled `data/wordlists/<stem>.fst`
-/// names and the loader's overlay path resolution; keeping them in
-/// lock-step is what lets a word added from the GUI be picked up with
-/// no extra book-keeping.
+/// names and the loader's overlay path resolution — in lock-step, a
+/// word added from the GUI is picked up with no extra book-keeping.
 pub fn layout_id_to_stem(id: &LayoutId) -> String {
     id.as_str().to_lowercase().replace('-', "_")
 }
@@ -302,13 +283,10 @@ pub fn read_overlay_file_or_empty(profile_id: &str, id: &LayoutId, kind: Wordlis
     }
 }
 
-/// Atomic-ish write of the editor buffer to the resolved overlay
-/// path. Creates the parent directory on first use (the user may
-/// have never opened `<config-dir>/poltertype/wordlists/` or the
-/// per-profile subdirectory before). The trailing-newline
-/// normalisation matches the convention of the bundled files and
-/// keeps `git diff` quiet for users who keep their config dir under
-/// version control.
+/// Write the editor buffer to the resolved overlay path, creating the
+/// parent directory on first use. The trailing newline matches the
+/// bundled files and keeps `git diff` quiet for users who version their
+/// config directory.
 pub fn save_overlay_file(
     profile_id: &str,
     id: &LayoutId,
@@ -334,11 +312,10 @@ pub fn save_overlay_file(
 
 /// Whether `[suggestions].accept_modifiers` actually arms the
 /// keyboard-accept chord. Delegates to the engine's own
-/// `AcceptModifiers::parse`, so the pane's hint can never contradict
-/// what the engine will do (the test in `tests.rs` pins the shared
-/// semantics). Bare `Shift` fails on purpose — `Shift+1` is just `!`
-/// on most layouts, so the engine refuses it and the pane must say
-/// so instead of looking configured.
+/// `AcceptModifiers::parse` so the pane's hint cannot contradict what
+/// the engine does. Bare `Shift` fails on purpose — `Shift+1` is just
+/// `!` on most layouts, and the pane must say so instead of looking
+/// configured.
 pub fn accept_modifiers_enable_keyboard(s: &str) -> bool {
     poltertype_core::engine::AcceptModifiers::parse(s).is_some()
 }
@@ -374,10 +351,9 @@ pub fn named_key_list(names: &[&str], sep: &str) -> String {
         .join(sep)
 }
 
-/// Lone-modifier-only key presses (Ctrl, Shift, Alt, Cmd) shouldn't
-/// be captured as the hotkey itself — the user is mid-combination.
-/// We filter them in the keyboard subscription so the captured combo
-/// is always `<modifier(s)>+<non-modifier-key>`.
+/// Filtered out in the keyboard subscription so a captured combo is
+/// always `<modifier(s)>+<non-modifier-key>`: a lone modifier press
+/// means the user is still composing.
 pub fn is_modifier_key(key: &Key) -> bool {
     matches!(
         key,
@@ -393,11 +369,9 @@ pub fn is_modifier_key(key: &Key) -> bool {
     )
 }
 
-/// Render a captured `(modifiers, key)` combo as the canonical
-/// hotkey string `global-hotkey`'s `FromStr` accepts — `Ctrl+Shift+Space`,
-/// `Alt+F4`, etc. We use platform-portable names: `Ctrl` (not
-/// `Control`), `Cmd` for Meta on macOS, `Win` is intentionally
-/// avoided in favour of the more universal `Meta`.
+/// Render a captured `(modifiers, key)` combo as the canonical hotkey
+/// string `global-hotkey`'s `FromStr` accepts — `Ctrl+Shift+Space`,
+/// `Alt+F4` — using the portable names, `Ctrl` rather than `Control`.
 pub fn format_hotkey(key: &Key, modifiers: Modifiers) -> String {
     let mut parts: Vec<String> = Vec::new();
     if modifiers.control() {
@@ -418,12 +392,11 @@ pub fn format_hotkey(key: &Key, modifiers: Modifiers) -> String {
     parts.join("+")
 }
 
-/// One-key serialisation matching `global-hotkey::HotKey::from_str`.
-/// Letters get upper-cased (`a` → `A`); numbers stay as digits;
-/// named keys map to their canonical name (Space / Backspace /
-/// F1..F12 / arrow keys). Unrecognised keys round-trip via Debug —
-/// good enough for the rare edge case (e.g. Print Screen) where
-/// users will see something parseable in the Settings UI.
+/// One-key serialisation matching `global-hotkey::HotKey::from_str`:
+/// letters upper-cased, named keys under their canonical name.
+/// Unrecognised keys round-trip via `Debug` — good enough for the rare
+/// edge case (Print Screen and friends), where the user still sees
+/// something readable in the Settings UI.
 pub fn key_to_string(key: &Key) -> String {
     match key {
         Key::Character(c) => c.to_uppercase(),
@@ -461,11 +434,10 @@ pub fn key_to_string(key: &Key) -> String {
     }
 }
 
-/// The first few lines of what a plug-in printed, for a status line.
-///
-/// A status line is one row of a settings pane, and a command that
-/// prints a paragraph would push everything under it down the page. The
-/// tail is not lost — it is in the report the same command feeds.
+/// The first few lines of what a plug-in printed, for a status line: a
+/// command that prints a paragraph would push the whole pane down the
+/// page. The tail is not lost — it is in the report the same command
+/// feeds.
 pub fn first_lines(text: &str, n: usize) -> String {
     let kept: Vec<&str> = text
         .lines()
@@ -497,8 +469,6 @@ mod status_tests {
 
     #[test]
     fn a_long_one_is_cut_and_says_so() {
-        // A status line is one row of a form; a command that prints a
-        // paragraph would push everything under it down the page.
         let out = first_lines("a\nb\nc\nd\ne\n", 3);
         assert_eq!(out, "a · b · c …");
     }

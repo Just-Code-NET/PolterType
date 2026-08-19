@@ -6,12 +6,9 @@ pub enum WordBoundary {
     /// Key absorbed; word still in progress (or no-op for releases /
     /// non-text keys).
     InProgress,
-    /// User finished a word (Space, Enter, …). The boundary key has
-    /// **already been delivered** to the focused app — the engine
-    /// must include it in its backspace count and re-emit a copy
-    /// after the correction. The completed keys stay readable via
-    /// [`WordBuffer::completed`] so backspacing over the boundary can
-    /// re-open the word.
+    /// User finished a word. The boundary key has **already been
+    /// delivered** to the focused app — the engine must include it in
+    /// its backspace count and re-emit a copy after the correction.
     WordCompleted {
         boundary_scancode: u32,
         boundary_shift: bool,
@@ -23,18 +20,15 @@ pub enum WordBoundary {
         tainted: bool,
         /// The word's first key arrived right after an *observed*
         /// boundary, rather than after a click, navigation, Esc or idle
-        /// abandon, where the caret may sit inside existing text.
-        ///
-        /// An unclean start means the typed keys may be a fragment of a
-        /// longer on-screen word, so accepting a suggestion computed on
-        /// them would splice a replacement into its middle. Auto
+        /// abandon. An unclean start means the typed keys may be a
+        /// fragment of a longer on-screen word, so a suggestion computed
+        /// on them would splice a replacement into its middle. Auto
         /// layout-correction is deliberately *not* gated on this.
         started_clean: bool,
     },
-    /// Caret moved to an unknown place (navigation key, mouse click,
-    /// Esc). Word tracking restarted; the engine should invalidate
-    /// anything that assumes the old caret position (e.g. the
-    /// manual switch-last stash).
+    /// Caret moved to an unknown place. Word tracking restarted; the
+    /// engine must invalidate anything assuming the old caret position
+    /// (e.g. the manual switch-last stash).
     Abandoned,
 }
 
@@ -44,7 +38,6 @@ pub(crate) enum KeyKind {
     Word,
     /// Whitespace / sentence punctuation / brackets — end the word.
     Boundary,
-    /// Backspace.
     Backspace,
     /// Modifier alone, NumLock, function key — ignore.
     Discard,

@@ -20,12 +20,10 @@ impl AudioPlayer {
     }
 
     /// Player for engine tests: no worker thread, no output stream —
-    /// every command is dropped on the floor. Engine tests exercise
-    /// corrections, corrections play a sound, and a real worker opens
-    /// the default device; on the Windows CI runner that faulted inside
-    /// WASAPI (`STATUS_ACCESS_VIOLATION`) and took the whole test
-    /// binary with it. Nothing asserts on sound, so there is nothing to
-    /// lose by staying silent.
+    /// every command is dropped on the floor. A real worker opens the
+    /// default device, which on the Windows CI runner faulted inside
+    /// WASAPI (`STATUS_ACCESS_VIOLATION`) and took the whole test binary
+    /// with it. Nothing asserts on sound.
     #[cfg(test)]
     pub(crate) fn for_tests() -> Self {
         // Receiver dropped immediately: every `send` below fails, and

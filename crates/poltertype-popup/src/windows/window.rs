@@ -1,17 +1,13 @@
 //! The Win32 window itself: create it, push pixels at it, hide it.
 //!
-//! Every call into Win32 in this backend is here, so the thread in
-//! [`super::popup`] reads as plain Rust — the same split the X11
-//! backend uses.
-//!
 //! **Layered rather than painted.** The tooltip has rounded corners and
 //! a translucent panel over somebody else's text, and a plain window
 //! has no per-pixel alpha, so `WM_PAINT` would give a rectangle.
 //! `UpdateLayeredWindow` composites a 32-bit premultiplied BGRA surface
-//! — exactly what [`crate::render`] already produces for Wayland, so
-//! the pixels cross unchanged but for channel order. It also means
-//! there is no `WM_PAINT` to answer, no flicker, and no repaint when
-//! the window behind scrolls.
+//! — what [`crate::render`] already produces for Wayland, so the pixels
+//! cross unchanged but for channel order. It also means no `WM_PAINT`
+//! to answer, no flicker, and no repaint when the window behind
+//! scrolls.
 
 use tracing::warn;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
@@ -117,10 +113,10 @@ impl PopupWindow {
         dpi_x as f32 / BASE_DPI as f32
     }
 
-    /// The whole virtual desktop, in the coordinates `show` takes.
-    /// Used as the placement bounds — the union of every monitor, so a
-    /// tooltip near the edge of one screen slides along that edge
-    /// rather than being clamped onto the primary one.
+    /// The whole virtual desktop, in the coordinates `show` takes —
+    /// the union of every monitor, so a tooltip near the edge of one
+    /// screen slides along that edge rather than being clamped onto
+    /// the primary one.
     pub(super) fn virtual_screen() -> (i32, i32, i32, i32) {
         // Safety: GetSystemMetrics is a pure query.
         unsafe {
@@ -136,9 +132,9 @@ impl PopupWindow {
     /// Put `rgba` (premultiplied, as `tiny_skia` produces) on screen at
     /// `(x, y)`, sizing the window to match, without activating it.
     ///
-    /// `false` if the surface could not be handed to Windows, in which
-    /// case nothing is shown and the caller reports no popup — better
-    /// than a window sitting there with stale pixels.
+    /// `false` if the surface could not be handed to Windows; nothing
+    /// is shown then, which beats a window sitting there with stale
+    /// pixels.
     pub(super) fn show(&self, rgba: &[u8], w: i32, h: i32, x: i32, y: i32) -> bool {
         if w <= 0 || h <= 0 || rgba.len() < (w * h * 4) as usize {
             return false;
@@ -291,11 +287,9 @@ impl Drop for PopupWindow {
     }
 }
 
-/// Nothing to do here on purpose: the popup's own loop reads mouse
-/// messages out of the queue with `PeekMessageW` before dispatching, so
-/// hit-testing happens in plain Rust with the row rectangles in scope
-/// rather than in a C callback needing state smuggled through
-/// `GWLP_USERDATA`.
+/// Bare on purpose — the hit-testing happens in [`super::popup`], off
+/// the message queue, rather than in a C callback needing state
+/// smuggled through `GWLP_USERDATA`.
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
     msg: u32,

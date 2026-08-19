@@ -2,10 +2,10 @@
 
 /// The identity an autostart entry is written under.
 ///
-/// Two `&str` parameters side by side would invite a silent swap —
-/// both are strings, and an entry named `dev.opensource.poltertype`
-/// with `Name=dev.opensource.poltertype` still "works", so nothing
-/// would catch it. Naming them costs five lines.
+/// A struct rather than parallel `&str` parameters, which would invite
+/// a silent swap: an entry named `dev.opensource.poltertype` with
+/// `Name=dev.opensource.poltertype` still "works", so nothing catches
+/// it.
 #[derive(Debug, Clone, Copy)]
 pub struct App<'a> {
     /// Reverse-DNS identifier. The launchd label and plist stem on
@@ -17,11 +17,10 @@ pub struct App<'a> {
     /// the user — today only the Linux `.desktop` `Name=`.
     pub name: &'a str,
     /// Icon-theme name, for the same places — today only the Linux
-    /// `.desktop` `Icon=`. Not the same string as [`id`](Self::id):
-    /// what an icon theme is keyed on is whatever the packages
-    /// installed the mark under, which is `poltertype` and not the
-    /// reverse-DNS form. An entry with no `Icon=` at all is how the
-    /// session's "Startup Applications" list ends up showing a
-    /// placeholder next to our name.
+    /// `.desktop` `Icon=`. Deliberately **not** [`id`](Self::id): an
+    /// icon theme is keyed on whatever the packages installed the mark
+    /// under, which is `poltertype`, not the reverse-DNS form. Omitting
+    /// `Icon=` is what puts a placeholder beside our name in the
+    /// session's "Startup Applications" list.
     pub icon: &'a str,
 }

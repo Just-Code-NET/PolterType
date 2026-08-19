@@ -1,10 +1,9 @@
 //! How the platform writes the names of keys.
 //!
 //! `config.toml` always stores portable names and the parser only ever
-//! sees those. This is purely what the Settings window *shows*: a Mac
-//! keyboard has ⌃ ⌥ ⇧ ⌘ printed on it and nothing that says "Meta", so
-//! a hotkey in portable names is a puzzle for the user. Windows and
-//! Linux keyboards print the words, so there the words are right.
+//! sees those; this is purely what the Settings window *shows*. A Mac
+//! keyboard has ⌃ ⌥ ⇧ ⌘ printed on it and nothing that says "Meta",
+//! while Windows and Linux keyboards print the words.
 
 /// The glyph a platform prints on this key, if it prints one.
 ///
@@ -42,9 +41,8 @@ pub fn key_glyph(token: &str) -> Option<&'static str> {
 /// The key's name, annotated with its glyph where the platform has
 /// one: `"Ctrl"` → `"Ctrl (⌃)"` on macOS, `"Ctrl"` elsewhere.
 ///
-/// For prose that has to stay readable as *instructions* — the
-/// setting is still spelled `Ctrl` in the file, so showing only the
-/// glyph would leave the user guessing what to type.
+/// For prose that has to stay readable as *instructions* — the setting
+/// is still spelled `Ctrl` in the file.
 pub fn key_name_with_glyph(name: &str) -> String {
     match key_glyph(name) {
         Some(glyph) if glyph != name => format!("{name} ({glyph})"),

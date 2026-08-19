@@ -65,10 +65,9 @@ impl Catalog {
         let mut skipped = 0usize;
         for (key, value) in table {
             match value.as_str() {
-                // An empty translation means "not translated yet" —
+                // An empty translation means "not translated yet";
                 // storing it would shadow the English fallback with a
-                // blank label, which is the one outcome worse than
-                // being untranslated.
+                // blank label.
                 Some(s) if !s.trim().is_empty() => {
                     entries.insert(key.clone(), s.to_owned());
                 }

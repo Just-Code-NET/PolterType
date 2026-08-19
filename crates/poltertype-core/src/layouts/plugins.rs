@@ -14,13 +14,12 @@ use super::types::{LayoutMapping, PluginManifest};
 /// `by_id`. Loud but graceful at every level — one broken pack never
 /// takes down the rest of the load.
 ///
-/// **The v1 surface is data-only.** A pack ships `manifest.toml`
-/// (required), `layout-mappings/*.toml` in the same schema as bundled
-/// layouts, and `wordlists/<stem>.fst` plus an optional stop list in
-/// the same shape as `<data_dir>/wordlists/`.
-///
-/// Native code, network calls and settings injection are explicitly out
-/// of scope — see `docs/DATA_LAYOUT.md`.
+/// **This loader reads data only.** From each pack it takes
+/// `manifest.toml` (required), `layout-mappings/*.toml` in the same
+/// schema as bundled layouts, and `wordlists/<stem>.fst` plus an
+/// optional stop list in the same shape as `<data_dir>/wordlists/`;
+/// nothing here executes anything — see `docs/DATA_LAYOUT.md` and
+/// [`crate::plugins`] for the two plug-in kinds.
 pub fn load_plugin_packs(
     data_dir: &Path,
     user_wordlist_dir: Option<&Path>,
@@ -36,9 +35,8 @@ pub fn load_plugin_packs(
         }
     };
 
-    // Sort for deterministic load order — two packs claiming the
-    // same layout id should resolve in alphabetical order, not
-    // whatever the filesystem felt like today.
+    // Deterministic load order: two packs claiming the same layout id
+    // resolve alphabetically, not by whatever the filesystem returned.
     let mut pack_dirs: Vec<PathBuf> = entries
         .flatten()
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
@@ -122,9 +120,7 @@ pub fn load_one_pack(
 
         // A plug-in's FST and stop list sit in its own `wordlists/`, so
         // `build_dictionary` is reused with `pack_dir` standing in for
-        // `data_dir`. The user-side overlay still applies on top, so a
-        // user can extend a plug-in's vocabulary as they extend the
-        // bundled one.
+        // `data_dir`. The user-side overlay still applies on top.
         let dictionary = build_dictionary(pack_dir, &stem, user_wordlist_dir);
         match LayoutMapping::from_parts(&body, dictionary) {
             Ok(layout) => {

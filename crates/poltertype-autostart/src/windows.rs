@@ -23,9 +23,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// The run-key value data for `exe`.
 ///
 /// The quotes are part of the data, not shell syntax: Windows parses
-/// the stored string itself, and an unquoted `C:\Program Files\…` is
-/// ambiguous — it would try `C:\Program` first. `std::process` handles
-/// escaping this argument on the way to `reg.exe`.
+/// the stored string itself, and an unquoted `C:\Program Files\…`
+/// would be tried as `C:\Program` first.
 pub(crate) fn run_value(exe: &Path) -> String {
     format!("\"{}\"", exe.display())
 }
@@ -48,11 +47,9 @@ fn reg(args: &[&str]) -> Option<std::process::ExitStatus> {
 
 /// Read the current value data, if the value exists at all.
 ///
-/// `reg query` writes the data to stdout in a tabular format. Rather
-/// than parse it we ask a narrower question — is the data we would
-/// write already there? — which `reg query` cannot answer, so we do
-/// compare its output, but only by substring against the exact string
-/// we would set. That is robust to the surrounding table layout.
+/// `reg query` writes a table; matching by substring against the exact
+/// string we would set answers "is it already there?" without depending
+/// on that table's layout.
 fn value_matches(name: &str, want: &str) -> bool {
     let Ok(out) = Command::new("reg")
         .args(["query", RUN_KEY, "/v", name])

@@ -10,17 +10,14 @@
 //! code nobody installed; and **which file is being edited**, since
 //! these settings live in the plug-in's config, not ours.
 //!
-//! A plug-in with a hundred settings — which is what a capable one has
-//! — cannot be one column. Sections become a second navigation list
-//! beside the window's own, one section on screen at a time, and every
-//! control is laid out on the same two-column grid so the eye has one
-//! place to find a label and one place to find its value.
+//! A capable plug-in has a hundred settings, so sections become a
+//! second navigation list beside the window's own, one section on
+//! screen at a time, every control on the same two-column grid.
 //!
 //! **Exactly one thing on this pane scrolls.** A room list or a report
-//! inside its own scrolling box put a second bar a few pixels from the
+//! in its own scrolling box put a second bar a few pixels from the
 //! first, and a wheel over the boundary then moves whichever one the
-//! pointer happened to be over. So those grow to their content and the
-//! page scrolls once.
+//! pointer happened to be over. So those grow to their content.
 
 use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
@@ -48,12 +45,9 @@ const PLUGIN_LIST_HINT: &str = "(empty — separate with commas)";
 /// The same for a number box, which is too narrow to say it in full.
 const PLUGIN_DEFAULT_SHORT: &str = "default";
 
-/// How many suggestions are drawn under a box at once.
-///
-/// Enough to browse, few enough that the form under it stays on screen.
-/// The rest are counted, not scrolled — this pane has exactly one
-/// scrolling region, and typing reaches them faster than a scrollbar
-/// would.
+/// How many suggestions are drawn under a box at once: enough to
+/// browse, few enough that the form under it stays on screen. The rest
+/// are counted, not scrolled — this pane has one scrolling region.
 const SUGGEST_ROWS: usize = 8;
 
 /// Width of the value column. Every switch, picker and number lands on
@@ -95,8 +89,8 @@ impl SettingsApp {
         }
 
         // No padding and no card of its own: the window already pads
-        // every pane, and a second frame inside the first is what made
-        // this page sit further from the edge than every other one.
+        // every pane, and a frame inside that frame made this page sit
+        // further from the edge than every other one.
         let mut body = Column::new().spacing(12).push(section_title(b, "Plug-ins"));
         for (index, _) in self.plugins.iter().enumerate() {
             if index > 0 {
@@ -149,11 +143,9 @@ impl SettingsApp {
         );
 
         let sections = pane.sections();
-        // Only one scrolling region on the page. When this pane owns
-        // the window's height it is the settings column, so the section
-        // list stays put beside it; when several plug-ins share the
-        // pane the window's own scrollbar is the one, and nothing here
-        // adds a second.
+        // The page's one scrolling region: the settings column when this
+        // pane owns the window's height (so the section list stays put
+        // beside it), otherwise the window's own scrollbar.
         let owns_height = self.plugins.len() == 1;
         let controls = Container::new(self.plugin_controls(plugin))
             .padding(Padding {
@@ -229,8 +221,8 @@ impl SettingsApp {
     fn plugin_controls(&self, plugin: usize) -> Column<'_, Message> {
         let pane = &self.plugins[plugin];
         let mut column = Column::new().spacing(13);
-        // Buttons declared next to each other are one row of actions.
-        // Stacked, three of them cost a third of the page and read as
+        // Buttons declared next to each other are one row of actions:
+        // stacked, three of them cost a third of the page and read as
         // three unrelated decisions.
         let mut actions: Option<Row<'_, Message>> = None;
         for (index, control) in pane.ext.manifest.pane.iter().enumerate() {
@@ -284,18 +276,16 @@ impl SettingsApp {
         let b = self.brand();
         let pane = &self.plugins[plugin];
         // The *stored* value, which may be absent — the plug-in then
-        // applies its own default, and we do not know what that is.
-        // Showing a fabricated 0 or a blank choice as though the user
-        // had chosen it would be the pane lying about the config.
+        // applies a default we do not know. Showing a fabricated 0 or a
+        // blank choice would be the pane lying about the config.
         let stored = pane.values.get(index).and_then(|v| v.clone());
         let value = pane.value_of(index);
         let typed = pane.display_of(index).unwrap_or_default();
 
         match control.kind {
-            // The heading of the section being shown. Repeated here
-            // rather than only in the nav: the nav says where you are
-            // among thirteen, and this says what you are looking at,
-            // with the sentence that explains it.
+            // Repeated here rather than only in the nav: the nav says
+            // where you are among thirteen, this says what you are
+            // looking at, with the sentence explaining it.
             ControlKind::Section => {
                 let mut head = Column::new().spacing(6).push(
                     Text::new(control.label.as_str())
@@ -321,12 +311,10 @@ impl SettingsApp {
                     .into(),
             ),
 
-            // A drop-down is right for a handful of words — `ask`,
-            // `auto`, `off` — and wrong for alternatives that have to be
-            // *compared*: it shows one at a time, hides the rest behind a
-            // click, and has nowhere to put a sentence saying what each
-            // one is for. When the plug-in has described its options,
-            // they are drawn as a column that can be read.
+            // A drop-down suits a handful of words — `ask`, `auto`,
+            // `off` — but shows one alternative at a time and has
+            // nowhere to put a sentence about each. Described options
+            // are drawn as a column instead, so they can be compared.
             ControlKind::Choice if control.options.iter().any(|o| o.is_described()) => self
                 .plugin_choice_cards(
                     plugin,
@@ -426,20 +414,16 @@ impl SettingsApp {
     /// A box you can type into, with what the plug-in knows of listed
     /// under it and narrowing as you type.
     ///
-    /// Free text is still free text: what is typed is what is written,
-    /// and the list is a way to avoid retyping a name that is on screen
-    /// in another window rather than a set of permitted answers. A
-    /// conversation in a client that is not running has no row here, and
-    /// naming it must stay possible.
+    /// Free text is still free text: the list saves retyping a name
+    /// that is on screen elsewhere, it is not a set of permitted
+    /// answers — a conversation in a client that is not running has no
+    /// row here, and naming it must stay possible.
     ///
     /// **Drawn inline, and bounded.** iced's own combo box puts its
-    /// options in an overlay sized to fit them — with ninety-five
-    /// conversations that covered the entire form, which is a modal
-    /// nobody asked for. So the matches are drawn under the box, at most
-    /// [`SUGGEST_ROWS`] of them, with the remainder counted rather than
-    /// scrolled: this pane has exactly one scrolling region, and a
-    /// second bar a few pixels from the first is a wheel that moves
-    /// whichever one the pointer happened to be over.
+    /// options in an overlay sized to fit them, and ninety-five
+    /// conversations covered the whole form. So at most
+    /// [`SUGGEST_ROWS`] matches are drawn under the box and the
+    /// remainder counted rather than scrolled.
     fn plugin_suggest<'a>(
         &'a self,
         plugin: usize,
@@ -458,11 +442,10 @@ impl SettingsApp {
                 .on_input(on_typed),
         );
         if has_list {
-            // A word, not an arrow. `↓` is in the bundled Fira Sans —
-            // and still drew an empty box here, measured on screen: what
+            // A word, not an arrow: `↓` is in the bundled Fira Sans and
+            // still drew an empty box here, measured on screen — what
             // the renderer resolves `Font::DEFAULT` to is not what the
-            // file says. A glyph nobody can read is worse than four
-            // letters, and these four also say which way it goes.
+            // file says.
             box_row = box_row.push(
                 Button::new(
                     Text::new(if pane.suggest_open(slot) {
@@ -555,11 +538,11 @@ impl SettingsApp {
 
     /// What a suggestion box has to say for itself under the box.
     ///
-    /// Only where it is worth the line. A box inside a card says nothing
-    /// while it is working — a Refresh button per card, six cards deep,
-    /// is six ways to ask one question — but it does say when the answer
-    /// failed, because "nothing is offered" and "the client is not
-    /// running" look identical in an empty list.
+    /// Only where it is worth the line. A box inside a card stays quiet
+    /// while working — six cards deep, a Refresh button each is six ways
+    /// to ask one question — but it does report a failure, because
+    /// "nothing offered" and "the client is not running" look identical
+    /// in an empty list.
     fn suggest_note<'a>(&'a self, plugin: usize, slot: Slot) -> Option<Element<'a, Message>> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
@@ -610,12 +593,11 @@ impl SettingsApp {
     /// The short form of [`Self::suggest_note`], for the label line of a
     /// box inside a card.
     ///
-    /// A `suggest` renders as a text box — there is no arrow, because the
-    /// list appears under what is typed rather than replacing it — so
-    /// nothing on screen would otherwise say that ninety-five
-    /// conversations are one keystroke away. Six words beside the label
-    /// say it; a note under every box in a six-card group would be
-    /// eighteen lines of the same sentence.
+    /// A `suggest` renders as a plain text box, so nothing on screen
+    /// would otherwise say that ninety-five conversations are one
+    /// keystroke away. Six words beside the label say it; a note under
+    /// every box in a six-card group would be eighteen lines of the
+    /// same sentence.
     fn suggest_hint<'a>(&'a self, plugin: usize, slot: Slot) -> Option<Element<'a, Message>> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
@@ -637,10 +619,9 @@ impl SettingsApp {
     /// One row of the form: what the setting is on the left, with its
     /// explanation under it, and what it is set to on the right.
     ///
-    /// The explanation belongs on the wide side. Under the *control* it
-    /// gets a column two hundred pixels across, and a paragraph in a
-    /// column that narrow is a stack of three-word lines that pushes
-    /// every following row down the page.
+    /// The explanation belongs on the wide side: under the *control* it
+    /// gets 200 pixels, and a paragraph that narrow is a stack of
+    /// three-word lines pushing every later row down the page.
     fn field<'a>(
         &'a self,
         control: &'a poltertype_core::plugins::PaneControl,
@@ -692,18 +673,13 @@ impl SettingsApp {
         column
     }
 
-    /// A list: one checkbox per row the plug-in supplied, each ticking
-    /// its own name into an array in the plug-in's config.
+    /// A repeating group: one card per entry, with the plug-in's
+    /// declared fields inside it, plus Add and Remove.
     ///
-    /// It still draws only boxes — a row contributes a name, a label
-    /// and a line of detail, and nothing about how any of it looks.
-    /// A repeating group: one card per entry, with the plug-in's declared
-    /// fields inside it, plus Add and Remove.
-    ///
-    /// The card is what makes a list of *composite* things readable. Laid
-    /// out as flat rows, six scheduled messages of five fields each are
-    /// thirty controls in one column and no way to see where one message
-    /// ends; boxed and numbered, they are six things.
+    /// The card is what makes a list of *composite* things readable.
+    /// Laid out as flat rows, six scheduled messages of five fields each
+    /// are thirty controls in one column with no way to see where one
+    /// message ends; boxed and numbered, they are six things.
     fn plugin_records<'a>(
         &'a self,
         plugin: usize,
@@ -731,9 +707,8 @@ impl SettingsApp {
             left: 8.0,
         };
         for row in 0..rows.len() {
-            // The card's own header: which one this is, what may be done
-            // to it, and then Remove — last and apart, because it is the
-            // one button here that cannot be undone.
+            // Remove goes last and apart: it is the one button here that
+            // cannot be undone.
             let mut header = Row::new().spacing(6).align_y(Alignment::Center).push(
                 Text::new(format!("{}", row + 1))
                     .size(12)
@@ -744,12 +719,12 @@ impl SettingsApp {
             let named = pane.record_id(index, row).is_some();
             let running = pane.action_running(index, row);
             for action in &control.actions {
-                // While it runs, the button says so and stops being
-                // pressable — twice is not what anybody meant by "send
-                // this now", and these steal focus, so two at once would
-                // type into each other's window. The label changes rather
-                // than the button vanishing: a control that disappears
-                // under the pointer is worse than one that waits.
+                // While it runs the button says so and stops being
+                // pressable: these actions steal focus, so two at once
+                // would type into each other's window. The label changes
+                // rather than the button vanishing — a control that
+                // disappears under the pointer is worse than one that
+                // waits.
                 let label = if running {
                     format!("{}…", action.label)
                 } else {
@@ -758,10 +733,10 @@ impl SettingsApp {
                 let mut button = Button::new(Text::new(label).size(12))
                     .style(theme::secondary)
                     .padding(small);
-                // A row with nothing in its naming field is a row the
-                // plug-in has never heard of. The button stays visible
-                // and stays dead, which says "fill this in" where a
-                // hidden button would say nothing at all.
+                // A row with nothing in its naming field is one the
+                // plug-in has never heard of: the button stays visible
+                // and dead, which says "fill this in" where a hidden
+                // button would say nothing.
                 if named && !pane.any_action_running() {
                     button = button.on_press(Message::PluginRecordAction(
                         plugin,
@@ -817,10 +792,9 @@ impl SettingsApp {
     /// One field inside one row of a repeating group.
     ///
     /// The same shapes the top-level controls use, addressed by (row,
-    /// field) instead of by control index. Laid out label-above-box
-    /// rather than on the two-column grid: inside a card there is no
-    /// value column to line up with, and a text field for a whole
-    /// message wants the width.
+    /// field) instead of by control index. Label-above-box rather than
+    /// the two-column grid: inside a card there is no value column to
+    /// line up with, and a field for a whole message wants the width.
     fn plugin_record_field<'a>(
         &'a self,
         plugin: usize,
@@ -931,11 +905,11 @@ impl SettingsApp {
     /// makers describe it.
     ///
     /// The link's text is the address. A plug-in supplying a destination
-    /// is a third party deciding where PolterType sends somebody, so what
-    /// is clicked has to be what is read — a friendly label over an
-    /// arbitrary URL is exactly the shape of the thing this pane's whole
-    /// draw-it-ourselves rule exists to prevent. `validate` has already
-    /// refused anything that is not `https`.
+    /// is a third party deciding where PolterType sends somebody, so
+    /// what is clicked has to be what is read: a friendly label over an
+    /// arbitrary URL is the exact shape this pane's draw-it-ourselves
+    /// rule exists to prevent. `validate` has already refused anything
+    /// that is not `https`.
     fn plugin_choice_cards<'a>(
         &'a self,
         plugin: usize,
@@ -948,11 +922,10 @@ impl SettingsApp {
 
         for (slot, option) in control.options.iter().enumerate() {
             let picked = chosen.as_deref() == Some(option.value());
-            // A radio rather than a checkbox: these are alternatives, and
-            // a row of tick-boxes reads as "any of these", which for a
-            // model is the wrong promise. Keyed on the row's position,
-            // because the widget wants a `Copy` value and the thing being
-            // chosen is a string.
+            // A radio rather than a checkbox: a row of tick-boxes reads
+            // as "any of these", the wrong promise for alternatives.
+            // Keyed on the row's position because the widget wants a
+            // `Copy` value and the choice is a string.
             let mut entry = Column::new().spacing(3).push(
                 iced::widget::Radio::new(option.label(), slot, picked.then_some(slot), {
                     let v = option.value().to_owned();
@@ -1006,6 +979,10 @@ impl SettingsApp {
             .into()
     }
 
+    /// A list: one checkbox per row the plug-in supplied, each ticking
+    /// its own name into an array in the plug-in's config. A row
+    /// contributes a name, a label and a line of detail — nothing about
+    /// how any of it looks.
     fn plugin_list<'a>(
         &'a self,
         plugin: usize,
@@ -1014,9 +991,8 @@ impl SettingsApp {
     ) -> Element<'a, Message> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
-        // Rows have to exist before "select all" means anything, and
-        // while the plug-in is still being asked there is nothing to act
-        // on — so the buttons appear with the boxes they act on.
+        // "Select all" means nothing before the rows exist, so the
+        // buttons appear with the boxes they act on.
         let has_rows = !pane.list_rows(Slot::control(index)).is_empty();
         let column = self.output_heading_with(plugin, index, control, has_rows);
 
@@ -1052,10 +1028,9 @@ impl SettingsApp {
                                 }),
                         );
                         if !row.detail.is_empty() {
-                            // Indented under its own box, so a row
-                            // saying what was measured about an
-                            // application reads as belonging to it
-                            // rather than to the next one.
+                            // Indented under its own box, so the detail
+                            // reads as belonging to that row rather
+                            // than to the next one.
                             entry = entry.push(
                                 Row::new()
                                     .push(Space::with_width(Length::Fixed(26.0)))
@@ -1086,11 +1061,11 @@ impl SettingsApp {
 
     /// A report: the plug-in's own answer, shown as text.
     ///
-    /// Fixed-width and inside a box of its own on purpose. This is the
-    /// one place a plug-in's *output* reaches the settings window, so it
-    /// has to be unmistakably a quotation rather than something
-    /// PolterType is saying: no styling of its own, no controls drawn
-    /// from it, and a heading above it naming what produced it.
+    /// Fixed-width and boxed on purpose: this is the one place a
+    /// plug-in's *output* reaches the settings window, so it has to read
+    /// as a quotation rather than as something PolterType is saying —
+    /// no styling of its own, no controls drawn from it, and a heading
+    /// naming what produced it.
     fn plugin_report<'a>(
         &'a self,
         plugin: usize,
@@ -1115,8 +1090,7 @@ impl SettingsApp {
                 .font(FONT_MONO)
                 .width(Length::Fill)
                 .into(),
-            // Said plainly rather than left as an empty box: a plug-in
-            // that cannot answer is worth seeing, and "nothing here"
+            // Said plainly rather than left as an empty box, which
             // would read as "nothing to say".
             Some(CommandOutput::Failed(why)) => {
                 Text::new(format!("Could not ask the plug-in: {why}"))
@@ -1151,12 +1125,10 @@ impl SettingsApp {
 
     /// The same, with the two batch buttons a tick-box list needs.
     ///
-    /// Only a list gets them, and only when it has rows: a plug-in can
-    /// offer sixty conversations, and ticking sixty boxes by hand to say
-    /// "all of them" is the kind of work a settings window exists to
-    /// spare somebody. They are not on a report, which has nothing to
-    /// tick, and not on an empty list, where they would be two dead
-    /// controls explaining nothing.
+    /// Only a list gets them, and only once it has rows: sixty offered
+    /// conversations is sixty boxes to tick by hand. Not on a report,
+    /// which has nothing to tick, and not on an empty list, where they
+    /// would be two dead controls.
     fn output_heading_with<'a>(
         &'a self,
         plugin: usize,

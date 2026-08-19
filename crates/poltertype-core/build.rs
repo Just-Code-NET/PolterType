@@ -110,9 +110,8 @@ fn main() {
         let dst = out_mappings.join(format!("{stem}.toml"));
         println!("cargo:rerun-if-changed={}", src.display());
         if let Err(e) = fs::copy(&src, &dst) {
-            // Don't panic on missing TOML — same forgiving spirit as
-            // the wordlist path. If a user removes a mapping the
-            // runtime simply won't see it.
+            // Missing TOML warns rather than panics: the runtime simply
+            // won't see that mapping.
             println!(
                 "cargo:warning=mapping copy {} → {} failed: {e}",
                 src.display(),
@@ -149,13 +148,11 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     let weak = src_dir.join(format!("{stem}-weak.txt"));
 
     // ONLY paths that exist. A `rerun-if-changed` pointing at a missing
-    // file makes cargo treat this script as stale on every invocation —
-    // and every crate in the workspace depends on this one, so the whole
-    // workspace rebuilt. Four of the five names below are absent for
-    // nearly every language, which cost 128 s on a no-op run.
-    //
-    // Creating one is still caught: the caller declares the containing
-    // directory, and cargo scans it.
+    // file makes cargo treat this script as stale on every invocation,
+    // and every crate in the workspace depends on this one — four of the
+    // five names below are absent for nearly every language, which cost
+    // 128 s on a no-op run. Creating one is still caught: the caller
+    // declares the containing directory, and cargo scans it.
     for path in [&txt_gz, &txt, &extras, &stop, &weak] {
         if path.exists() {
             println!("cargo:rerun-if-changed={}", path.display());
@@ -219,10 +216,8 @@ fn prepare_wordlist(src_dir: &Path, out_dir: &Path, stem: &str, tag: &str) {
     }
 
     // Compose the dist stop-words file: the source verbatim (comments
-    // included — the runtime parser ignores them) followed by the ≤2
-    // letter extras carved out above. Writing the composite here keeps
-    // the runtime loader untouched. With no source file, still emit one
-    // holding just the short extras, or remove a stale dist copy.
+    // included — the runtime parser ignores them) plus `short_extras`,
+    // so the runtime loader has nothing to compose of its own.
     let stop_dst = out_dir.join(format!("{stem}-stop.txt"));
     let source_stop_text = match fs::read_to_string(&stop) {
         Ok(s) => Some(s),

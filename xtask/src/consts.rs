@@ -11,16 +11,12 @@ pub(crate) const UK_README_URL: &str =
 
 /// The Hunspell-derived bundled languages, one [`HunspellSource`] each.
 ///
-/// Both the `.dic` (stems with flags) and the `.aff` (affix rules) are
-/// downloaded and run through `hunspell::Aff::expand`; without the
-/// expansion ~70 % of common verb and declension forms are missing —
-/// see DECISIONS.md (2026-05-07).
+/// Without affix expansion ~70 % of common verb and declension forms
+/// are missing — see DECISIONS.md (2026-05-07).
 ///
-/// The source stem is the upstream file name; the output keeps our
-/// snake_case layout-stem convention. Keep in lock-step with
-/// `poltertype-core/build.rs::LAYOUTS` — a language with a layout but
-/// no entry here gets an empty FST and plausibility-only detection,
-/// which is legal but rarely intended.
+/// Keep in lock-step with `poltertype-core/build.rs::LAYOUTS`: a
+/// language with a layout but no entry here gets an empty FST and
+/// plausibility-only detection, which is legal but rarely intended.
 pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
     HunspellSource {
         base: "uk_UA",
@@ -51,11 +47,10 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         expand: ExpandMode::Full,
     },
     // French moved down a level upstream (`fr_FR/` → `fr_FR/
-    // dictionaries/`) at some point after the bundled fr_fr.txt.gz
-    // was generated. The old URLs 404, which the fetch reported on
-    // stderr and then carried on past — see the failure tally in
-    // `fetch_wordlists`, added so the next one of these can't pass
-    // for a green run.
+    // dictionaries/`) and the old URLs 404'd for months, because the
+    // fetch reported on stderr and still exited 0. The failure tally in
+    // `fetch_wordlists` exists so the next one of these cannot pass for
+    // a green run.
     HunspellSource {
         base: "fr",
         dic: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/dictionaries/fr.dic",

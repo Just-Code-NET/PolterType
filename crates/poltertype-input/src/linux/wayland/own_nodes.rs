@@ -2,9 +2,9 @@
 //!
 //! The gate must never grab our own uinput emitter: a self-grab
 //! redirects our correction output back into this process and takes the
-//! session's input with it. The exclusion used to rest on a kernel-name
-//! comparison alone; recording the node path the kernel assigned lets
-//! discovery match by identity, so a name drift cannot re-open the hole.
+//! session's input with it. A kernel-name comparison alone is not
+//! enough: recording the node path the kernel assigned lets discovery
+//! match by identity, so a name drift cannot re-open the hole.
 
 use std::path::{Path, PathBuf};
 
@@ -21,7 +21,6 @@ pub(crate) fn record(path: PathBuf) {
     }
 }
 
-/// Is `path` a device node this process created?
 pub(crate) fn is_own(path: &Path) -> bool {
     OWN_NODES.lock().iter().any(|p| p == path)
 }

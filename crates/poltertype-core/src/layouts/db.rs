@@ -44,7 +44,6 @@ impl LayoutDb {
 
         let mut by_id = HashMap::new();
 
-        // ── Bundled stems ─────────────────────────────────────────
         for stem in BUNDLED_LAYOUT_STEMS {
             let toml_path = data_dir
                 .join("layout-mappings")
@@ -61,10 +60,9 @@ impl LayoutDb {
                 }
             };
 
-            // Pre-parse just enough to know the BCP-47 id, so we can
-            // filter against `active_filter` BEFORE doing the
-            // expensive FST mmap+parse for layouts the user can't
-            // even reach.
+            // Pre-parse just enough to know the BCP-47 id, so
+            // `active_filter` runs before the expensive FST mmap+parse
+            // for layouts the user cannot even reach.
             let raw_id = match peek_layout_id(&body) {
                 Some(id) => LayoutId::new(id),
                 None => {
@@ -102,15 +100,14 @@ impl LayoutDb {
         // See docs/DATA_LAYOUT.md.
         load_plugin_packs(data_dir, opts.user_wordlist_dir, &mut by_id);
 
-        // What the OS says these keyboards really do: applied over
-        // everything we shipped and under the user's own TOMLs. A
-        // bundled mapping describes *a* keyboard for the language, this
-        // describes *the* one on this machine — see `os_keymap`.
+        // What the OS says these keyboards really do — over everything
+        // shipped, under the user's own TOMLs. A bundled mapping
+        // describes *a* keyboard for the language; this describes *the*
+        // one on this machine. See `os_keymap`.
         if let Some(keymaps) = opts.os_keymaps {
             apply_os_keymaps(keymaps, &mut by_id);
         }
 
-        // ── User-side TOMLs (always loaded, never filtered) ───────
         if let Some(dir) = opts.user_layout_dir {
             for (stem, body) in read_user_layout_files(dir) {
                 let dictionary = build_user_dictionary(&stem, opts.user_wordlist_dir);
@@ -169,9 +166,8 @@ impl LayoutDb {
         }
     }
 
-    /// Like [`Self::load`] but with bundled + user layouts only —
-    /// kept for the existing tests that drive the user-layout
-    /// pipeline. Same panic-on-failure contract.
+    /// Like [`Self::load`] but with bundled + user layouts only. Same
+    /// panic-on-failure contract.
     #[allow(clippy::panic, clippy::missing_panics_doc)]
     pub fn load_with_user_layouts(layout_dir: Option<&Path>, overlay_dir: Option<&Path>) -> Self {
         match Self::load(LoadOptions {
@@ -203,10 +199,6 @@ impl LayoutDb {
     ///
     /// Layouts with no FST in the data dir get an overlay-only
     /// dictionary if the profile mentions them, and are skipped if not.
-    ///
-    /// Takes the data dir as a parameter rather than resolving it:
-    /// resolving internally would lose the explicit-config-dir test
-    /// path, and the caller already has it from `LoadOptions`.
     pub fn build_profile_dictionaries(
         &self,
         data_dir: &Path,
@@ -215,18 +207,15 @@ impl LayoutDb {
         let mut out = HashMap::new();
         for (id, mapping) in &self.by_id {
             // Bundled stems are the BCP-47 id lowercased with `-` → `_`,
-            // the same convention the FST file names follow. User
-            // layouts' real stem is their TOML filename, which is not
-            // tracked here, so they fall back to the same shape — which
-            // most of them follow, so profile overlays still apply.
+            // the convention the FST file names follow. A user layout's
+            // real stem is its TOML filename, which is not tracked here,
+            // so it falls back to the same shape.
             let stem = mapping.id.as_str().to_lowercase().replace('-', "_");
             if let Some(dict) = build_dictionary(data_dir, &stem, Some(profile_overlay_dir)) {
                 out.insert(id.clone(), dict);
             } else {
-                // No bundled FST AND no profile overlay file. Try
-                // overlay-only — useful for user layouts that don't
-                // ship an FST but whose users still want to add
-                // profile-specific words.
+                // No bundled FST and no profile overlay file: a user
+                // layout can still carry profile-specific words.
                 if let Some(dict) = build_user_dictionary(&stem, Some(profile_overlay_dir)) {
                     out.insert(id.clone(), dict);
                 }

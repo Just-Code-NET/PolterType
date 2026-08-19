@@ -1,28 +1,16 @@
 //! The AppKit side of the macOS tooltip: a borderless, non-activating
 //! `NSPanel` whose content view's layer carries the rendered frame.
+//! Design spec: `docs/MACOS_POPUP.md`.
 //!
-//! Everything in this file runs on the main thread, dispatched here
-//! from the handle in [`super::popup`] via the main dispatch queue —
-//! AppKit's threading rule, and the reason this backend has no thread
-//! of its own. State lives in the `STATE` thread-local; every entry
-//! point re-acquires the main-thread marker rather than trusting the
-//! caller.
+//! Everything here runs on the main thread, dispatched from
+//! [`super::popup`]; every entry point re-acquires the main-thread
+//! marker rather than trusting the caller.
 //!
-//! ## Coordinate spaces
-//!
-//! Anchors arrive in Core Graphics / accessibility coordinates
-//! (global, top-left origin, y down) and all placement maths happens
-//! there, so the shared [`crate::place`] logic works unmodified. The
-//! single conversion to AppKit's bottom-left space happens when the
+//! **Coordinate spaces.** Anchors arrive in Core Graphics /
+//! accessibility coordinates (global, top-left origin, y down) and all
+//! placement maths happens there, so [`crate::place`] works unmodified.
+//! The single conversion to AppKit's bottom-left space happens when the
 //! panel frame is set: `appkit_y = primary_height - cg_y - height`.
-//!
-//! ## Focus
-//!
-//! `NSWindowStyleMask::NonactivatingPanel` is the whole "never steal
-//! focus" guarantee: the panel can be clicked (row hit-tests run in
-//! `mouseDown`) but can never become key, so the editor keeps the
-//! keyboard. `setReleasedWhenClosed(false)` matches the lifetime of
-//! every other object here: ours, for the process duration.
 
 use std::cell::RefCell;
 use std::sync::{Arc, OnceLock};

@@ -1,23 +1,17 @@
 //! Plug-in entries in the tray menu.
 //!
-//! A plug-in declares menu entries in its manifest; this turns them
-//! into real items and remembers which item means which command. The
-//! app's own menu handling stays a list of `if id == …` comparisons
-//! and asks this module one question at the end: "was that one of the
-//! plug-ins'?"
+//! A plug-in declares menu entries in its manifest; this turns them into
+//! real items and remembers which item means which command.
 //!
 //! Routing by the item's own id — never by label or position — keeps
 //! two plug-ins that both call an entry "Settings…" apart, and keeps
 //! either from matching one of ours.
 //!
-//! An entry may declare which key of the plug-in's state it reflects,
-//! and the menu is refreshed from the plug-in itself, never from its
-//! config file, which holds only what it *starts* as. The live value is
-//! shown twice on purpose — a **tick** on the active alternative and a
-//! **status line** naming it in words — because a tick is small, drawn
-//! differently by every tray backend, and sometimes not drawn at all.
-//! One of the two is redundant on any given desktop and which one is
-//! not knowable from here.
+//! State is refreshed from the plug-in itself, never from its config
+//! file, which holds only what it *starts* as. The live value is shown
+//! twice on purpose — a **tick** on the active alternative and a
+//! **status line** naming it in words — because a tick is drawn
+//! differently by every tray backend, and sometimes not at all.
 
 use std::collections::HashMap;
 
@@ -127,8 +121,7 @@ impl PluginMenu {
     /// Append one section per plug-in that declares menu entries.
     ///
     /// A plug-in with nothing to contribute adds nothing — no empty
-    /// section, no separator, no evidence it is there. The tray belongs
-    /// to the user.
+    /// section, no separator, no evidence it is there.
     pub fn build(extensions: Vec<DiscoveredExtension>, menu: &Menu) -> Result<Self> {
         let mut routes = HashMap::new();
         let mut stateful: Vec<(usize, StateItem)> = Vec::new();
@@ -144,9 +137,7 @@ impl PluginMenu {
 
             for entry in &ext.manifest.tray_items {
                 if entry.is_status() {
-                    // Disabled: it reports, it does not act. Clicking it
-                    // should do nothing, and looking disabled is how a
-                    // menu says so before you try.
+                    // Disabled: it reports, it does not act.
                     let item = MenuItem::new(entry.render(None), false, None);
                     menu.append(&item)
                         .with_context(|| format!("plug-in status entry {:?}", entry.label))?;
@@ -183,10 +174,8 @@ impl PluginMenu {
                 // outlive the borrow used to append it.
                 keep.push(item);
             }
-            // The runtime menus come last, under the fixed entries: what
-            // is waiting is what the owner came to the tray for, and it
-            // reads better at the bottom of the plug-in's own block than
-            // between two settings.
+            // Runtime menus last, at the bottom of the plug-in's own
+            // block rather than between two of its settings.
             for spec in &ext.manifest.tray_lists {
                 if spec.command.trim().is_empty() {
                     warn!(id = %ext.id, label = %spec.label, "tray list names no command — skipped");
@@ -219,9 +208,8 @@ impl PluginMenu {
             row_routes: HashMap::new(),
             attention: 0,
         };
-        // Start truthful rather than blank: without this the first look
-        // at the menu shows nothing ticked, which reads as "no mode is
-        // set" when in fact one always is.
+        // Start truthful rather than blank: nothing ticked reads as "no
+        // mode is set", when in fact one always is.
         this.refresh();
         Ok(this)
     }
@@ -258,9 +246,8 @@ impl PluginMenu {
 
         self.refresh_lists();
 
-        // The mark on the icon is counted from the same state read the
-        // entries used, so the number on the icon and the number in the
-        // menu can never disagree.
+        // Counted from the same state read the entries used, so the icon
+        // and the menu can never disagree.
         self.attention = self
             .extensions
             .iter()
@@ -280,11 +267,9 @@ impl PluginMenu {
     /// Throw away every runtime menu's contents and build them again
     /// from what the plug-in prints now.
     ///
-    /// Rebuilt whole rather than diffed: the rows are a queue, the ids
-    /// are the plug-in's, and a menu that tried to keep the items it
-    /// recognised would have to decide what "the same row" means. It is
-    /// a handful of items behind a click, and getting it wrong means
-    /// acting on the row above the one that was pointed at.
+    /// Rebuilt whole rather than diffed: a menu that kept the items it
+    /// recognised would have to decide what "the same row" means, and
+    /// getting that wrong acts on the row above the one pointed at.
     fn refresh_lists(&mut self) {
         if self.lists.is_empty() {
             return;
@@ -308,8 +293,7 @@ impl PluginMenu {
                 } else {
                     empty.to_owned()
                 });
-                // Disabled, so a menu with nothing in it cannot be
-                // opened onto a blank rectangle.
+                // Disabled, so it cannot open onto a blank rectangle.
                 list.root.set_enabled(false);
                 continue;
             }
@@ -319,9 +303,8 @@ impl PluginMenu {
 
             let mut routes = Vec::new();
             for row in &rows {
-                // Each row is a submenu of its own: the label is what
-                // there is room for in a menu, and everything the row
-                // actually holds waits one hover away.
+                // Each row is a submenu of its own: the label is all a
+                // menu row has space for; the detail waits one hover away.
                 let entry = Submenu::new(&row.label, true);
                 for detail in &row.details {
                     let line = MenuItem::new(detail, false, None);
@@ -397,18 +380,17 @@ impl PluginMenu {
         }
 
         // The click almost certainly changed what the menu should show,
-        // and this is the one moment we know to look. A command is
-        // spawned rather than waited on, though, so the state it sets
-        // may not have landed yet — hence the settle below, and hence
-        // `refresh` staying public for the periodic caller.
+        // and this is the one moment we know to look. The command is
+        // spawned rather than waited on, so its state may not have landed
+        // yet — hence `REFRESH_SETTLE`, and hence `refresh` staying public
+        // for the periodic caller.
         std::thread::sleep(REFRESH_SETTLE);
         self.refresh();
         true
     }
 
-    /// Does any plug-in report state worth re-reading? The caller uses
-    /// this to decide whether to run a heartbeat at all — an app that
-    /// wakes on a timer to do nothing is worse than one that sleeps.
+    /// Does any plug-in report state worth re-reading? Decides whether
+    /// the heartbeat runs at all.
     pub fn reports_state(&self) -> bool {
         !self.stateful.is_empty() || !self.lists.is_empty()
     }

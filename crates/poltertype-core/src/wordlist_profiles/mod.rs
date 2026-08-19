@@ -7,10 +7,10 @@
 //! separate overlay sets per context, and the engine swaps the active
 //! one when the foreground app changes.
 //!
-//! On disk this is one directory level on top of the existing overlay
-//! contract — `wordlists/profiles/<profile-id>/<stem>.txt` — parsed by
-//! the same parser, so files can be `cp`d between the two layers.
-//! Profiles match on `apps` against the focused executable's basename,
+//! On disk this is one directory level on top of the overlay contract —
+//! `wordlists/profiles/<profile-id>/<stem>.txt` — parsed by the same
+//! parser, so files can be `cp`d between the two layers. Profiles match
+//! `apps` against the focused executable's basename,
 //! case-insensitively, the same rule `disabled_apps` uses.
 //!
 //! Deliberately absent: **profile inheritance** (a profile is its own

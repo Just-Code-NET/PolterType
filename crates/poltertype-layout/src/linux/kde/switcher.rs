@@ -48,15 +48,10 @@ pub fn try_init() -> Option<KdeSwitcher> {
         indexed: true,
     };
 
-    // Probe the actual D-Bus service — if `org.kde.keyboard` isn't on
-    // the bus the daemon (`kded6`/KWin) isn't running, and every
-    // subsequent call would just fail. Better to fall through to the
-    // next backend now.
-    //
     // The probe demands a *non-empty parsed* list, not merely a
     // successful exit: qdbus answers an un-renderable return type with
-    // an error sentence on stdout and exit 0, and the old
-    // exit-status-only probe accepted that as a layout list (#31).
+    // an error sentence on stdout and exit 0, which an exit-status-only
+    // probe reads as a layout list (#31).
     let names = match candidate.short_names() {
         Ok(names) => names,
         Err(e) => {

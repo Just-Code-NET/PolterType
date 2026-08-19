@@ -14,19 +14,16 @@
 //! layout detection on the final text.
 //!
 //! **Privacy posture.** This is the only part of PolterType that can
-//! send what you typed anywhere, so the gates are layered and each is a
-//! real barrier: the `ai` Cargo feature is off by default; the `remote`
-//! sub-feature is off even when `ai` is on, and without it no HTTP
-//! client is compiled in at all; `[ai].enabled` must be true at
-//! runtime; and a **non-loopback** endpoint additionally needs
-//! `[ai].allow_remote`, decided in [`locality`], which fails closed on
-//! anything it cannot parse. API keys live in the OS keychain via
-//! `keyring` — a literal secret in `config.toml` is refused at
-//! construction, not used. Nothing typed is logged, and the decision
-//! cache stores hashes rather than text.
-//!
-//! There is no telemetry and no code here that reports to us. The only
-//! address this crate ever contacts is one the user wrote down.
+//! send what you typed anywhere, so four gates stack, each a real
+//! barrier: the `ai` Cargo feature (off by default); the `remote`
+//! sub-feature, without which no HTTP client is compiled in at all;
+//! `[ai].enabled` at runtime; and `[ai].allow_remote` for a
+//! **non-loopback** endpoint, decided in [`locality`], which fails
+//! closed on anything it cannot parse. API keys live in the OS
+//! keychain — a literal secret in `config.toml` is refused at
+//! construction, not used. Nothing typed is logged and the decision
+//! cache stores hashes, not text. No telemetry: the only address this
+//! crate ever contacts is one the user wrote down. See `docs/AI.md`.
 
 #![forbid(unsafe_code)]
 // Same test-only allowance the other crates carry: a test that cannot
@@ -43,8 +40,7 @@ mod cache;
 mod consts;
 mod enums;
 mod keys;
-// The whole module is the HTTP client's wrapper, so without the
-// feature there is nothing for it to do — and leaving it compiled
+// The whole module wraps the HTTP client, so without the feature it
 // would be dead code that only a `--no-default-features` lint run
 // notices.
 #[cfg(feature = "remote")]

@@ -3,24 +3,18 @@
 use serde::{Deserialize, Serialize};
 
 /// Top-level wordlist settings — sits under `[wordlists]` in
-/// `config.toml`. The default is empty (no profiles configured),
-/// which preserves the existing global-overlay-only behaviour for
-/// users on configs from beta.4 and earlier.
+/// `config.toml`. The default is empty: no profiles, global overlay
+/// only.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WordlistSettings {
-    /// Profile id used when no profile's `apps` list matches the
-    /// focused app. Empty string (the default) means "use the
-    /// global overlay files only" — i.e. exactly what every user
-    /// got before profiles existed. A non-empty value must refer
-    /// to one of the entries in `profiles` below; an unknown id
-    /// logs a warning at engine start and falls back to the empty
-    /// (global-only) state.
+    /// Profile id used when no profile's `apps` list matches the focused
+    /// app. Empty (the default) means the global overlay files only. A
+    /// non-empty value must name an entry in `profiles`; an unknown id
+    /// warns at engine start and falls back to global-only.
     pub default_profile: String,
-    /// Configured profiles. Order is significant only for the
-    /// "first match wins" rule when two profiles list the same
-    /// app — that's a config error in practice but we resolve it
-    /// deterministically rather than panicking.
+    /// Configured profiles. Order matters only for the "first match
+    /// wins" rule when two profiles list the same app.
     pub profiles: Vec<WordlistProfile>,
 }
 
@@ -35,9 +29,8 @@ pub struct WordlistProfile {
     /// avoid characters the OS doesn't like in path segments
     /// (`/`, `\\`, `:`, `*`, `?`, `"`, `<`, `>`, `|` on Windows).
     pub id: String,
-    /// Free-form display name shown in the Settings UI. Falls
-    /// back to `id` if blank. Not used by the engine for matching
-    /// (matching is by `apps` only).
+    /// Free-form display name shown in the Settings UI, falling back to
+    /// `id` if blank. Never matched against — that is `apps` only.
     #[serde(default)]
     pub name: String,
     /// Foreground apps this profile activates for. Each entry is

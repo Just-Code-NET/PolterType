@@ -7,9 +7,8 @@ use std::process::Command;
 use std::{fs, path::Path};
 
 /// Wire the versioned `.githooks/` directory into the local clone by
-/// setting `core.hooksPath`. That is the entire install — Git runs every
-/// executable in that directory itself, so `.git/hooks/` stays
-/// untouched and out of the way of anyone who keeps something there.
+/// setting `core.hooksPath`, leaving `.git/hooks/` untouched for
+/// anyone who keeps something there.
 ///
 /// The scripts are re-`chmod +x`ed on POSIX afterwards, in case the
 /// repo arrived by a route that dropped the executable bit.
@@ -23,9 +22,8 @@ pub(crate) fn install_hooks() -> Result<()> {
         );
     }
 
-    // Path stored in `git config` is interpreted relative to the
-    // working tree root, so `.githooks` (no leading slash) is correct
-    // and portable across platforms.
+    // `git config` interprets this relative to the working tree root,
+    // so `.githooks` with no leading slash is the portable spelling.
     let status = Command::new("git")
         .args(["config", "core.hooksPath", ".githooks"])
         .current_dir(&root)
@@ -46,11 +44,9 @@ pub(crate) fn install_hooks() -> Result<()> {
     Ok(())
 }
 
-/// Inverse of `install_hooks`: drop the `core.hooksPath` config so
-/// Git falls back to its default (`.git/hooks/`, empty in fresh
-/// clones). `--unset` is a no-op if the config wasn't set, but git
-/// returns exit-code 5 in that case — we suppress it to keep the
-/// command idempotent ("uninstall what isn't installed → success").
+/// Inverse of `install_hooks`: drop `core.hooksPath` so Git falls back
+/// to `.git/hooks/`. Git exits 5 when the key was not set, which is
+/// suppressed to keep "uninstall what isn't installed" a success.
 pub(crate) fn uninstall_hooks() -> Result<()> {
     let root = repo_root()?;
     let output = Command::new("git")
@@ -71,11 +67,10 @@ pub(crate) fn uninstall_hooks() -> Result<()> {
     Ok(())
 }
 
-/// Best-effort `chmod +x` for every regular file inside `dir`.
-/// Avoids dragging the `nix` crate in for a one-call use; we just
-/// shell out to `chmod` which is on every Unix that runs Git anyway.
-/// On non-Unix this whole function is `cfg`-skipped — Git for Windows
-/// runs hooks via its bundled `sh.exe` regardless of file mode.
+/// Best-effort `chmod +x` for every regular file inside `dir`, shelling
+/// out rather than dragging in `nix` for one call. `cfg`-skipped on
+/// non-Unix: Git for Windows runs hooks via its bundled `sh.exe`
+/// regardless of file mode.
 #[cfg(unix)]
 pub(crate) fn chmod_executable(dir: &Path) -> Result<()> {
     let entries = fs::read_dir(dir).with_context(|| format!("read_dir {}", dir.display()))?;

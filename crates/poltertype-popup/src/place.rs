@@ -1,12 +1,11 @@
 //! Placement of the tooltip around its anchor point — the text caret.
 //!
-//! It prefers to hang *above* the point and walks the sides when there
-//! is no room: above → below → right → left, taking the first that fits
-//! fully on screen. Whatever side wins, the transverse coordinate is
-//! clamped inside the screen with a small margin, so a point near a
-//! corner slides the tooltip along the edge instead of off it.
+//! Prefers to hang *above* the point, then walks above → below → right
+//! → left for the first side that fits fully on screen. Whatever side
+//! wins, the transverse coordinate is clamped inside the screen with a
+//! small margin, so a point near a corner slides the tooltip along the
+//! edge instead of off it.
 //!
-//! Pure arithmetic, shared by both Linux backends and unit-tested.
 //! Coordinates are the anchor's space: output-local logical px on
 //! Wayland, root pixels on X11.
 
@@ -21,8 +20,7 @@ const EDGE_MARGIN: i32 = 8;
 
 /// Top-left position for a `w`×`h` tooltip near the vertical segment
 /// `(px, py_top)..(px, py_bottom)` — a caret with its line height, or a
-/// pointer where the two coincide. "Above" clears the segment's top and
-/// "below" its bottom, so the tooltip never covers the line being typed.
+/// pointer where the two coincide.
 ///
 /// `bounds` is the screen size in the same space; `None` degrades to
 /// above-else-below with a non-negative clamp, and the compositor clips

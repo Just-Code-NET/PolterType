@@ -19,60 +19,46 @@ pub struct SettingsApp {
     pub(super) config_path: PathBuf,
     pub(super) store: Arc<SettingsStore>,
     pub(super) pane: Pane,
-    /// OS dark-mode preference, sampled once at window start via
-    /// [`super::system_theme::system_prefers_dark`] (iced's own
-    /// auto-detection misses the XDG portal — see that module). Used
-    /// when `[general].ui_theme = "system"`. Not re-sampled live —
-    /// the window is short-lived, and re-detecting per frame would
-    /// spawn probe processes on every render.
+    /// OS dark-mode preference for `[general].ui_theme = "system"`,
+    /// sampled once at window start (iced's own auto-detection misses
+    /// the XDG portal — see [`super::system_theme`]). Not re-sampled
+    /// live: re-detecting would spawn probe processes per render.
     pub(super) system_prefers_dark: bool,
-    /// Call counter consulted by `view` to nudge the root backdrop
-    /// colour by an invisible epsilon on every rebuild — see the
-    /// backdrop comment in `view` for why. `Cell` because `view`
-    /// only gets `&self`.
+    /// Call counter behind [`SettingsApp::backdrop_color`]. `Cell`
+    /// because `view` only gets `&self`.
     pub(super) bg_jitter: std::cell::Cell<u32>,
-    /// Set when [`Message::Save`] writes successfully — surfaced as a
-    /// transient banner in the footer so the user gets feedback the
-    /// click did something.
     pub(super) save_banner: Option<SaveBanner>,
-    /// `Some(kind)` while the user is in "press a combination…" mode.
-    /// The keyboard subscription consults this to know whether to
-    /// route key events to `HotkeyCaptured` or ignore them.
+    /// `Some(kind)` while the user is in "press a combination…" mode;
+    /// the keyboard subscription consults this to decide whether key
+    /// events become `HotkeyCaptured` or are ignored.
     pub(super) capturing: Option<HotkeyKind>,
-    /// Live answer from the permission probe, re-read on every
-    /// *Check again* click. Held rather than probed inside `view`
-    /// because `view` runs on every frame and this touches the
-    /// filesystem — and because a value that changes under the user
-    /// mid-render is how a "did my click work?" question becomes
-    /// unanswerable.
+    /// Live answer from the permission probe, re-read on every *Check
+    /// again* click. Held rather than probed inside `view`: `view` runs
+    /// every frame and this touches the filesystem, and a value that
+    /// changes mid-render makes "did my click work?" unanswerable.
     pub(super) setup: poltertype_input::setup::SetupReport,
-    /// Name of the layout-switcher backend, or `None` when no backend
-    /// could be built. The honest banner for the case the hooks are
-    /// fine and switching is not.
+    /// `None` when no backend could be built — the honest banner for
+    /// hooks that are fine while switching is not.
     pub(super) layout_backend: Option<String>,
-    /// Feedback for the Setup pane's own buttons ("Copied.", "Nothing
-    /// changed yet."), kept apart from the global save banner.
+    /// Feedback for the Setup pane's own buttons, kept apart from the
+    /// global save banner.
     pub(super) setup_status: Option<SaveBanner>,
-    /// Free-form text in the "add a new disabled app" input on the
-    /// Exceptions pane. Empty by default; cleared on Add.
+    /// Draft in the Exceptions pane's "add a disabled app" input.
     pub(super) exception_draft: String,
-    /// Installed plug-ins that declare a settings pane, with the
-    /// values read from *their* config files. Loaded once when the
-    /// window opens: these files belong to other programs, and
-    /// re-reading them on every frame would fight whoever else is
-    /// writing them.
+    /// Installed plug-ins that declare a settings pane, with the values
+    /// read from *their* config files. Loaded once when the window
+    /// opens: those files belong to other programs, and re-reading them
+    /// per frame would fight whoever else writes them.
     pub(super) plugins: Vec<super::plugin_pane::PluginPane>,
 
     // ── Commands pane: draft of a new command ──────────────────────
     /// Free-form display name. Falls back to id if blank at Add time.
     pub(super) command_draft_name: String,
     /// Trigger token the user types to fire this command. Stored
-    /// verbatim — validation happens on the Add path so users
-    /// can fix in-place (a `TextInput` with a forced trim would
-    /// fight common typing patterns). See [`UserCommand::trigger`].
+    /// verbatim, validated on the Add path: a `TextInput` with a forced
+    /// trim fights common typing patterns. See [`UserCommand::trigger`].
     pub(super) command_draft_trigger: String,
-    /// Which action variant the user picked. Maps to
-    /// [`CommandAction`] at Add time using `command_draft_param`.
+    /// Maps to [`CommandAction`] at Add time using `command_draft_param`.
     pub(super) command_draft_action_kind: CommandActionKind,
     /// Free-form param string. Interpretation depends on
     /// `command_draft_action_kind`:
@@ -83,35 +69,27 @@ pub struct SettingsApp {
     pub(super) command_draft_param: String,
     /// Optional comma-separated app filter. Empty = all apps.
     pub(super) command_draft_apps: String,
-    /// Per-pane status banner (independent of the global save banner
-    /// so "Added!" doesn't get clobbered by save state).
+    /// Per-pane status banner, independent of the global save banner.
     pub(super) command_status: Option<SaveBanner>,
 
     // ── Wordlists pane ─────────────────────────────────────────────
-    /// Currently-selected profile id for editing. Empty string =
-    /// the global overlay (`<config-dir>/wordlists/<stem>.txt`);
-    /// any non-empty value picks the per-profile directory at
-    /// `<config-dir>/wordlists/profiles/<id>/<stem>.txt`. Defaults
-    /// to global when the pane opens — same baseline the engine
-    /// uses before any focus-driven profile swap happens.
+    /// Profile id being edited. Empty = the global overlay
+    /// (`<config-dir>/wordlists/<stem>.txt`); anything else picks
+    /// `<config-dir>/wordlists/profiles/<id>/<stem>.txt`. Opens on
+    /// global — the same baseline the engine uses before any
+    /// focus-driven profile swap.
     pub(super) wordlist_profile: String,
-    /// Currently-selected layout for editing. `None` until the user
-    /// clicks one of the layout buttons (or defaults to the first
-    /// OS-active layout when the pane is first opened).
+    /// `None` until the user clicks a layout button, or defaults to the
+    /// first OS-active layout when the pane is first opened.
     pub(super) wordlist_layout: Option<LayoutId>,
-    /// Which file we're editing for the selected layout.
     pub(super) wordlist_kind: WordlistKind,
-    /// Live editor buffer. `text_editor::Content` owns its own state
-    /// (cursor position, selection, undo stack) — we just feed
-    /// actions in via `Message::WordlistEdit`.
+    /// Live editor buffer; `text_editor::Content` owns cursor,
+    /// selection and undo stack, fed through `Message::WordlistEdit`.
     pub(super) wordlist_content: text_editor::Content,
-    /// `Some` once a save / reload / load happens — surfaces a
-    /// per-pane status line independent of the global save banner so
-    /// "Saved!" on Wordlists doesn't mask "Saved!" on settings.
+    /// Per-pane status line, independent of the global save banner.
     pub(super) wordlist_status: Option<SaveBanner>,
-    /// Has the buffer been edited since the last load/save? Used to
-    /// gate the "discard changes" warning when the user picks a
-    /// different layout / kind without saving.
+    /// Gates the "discard changes" warning when the user switches
+    /// layout / kind without saving.
     pub(super) wordlist_dirty: bool,
 }
 
@@ -132,22 +110,18 @@ impl SettingsApp {
     ) -> Self {
         // Pre-populate the Wordlists pane with the first OS-active
         // layout so the user can start typing the moment they land
-        // on the pane — picking up the existing file content if any.
+        // on the pane.
         let (initial_layout, initial_text) = match os_layouts.first().cloned() {
             Some(layout) => {
-                // Default profile is always "" (global) on first open
-                // — same baseline the engine uses before any focus-
-                // driven swap fires.
                 let text = read_overlay_file_or_empty("", &layout, WordlistKind::Extras);
                 (Some(layout), text)
             }
             None => (None, String::new()),
         };
 
-        // Plug-in configs live beside PolterType's own config
-        // directory, not inside it — a plug-in is a separate program,
-        // not a subsection of this one. Computed here because the
-        // struct literal below takes ownership of `config_path`.
+        // Plug-in configs live beside PolterType's config directory,
+        // not inside it — a plug-in is a separate program. Computed
+        // here because the struct literal below takes `config_path`.
         let plugin_config_root = config_path
             .parent()
             .and_then(|d| d.parent())
@@ -202,9 +176,6 @@ impl SettingsApp {
     }
 
     pub(super) fn theme(&self) -> Theme {
-        // Branded light / dark themes built from the same design
-        // tokens as poltertype.com; `System` follows the OS
-        // preference sampled at window start.
         let dark = match self.theme_choice() {
             ThemeChoice::Light => false,
             ThemeChoice::Dark => true,
@@ -223,17 +194,14 @@ impl SettingsApp {
     /// The root backdrop colour: the theme's window background with its
     /// blue channel nudged by an epsilon that changes on every call.
     ///
-    /// A workaround for iced 0.13's tiny-skia compositor, whose
+    /// Workaround for iced 0.13's tiny-skia compositor, whose
     /// partial-present path mis-tracks which swapchain buffer holds
     /// which frame — after a palette change the window blinks between
     /// themes and hover repaints can freeze. A full-window quad whose
-    /// colour never repeats makes the layer diff mark the whole window
-    /// damaged, so every present redraws in full.
-    ///
-    /// The epsilon cycles 251 steps of at most 1/1024, far below 8-bit
-    /// output precision, so rendered pixels are identical frame to
-    /// frame; a prime cycle keeps consecutive rebuilds distinct however
-    /// often the runtime samples the view. Remove at iced 0.14.
+    /// colour never repeats marks the whole window damaged, so every
+    /// present redraws in full. The epsilon cycles a prime 251 steps of
+    /// at most 1/1024, far below 8-bit output precision, so rendered
+    /// pixels are identical frame to frame. Remove at iced 0.14.
     pub(super) fn backdrop_color(&self) -> iced::Color {
         let bg = self.brand().bg;
         let n = self.bg_jitter.get().wrapping_add(1);
@@ -245,12 +213,11 @@ impl SettingsApp {
         }
     }
 
-    /// Active subscription. Always listens for window-close requests
-    /// (so we can auto-save unsaved wordlist edits before the window
-    /// goes away), and *additionally* listens for keyboard events
-    /// while we're in hotkey-capture mode. Outside capture mode the
-    /// keyboard sub is dropped — otherwise every keystroke in the
-    /// window would allocate a `Message` and re-render.
+    /// Always listens for window-close requests, so unsaved wordlist
+    /// edits can be flushed before the window goes away. The keyboard
+    /// sub is added only in hotkey-capture mode: otherwise every
+    /// keystroke in the window would allocate a `Message` and
+    /// re-render.
     pub(super) fn subscription(&self) -> Subscription<Message> {
         let close_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
 
@@ -258,22 +225,18 @@ impl SettingsApp {
             return close_sub;
         }
         let capture_sub = iced::keyboard::on_key_press(|key, modifiers| {
-            // Esc bails out without rebinding. Important: a lot of
-            // people will hit Esc when they realise they didn't want
-            // to rebind, and silently swallowing it would feel like
-            // a frozen UI.
+            // Swallowing Esc here would read as a frozen UI: it is what
+            // people press once they realise they don't want to rebind.
             if matches!(key, Key::Named(Named::Escape)) {
                 return Some(Message::HotkeyRebindCancel);
             }
-            // Ignore lone modifier presses — Ctrl by itself is not a
-            // hotkey, and we'd otherwise capture every transient
-            // press as the user composes the combination.
+            // Lone modifiers are not hotkeys, and every transient press
+            // while composing a combination would otherwise be caught.
             if is_modifier_key(&key) {
                 return None;
             }
-            // Require at least one modifier. Single-letter hotkeys
-            // (`A`, `Space`) would clash with normal typing — we
-            // refuse to rebind to those.
+            // Single-key hotkeys (`A`, `Space`) would clash with normal
+            // typing.
             if modifiers.is_empty() {
                 return None;
             }

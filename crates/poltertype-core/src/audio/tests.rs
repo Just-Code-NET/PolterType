@@ -14,9 +14,7 @@ fn synthesised_blip_starts_and_ends_silent() {
     assert_eq!(*samples.last().unwrap(), 0.0);
 }
 
-/// At least `LEAD_SILENCE_MS` of dead air at the start. Cheap
-/// regression guard: if a future refactor accidentally inlines
-/// the buffer build and skips the prefix, we want to catch it.
+/// At least `LEAD_SILENCE_MS` of dead air at the start.
 #[test]
 fn synthesised_blip_has_lead_and_tail_silence() {
     let sr = 44_100u32;
@@ -70,11 +68,8 @@ fn synthesised_blip_handles_very_short_durations() {
     assert_eq!(*samples.last().unwrap(), 0.0);
 }
 
-/// The total buffer length matches the sum of lead + body + tail
-/// at the typical 44.1 kHz sample rate. Belt-and-braces for the
-/// expected event durations — a refactor that, say, accidentally
-/// halved the lead silence would trip here without us having to
-/// audit by ear.
+/// The total buffer length matches lead + body + tail at 44.1 kHz —
+/// the envelope cannot otherwise be checked without listening to it.
 #[test]
 fn synthesised_blip_length_matches_padding_plan() {
     let sr = 44_100u32;

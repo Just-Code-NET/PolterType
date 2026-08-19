@@ -1,12 +1,10 @@
-//! AI-backed [`WordRewriter`]s.
-//!
-//! v0.1 ships a single example rewriter that demonstrates the shape
-//! of the API. Real implementations land in v0.1.x.
+//! AI-backed [`WordRewriter`]s. Nothing here is LLM-backed yet — the
+//! one implementation exists to pin down the shape of the API.
 
 use poltertype_detect::{RewriteRequest, RewriteVerdict, WordRewriter};
 
-/// Capitalises the first letter of common proper nouns. Demonstrative
-/// stub — replace with an LLM-backed implementation in v0.1.x.
+/// Capitalises the first letter of common proper nouns from a
+/// hard-coded list. A stub standing in for an LLM-backed rewriter.
 pub struct SmartCapitalize;
 
 impl WordRewriter for SmartCapitalize {

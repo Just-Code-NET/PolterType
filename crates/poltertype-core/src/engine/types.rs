@@ -8,20 +8,17 @@ use poltertype_types::WordKey;
 /// One correction, described in full: what to delete, what to type in
 /// its place, and under which layout.
 ///
-/// Named fields because the emitter took ten positional parameters,
-/// four of them `&str`/`&LayoutId` pairs that transpose silently — a
-/// swapped `from`/`to` compiles, type-checks, and then deletes the
-/// wrong number of characters under the wrong layout.
+/// Named fields because four of these are `&str`/`&LayoutId` pairs that
+/// transpose silently — a swapped `from`/`to` compiles, type-checks, and
+/// then deletes the wrong number of characters under the wrong layout.
 pub struct Correction<'a> {
     /// Layout the text was typed under. Equal to [`Self::to`] for a
     /// same-layout replacement (a spelling suggestion), and that
     /// equality is what the emitter keys "is this a switch?" off.
     pub from: &'a LayoutId,
-    /// Layout to switch to and replay under.
     pub to: &'a LayoutId,
     /// What is on screen now — for the event payload and the log.
     pub original: &'a str,
-    /// What should be on screen after.
     pub corrected: &'a str,
     /// How many characters to delete before typing the replacement.
     pub backspaces: usize,
@@ -40,11 +37,8 @@ pub struct Correction<'a> {
 }
 
 /// An accepted suggestion, worked out down to what the emitter needs.
-///
-/// Separate from applying it because the halves are different jobs:
-/// deciding *what* the replacement is — layout, deletion length,
-/// scancodes or text — is judgement and early returns, while emitting
-/// it is one call plus bookkeeping.
+/// Separate from applying it so every reason to decline lands before
+/// anything reaches the screen.
 pub struct PlannedReplacement {
     pub target_layout: LayoutId,
     /// On-screen characters to delete: the word, the separator run,
@@ -135,12 +129,9 @@ impl AcceptModifiers {
 /// What accepting a suggestion entry does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SuggestionAction {
-    /// Replace the mistyped word with the entry's text.
     Replace,
-    /// Add the mistyped word to the user's dictionary overlay for
-    /// this language — no text change; the word stops being flagged.
-    /// The engine only emits the request; the app owns the overlay
-    /// file and the dictionary reload.
+    /// No text change. The engine only emits the request; the app owns
+    /// the overlay file and the dictionary reload.
     AddToDictionary,
 }
 
@@ -160,11 +151,10 @@ pub struct SuggestionEntry {
     pub action: SuggestionAction,
 }
 
-/// A suggestion offer awaiting the user's accept. Mirrors [`LastWord`],
-/// with the same screen-position caveats, plus what a late accept needs
-/// to validate. Separators and any in-progress next word are read from
-/// the live [`WordBuffer`] at accept time instead, because they may
-/// legitimately change while the tooltip is up.
+/// A suggestion offer awaiting the user's accept. Separators and any
+/// in-progress next word are deliberately absent: they may legitimately
+/// change while the tooltip is up, so they are read from the live
+/// [`WordBuffer`] at accept time.
 ///
 /// [`WordBuffer`]: crate::engine::buffer::WordBuffer
 #[derive(Debug, Clone)]
@@ -187,12 +177,11 @@ pub struct PendingSuggestion {
 /// The buffer's screen model, captured *just before* a pointer press
 /// abandons it.
 ///
-/// A click arrives as `SC_POINTER_BUTTON` and rightly abandons the
-/// buffer, since the caret usually moved — but a click *on the tooltip*
-/// never reaches the app below, so the text and caret are exactly where
-/// they were. The tooltip's `Accepted` event races the evdev
-/// observation of that same click, so the deletion math is frozen here
-/// and honoured within a short grace window.
+/// A click rightly abandons the buffer, since the caret usually moved —
+/// but a click *on the tooltip* never reaches the app below, so text and
+/// caret are exactly where they were. The tooltip's `Accepted` event
+/// races the evdev observation of that same click, so the deletion math
+/// is frozen here and honoured within a short grace window.
 #[derive(Debug, Clone)]
 pub struct FrozenScreen {
     /// Boundary keys after the offered word (`WordBuffer::boundary_run`).
@@ -218,9 +207,7 @@ pub struct LastWord {
     pub boundary_shift: bool,
     /// The layout the engine's own correction moved this word to, once
     /// it has landed on screen; `None` while the word still reads as
-    /// typed.
-    ///
-    /// This is how the manual switch-last hotkey tells its two
+    /// typed. This is how the manual switch-last hotkey tells its two
     /// situations apart: `None` means apply the switch the engine
     /// declined, `Some` means undo the one it made.
     pub corrected_to: Option<LayoutId>,
@@ -237,10 +224,9 @@ pub struct WindowDrain {
     /// Backspace / nav / click / shortcut seen — screen state unclear.
     pub suspicious: bool,
     /// The press that set `suspicious`, when it is one we could still
-    /// re-emit (Backspace, arrows, Esc, Enter/Tab). A held correction
-    /// swallowed it before the application saw it, so it has to be
-    /// typed out rather than lost. `None` for shortcuts and pointer
-    /// presses, which we have no faithful way to reproduce.
+    /// re-emit (Backspace, arrows, Esc, Enter/Tab): a held correction
+    /// swallowed it before the application saw it. `None` for shortcuts
+    /// and pointer presses, which have no faithful reproduction.
     pub stopper: Option<KeyEvent>,
     /// Any non-echo user press seen at all (quiet-probe signal).
     pub saw_user_press: bool,
@@ -248,11 +234,8 @@ pub struct WindowDrain {
 
 /// RAII hold on the user's keyboard for one emission burst. Held keys
 /// still reach the engine — they just do not reach the focused
-/// application until this is dropped.
-///
-/// Dropping releases on every path out of a correction, panic included,
-/// and the backend enforces its own ceiling on top, so even a leak here
-/// cannot leave the keyboard dead.
+/// application until this is dropped. The backend enforces its own
+/// ceiling on top, so even a leak here cannot leave the keyboard dead.
 pub struct HeldKeys<'a> {
     gate: &'a poltertype_input::KeyGate,
     active: bool,

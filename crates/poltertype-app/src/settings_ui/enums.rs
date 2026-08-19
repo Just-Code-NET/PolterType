@@ -21,7 +21,6 @@ pub enum Pane {
     General,
     Exceptions,
     Suggestions,
-    /// Installed plug-ins and their own settings.
     Plugins,
     About,
 }
@@ -55,15 +54,13 @@ impl CommandActionKind {
     }
 }
 
-/// Which user-overlay file the Wordlists pane is editing for the
-/// selected layout. Both live under `<config-dir>/poltertype/wordlists/`:
-/// [`WordlistKind::Extras`] is `<stem>.txt`, merged into the layout's
-/// `user_overlay`, and [`WordlistKind::Stop`] is `<stem>-stop.txt`,
-/// merged into its short-stop list.
-///
-/// Identical syntax — see
-/// [`poltertype_core::layouts::parse_wordlist`]; only the semantic role
-/// differs at engine load time.
+/// Which user-overlay file the Wordlists pane is editing. Both live
+/// under `<config-dir>/poltertype/wordlists/`: [`WordlistKind::Extras`]
+/// is `<stem>.txt`, merged into the layout's `user_overlay`, and
+/// [`WordlistKind::Stop`] is `<stem>-stop.txt`, merged into its
+/// short-stop list. Identical syntax (see
+/// [`poltertype_core::layouts::parse_wordlist`]); only the role at
+/// engine load time differs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WordlistKind {
     Extras,
@@ -153,9 +150,9 @@ pub enum Message {
     PluginTextChanged(usize, usize, String),
     // ── Repeating groups ───────────────────────────────────────────
     // (plug-in, control, row, field name, value). The field is named
-    // rather than indexed because a row is a table and its fields are
-    // keys; the control index still says which group, so a message
-    // cannot write into a key the manifest never declared.
+    // rather than indexed because a row is a table; the control index
+    // still says which group, so a message cannot write into a key the
+    // manifest never declared.
     PluginRecordChanged(usize, usize, usize, String, SettingValue),
     /// Text being typed into a record's field. Written to the file when
     /// something settles, not per keystroke.
@@ -163,22 +160,20 @@ pub enum Message {
     PluginRecordAdded(usize, usize),
     PluginRecordRemoved(usize, usize, usize),
     /// A button on one card of a repeating group: the plug-in, the
-    /// control, the row, and the id of the command to run. What the row
-    /// is called is read out of the row itself — the manifest says which
-    /// field names it, and the pane never invents an identity a plug-in
-    /// would not recognise.
+    /// control, the row, and the id of the command to run. The row's
+    /// name is read out of the row itself (the manifest says which
+    /// field names it), never invented by the pane.
     PluginRecordAction(usize, usize, usize, String),
-    /// That button's command finished, and what it printed. Shown as the
-    /// plug-in's status line: "did it go?" is the question the button was
-    /// pressed to answer, and the answer is the plug-in's own sentence.
+    /// That button's command finished, and what it printed — shown as
+    /// the plug-in's status line, in the plug-in's own words.
     PluginRecordActionDone(usize, String, Result<String, String>),
     /// Open a link a plug-in put beside one of its choices.
     ///
     /// Carries the address rather than a `&'static str` like
-    /// [`Self::OpenUrl`], because this one comes out of a manifest.
-    /// Which is also why it is opened only after being checked: `https`
-    /// only, and the pane shows the address as the link text, so what is
-    /// clicked is what was read.
+    /// [`Self::OpenUrl`], because this one comes out of a manifest —
+    /// which is why it is checked before opening: `https` only, and the
+    /// pane shows the address as the link text, so what is clicked is
+    /// what was read.
     PluginOpenLink(String),
     /// Runs one of the plug-in's declared commands by id.
     PluginCommandClicked(usize, String),
@@ -187,27 +182,22 @@ pub enum Message {
     /// command-backed control it has not asked for yet.
     PluginOutputRefresh(usize, Slot),
     /// A command answered, for every control that asked for it. `Err`
-    /// carries why it could not be had, which the pane shows rather
-    /// than swallowing: a plug-in that cannot answer is something the
-    /// user should see.
+    /// is shown rather than swallowed: a plug-in that cannot answer is
+    /// something the user should see.
     ///
-    /// Several controls, because two controls may share one command —
-    /// the room list a chat app learns from and the one it replies in
-    /// are the same rooms — and running the plug-in twice to ask the
-    /// same question means reading a chat client's sidebar twice.
+    /// Several controls, because two may share one command — asking the
+    /// same question twice means reading a chat client's sidebar twice.
     PluginOutputLoaded(usize, Vec<Slot>, Result<String, String>),
     /// One of a suggestion box's candidates was picked: the plug-in, the
     /// box, and the value — which is the row's id, not its label.
     PluginSuggestPicked(usize, Slot, String),
     /// Show, or stop showing, what a box has to suggest. Typing opens
-    /// the list on its own; this is the way to open it without typing,
-    /// and the way to put it away again.
+    /// the list on its own; this opens and closes it without typing.
     PluginSuggestToggled(usize, Slot),
     /// A row of a list control was ticked or unticked: add or remove
     /// that name in the plug-in's own config array.
     PluginListToggled(usize, usize, String, bool),
-    /// Tick (or untick) every row a list control is showing — the plug-in
-    /// index, the control index, and which way.
+    /// Tick (or untick) every row a list control is showing.
     PluginListAll(usize, usize, bool),
     /// A section was chosen in the plug-in's own navigation list.
     PluginSectionSelected(usize, usize),
@@ -231,51 +221,37 @@ pub enum Message {
     /// A complete `<mods>+<key>` combo arrived from the keyboard
     /// subscription while in capture mode.
     HotkeyCaptured(String),
-    /// User cancels capture mode without rebinding.
     HotkeyRebindCancel,
 
     // ── Exceptions pane ────────────────────────────────────────────
-    /// Text-input edit on the "add new disabled app" field.
     ExceptionDraftChanged(String),
-    /// "Add" button click.
     ExceptionAdd,
-    /// "×" button per existing entry.
     ExceptionRemove(usize),
 
     // ── Commands pane ──────────────────────────────────────────────
-    /// "Add command" form: name field changed.
     CommandDraftNameChanged(String),
-    /// "Add command" form: trigger text input changed (the typed
-    /// token like `anrl` or `((en))`).
+    /// The typed token, e.g. `anrl` or `((en))`.
     CommandDraftTriggerChanged(String),
-    /// "Add command" form: action kind radio changed (TypeText /
-    /// SwitchLayout / OpenPath). Clears the param field — different
-    /// actions take wildly different content.
+    /// Clears the param field: different actions take wildly different
+    /// content.
     CommandDraftActionKindChanged(CommandActionKind),
-    /// "Add command" form: action-specific param field changed.
     CommandDraftParamChanged(String),
-    /// "Add command" form: apps filter input (comma-separated).
+    /// Apps filter, comma-separated.
     CommandDraftAppsChanged(String),
-    /// "Add command" form: Add button pressed. Validates and pushes
-    /// to `settings.commands`; clears the form on success.
+    /// Validates the draft and clears the form on success.
     CommandAdd,
-    /// "×" button on an existing command row.
     CommandRemove(usize),
 
     // ── Wordlists pane ─────────────────────────────────────────────
-    /// User clicked one of the profile buttons. Empty string =
-    /// global overlay; non-empty = profile id matching one of the
-    /// configured `[[wordlists.profiles]]` entries. Same load-or-
-    /// empty behaviour as `WordlistLayoutSelected`.
+    /// Empty string = the global overlay; non-empty = an id from the
+    /// configured `[[wordlists.profiles]]`. Load-or-empty like
+    /// `WordlistLayoutSelected`.
     WordlistProfileSelected(String),
-    /// User picked a different layout from the layout row — load
-    /// `<stem><suffix>.txt` into the editor (or empty if missing).
+    /// Loads `<stem><suffix>.txt` into the editor, or empty if missing.
     WordlistLayoutSelected(LayoutId),
-    /// User flipped between Extras / Stop for the same layout.
     /// Same load-or-empty semantics as `WordlistLayoutSelected`.
     WordlistKindSelected(WordlistKind),
-    /// Editor sent us an action (insert / delete / move cursor / …).
-    /// We pass it straight through to `text_editor::Content::perform`.
+    /// Passed straight through to `text_editor::Content::perform`.
     WordlistEdit(text_editor::Action),
 
     // ── Suggestions pane ───────────────────────────────────────────
@@ -285,10 +261,9 @@ pub enum Message {
     SuggestionMaxDelta(i64),
     /// `[suggestions].tooltip_timeout_secs`, stepped by the ± buttons.
     SuggestionTimeoutDelta(i64),
-    /// `[suggestions].accept_modifiers` text input. Stored verbatim —
-    /// the pane shows an inline hint for strings that disable the
-    /// chord instead of rejecting keystrokes, so users can fix typos
-    /// in place (same posture as the command-trigger draft).
+    /// `[suggestions].accept_modifiers` text input. Stored verbatim:
+    /// the pane hints inline about strings that disable the chord
+    /// instead of rejecting keystrokes, so typos can be fixed in place.
     SuggestionModifiersChanged(String),
 
     /// Segmented theme picker on the General pane. Applies to the
@@ -307,9 +282,9 @@ pub enum Message {
     OpenUrl(&'static str),
 
     // ── Setup pane ─────────────────────────────────────────────────
-    /// Re-run the permission probe. The pane's whole reason to exist
-    /// is that the user goes away, changes something, and comes back:
-    /// every answer it shows is a fresh reading, never a cached one.
+    /// Re-run the permission probe. The user goes away, changes
+    /// something and comes back, so every answer the pane shows is a
+    /// fresh reading, never a cached one.
     SetupRecheck,
     /// Open a URL the probe supplied — a documentation page, or a
     /// macOS `x-apple.systempreferences:` deep link. Owned `String`
@@ -323,34 +298,24 @@ pub enum Message {
     /// system's own dialog.
     SetupRequestPermission(poltertype_input::setup::Permission),
 
-    /// User clicked the window close button (or otherwise asked
-    /// the OS to close the window). We intercept this to auto-save
-    /// any unsaved wordlist edit before letting the window close —
-    /// see `subscription` and the matching `update` arm for the
-    /// rationale. Carries the `window::Id` so we close the right
-    /// window in case iced ever multi-windows the Settings UI.
+    /// Intercepted so an unsaved wordlist edit is auto-saved before the
+    /// window closes. Carries the `window::Id` to close the right one.
     WindowCloseRequested(iced::window::Id),
 }
 
-/// Result of `SettingsApp::flush_wordlist_to_disk`. The variants
-/// let the caller pick banner phrasing that matches what actually
-/// happened — silent for "nothing to do", neutral for "saved",
-/// loud for failures.
+/// Result of `SettingsApp::flush_wordlist_to_disk`, split so the caller
+/// can pick banner phrasing that matches what happened — silent for
+/// "nothing to do", neutral for "saved", loud for failures.
 #[derive(Debug, Clone)]
 pub enum WordlistFlushOutcome {
-    /// Buffer wasn't dirty — nothing to save, nothing to report.
-    /// Auto-save callers (layout/profile/kind switch) suppress the
-    /// banner in this case so the UI doesn't spam "Auto-saved." on
-    /// every navigation click.
+    /// Buffer wasn't dirty. Auto-save callers suppress the banner here
+    /// so navigation clicks don't spam "Auto-saved.".
     Nothing,
-    /// No layout selected when the flush was attempted. Only
-    /// reachable via the per-pane Save click before any layout
-    /// has been picked — auto-save callers always have a layout
-    /// because the dirty flag implies the user typed in the editor,
-    /// which only opens once a layout is picked.
+    /// Only reachable via the per-pane Save click before any layout has
+    /// been picked: a dirty buffer implies the editor was typed in,
+    /// which implies a layout.
     NoLayout,
-    /// Successful write to the resolved overlay path.
     Saved(PathBuf),
-    /// Disk error — message contains the I/O error rendering.
+    /// Disk error — the message carries the I/O error rendering.
     Failed(String),
 }

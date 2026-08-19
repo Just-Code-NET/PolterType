@@ -101,13 +101,10 @@ fn built_as(stem: &str) -> String {
 #[test]
 fn an_installed_program_with_the_platforms_suffix_is_found() {
     // The regression behind "manifest declares a program but no built
-    // copy was found", seen the first time PolterType ran on Windows. A
-    // manifest names its program with no extension so one manifest
-    // describes the plug-in everywhere — which means *resolution* has
-    // to know about `.exe`.
-    //
-    // Phrased through `EXE_SUFFIX` rather than a literal, so it asserts
-    // the same rule on every platform.
+    // copy was found", seen the first time PolterType ran on Windows: a
+    // manifest names its program with no extension, so *resolution* has
+    // to know about `.exe`. Phrased through `EXE_SUFFIX` rather than a
+    // literal, so it asserts the same rule on every platform.
     let dir = scratch("suffix-installed");
     write_extension(&dir, "demo", "demo-plugin");
     put_binary(&dir.join(EXTENSION_BIN_DIR).join(built_as("demo-plugin")));

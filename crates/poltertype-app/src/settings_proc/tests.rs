@@ -23,9 +23,8 @@ fn live_binary_is_used_as_is() {
 
 #[test]
 fn deleted_suffix_is_stripped_when_a_new_binary_took_the_place() {
-    // The dev-rebuild / in-place-upgrade case: `/proc/self/exe` still
-    // resolves, with the kernel's annotation, and a fresh binary sits
-    // at the real path.
+    // Dev rebuild / in-place upgrade: a fresh binary sits at the path
+    // `/proc/self/exe` still resolves to, minus the annotation.
     let raw = PathBuf::from("/usr/bin/poltertype (deleted)");
     assert_eq!(
         classify(raw, only(&["/usr/bin/poltertype"])),

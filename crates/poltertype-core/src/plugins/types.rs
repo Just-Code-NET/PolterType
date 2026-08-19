@@ -6,11 +6,9 @@ use serde::Deserialize;
 
 use super::enums::{ControlKind, PluginKind};
 
-/// The parts of a manifest the *installer* cares about, read
-/// separately from [`crate::layouts::PluginManifest`] so that adding
-/// extensions did not have to reach into the layout loader's types.
-///
-/// Both views parse the same file; each ignores what it does not know.
+/// The parts of a manifest the *installer* cares about. A second view of
+/// the same file as [`crate::layouts::PluginManifest`]; each ignores what
+/// it does not know.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct ManifestHeader {
@@ -19,14 +17,10 @@ pub struct ManifestHeader {
 }
 
 /// The `[extension]` section of a manifest: everything PolterType needs
-/// to run a plug-in and show it, without the plug-in running any code
-/// to describe itself.
-///
-/// That is the point — a plug-in that had to be *started* to say what
-/// it contributes would run before the user had seen what it wants. All
-/// of this is static, readable from disk, and shown before anything is
-/// launched. Every field defaults, so an omitted section simply
-/// contributes nothing.
+/// to run a plug-in and show it, without the plug-in running any code to
+/// describe itself — it must not execute before the user has seen what
+/// it wants. Every field defaults, so an omitted section contributes
+/// nothing.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct ExtensionManifest {
@@ -54,11 +48,9 @@ pub struct ExtensionManifest {
     /// one `key=value` per line. Empty means it reports nothing and its
     /// tray entries are plain commands.
     ///
-    /// Asking the plug-in rather than reading its config file is the
-    /// only answer that can be right: the config holds what it *starts*
-    /// as, while anything changed at runtime lives elsewhere or nowhere.
-    /// A menu showing the config value would confidently display the
-    /// wrong thing.
+    /// Asked of the plug-in, never read from its config file: the config
+    /// holds what it *starts* as, so a menu built from it would
+    /// confidently show a value that runtime has since changed.
     pub state_args: Vec<String>,
 
     /// Menus built from rows the plug-in produces at runtime, rather
@@ -66,26 +58,18 @@ pub struct ExtensionManifest {
     pub tray_lists: Vec<TrayList>,
 
     /// Which key of the reported state means "this plug-in is waiting
-    /// for you", counted rather than merely present.
-    ///
-    /// Empty — the plug-in never marks the icon, which is the default
-    /// and the polite answer. Set, and a value above zero puts a mark on
-    /// PolterType's own tray icon. The icon is the only thing a
-    /// tray-only application can say without being opened, and it is
-    /// shared: a plug-in gets to raise a dot on it, never to replace it,
-    /// draw on it or choose what it looks like.
+    /// for you", counted rather than merely present. Empty (the default)
+    /// never marks the icon; set, a value above zero raises a dot on
+    /// PolterType's shared tray icon — a plug-in may raise that dot,
+    /// never replace the icon, draw on it or choose how it looks.
     pub attention_state_key: String,
 }
 
 /// A tray submenu whose entries the plug-in supplies while the menu is
-/// being opened.
-///
-/// [`TrayItem`] covers everything a manifest can know in advance. This
-/// covers what it cannot: a queue, an inbox, a list of things that
-/// arrived since the file was written. The plug-in prints rows;
-/// PolterType draws them, in its own menu, with its own separators, and
-/// runs only the commands the manifest declared — so "produced at
-/// runtime" extends to the *text*, never to what clicking it does.
+/// being opened — a queue, an inbox, anything [`TrayItem`] cannot name in
+/// advance. The plug-in prints rows; PolterType draws them and runs only
+/// the commands the manifest declared, so "produced at runtime" extends
+/// to the *text*, never to what clicking it does.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct TrayList {
@@ -110,10 +94,9 @@ pub struct TrayList {
 /// One thing a runtime row can do: to a row of a [`TrayList`], to all of
 /// them, or to one card of a repeating group in the settings pane.
 ///
-/// One shape for both places on purpose. What has to be identical is the
-/// substitution rule below — a row's identity reaching a command line is
-/// exactly the step where a plug-in's own output could turn into a flag,
-/// and that is not an argument worth having twice.
+/// One shape for all three so the substitution rule below exists once —
+/// a row's identity reaching a command line is the step where a plug-in's
+/// own output could turn into a flag.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct TrayListAction {
@@ -176,18 +159,14 @@ impl TrayItem {
 
     /// The label to render, given the plug-in's reported state.
     ///
-    /// `state` is `None` when the plug-in could not be asked at all.
-    /// That is worth saying differently from "answered, but said
-    /// nothing about this key": the first is a plug-in to go and look
-    /// at, the second is ordinary. A blank would be neither, and would
-    /// leave the user guessing which.
+    /// `state` is `None` when the plug-in could not be asked at all —
+    /// rendered differently from "answered, but said nothing about this
+    /// key", because the first is a plug-in to go and look at.
     pub fn render(&self, state: Option<&std::collections::HashMap<String, String>>) -> String {
         if self.is_check() {
-            // The tick as a character, not only as a menu attribute.
-            // Tray backends draw a native checkmark differently, faintly
-            // or not at all, and an indicator you cannot see is the bug
-            // this whole mechanism exists to fix. Padded so the labels
-            // do not shift as the mark moves between them.
+            // The tick as a character, not only as a menu attribute:
+            // tray backends draw a native checkmark faintly or not at
+            // all. Padded so labels do not shift as the mark moves.
             return format!("{} {}", self.mark(state), self.label);
         }
         if !self.is_status() {
@@ -239,10 +218,6 @@ impl TrayItem {
 ///     link = "https://ollama.com/library/qwen3" },
 /// ]
 /// ```
-///
-/// The alternative was parallel arrays (`options`, `option_details`,
-/// `option_links`) kept in step by hand, which is a defect waiting for
-/// somebody to insert a line in the middle of one of them.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum PaneOption {
@@ -325,28 +300,18 @@ pub struct PaneControl {
     /// Id of a [`PluginCommand`] — the one a [`ControlKind::Button`]
     /// runs, or the one whose output a [`ControlKind::Report`] shows.
     pub command: String,
-    /// What one row of a [`ControlKind::Records`] holds.
-    ///
-    /// Ordinary controls, whose `key` is a single field name relative to
-    /// the row rather than a dotted path — a row is one table, and a
-    /// dotted key inside it would be a table inside a table, which is not
-    /// a shape this draws. Nested records are refused for the same
-    /// reason: a pane that can nest is a config editor, and this is not
-    /// one.
+    /// What one row of a [`ControlKind::Records`] holds: ordinary
+    /// controls whose `key` is a bare field name relative to the row, not
+    /// a dotted path. Nested records are refused — a pane that can nest
+    /// is a config editor, and this is not one.
     pub fields: Vec<PaneControl>,
     /// Label for the button that appends a row. Empty gets "Add".
     pub add_label: String,
 
-    /// What may be done to one row of a [`ControlKind::Records`] group,
-    /// beyond editing and removing it — sending a standing message now
-    /// rather than waiting until Tuesday to find out whether it works.
-    ///
-    /// Each becomes a small button on that row's card, running the
-    /// declared command with `{id}` replaced by the row's
-    /// [`Self::id_field`]. A settings pane that can only describe an
-    /// action leaves the only way to try it in a terminal, which for a
-    /// pane that exists so the terminal is not needed is a gap rather
-    /// than a restraint.
+    /// What may be done to one row of a [`ControlKind::Records`] group
+    /// beyond editing and removing it. Each becomes a small button on
+    /// that row's card, running the declared command with `{id}`
+    /// replaced by the row's [`Self::id_field`].
     pub actions: Vec<TrayListAction>,
 
     /// Which field of a row supplies the `{id}` its [`Self::actions`]
@@ -384,12 +349,8 @@ pub struct InstalledPack {
     pub files: usize,
     pub bytes: u64,
     /// Entries found in the source and deliberately not copied, relative
-    /// to the source root.
-    ///
-    /// Surfaced rather than silently dropped: a pack author should learn
-    /// that a misplaced file was ignored, and a user installing someone
-    /// else's pack should see that it tried to ship something a language
-    /// pack has no business shipping.
+    /// to the source root. Surfaced rather than silently dropped, so a
+    /// pack author learns a misplaced file was ignored.
     pub skipped: Vec<String>,
     /// Whether this replaced an existing pack of the same id.
     pub replaced: bool,

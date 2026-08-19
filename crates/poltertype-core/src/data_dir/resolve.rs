@@ -14,16 +14,13 @@ pub(crate) fn format_tried(paths: &[PathBuf]) -> String {
 /// Resolve the data directory using the rules in the module-level doc.
 ///
 /// The returned path is guaranteed to exist as a directory at
-/// resolution time. We don't peek inside it — missing layout files
-/// surface as graceful "no dictionary for this layout" warnings
-/// later, the same way the embedded codepath used to handle empty
-/// FSTs.
+/// resolution time; its contents are not checked. Missing layout files
+/// surface later as "no dictionary for this layout" warnings.
 pub fn resolve() -> Result<PathBuf, DataDirError> {
     let mut tried: Vec<PathBuf> = Vec::new();
 
-    // (1) explicit env override — wins outright if it points at a
-    // real directory; we also include it in `tried` if it didn't, so
-    // a typo'd path is visible in the error.
+    // (1) explicit env override. Pushed onto `tried` when it is not a
+    // directory, so a typo'd path is visible in the error.
     if let Some(val) = env_override() {
         let path = PathBuf::from(&val);
         if is_dir(&path) {
@@ -57,17 +54,16 @@ pub(crate) fn is_dir(p: &Path) -> bool {
     std::fs::metadata(p).map(|m| m.is_dir()).unwrap_or(false)
 }
 
-/// Try to canonicalise; on failure (broken symlink, permission, etc.)
-/// keep the original path so the caller still has *something*
-/// useable. Canonicalisation is purely a "tidy log output / make
-/// path unique" affair, not a correctness requirement.
+/// Try to canonicalise, keeping the original path on failure (broken
+/// symlink, permissions): canonicalisation only tidies log output, it
+/// is not a correctness requirement.
 pub(crate) fn canonical_or_self(p: PathBuf) -> PathBuf {
     std::fs::canonicalize(&p).unwrap_or(p)
 }
 
-/// Build the ordered list of candidate paths relative to a given
-/// exe directory. Pulled out as a fn (and made `pub(crate)`) so the
-/// unit tests below can drive it without touching `current_exe`.
+/// Build the ordered list of candidate paths relative to a given exe
+/// directory. Separate from [`resolve`] so tests can drive it without
+/// touching `current_exe`.
 pub(crate) fn candidates_relative_to_exe(exe_dir: &Path) -> Vec<PathBuf> {
     let mut out = vec![
         // (2) Windows MSI / portable / linuxdeploy AppImage AppDir.
@@ -94,13 +90,8 @@ pub(crate) fn candidates_relative_to_exe(exe_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Walk parents of `start` until we find a directory whose final
-/// component equals `name`. Returns the matching ancestor, or `None`
-/// if none of `start`'s parents qualify.
-///
-/// We tolerate the case where `start` itself has the matching name
-/// (rare but possible if cargo's target dir is named oddly) by
-/// checking the input first.
+/// The nearest ancestor of `start` — `start` itself included — whose
+/// final component equals `name`.
 pub(crate) fn find_ancestor_named(start: &Path, name: &str) -> Option<PathBuf> {
     for ancestor in start.ancestors() {
         if ancestor.file_name().is_some_and(|n| n == name) {

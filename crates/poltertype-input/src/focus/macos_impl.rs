@@ -1,46 +1,19 @@
 //! macOS focus tracking: Accessibility (HIServices) queries.
 //!
-//! The chain mirrors the Windows tracker's, with AX objects standing
-//! in for HWNDs:
+//! Two hardware findings shape this; the write-up is in
+//! `docs/MACOS_POPUP.md` and the 2026-08-11 entry of
+//! `docs/DECISIONS.md`:
 //!
-//! * focused exe — `NSWorkspace.frontmostApplication` → pid →
-//!   `proc_pidpath` → basename.
-//! * focused window geometry — pid's app element →
-//!   `kAXFocusedWindow` → `kAXPosition` / `kAXSize`.
-//! * caret — app element's `kAXFocusedUIElement` →
-//!   `kAXSelectedTextRange` → parameterized `kAXBoundsForRange`,
-//!   **validated** (see below); when the caret bounds are garbage,
-//!   the focused element's own frame is the anchor.
+//! * `AXUIElementCreateSystemWide` — the textbook route — answers
+//!   `kAXErrorCannotComplete` essentially always (macOS 15.7, Intel),
+//!   so every query hangs off an app element built from the frontmost
+//!   pid instead.
+//! * Chrome (omnibox *and* web inputs) and Terminal.app answer the
+//!   caret question with junk and no error, so caret bounds are
+//!   validated before they are trusted.
 //!
-//! ## Why the pid path, not the system-wide element
-//!
-//! `AXUIElementCreateSystemWide` + `kAXFocusedApplication` is the
-//! textbook route — and on this project's test machine it answers
-//! `kAXErrorCannotComplete` essentially always, while the same query
-//! on an app element built from the frontmost pid answers instantly.
-//! (Diagnosed 2026-08-10 on macOS 15.7, Intel; the system-wide
-//! element is simply not trustworthy here.)
-//!
-//! ## Why the caret answer must be validated
-//!
-//! Real carets (TextEdit, native fields) come back as a thin rect
-//! with a line's height. Chrome — omnibox *and* web inputs — and
-//! Terminal.app return junk instead: a zero-size rect at the web
-//! area's origin, or a point beyond the window's bottom edge. A
-//! caret with no height is not a caret, and a caret outside the
-//! element it claims to be in is lying; both are rejected, and the
-//! focused element's frame (always correct in those apps — it is how
-//! the omnibox anchor still lands on the address bar) takes over.
-//!
-//! Everything here needs the Accessibility permission the app's
-//! `CGEventTap` listener already requires; a denied query maps to
-//! `None` and the caller degrades to a coarser anchor. Queries carry
-//! an explicit messaging timeout: this runs on the UI event loop at
-//! tooltip-show time, and an unresponsive target app must not freeze
-//! it for the multi-second AX default.
-//!
-//! The FFI is declared by hand (the same pattern as
-//! `macos/listener.rs`'s `CFMachPortCreateRunLoopSource`) because the
+//! A denied or failed query maps to `None` and the caller degrades to
+//! a coarser anchor. The FFI is declared by hand because the
 //! `core-foundation` crate stops at CF and does not wrap HIServices.
 
 use std::ffi::CStr;
@@ -139,7 +112,6 @@ fn copy_attr(element: CFTypeRef, name: &'static str) -> Option<OwnedCF> {
     Some(OwnedCF(value))
 }
 
-/// Copy a string attribute (role names and the like).
 fn copy_string_attr(element: CFTypeRef, name: &'static str) -> Option<String> {
     let value = copy_attr(element, name)?;
     // Safety: `value` is a live CF object we own; the type check keeps
@@ -154,7 +126,6 @@ fn copy_string_attr(element: CFTypeRef, name: &'static str) -> Option<String> {
     }
 }
 
-/// Unwrap an AXValue into its C payload.
 fn ax_value<T: Copy>(value: CFTypeRef, value_type: u32) -> Option<T> {
     let mut out: T = unsafe { std::mem::zeroed() };
     // Safety: `out` is the exact payload type `value_type` promises to
@@ -213,7 +184,6 @@ fn copy_attr_retry(element: CFTypeRef, name: &'static str) -> Option<OwnedCF> {
     None
 }
 
-/// `AXPosition` + `AXSize` of an element as one rect, when it has both.
 fn element_frame(element: CFTypeRef) -> Option<CGRect> {
     let origin = copy_attr(element, "AXPosition")
         .and_then(|v| ax_value::<CGPoint>(v.0, K_AXVALUE_TYPE_CGPOINT))?;
@@ -252,9 +222,6 @@ impl MacosFocusTracker {
         Some(owned)
     }
 
-    /// The focused window's global rect — the shared tail of
-    /// `focused_window_geometry` and `caret_hint` (which reports
-    /// window-relative coordinates).
     fn focused_window_rect() -> Option<CGRect> {
         let app = Self::app_element()?;
         let window = copy_attr(app.0, "AXFocusedWindow")?;
@@ -283,9 +250,7 @@ impl MacosFocusTracker {
                 length: range.length.max(1),
             },
         ] {
-            // kAXBoundsForRange is parameterized: the range goes back
-            // in wrapped in a new AXValue, the answer comes out as a
-            // CGRect in global screen coordinates.
+            // The answer comes back in global screen coordinates.
             // Safety: `candidate` outlives the Create call; Create
             // rule — the result is ours (OwnedCF).
             let param = unsafe {
@@ -306,11 +271,10 @@ impl MacosFocusTracker {
     }
 
     /// Is `rect` a believable caret for an element whose frame is
-    /// `frame`? See the module docs — several apps hand back junk
-    /// here, and a wrong caret anchors the tooltip to wherever the
-    /// caret *previously* was, which reads as "the tooltip follows
-    /// the old field". A real caret is a thin sliver one line tall,
-    /// in the neighbourhood of its element.
+    /// `frame`? A real caret is a thin sliver one line tall, in the
+    /// neighbourhood of its element; junk anchors the tooltip to
+    /// wherever the caret *previously* was, which reads to a user as
+    /// flakiness rather than as a wrong answer.
     fn caret_is_sane(rect: CGRect, frame: Option<CGRect>) -> bool {
         let (w, h) = (rect.size.width, rect.size.height);
         if !rect.origin.x.is_finite()
@@ -402,16 +366,14 @@ impl FocusTracker for MacosFocusTracker {
         let window = Self::focused_window_rect()?;
         let frame = element_frame(element.0);
 
-        // Best: a caret that passes the sanity check (native apps).
         if let Some(rect) = Self::raw_caret_bounds(element.0)
             && Self::caret_is_sane(rect, frame)
         {
             return Some(Self::hint_from(rect, window));
         }
 
-        // Next: the focused element's own frame, when the element is a
-        // text widget — this is the Chrome/Terminal path, where the
-        // caret answer is junk but the field's frame is exact.
+        // The Chrome/Terminal path: the caret answer is junk but the
+        // text widget's own frame is exact.
         if Self::is_text_role(element.0)
             && let Some(f) = frame
             && f.size.width > 1.0

@@ -6,9 +6,8 @@ use poltertype_types::LayoutId;
 use crate::enums::{RewriteVerdict, Verdict};
 use crate::types::{DetectionContext, RewriteRequest, Suggestion};
 
-/// A detector judges which keyboard layout the user *intended*: it
-/// defers with `NoOpinion`, vetoes a switch with `Keep`, or requests
-/// one with `Switch` (see [`Verdict`]).
+/// A detector judges which keyboard layout the user *intended* (see
+/// [`Verdict`]).
 ///
 /// The engine runs detectors in priority order and stops at the first
 /// non-`NoOpinion`, which is what lets the dictionary detector say
@@ -20,9 +19,7 @@ pub trait Detector: Send + Sync {
 }
 
 /// A word rewriter operates *after* layout detection: it looks at the
-/// final text and may suggest a different one — the
-/// "smart-capitalise", "expand-acronym" kind of trick `poltertype-ai`
-/// is meant to enable.
+/// final text and may suggest a different one.
 ///
 /// **Not yet consumed by the engine**: there is no rewriter stage, so
 /// nothing calls this trait today. The gating design is in
@@ -36,18 +33,14 @@ pub trait WordRewriter: Send + Sync {
 /// word nor a dictionary word — a plain typo. The engine shows the
 /// results in the tooltip and types the chosen one back.
 ///
-/// Same seam as [`Detector`]: the built-in [`crate::Suggester`] is
-/// dictionary-driven, and the AI subsystem can plug a smarter provider
-/// in with no engine change.
-///
 /// `typed_rendering` is the token as rendered under `layout`, original
 /// capitalisation preserved. Implementations must never log it.
 pub trait SuggestionProvider: Send + Sync {
     /// Is the token a known word of `layout`'s language? The engine
     /// gates the offer on this — a valid word never gets a tooltip.
-    /// Lives on the provider (not the engine) so the answer tracks
-    /// the same hot-swappable dictionary set the candidates come
-    /// from — per-app wordlist profiles included.
+    /// Lives on the provider so the answer tracks the same
+    /// hot-swappable dictionary set the candidates come from, per-app
+    /// wordlist profiles included.
     fn is_known(&self, layout: &LayoutId, typed_rendering: &str) -> bool;
 
     fn suggest(&self, layout: &LayoutId, typed_rendering: &str, max: usize) -> Vec<Suggestion>;

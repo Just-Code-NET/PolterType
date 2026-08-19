@@ -66,9 +66,8 @@ impl WindowsListener {
         }
     }
 
-    /// Wire the listener to the gate the engine holds, so the hook
-    /// callback can consult it. Without this the callback swallows
-    /// nothing, which is exactly the pre-0.8 behaviour.
+    /// Wire the listener to the engine's gate, so the hook callback can
+    /// consult it. Without this the callback swallows nothing.
     pub(crate) fn with_gate(gate: Arc<WindowsGate>) -> Self {
         Self {
             worker: None,
@@ -229,11 +228,9 @@ unsafe extern "system" fn low_level_keyboard_proc(
             // Last, so the engine has already been told about the
             // keystroke and a held key is still replayed behind the
             // correction; returning non-zero is what keeps it from the
-            // focused application.
-            //
-            // Two atomic loads and a comparison, and deliberately no
-            // logging: this runs per keystroke, and the one thing worse
-            // than a slow hook is a slow hook that writes to disk.
+            // focused application. Two atomic loads and a comparison,
+            // and deliberately no logging: the one thing worse than a
+            // slow hook is a slow hook that writes to disk.
             let swallow = GATE
                 .get()
                 .and_then(|slot| slot.read().as_ref().map(|g| g.swallow(ours)))

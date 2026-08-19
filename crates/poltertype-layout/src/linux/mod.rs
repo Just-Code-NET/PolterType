@@ -17,13 +17,11 @@
 //! protocol directly: there is no daemon to ask, and `setxkbmap` cannot
 //! switch a group, only re-install the whole list.
 //!
-//! **Probe by what a desktop *does*, not by what it ships.** A schema
-//! being installed, populated and writable says nothing about whether
-//! anyone reads it, and a reachability-only probe can hand the session
-//! to a backend whose every write is a no-op — silent in the worst way,
-//! because we read our own write back and conclude the layout changed.
-//! Where a backend can be asked something only the real owner of the
-//! layout could answer, ask that instead.
+//! **Probe by what a desktop *does*, not by what it ships.** A backend
+//! whose every write is a no-op fails silently in the worst way: we read
+//! our own write back and conclude the layout changed. Where a backend
+//! can be asked something only the real owner of the layout could
+//! answer, ask that instead.
 //! ([#26](https://github.com/Just-Code-NET/PolterType/issues/26).)
 
 #![allow(unused_imports, dead_code)] // Linux-only.

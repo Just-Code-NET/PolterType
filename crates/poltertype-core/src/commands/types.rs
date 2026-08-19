@@ -18,9 +18,9 @@ pub struct UserCommand {
     #[serde(default)]
     pub name: String,
     /// The token the user types to fire this command, matched exactly
-    /// and case-sensitively against the just-completed word. Must not
-    /// contain whitespace — the buffer resets at word boundaries, so a
-    /// multi-token trigger could never match.
+    /// and case-sensitively against the just-completed word. Several
+    /// whitespace-separated tokens also match the words immediately
+    /// before it — see [`crate::commands::phrase`].
     ///
     /// Pick something that does not collide with prose: `anrl` for an
     /// acronym, `:date:` or `;sig` for a delimited trigger. `the` would

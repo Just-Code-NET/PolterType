@@ -36,8 +36,7 @@ pub fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputEr
     #[cfg(windows)]
     {
         // The hook callback needs the gate to decide what to swallow;
-        // without it the listener observes and never blocks, which is
-        // the behaviour before this existed.
+        // without it the listener observes and never blocks.
         Ok(Box::new(match gate.windows_inner() {
             Some(g) => windows::WindowsListener::with_gate(std::sync::Arc::clone(g)),
             None => windows::WindowsListener::new(),

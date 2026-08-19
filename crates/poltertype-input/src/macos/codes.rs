@@ -146,8 +146,7 @@ pub(crate) fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         0x18 => 0x0D,       // =
         0x1B => 0x0C,       // -
         // Modifiers, mapped onto the SC-1 slots the classifier reads as
-        // "discard, stay inside the word". Live since 0.7.0, when the
-        // tap subscribed to `FlagsChanged`. Unmapped, Apple 0x3C
+        // "discard, stay inside the word". Unmapped, Apple 0x3C
         // (RShift) would land in the F-row range and kill any word
         // typed with it, and Apple 0x39 would alias onto SC-1 Space.
         KVK_SHIFT => 0x2A,         // LShift

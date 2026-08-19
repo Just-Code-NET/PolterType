@@ -10,9 +10,7 @@
 //!   must be a `keyring:` reference; accepting a literal key would
 //!   teach users to keep one in a file they might paste into a bug
 //!   report.
-//! * **Remote stays behind both switches** — the cargo feature decides
-//!   whether an HTTP client exists, `[ai].allow_remote` whether a
-//!   non-loopback endpoint may be called. A detector that may not run
+//! * **A detector that may not run** (see [`crate`] for the gates)
 //!   returns no opinion rather than failing to construct.
 //! * **A blocking entry cannot be configured into ruining typing.** The
 //!   deadline is capped here, at build time, where the user is told —
@@ -33,11 +31,9 @@ use crate::keys::resolve_api_key;
 use crate::locality;
 
 /// Build every detector the config asks for, skipping the ones that
-/// cannot be built.
-///
-/// Returns them in configuration order. The caller appends these after
-/// the built-in detectors, so a plug-in adds a voice to the decision
-/// rather than replacing the ones that work offline.
+/// cannot be built, in configuration order. The caller appends these
+/// after the built-in detectors, so a plug-in adds a voice to the
+/// decision rather than replacing the ones that work offline.
 pub fn build_detectors(plugins: &[AiPluginConfig], allow_remote: bool) -> Vec<Box<dyn Detector>> {
     let mut out: Vec<Box<dyn Detector>> = Vec::new();
     for cfg in plugins {
@@ -107,10 +103,10 @@ fn build_one(cfg: &AiPluginConfig, allow_remote: bool) -> Result<Box<dyn Detecto
 
 /// Work out where to send the request and what shape it takes.
 ///
-/// A `provider` preset fills in whatever the entry left blank; the
-/// explicit fields always win. An entry with neither is an error
-/// rather than a default, because there is no endpoint we could pick
-/// that would not amount to choosing a vendor on the user's behalf.
+/// A `provider` preset fills in whatever the entry left blank; explicit
+/// fields always win. An entry with neither is an error rather than a
+/// default — any endpoint we picked would be choosing a vendor on the
+/// user's behalf.
 fn resolve_endpoint(cfg: &AiPluginConfig) -> Result<(String, WireFormat), AiError> {
     let preset = match cfg.provider.as_deref() {
         None => None,
@@ -170,15 +166,13 @@ fn resolve_latency(cfg: &AiPluginConfig, mode: QueryMode) -> Result<u64, AiError
 
 /// Resolve the API key, if there is one to resolve.
 ///
-/// Returns `(key, unavailable)`. A key is optional on purpose: a local
-/// Ollama needs no credential. A *remote* endpoint without one is
-/// allowed too, since plenty of gateways authenticate by IP, but it is
-/// worth a log line — the likelier explanation is a forgotten setting.
+/// Returns `(key, unavailable)`. A key is optional: a local Ollama
+/// needs none, and a remote endpoint may authenticate by IP — though
+/// that case gets a log line, since a forgotten setting is likelier.
 ///
-/// A keychain that cannot answer is **not** a construction failure: the
-/// entry is well-formed and the secret is merely missing or the
-/// keychain locked, which is often temporary. As with `allow_remote`,
-/// the detector is built and stays quiet.
+/// A keychain that cannot answer is **not** a construction failure —
+/// a locked keychain is often temporary, so the detector is built and
+/// stays quiet.
 fn resolve_key(
     cfg: &AiPluginConfig,
     locality: Locality,
@@ -192,10 +186,9 @@ fn resolve_key(
         }
         return Ok((None, false));
     };
-    // The one key validation worth failing construction over: a secret
+    // The one validation worth failing construction over: a secret
     // pasted into config.toml is a secret in the user's backups, their
-    // dotfiles repo, and any log they attach to an issue. That is a
-    // config mistake, and it is fixed by editing config.
+    // dotfiles repo, and any log they attach to an issue.
     if !reference.starts_with("keyring:") {
         return Err(AiError::Config(
             "`api_key_ref` must be a `keyring:<entry>` reference — never the key itself".into(),

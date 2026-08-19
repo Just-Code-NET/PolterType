@@ -1,20 +1,14 @@
 //! Reading and writing one setting in a plug-in's own config file.
 //!
-//! That file belongs to the plug-in and is mostly prose in the case
-//! this was written for: comments explaining what each switch means and
-//! what turning it on costs. Parsing it into a struct and serialising
-//! it back would delete all of that the first time a user touched a
-//! toggle, so edits go through `toml_edit`, which keeps the document as
-//! written and changes only the value asked for.
+//! That file belongs to the plug-in and is mostly prose — comments
+//! explaining what each switch costs. Parsing it into a struct and
+//! serialising it back would delete all of that the first time a user
+//! touched a toggle, so edits go through `toml_edit`, which changes only
+//! the value asked for.
 //!
-//! Everything works on strings rather than paths, so the file IO
-//! belongs to the caller and the interesting behaviour is testable
-//! without a filesystem.
-//!
-//! Missing tables are created, because a plug-in's config may omit
-//! anything it has a default for. Nothing else is invented: an absent
-//! key reads back as `None` and the pane shows its own default rather
-//! than pretending to know the plug-in's.
+//! Strings in, strings out: file IO belongs to the caller. Missing
+//! tables are created; nothing else is invented, so an absent key reads
+//! back as `None` rather than as a guess at the plug-in's default.
 
 use toml_edit::{Document, Item, Value};
 
@@ -28,10 +22,8 @@ use super::enums::PluginError;
 pub enum SettingValue {
     Bool(bool),
     Int(i64),
-    /// Kept apart from [`Self::Int`] all the way to the file: TOML's two
-    /// number types are not interchangeable to the program that reads
-    /// the result, and a plug-in expecting `0.35` refuses to start on
-    /// `1`.
+    /// Kept apart from [`Self::Int`] all the way to the file: a plug-in
+    /// expecting `0.35` refuses to start on `1`.
     Float(f64),
     Text(String),
 }
@@ -42,9 +34,8 @@ impl SettingValue {
         match self {
             Self::Bool(b) => b.to_string(),
             Self::Int(n) => n.to_string(),
-            // Always with a point, even for a round number — that is
-            // what the file holds, and `25` shown for a `25.0` invites
-            // the user to save back an integer the plug-in cannot read.
+            // Always with a point: `25` shown for a `25.0` invites the
+            // user to save back an integer the plug-in cannot read.
             Self::Float(f) if f.is_finite() && f.fract() == 0.0 => format!("{f:.1}"),
             Self::Float(f) => f.to_string(),
             Self::Text(s) => s.clone(),
@@ -69,16 +60,9 @@ pub fn read_setting(text: &str, key: &str) -> Option<SettingValue> {
     }
 }
 
-/// Read an array of strings at a dotted key.
-///
-/// Separate from [`read_setting`] rather than another [`SettingValue`]
-/// variant, because an array is not a value a control *holds* — it is a
-/// set a control adds itself to or removes itself from, one checkbox
-/// per candidate asking the same question.
-///
-/// A missing key is an empty list, not an error: a plug-in whose
-/// allow-list is absent allows nothing, which is what the unticked
-/// boxes will say.
+/// Read an array of strings at a dotted key. A missing key is an empty
+/// list, not an error: a plug-in whose allow-list is absent allows
+/// nothing, which is what the unticked boxes say.
 pub fn read_string_array(text: &str, key: &str) -> Vec<String> {
     let Ok(doc) = text.parse::<Document>() else {
         return Vec::new();
@@ -99,17 +83,10 @@ pub fn read_string_array(text: &str, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Add `member` to the array at `key`, or take it out.
-///
-/// The array is created if missing and left exactly as written
-/// otherwise, comments included — in the file this was written for they
-/// explain why each entry is there and, more importantly, why certain
-/// applications are deliberately *absent*.
-///
-/// Adding something already there, or removing something that is not,
-/// is a no-op rather than an error: the checkbox and the file can
-/// disagree for a moment, and the honest resolution is what the user
-/// just asked for.
+/// Add `member` to the array at `key`, or take it out. The array is
+/// created if missing and otherwise left exactly as written, comments
+/// included. Adding something already there, or removing something that
+/// is not, is a no-op rather than an error.
 pub fn set_array_member(
     text: &str,
     key: &str,
@@ -119,13 +96,9 @@ pub fn set_array_member(
     set_array_members(text, key, std::slice::from_ref(&member), present)
 }
 
-/// The same for a whole set at once.
-///
-/// One parse and one write, not one per member. A pane offering sixty
-/// conversations and a "select all" that wrote the file sixty times
-/// would be sixty chances for another program reading the same file to
-/// catch it half-finished, and sixty rewrites of comments it does not
-/// own — for one action the user thinks of as single.
+/// The same for a whole set at once: one parse and one write, not one
+/// per member, so a "select all" cannot be caught half-finished by
+/// another program reading the same file.
 pub fn set_array_members(
     text: &str,
     key: &str,
@@ -192,11 +165,9 @@ pub fn write_setting(text: &str, key: &str, value: &SettingValue) -> Result<Stri
         SettingValue::Text(s) => s.as_str().into(),
     };
 
-    // Replace the *value*, not the entry. Assigning a fresh `Item`
-    // over the key would take its decor with it — and the decor is
-    // where a trailing comment lives, so `mode = "learn"  # ...` would
-    // quietly lose the explanation next to it the first time anyone
-    // moved the switch.
+    // Replace the *value*, not the entry: assigning a fresh `Item` over
+    // the key takes its decor with it, and the decor is where a trailing
+    // comment lives (`mode = "learn"  # ...`).
     match item.get_mut(last).and_then(|i| i.as_value_mut()) {
         Some(existing) => {
             let decor = existing.decor().clone();
@@ -208,13 +179,9 @@ pub fn write_setting(text: &str, key: &str, value: &SettingValue) -> Result<Stri
     Ok(doc.to_string())
 }
 
-/// Replace the whole array at `key` with `values`.
-///
-/// The counterpart to [`set_array_member`] for a set the plug-in cannot
-/// enumerate — host names, window titles — where the user types the
-/// members rather than ticking them. The entry's own decor survives, so
-/// a trailing comment on the line is kept; the previous members do not,
-/// because "what is in this list" is exactly what the user just said.
+/// Replace the whole array at `key` with `values`, for a set the user
+/// types rather than ticks. The entry's decor survives, so a trailing
+/// comment is kept; the previous members do not.
 pub fn write_string_array(text: &str, key: &str, values: &[String]) -> Result<String, PluginError> {
     let mut doc: Document = text
         .parse()
@@ -245,10 +212,8 @@ pub fn write_string_array(text: &str, key: &str, values: &[String]) -> Result<St
     Ok(doc.to_string())
 }
 
-/// How many rows the array of tables at `key` has.
-///
-/// Zero for a missing key, which is right: a plug-in whose config has no
-/// `[[schedule.sends]]` has no scheduled sends.
+/// How many rows the array of tables at `key` has; zero for a missing
+/// key.
 pub fn count_records(text: &str, key: &str) -> usize {
     let Ok(doc) = text.parse::<Document>() else {
         return 0;
@@ -264,12 +229,7 @@ pub fn count_records(text: &str, key: &str) -> usize {
 }
 
 /// Read one field of one row of an array of tables — `schedule.sends`,
-/// row 2, field `room`.
-///
-/// The pane's repeating-group control is one of these per field per row.
-/// `None` for a row that does not exist or a field the row omits, which
-/// is the same "the plug-in has a default and we do not know it" the
-/// scalar reader already reports.
+/// row 2, field `room`. `None` for a missing row or an omitted field.
 pub fn read_record_field(text: &str, key: &str, row: usize, field: &str) -> Option<SettingValue> {
     let doc: Document = text.parse().ok()?;
     let mut item: &Item = doc.as_item();
@@ -286,13 +246,9 @@ pub fn read_record_field(text: &str, key: &str, row: usize, field: &str) -> Opti
     }
 }
 
-/// Set one field of one row.
-///
-/// Refuses a row that is not there rather than growing the array to
-/// reach it: the pane draws the rows it read, and an index past the end
-/// means the file changed underneath it — in which case inventing three
-/// empty scheduled messages to make room for the fourth is the worst
-/// available answer.
+/// Set one field of one row. Refuses a row that is not there rather
+/// than growing the array to reach it — an index past the end means the
+/// file changed under the pane, not that rows should be invented.
 pub fn write_record_field(
     text: &str,
     key: &str,
@@ -310,9 +266,8 @@ pub fn write_record_field(
         SettingValue::Float(f) => (*f).into(),
         SettingValue::Text(s) => s.as_str().into(),
     };
-    // The same decor-preserving replacement the scalar writer does, and
-    // for the same reason: the comment after `when = "weekdays 09:00"`
-    // is the user's note to themselves about why.
+    // Decor-preserving replacement, as in `write_setting`: the trailing
+    // comment on the line is the user's note to themselves.
     match table.get_mut(field).and_then(|i| i.as_value_mut()) {
         Some(existing) => {
             let decor = existing.decor().clone();
@@ -325,11 +280,8 @@ pub fn write_record_field(
 }
 
 /// Append an empty row to the array of tables at `key`, creating the
-/// array if it is not there yet.
-///
-/// Empty rather than pre-filled: the plug-in's own defaults apply to
-/// every field left out, and guessing at them here would write a
-/// scheduled message with an hour nobody chose.
+/// array if it is not there yet. Empty rather than pre-filled: the
+/// plug-in's own defaults apply to every field left out.
 pub fn add_record(text: &str, key: &str) -> Result<String, PluginError> {
     let mut doc: Document = text
         .parse()
@@ -348,11 +300,8 @@ pub fn add_record(text: &str, key: &str) -> Result<String, PluginError> {
     Ok(doc.to_string())
 }
 
-/// Delete row `row` of the array of tables at `key`.
-///
-/// A row that is not there is a no-op, not an error — the pane and the
-/// file can disagree for a moment, and the user's intent ("this one is
-/// gone") is already satisfied.
+/// Delete row `row` of the array of tables at `key`. A row that is not
+/// there is a no-op, not an error.
 pub fn remove_record(text: &str, key: &str, row: usize) -> Result<String, PluginError> {
     let mut doc: Document = text
         .parse()
@@ -385,13 +334,9 @@ fn record_mut<'a>(
 }
 
 /// Walk a dotted key down to the table holding its last segment,
-/// creating the tables in between.
-///
-/// Shared by every writer so they agree on what a key means. Missing
-/// tables are created because a plug-in's config may omit anything it
-/// has a default for; a segment that is a *value* is refused rather
-/// than replaced, since turning it into a table would throw away
-/// whatever the user had there.
+/// creating the tables in between. A segment that is a *value* is
+/// refused rather than replaced — turning it into a table would throw
+/// away whatever the user had there.
 fn reach_mut<'a>(
     doc: &'a mut Document,
     key: &'a str,

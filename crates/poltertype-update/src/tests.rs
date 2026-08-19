@@ -96,13 +96,13 @@ fn parses_the_manifest_the_release_workflow_writes() {
     assert_eq!(m.schema, SUPPORTED_SCHEMA);
     assert_eq!(m.version, "0.4.0");
     assert_eq!(m.artifacts["linux-x86_64"].size, 28_311_552);
-    // Reserved for ed25519; absent today and that must stay readable.
+    // An unsigned manifest must still *parse*; refusing it is
+    // `verify`'s job, not the deserialiser's.
     assert!(m.signature.is_none());
 }
 
-/// The `signature` field is the forward-compat hinge: a future
-/// manifest that carries one must still parse in a build that ignores
-/// it, or we could never roll signing out incrementally.
+/// Parsing must not depend on `REQUIRE_SIGNATURE`, so the rollout
+/// switch can be flipped either way without a schema break.
 #[test]
 fn a_signed_manifest_still_parses_in_an_unsigning_build() {
     let signed = SAMPLE.replace(r#""schema": 1,"#, r#""schema": 1, "signature": "abc123","#);

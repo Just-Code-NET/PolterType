@@ -252,9 +252,9 @@ impl X11State {
         }
     }
 
-    /// Create, hint, map and paint a window for `model`, replacing any
-    /// current one. Destroy-and-recreate per show is the simplest
-    /// correct approach — no resize handling, no stale state.
+    /// Create, hint, map and paint a window for `model`.
+    /// Destroy-and-recreate per show avoids resize handling and stale
+    /// state.
     fn show(&mut self, model: PopupModel) -> Result<(), ReplyOrIdError> {
         self.destroy_window();
 
@@ -342,10 +342,9 @@ impl X11State {
     }
 
     /// Root-coordinate placement: the shared side-picker around the
-    /// pointer for `Point` (above → below → right → left, whichever
-    /// has room), centred on the anchor window with the bottom edge
-    /// `BOTTOM_OFFSET` above its bottom for `WindowRect`; clamped to
-    /// the screen either way.
+    /// pointer for `Point`, centred on the anchor window with the
+    /// bottom edge `BOTTOM_OFFSET` above its bottom for `WindowRect`;
+    /// clamped to the screen either way.
     fn place(&self, w: u16, h: u16, anchor: &PopupAnchor) -> (i16, i16) {
         let (px, py) = match *anchor {
             PopupAnchor::Point { x, y, height, .. } => crate::place::place_near_point(
@@ -377,8 +376,7 @@ impl X11State {
         )
     }
 
-    /// Upload the rendered pixmap with PutImage (popup is tiny — one
-    /// request is fine).
+    /// Upload the rendered pixmap. One `PutImage` — the popup is tiny.
     fn paint(&self) -> Result<(), ReplyOrIdError> {
         let Some(view) = &self.win else {
             return Ok(());

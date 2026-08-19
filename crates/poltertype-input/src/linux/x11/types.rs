@@ -62,13 +62,8 @@ impl ModState {
     /// which keys are physically down, as `XQueryKeymap` reports it.
     /// Returns whether anything changed.
     ///
-    /// Tracking modifiers off press/release edges is only correct while
-    /// we see every edge, and any client holding a keyboard grab stops
-    /// XInput2 raw events reaching us. A modifier pressed just before
-    /// such a grab and released inside it stays latched for ever, and
-    /// `Modifiers::is_command()` then makes the engine read every later
-    /// keystroke as a shortcut — the app goes quiet with no error until
-    /// restarted (issue #26).
+    /// Edges go missing behind another client's keyboard grab; the
+    /// consequences are in `events::resync_modifiers`.
     ///
     /// Caps Lock is deliberately untouched: `XQueryKeymap` reports the
     /// physical key, not the lock state, so folding it in would clear

@@ -1,8 +1,7 @@
 //! Where the suggestion tooltip should appear.
 //!
-//! Pure decision logic — the caller samples the focus tracker, this
-//! module only judges what it got, so the chain is unit-testable
-//! without a compositor.
+//! Pure decision logic — the caller samples the focus tracker, so the
+//! chain is unit-testable without a compositor.
 
 use poltertype_input::focus::{CaretHint, FocusedWindowGeometry};
 use poltertype_popup::PopupAnchor;
@@ -19,12 +18,10 @@ use super::consts::CARET_MAX_AGE;
 ///    inputs and prompts.
 /// 3. **Screen bottom** — nothing known.
 ///
-/// The pointer used to sit between the first two, on the theory that
-/// the user had just clicked into the text. It is gone: nothing says
-/// the pointer is still *at* that click, and an idle mouse parked
-/// mid-screen dragged the tooltip to the middle of the display while
-/// the caret sat in a chat box at the bottom edge. A wrong anchor is
-/// worse than a coarse one.
+/// The pointer deliberately no longer sits between the first two: an
+/// idle mouse parked mid-screen dragged the tooltip there while the
+/// caret sat in a chat box at the bottom edge (`docs/DECISIONS.md`).
+/// A wrong anchor is worse than a coarse one.
 pub(super) fn resolve_anchor(
     geometry: Option<FocusedWindowGeometry>,
     caret: Option<CaretHint>,
@@ -56,10 +53,10 @@ pub(super) fn resolve_anchor(
 /// The caret's screen position for `g`, or `None` — with a line saying
 /// why — when the tooltip has to settle for the window anchor.
 ///
-/// The hint is window-relative, so it composes with the live rect, and
-/// the composed point is checked against that rect: a nonsense answer
-/// from a broken a11y bridge must not fling the tooltip across the
-/// screen. Coordinates only; this path must never log typed text.
+/// The hint is window-relative; the composed point is checked against
+/// the live rect so a nonsense answer from a broken a11y bridge cannot
+/// fling the tooltip across the screen. Coordinates only: this path
+/// must never log typed text.
 fn caret_point(caret: Option<CaretHint>, g: &FocusedWindowGeometry) -> Option<(i32, i32, u32)> {
     let Some(hint) = caret else {
         debug!("no caret sample yet — anchoring the tooltip to the window");

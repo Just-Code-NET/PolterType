@@ -565,10 +565,8 @@ fn user_layout_picks_up_matching_wordlist() {
 
 // ─── Plug-in pack loader ───────────────────────────────────────
 
-/// Minimal but real FST blob for "must compile, must read back"
-/// tests. We don't need a populated dictionary to verify the
-/// loader picks up the file — we just need the bytes to parse as
-/// a valid `FstSet`.
+/// Minimal but real FST blob: the loader only has to pick the file up,
+/// so the bytes need to parse as a valid `FstSet` and nothing more.
 fn empty_fst_bytes() -> Vec<u8> {
     let builder = fst::SetBuilder::memory();
     builder.into_inner().expect("empty FST builder")
@@ -630,9 +628,8 @@ fn plugin_missing_manifest_skipped_gracefully() {
     let data_dir = TmpDir::new("plugin-no-manifest");
     let pack_dir = data_dir.0.join("plugins").join("broken-pack");
     std::fs::create_dir_all(pack_dir.join("layout-mappings")).unwrap();
-    // No manifest.toml. There's even a TOML in layout-mappings
-    // that *would* parse — but since the pack lacks a manifest
-    // we should refuse to load anything from it.
+    // The TOML in layout-mappings *would* parse; without a manifest
+    // nothing from this pack may load.
     std::fs::write(
         pack_dir.join("layout-mappings").join("kk_kz.toml"),
         minimal_layout_toml("kk-KZ", "Қазақ", "Cyrillic"),

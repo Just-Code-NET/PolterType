@@ -4,12 +4,9 @@
 //! into the binary; this is the other half, run **on the maintainer's
 //! machine** with a private key deliberately not available to CI.
 //!
-//! That asymmetry is the entire security gain. A key stored as an
-//! Actions secret would be reachable by anyone who can compromise the
-//! GitHub account — exactly the attacker the signature is meant to
-//! stop. Signing by hand, between the draft CI produces and the moment
-//! a human publishes it, keeps the key on hardware GitHub never
-//! touches.
+//! That asymmetry is the entire security gain: an Actions secret would
+//! be reachable by anyone who can compromise the GitHub account —
+//! exactly the attacker the signature is meant to stop.
 //!
 //! The signed bytes come from `poltertype_update::signing_payload`, the
 //! same function the app verifies with, so the two ends cannot drift.
@@ -106,10 +103,9 @@ fn sign(args: &[String]) -> Result<()> {
     let mut manifest = read_manifest(&path)?;
 
     let signing = load_signing_key(flag(args, "--key"))?;
-    // Signing a manifest that already carries a signature is fine — the
-    // field is not part of the payload — but say so, because it usually
-    // means someone is re-signing after an edit and wants to be sure the
-    // old one is gone.
+    // Re-signing is fine — the field is not part of the payload — but
+    // say so, since it usually means an edit whose old signature the
+    // user wants gone.
     if manifest.signature.is_some() {
         println!(
             "note: replacing the signature already in {}",
@@ -126,9 +122,9 @@ fn sign(args: &[String]) -> Result<()> {
     std::fs::write(&path, format!("{json}\n"))
         .with_context(|| format!("write {}", path.display()))?;
 
-    // Verify what we just wrote, from disk, against the key the app
-    // ships. Signing something the released binaries cannot check is
-    // the one failure mode worth an extra read.
+    // Verify from disk against the key the app ships: signing something
+    // the released binaries cannot check is the one failure mode worth
+    // an extra read.
     verify_file(&path, None)?;
     println!("signed and verified: {}", path.display());
     Ok(())
@@ -196,7 +192,7 @@ fn load_signing_key(path: Option<&str>) -> Result<SigningKey> {
 }
 
 /// The public key to check against — by default the one the app ships,
-/// because "does this verify for users" is the only question that
+/// since "does this verify for users" is the only question that
 /// matters.
 fn load_verifying_key(path: Option<&str>) -> Result<VerifyingKey> {
     let encoded = match path {

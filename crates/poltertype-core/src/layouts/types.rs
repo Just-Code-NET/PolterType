@@ -116,11 +116,10 @@ impl LayoutMapping {
     /// replacement as scancodes. Linear over the ~48-key table, a
     /// handful of times per accepted word; an unshifted match wins.
     ///
-    /// Ties break on the lowest scancode, which matters more than it
-    /// looks: a real keyboard carries the same character on two keys
-    /// often enough — en-US has `\` on both `0x2B` and the ISO `0x56` —
-    /// and a `HashMap` would pick a different one run to run. The low
-    /// scancode is also the key that exists on every board.
+    /// Ties break on the lowest scancode: a real keyboard carries the
+    /// same character on two keys often enough (en-US has `\` on both
+    /// `0x2B` and the ISO `0x56`), and iterating the `HashMap` would
+    /// pick a different one run to run.
     pub fn key_for_char(&self, ch: char) -> Option<(u32, bool)> {
         let mut plain_hit: Option<u32> = None;
         let mut shifted_hit: Option<u32> = None;
@@ -158,9 +157,8 @@ impl LayoutMapping {
 /// `<data_dir>/plugins/<dir-name>/manifest.toml`. Mirrors the contract
 /// documented in `docs/DATA_LAYOUT.md`.
 ///
-/// Forward-compat: every field is `#[serde(default)]` so future
-/// additions (signing, capability flags) won't break older app
-/// versions; old fields stay parseable as the schema grows.
+/// Every field is `#[serde(default)]`, so a manifest written for a
+/// newer schema still parses here.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct PluginManifest {
@@ -178,10 +176,7 @@ pub struct PluginManifest {
     pub supported_layouts: Vec<String>,
 }
 
-/// Configuration for [`LayoutDb::load`]. Pulled out as a struct rather
-/// than a tower of optional args because the call site grew to 4
-/// orthogonal flags and positional `Option<&Path>` quickly gets
-/// unreadable.
+/// Configuration for [`LayoutDb::load`].
 #[derive(Debug, Clone, Default)]
 pub struct LoadOptions<'a> {
     /// Directory holding the bundled `layout-mappings/` and

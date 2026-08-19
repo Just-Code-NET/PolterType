@@ -1,10 +1,7 @@
-//! Decision policy stub.
-//!
-//! The decision logic lives in
-//! [`crate::engine::SwitcherEngine::decide`]. This module is the
-//! reserved home for a richer policy — per-app overrides,
-//! multi-detector voting, hysteresis — once the UI surfaces enough
-//! knobs to justify the abstraction.
+//! Decision policy stub: the live logic is in
+//! [`crate::engine::SwitcherEngine::decide`]. Reserved for a richer
+//! policy (per-app overrides, voting, hysteresis) once the UI has
+//! enough knobs to justify the abstraction.
 
 #[derive(Debug, Clone, Copy)]
 pub struct DecisionPolicy {

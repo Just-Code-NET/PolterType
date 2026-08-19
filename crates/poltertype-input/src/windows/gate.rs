@@ -24,13 +24,9 @@ impl Default for WindowsGate {
 }
 
 impl WindowsGate {
-    /// Build the gate, reading the opt-in once.
-    ///
-    /// Off unless `POLTERTYPE_HOLD_KEYS=1`. That default is the whole
-    /// caution of this feature: swallowing keystrokes system-wide is
-    /// the one thing in this project that can leave someone unable to
-    /// type, and nobody has run this code on Windows. See
-    /// `consts::HOLD_KEYS_ENV`.
+    /// Build the gate, reading the opt-in once. Off unless
+    /// `POLTERTYPE_HOLD_KEYS=1` — see [`HOLD_KEYS_ENV`] for why that
+    /// default is not negotiable.
     pub(crate) fn new() -> Self {
         let enabled = std::env::var(HOLD_KEYS_ENV).as_deref() == Ok("1");
         if enabled {
@@ -51,7 +47,7 @@ impl WindowsGate {
     }
 
     /// Ask for the hold. Returns whether it is in force — `false` means
-    /// the correction proceeds unprotected, exactly as it always has.
+    /// the correction proceeds unprotected.
     pub(crate) fn hold(&self) -> bool {
         if !self.available() {
             return false;

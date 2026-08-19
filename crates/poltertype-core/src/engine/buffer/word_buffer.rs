@@ -15,14 +15,12 @@ pub struct WordBuffer {
     /// word, oldest first. Screen layout is
     /// `…<prev_word><boundary_run><keys>[caret]`.
     boundary_run: Vec<(u32, bool)>,
-    /// See module docs. Set when the current word's tracking is
-    /// known-unreliable; cleared at the next boundary.
+    /// Set when the current word's tracking is known-unreliable;
+    /// cleared at the next boundary. See module docs.
     poisoned: bool,
-    /// Is the caret known to sit right after a boundary (start of
-    /// input, or an observed separator)? False after clicks / nav /
-    /// Esc / idle abandons, where the caret may be mid-word in text
-    /// we never saw. Captured into `word_clean` when a word's first
-    /// key arrives.
+    /// Is the caret known to sit right after a boundary? False after
+    /// clicks / nav / Esc / idle abandons, where the caret may be
+    /// mid-word in text we never saw.
     context_clean: bool,
     /// `context_clean` at the moment the in-progress word started.
     word_clean: bool,
@@ -70,12 +68,10 @@ impl WordBuffer {
         &self.boundary_run
     }
 
-    /// The completed word was replaced on screen with different
-    /// scancodes (a suggestion was applied). Keep the stash coherent
-    /// so backspacing across the boundary re-opens the *new* word.
-    /// Pass an empty vec when the replacement's scancodes are unknown
-    /// (text-injection fallback) — the word simply stops being
-    /// re-openable, same as [`Self::forget_completed`].
+    /// Re-point the stash after a suggestion replaced the completed
+    /// word on screen, so backspacing across the boundary re-opens the
+    /// *new* word. An empty vec (text-injection fallback, scancodes
+    /// unknown) just drops it, same as [`Self::forget_completed`].
     pub fn replace_completed(&mut self, keys: Vec<WordKey>) {
         if keys.is_empty() {
             self.forget_completed();
@@ -88,16 +84,14 @@ impl WordBuffer {
         self.poisoned
     }
 
-    /// Explicitly taint the in-progress word (used by the engine when
-    /// it detects keystrokes racing a correction that it could not
-    /// attribute reliably).
+    /// Explicitly taint the in-progress word — the engine's route for
+    /// keystrokes racing a correction that it could not attribute.
     pub fn poison(&mut self) {
         self.poisoned = true;
     }
 
-    /// Full reset to a clean, trusted state. Only appropriate when
-    /// the caller knows tracking should restart from scratch and the
-    /// next word can be trusted (settings reload).
+    /// Full reset to a clean, trusted state — only when the caller
+    /// knows the next word can be trusted (settings reload).
     pub fn reset(&mut self) {
         *self = Self::default();
     }
@@ -107,11 +101,10 @@ impl WordBuffer {
     /// untracked remainder on screen, so the *next* completion is
     /// tainted.
     ///
-    /// Deliberately does not touch `context_clean`: an *idle* abandon is
-    /// buffer hygiene — the user paused to think and the caret is almost
-    /// certainly where it was, so the next word stays
-    /// suggestion-eligible. Callers whose trigger really moves the caret
-    /// pair this with [`Self::mark_context_unclean`].
+    /// Deliberately does not touch `context_clean`: after an *idle*
+    /// abandon the caret is almost certainly where it was, so the next
+    /// word stays suggestion-eligible. Callers whose trigger really
+    /// moves the caret pair this with [`Self::mark_context_unclean`].
     pub fn abandon(&mut self) {
         if !self.keys.is_empty() {
             self.poisoned = true;
@@ -137,15 +130,10 @@ impl WordBuffer {
     }
 
     /// Feed a [`KeyEvent`] with the character it produces under the
-    /// **currently active** OS layout, plus a hint of whether the same
-    /// scancode is a *letter* under any known layout.
-    ///
-    /// The hint catches typing a Cyrillic word while en-US is active:
-    /// scancode `0x27` is `;` in en-US (a boundary) but `ж` in uk-UA (a
-    /// word character), and without it the buffer would split mid-word
-    /// at every such position.
-    ///
-    /// `produced = None` for scancodes with no mapping at all.
+    /// **currently active** OS layout (`None` for scancodes with no
+    /// mapping at all), plus a hint of whether the same scancode is a
+    /// *letter* under any known layout — the hint is what keeps a
+    /// Cyrillic word typed under en-US from splitting at every `ж`.
     pub fn feed(
         &mut self,
         ev: KeyEvent,
@@ -159,14 +147,11 @@ impl WordBuffer {
         match classify(ev.scancode, produced, letter_in_any_layout) {
             KeyKind::Word => {
                 if self.keys.is_empty() {
-                    // First key of a word — freeze the caret-context
-                    // trust into the word itself.
                     self.word_clean = self.context_clean;
                     if self.boundary_run.is_empty() && !self.prev_word.is_empty() {
-                        // A word key with no boundary since the previous
-                        // completion can only mean the previous word was
-                        // re-opened and fully backspaced away, then typing
-                        // resumed — prev_word is already `keys`' ancestor
+                        // No boundary since the previous completion can
+                        // only mean that word was re-opened and fully
+                        // backspaced away: it is already `keys`' ancestor
                         // and must not be re-openable behind it.
                         self.prev_word.clear();
                     }
@@ -180,16 +165,14 @@ impl WordBuffer {
             }
             KeyKind::Boundary => {
                 let tainted = self.poisoned;
-                // Any boundary re-syncs tracking: whatever went wrong
-                // before it, the next word is observed from its first
-                // key — and starts right after a separator we saw, so
-                // the caret cannot be mid-word any more.
+                // Any boundary re-syncs tracking: the next word is
+                // observed from its first key and starts right after a
+                // separator we saw, so the caret cannot be mid-word.
                 self.poisoned = false;
                 self.context_clean = true;
                 if self.keys.is_empty() {
-                    // No word completed — this is a consecutive
-                    // boundary (double space, ". "). Extend the run
-                    // guarding the stashed word, up to a sane limit.
+                    // A consecutive boundary (double space, ". "):
+                    // extend the run guarding the stashed word.
                     if !self.prev_word.is_empty() {
                         if tainted {
                             self.forget_completed();
@@ -224,18 +207,17 @@ impl WordBuffer {
                 }
                 if self.boundary_run.pop().is_some() {
                     if self.boundary_run.is_empty() {
-                        // Deleted the last separator — the caret now
-                        // touches the previous word. Re-open it,
-                        // restoring its start-trust too.
+                        // Last separator gone: the caret now touches the
+                        // previous word, so re-open it with its
+                        // start-trust restored.
                         self.keys = std::mem::take(&mut self.prev_word);
                         self.word_clean = self.prev_clean;
                     }
                     return WordBoundary::InProgress;
                 }
-                // Deleting text the buffer never saw — everything to
-                // the left of the caret is unknown from here on. The
-                // engine must also drop caret-position-dependent
-                // state (the switch-last stash), hence `Abandoned`.
+                // Deleting text the buffer never saw: everything left of
+                // the caret is unknown from here on, so the engine must
+                // drop caret-dependent state too — hence `Abandoned`.
                 self.poisoned = true;
                 self.context_clean = false;
                 WordBoundary::Abandoned

@@ -44,8 +44,6 @@ fn each_action_variant_round_trips_through_toml() {
 /// `Settings`. Triggers are TYPED text, not hotkey combos.
 #[test]
 fn parses_complete_user_command_block() {
-    // We mirror the wrapper that `Settings.commands` will use:
-    // a top-level `commands` field of type `Vec<UserCommand>`.
     #[derive(Deserialize)]
     struct Wrap {
         #[serde(default)]
@@ -117,18 +115,14 @@ fn cmd(id: &str, trigger: &str, apps: &[&str]) -> UserCommand {
 fn find_matching_command_basic_match() {
     let list = vec![cmd("a", "anrl", &[]), cmd("b", "((en))", &[])];
 
-    // Exact match.
     let m = find_matching_command(&list, "anrl", None, &WordHistory::default()).expect("matches");
     assert_eq!(m.id, "a");
-    // Different trigger.
     let m2 =
         find_matching_command(&list, "((en))", None, &WordHistory::default()).expect("matches");
     assert_eq!(m2.id, "b");
-    // No match — case-sensitive, "ANRL" != "anrl".
+    // Case-sensitive: "ANRL" != "anrl".
     assert!(find_matching_command(&list, "ANRL", None, &WordHistory::default()).is_none());
-    // No match — completely unrelated word.
     assert!(find_matching_command(&list, "hello", None, &WordHistory::default()).is_none());
-    // No match — empty word.
     assert!(find_matching_command(&list, "", None, &WordHistory::default()).is_none());
 }
 

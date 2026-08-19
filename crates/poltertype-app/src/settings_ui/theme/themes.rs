@@ -9,10 +9,8 @@ use iced::theme::Palette;
 use super::consts::{DARK, LIGHT};
 use super::types::BrandPalette;
 
-// `Theme::custom` derives the extended palette (hover shades, weak /
-// strong background pairs, …) with a bit of colour math — cache both
-// themes once instead of re-deriving on every `SettingsApp::theme()`
-// call (iced asks per frame).
+// `Theme::custom` derives the extended palette with colour math, and
+// iced asks for the theme per frame — derive both once.
 static LIGHT_THEME: LazyLock<Theme> = LazyLock::new(|| {
     Theme::custom(
         "PolterType Light".to_owned(),
@@ -51,10 +49,9 @@ pub fn dark() -> Theme {
 
 /// The brand palette matching `theme`. Style fns receive only a
 /// `&Theme`, and iced's palette carries just five colours — this maps
-/// back to the full token set. Keyed off `is_dark`, which
-/// `Theme::custom` derives from the background luminance, so it stays
-/// correct for both our themes (and picks something sane if a stock
-/// iced theme ever leaks in).
+/// back to the full token set. Keyed off `is_dark`, derived from
+/// background luminance, so a stock iced theme leaking in still picks
+/// something sane.
 pub fn brand_palette(theme: &Theme) -> &'static BrandPalette {
     if theme.extended_palette().is_dark {
         &DARK

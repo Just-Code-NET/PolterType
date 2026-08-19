@@ -69,7 +69,7 @@ impl MacosGate {
     }
 
     /// Ask for the hold. Returns whether it is in force — `false` means
-    /// the correction proceeds unprotected, exactly as it always has.
+    /// the correction proceeds unprotected.
     pub(crate) fn hold(&self) -> bool {
         if !self.available() {
             return false;
@@ -95,7 +95,6 @@ impl MacosGate {
         s
     }
 
-    /// The tap thread reports its lifecycle here.
     pub(crate) fn set_tap_running(&self, running: bool) {
         self.tap_running.store(running, Ordering::Release);
         if running {
@@ -119,13 +118,11 @@ mod tests {
     /// Every test here drives the gate through the same process-global
     /// environment variable and the harness runs them on separate
     /// threads: without serialising, one test's `remove_var` lands
-    /// between another's `set_var` and its `MacosGate::new()`. That
-    /// failure is intermittent and only ever appears on the macOS CI
-    /// job — the most expensive kind to chase.
+    /// between another's `set_var` and its `MacosGate::new()` — an
+    /// intermittent failure that only ever appears on the macOS CI job.
     ///
-    /// Poisoning is stepped over deliberately: if one test fails while
-    /// holding the lock, the others should report their own verdict
-    /// rather than a cascade of panics.
+    /// Poisoning is stepped over deliberately: one failing test should
+    /// not become a cascade of panics.
     static ENV: Mutex<()> = Mutex::new(());
 
     #[test]

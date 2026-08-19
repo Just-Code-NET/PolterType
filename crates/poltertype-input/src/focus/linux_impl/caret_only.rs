@@ -1,9 +1,8 @@
 //! AT-SPI-only tracker for Wayland sessions with no active-window query.
 //!
 //! GNOME and KDE expose no compositor-agnostic "which window has
-//! focus", so this tracker was a noop there for a long time. Both
-//! halves now come from AT-SPI, a session-bus service that knows
-//! nothing about compositors: the **caret** from
+//! focus". Both halves come from AT-SPI, a session-bus service that
+//! knows nothing about compositors: the **caret** from
 //! `object:text-caret-moved` extents, and the **focused application**
 //! from `window:activate`, by asking the bus which process owns the
 //! sending connection — see [`super::atspi_focus`] for the limits of
@@ -16,8 +15,7 @@
 //! Hyprland or X11, so samples carry an age and anything older than
 //! [`FOCUS_MAX_AGE`] is treated as no answer. Reporting the wrong
 //! application would silence PolterType in a window the user expects it
-//! to work in — the exact regression that made `disabled_apps` empty by
-//! default.
+//! to work in.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,9 +53,8 @@ impl FocusTracker for CaretOnlyFocusTracker {
     ///
     /// `None` whenever the watcher could not start, nothing has been
     /// heard yet, or the last observation has gone stale — all three
-    /// leave the focus-keyed features inert, which is the same
-    /// behaviour these sessions had before and is the safe direction
-    /// to be wrong in.
+    /// leave the focus-keyed features inert, which is the safe
+    /// direction to be wrong in.
     fn focused_exe(&self) -> Option<String> {
         let sample = self.focus.as_ref()?.latest()?;
         (sample.age() < FOCUS_MAX_AGE).then_some(sample.exe)

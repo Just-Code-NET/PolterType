@@ -1,24 +1,16 @@
 //! macOS: a per-user LaunchAgent, registered with `launchctl`.
 //!
 //! **This never calls `bootout`.** `launchctl bootout gui/<uid>/<label>`
-//! does not merely forget a job spec — it terminates the job's running
-//! processes, and when launchd started us at login *we are that job*.
-//! The first draft did it on both paths, and both were reachable from a
-//! single click: enable/startup booted us out and bootstrapped, so
-//! launchd killed us and the replacement hit our own still-held
-//! instance lock and exited, leaving nothing running; and disable
-//! terminated the app on the spot when the user unticked the box.
-//!
-//! Neither shows up when the app is launched from Finder, because then
-//! it is not a launchd job and bootout has no process to kill — which
-//! is why hardware testing missed it.
+//! terminates the job's running processes, and when launchd started us
+//! at login *we are that job* — a single click could kill the app.
+//! It reproduces only under launchd, never from Finder, which is why
+//! hardware testing missed it; see docs/DECISIONS.md, 2026-07-30.
 //!
 //! So this writes and deletes the plist, and `bootstrap`s only when
-//! launchd does not already know the label. The cost is one deliberate
-//! gap: if the plist *contents* drift while the label is loaded — an
-//! update moved the executable — launchd keeps the old spec until the
-//! next login. The file on disk is corrected immediately, so the next
-//! login is right.
+//! launchd does not already know the label. One deliberate gap follows:
+//! plist *contents* that drift while the label is loaded (an update
+//! moved the executable) are corrected on disk immediately but not in
+//! launchd until the next login.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -37,10 +29,8 @@ fn plist_path(id: &str) -> Option<PathBuf> {
 }
 
 /// Escape the characters that would break out of an XML text node.
-/// `&` and `<` are the ones that matter; both are legal in macOS file
-/// names, so a user directory called `Rock & Roll` must not produce a
-/// malformed plist. `>` needs no escaping in a text node but is
-/// conventional and harmless.
+/// `&` and `<` are legal in macOS file names, so a user directory
+/// called `Rock & Roll` must not produce a malformed plist.
 pub(crate) fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -72,8 +62,8 @@ pub(crate) fn plist_body(id: &str, exe: &Path) -> String {
 }
 
 /// Numeric uid for the `gui/<uid>` launchd domain. Shelling out to
-/// `id -u` keeps this crate free of `unsafe` and of a libc dependency
-/// for one integer.
+/// `id -u` keeps this crate free of `unsafe` and of libc for one
+/// integer.
 fn uid() -> Option<String> {
     let out = Command::new("id").arg("-u").output().ok()?;
     let s = String::from_utf8(out.stdout).ok()?.trim().to_owned();
@@ -83,8 +73,8 @@ fn uid() -> Option<String> {
 /// Does launchd already know this label in the user's GUI domain?
 ///
 /// `launchctl print` exits non-zero for an unknown service, which is
-/// all we need — we never parse its output, whose format Apple has
-/// changed between releases.
+/// all we need — its output format has changed between macOS releases
+/// and is never parsed here.
 fn is_registered(uid: &str, id: &str) -> bool {
     Command::new("launchctl")
         .args(["print", &format!("gui/{uid}/{id}")])
@@ -104,11 +94,11 @@ pub(crate) fn sync(enabled: bool, app: App<'_>) {
     if !enabled {
         if path.exists() {
             match std::fs::remove_file(&path) {
-                // Deleting the plist is enough: launchd only loads it
-                // at login, and the label already loaded in this
-                // session has RunAtLoad behind it and no KeepAlive,
-                // so it will never start anything again. See the
-                // module note on why we do not boot it out.
+                // Deleting the plist is enough: launchd loads it only
+                // at login, and a label already loaded this session has
+                // RunAtLoad and no KeepAlive, so it starts nothing
+                // again. Booting it out would kill us — see the module
+                // docs.
                 Ok(()) => debug!(?path, "autostart disabled: LaunchAgent removed"),
                 Err(e) => warn!(?e, ?path, "could not remove LaunchAgent plist"),
             }
@@ -139,10 +129,9 @@ pub(crate) fn sync(enabled: bool, app: App<'_>) {
         debug!(?path, "autostart enabled: LaunchAgent written");
     }
 
-    // Register only when launchd has never heard of the label, so
-    // coverage starts without a relogin on first enable. Bootstrapping
-    // an already-known label would error anyway; asking first also
-    // keeps us from touching a job that might be this very process.
+    // Register only when launchd has never heard of the label, so first
+    // enable needs no relogin. Asking first also keeps us from touching
+    // a job that might be this very process.
     let Some(uid) = uid() else {
         debug!("could not resolve uid; LaunchAgent will load at next login");
         return;

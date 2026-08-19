@@ -25,11 +25,9 @@
 //! ed25519 [`signature`] is for, verified the moment the manifest is
 //! parsed, before any URL in it is read.
 //!
-//! Signatures are **mandatory from v0.17.2** —
-//! `consts::REQUIRE_SIGNATURE` gates that, and it is now `true`: an
-//! unsigned manifest is refused rather than warned about. A release
-//! whose manifest nobody signs is therefore an outage for every
-//! updater on this build or newer. See `docs/DECISIONS.md`.
+//! Signatures are mandatory from v0.17.2, so a release whose manifest
+//! nobody signs is an outage for every updater on this build or newer
+//! — see `consts::REQUIRE_SIGNATURE`.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]

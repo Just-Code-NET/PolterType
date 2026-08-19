@@ -11,8 +11,8 @@ use super::*;
 ///    known profile;
 /// 3. otherwise `None`.
 ///
-/// `focused_basename` should already be a basename. Nothing is stripped
-/// here, because this is also called from tests with synthetic data.
+/// `focused_basename` must already be a basename; nothing is stripped
+/// here.
 pub fn resolve_active_profile<'a>(
     settings: &'a WordlistSettings,
     focused_basename: Option<&str>,

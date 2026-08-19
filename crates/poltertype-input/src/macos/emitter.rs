@@ -29,8 +29,8 @@ const MODIFIER_SETTLE: Duration = Duration::from_millis(4);
 
 /// Gap between individual key events inside one burst.
 ///
-/// The hazard the `MODIFIER_SETTLE` comment above describes applies
-/// to key events too, and harder: a backspace burst posted
+/// The hazard [`MODIFIER_SETTLE`] describes applies to key events too,
+/// and harder: a backspace burst posted
 /// back-to-back reaches the focused app within a single run-loop
 /// turn, and AppKit coalesces same-key down/up pairs that share a
 /// timestamp — observably, one delete in six was landing, which left

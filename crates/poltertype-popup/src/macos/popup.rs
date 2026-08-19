@@ -1,11 +1,6 @@
-//! macOS backend: a borderless, non-activating `NSPanel`.
-//!
-//! Unlike the other backends there is no popup thread — AppKit window
-//! objects belong to the main thread, which the tao event loop owns —
-//! so the handle below is zero-sized and every command hops onto the
-//! main dispatch queue. The fire-and-forget contract holds by
-//! construction: `exec_async` enqueues and returns, and the engine's
-//! hot path never touches AppKit. See `docs/MACOS_POPUP.md`.
+//! The public handle for the macOS backend — see [`super`] for the
+//! threading model it implies. Zero-sized: `exec_async` enqueues and
+//! returns, so the fire-and-forget contract holds by construction.
 
 use crossbeam_channel::Sender;
 use dispatch2::DispatchQueue;
@@ -20,10 +15,10 @@ use crate::types::PopupModel;
 pub struct MacosPopup;
 
 impl MacosPopup {
-    /// Cannot fail: the panel itself is created lazily on first
-    /// `show`, once the event loop is actually pumping the main queue
-    /// (`create_popup` runs before `event_loop.run`, so creating it
-    /// here would deadlock a synchronous hop and race an async one).
+    /// Cannot fail: the panel is created lazily on first `show`, once
+    /// the event loop is pumping the main queue. `create_popup` runs
+    /// before `event_loop.run`, so creating it here would deadlock a
+    /// synchronous hop and race an async one.
     pub fn new(events: Sender<PopupUiEvent>) -> Self {
         panel::register_events(events);
         Self

@@ -10,8 +10,7 @@ use std::path::PathBuf;
 
 /// Parse `<out-path> [--size N]` and render a PNG.
 ///
-/// Tiny ad-hoc parser instead of a clap dep — we only have one flag,
-/// and the xtask crate has been resolutely zero-config so far.
+/// Ad-hoc parser instead of a clap dependency: one flag.
 pub fn render_png_command(args: &[String]) -> Result<()> {
     let mut out_path: Option<PathBuf> = None;
     let mut size: u32 = 1024;

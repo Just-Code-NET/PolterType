@@ -1,15 +1,13 @@
 //! Deciding whether an endpoint keeps the request on this machine.
 //!
 //! `[ai].allow_remote` gates typed text *leaving the computer*, and a
-//! query to a model on loopback does not leave it — which is what lets
-//! an offline Ollama run without enabling network access nobody is
-//! using.
+//! query to loopback does not leave it — which is what lets an offline
+//! Ollama run without enabling network access nobody is using.
 //!
-//! The rule is deliberately strict and syntactic: only literal loopback
-//! addresses and the name `localhost` count. No DNS is resolved, since
-//! a resolver answer can change between the check and the request.
-//! Anything uncertain is [`Locality::Remote`], the answer that asks
-//! permission.
+//! Strict and syntactic on purpose: only literal loopback addresses and
+//! the name `localhost` count, and no DNS is resolved, since a resolver
+//! answer can change between the check and the request. Anything
+//! uncertain is [`Locality::Remote`], the answer that asks permission.
 
 use crate::enums::Locality;
 
@@ -24,9 +22,7 @@ pub fn classify(endpoint: &str) -> Locality {
     }
 }
 
-/// Pull the host out of a URL without taking a URL-parsing
-/// dependency: strip the scheme, then userinfo, then everything from
-/// the first `/`, `?` or `#`, then the port.
+/// Pull the host out of a URL without taking a URL-parsing dependency.
 fn host_of(endpoint: &str) -> Option<String> {
     let after_scheme = endpoint.split_once("://")?.1;
     let authority = after_scheme
@@ -37,8 +33,7 @@ fn host_of(endpoint: &str) -> Option<String> {
     // password containing one cannot smuggle a different host past us.
     let hostport = authority.rsplit('@').next()?;
 
-    // Bracketed IPv6 (`[::1]:11434`) — take what is inside the
-    // brackets and ignore any port after them.
+    // Bracketed IPv6 (`[::1]:11434`).
     if let Some(rest) = hostport.strip_prefix('[') {
         return rest.split(']').next().map(str::to_ascii_lowercase);
     }
@@ -60,9 +55,8 @@ fn is_loopback_host(host: &str) -> bool {
     if host == "localhost" {
         return true;
     }
-    // Parse as an IP and ask the standard library, so the whole
-    // 127.0.0.0/8 block and every spelling of ::1 are covered without
-    // us hand-rolling the ranges.
+    // Ask the standard library, so the whole 127.0.0.0/8 block and
+    // every spelling of ::1 are covered without hand-rolled ranges.
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         return ip.is_loopback();
     }

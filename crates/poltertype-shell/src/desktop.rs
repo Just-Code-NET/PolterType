@@ -1,38 +1,13 @@
 //! Telling a Linux desktop which application a window belongs to.
 //!
-//! Windows and macOS answer "what is this app called and what does it
-//! look like?" out of the executable itself — a resource block inside
-//! `poltertype.exe`, a `Resources/AppIcon.icns` inside the `.app`.
-//! Linux answers it out of a *third* file: a `.desktop` entry in a
-//! shared directory, found by the id the window declares. v0.17.1 gave
-//! the first two what they needed and left this one as it was, which
-//! turns out to be two separate holes.
-//!
-//! **A window has to say which entry is its own.** `iced` passes its
-//! `application_id` straight through to winit, and ours was never set,
-//! so what got passed was the empty string — an empty Wayland `app_id`
-//! and, worse, an empty X11 `WM_CLASS`: winit's fallback to `argv[0]`
-//! only runs when nothing is passed *at all*, and `Some("")` is not
-//! nothing. Measured on Hyprland before the fix, `hyprctl clients`
-//! reported `class: ""` for the Settings window.
-//!
-//! **On Wayland that entry is the only place an icon can come from.**
-//! winit's Wayland backend implements `set_window_icon` as an empty
-//! function — the icon [`crate::window_platform_specific`]'s caller
-//! builds is dropped on the floor — because the protocol has no
-//! window-icon concept to implement. X11 takes `_NET_WM_ICON` and is
-//! fine either way, so this is a Wayland hole with an X11 half: there,
-//! the icon showed but the empty `WM_CLASS` still broke matching the
-//! window to an entry, which is what pinning and grouping run on.
-//!
-//! Packaged installs already ship the entry — the AUR package installs
-//! `poltertype.desktop` and the mark into `hicolor`, and so would a
-//! `.deb` — so what is left to cover is the un-packaged case: a
-//! downloaded AppImage that nobody integrated, and a developer's
-//! `cargo run`. Both are ordinary ways to run this app, and neither
-//! puts a single file anywhere the desktop looks. Hence
-//! [`install_desktop_entry`], and hence its first act being to check
-//! whether a package got there first.
+//! Two holes, both closed here: `iced` passed winit an empty
+//! `application_id` (an empty X11 `WM_CLASS` is worse than none —
+//! winit's `argv[0]` fallback runs only when nothing is passed at
+//! all), and on Wayland a `.desktop` entry is the *only* route an icon
+//! has, as winit's `set_window_icon` there is an empty function.
+//! Packaged installs already ship the entry, so what is left to cover
+//! is an un-integrated AppImage and `cargo run`.
+//! See docs/DECISIONS.md, 2026-08-16.
 
 #[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
@@ -40,24 +15,17 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use tracing::{debug, info, warn};
 
-/// The id this app's windows carry, and the stem of the `.desktop`
-/// entry they are matched against.
+/// The id this app's windows carry, the stem of its `.desktop` entry
+/// and its icon name inside `hicolor` — one string, so a window, a
+/// menu entry and a notification cannot disagree.
 ///
 /// Deliberately **not** `APP_ID` (`dev.opensource.poltertype`), which
-/// names the autostart entry and the instance lock. What this string
-/// has to agree with is the entry the *packages* install, and both the
-/// AppImage and the AUR `PKGBUILD` have shipped `poltertype.desktop`
-/// since before this module existed. Switching those to the
-/// reverse-DNS form to match the other id would rename a file every
-/// installed copy already has, to fix nothing.
-///
-/// It is also the `Icon=` value and therefore the icon's name inside
-/// the `hicolor` theme: one string, so a window, a menu entry and a
-/// notification cannot disagree about which app they are showing.
+/// names the autostart entry and the instance lock: the AppImage and
+/// the AUR `PKGBUILD` have shipped `poltertype.desktop` since before
+/// this module existed, and renaming their file would fix nothing.
 pub const DESKTOP_ID: &str = "poltertype";
 
-/// The `platform_specific` field of an `iced` window, filled in for
-/// the platform this build targets.
+/// The `platform_specific` field of an `iced` window.
 ///
 /// Here and not in the binary because the type behind
 /// `iced::window::settings::PlatformSpecific` is a *different struct*
@@ -79,13 +47,10 @@ pub fn window_platform_specific() -> iced::window::settings::PlatformSpecific {
     iced::window::settings::PlatformSpecific::default()
 }
 
-/// Icon sizes written into the user's `hicolor` theme.
-///
-/// Each one is rendered from the geometry rather than filtered down
-/// from a single master — the same reason the Windows icon resource
-/// carries six sizes instead of one. 16 is absent because
-/// `poltertype-icon` refuses to write a PNG below `MIN_PNG_SIZE`, and
-/// nothing in a menu, a switcher or a notification asks for one.
+/// Icon sizes written into the user's `hicolor` theme, each rendered
+/// from the geometry rather than filtered down from one master. 16 is
+/// absent because `poltertype-icon` refuses a PNG below
+/// `MIN_PNG_SIZE`, and nothing on the desktop asks for one.
 #[cfg(target_os = "linux")]
 pub(crate) const HICOLOR_SIZES: &[u32] = &[32, 48, 64, 128, 256];
 
@@ -98,14 +63,9 @@ const DEFAULT_DATA_DIRS: &str = "/usr/local/share:/usr/share";
 /// nothing else has.
 ///
 /// Best-effort from top to bottom: every failure here costs an icon,
-/// and an app that refuses to start because it could not draw itself
-/// in a menu would be a worse bug than the one this fixes.
-///
-/// Not gated on a setting, unlike autostart. Autostart changes what
-/// the machine does; this only answers a question the desktop is
-/// already asking, and the answer to "may PolterType tell your
-/// desktop what PolterType looks like?" is not interesting enough to
-/// put in a config file.
+/// and refusing to start because we could not draw ourselves in a menu
+/// would be the worse bug. Deliberately not gated on a setting, unlike
+/// autostart — see docs/DECISIONS.md, 2026-08-16.
 #[cfg(target_os = "linux")]
 pub fn install_desktop_entry() {
     if let Some(path) = packaged_entry() {
@@ -123,33 +83,29 @@ pub fn install_desktop_entry() {
     install_into(&data_home, &exec);
 }
 
-/// The half of [`install_desktop_entry`] that touches files, with the
-/// two things it resolves from the environment passed in instead.
+/// The half of [`install_desktop_entry`] that touches files, with what
+/// it resolves from the environment passed in instead — split off to
+/// be testable, since the alternative sets `XDG_DATA_HOME` and
+/// `std::env::set_var` is `unsafe` in this edition, in a crate that
+/// forbids `unsafe`.
 ///
-/// Split off to be testable: the alternative is a test that sets
-/// `XDG_DATA_HOME`, and `std::env::set_var` is `unsafe` in this
-/// edition — in a crate that forbids `unsafe` outright.
-///
-/// Returns whether anything was written, which is also what the test
-/// checks the second call for.
+/// Returns whether anything was written.
 #[cfg(target_os = "linux")]
 pub(crate) fn install_into(data_home: &Path, exec: &Path) -> bool {
     let body = entry_body(exec);
     let entry = data_home
         .join("applications")
         .join(format!("{DESKTOP_ID}.desktop"));
-    // The stamped version inside `body` is what makes this cheap: an
-    // ordinary launch reads one small file, compares it and stops.
-    // A new release, or an AppImage the user moved, changes the text
-    // and everything is rewritten — including the icons, which is why
-    // a mark redrawn in some later version reaches existing installs.
+    // The version stamped into `body` makes an ordinary launch one
+    // read-and-compare and an upgrade a full rewrite — which is how a
+    // mark redrawn in a later version reaches existing installs.
     if std::fs::read_to_string(&entry).is_ok_and(|current| current == body) {
         return false;
     }
 
-    // Icons first. If we die between the two, the entry is still
-    // absent or stale, so the next launch tries again — the reverse
-    // order would stamp "done" over a half-installed icon theme.
+    // Icons first: dying between the two leaves the entry stale, so
+    // the next launch retries. The reverse order would stamp "done"
+    // over a half-installed icon theme.
     write_icons(data_home);
 
     if let Err(e) = write_file(&entry, body.as_bytes()) {
@@ -164,21 +120,15 @@ pub(crate) fn install_into(data_home: &Path, exec: &Path) -> bool {
 #[cfg(not(target_os = "linux"))]
 pub fn install_desktop_entry() {}
 
-/// The entry a distribution package would have installed, if there is
-/// one.
-///
-/// Its presence means the entry, the icon and the `Exec` line are
-/// somebody else's job — and a copy of ours in `XDG_DATA_HOME` would
-/// take precedence over theirs, which is the wrong way round for a
-/// file the package manager keeps up to date.
+/// The entry a distribution package would have installed, if any: ours
+/// in `XDG_DATA_HOME` would take precedence over a file the package
+/// manager keeps up to date.
 ///
 /// Deliberately blind to the AppImage integrators (AppImageLauncher,
-/// Gear Lever), which write their own entry under a mangled stem
-/// (`appimagekit_<hash>-poltertype.desktop`) in the same directory we
-/// do. A user who ran one gets two menu entries, both correct and both
-/// launching the same file — which is a cosmetic annoyance, where
-/// guessing at their naming and skipping wrongly is the original bug
-/// back again.
+/// Gear Lever), whose entries use a mangled stem
+/// (`appimagekit_<hash>-poltertype.desktop`). Guessing at that naming
+/// and skipping wrongly is the original bug back; not matching them
+/// costs one duplicate menu entry that launches the same file.
 #[cfg(target_os = "linux")]
 fn packaged_entry() -> Option<PathBuf> {
     let dirs = std::env::var("XDG_DATA_DIRS")
@@ -196,10 +146,7 @@ fn packaged_entry() -> Option<PathBuf> {
 }
 
 /// `$XDG_DATA_HOME`, or the `~/.local/share` the spec falls back to.
-///
-/// Same shape as `poltertype-autostart`'s config-side twin, including
-/// ignoring a relative `XDG_DATA_HOME` — the spec says to treat one as
-/// unset rather than resolve it against the working directory.
+/// A relative `XDG_DATA_HOME` counts as unset, per the spec.
 #[cfg(target_os = "linux")]
 fn data_home() -> Option<PathBuf> {
     match std::env::var_os("XDG_DATA_HOME") {
@@ -210,12 +157,9 @@ fn data_home() -> Option<PathBuf> {
 
 /// What the entry's `Exec` should launch.
 ///
-/// `$APPIMAGE` before `current_exe`, because inside a running AppImage
-/// the executable's path points into the mount
-/// (`/tmp/.mount_XXXXXX/usr/bin/poltertype`) and that path is gone the
-/// moment the app exits. The AppImage runtime exports the path of the
-/// file the user actually downloaded, which is the only one that still
-/// exists tomorrow.
+/// `$APPIMAGE` before `current_exe`: inside a running AppImage the
+/// latter points into the mount (`/tmp/.mount_XXXXXX/usr/bin/...`),
+/// which is gone the moment the app exits.
 #[cfg(target_os = "linux")]
 fn exec_target() -> Option<PathBuf> {
     match std::env::var_os("APPIMAGE") {
@@ -226,9 +170,8 @@ fn exec_target() -> Option<PathBuf> {
 
 /// Quote a program path for a Desktop Entry `Exec=` value.
 ///
-/// Twin of `poltertype_autostart::linux::exec_quote` — same spec, same
-/// escapes, and the two are expected to agree; they are apart because
-/// neither crate should depend on the other for five lines of string
+/// Twin of `poltertype_autostart::linux::exec_quote`, kept apart so
+/// neither crate depends on the other for five lines of string
 /// handling. Change one, change both.
 #[cfg(target_os = "linux")]
 pub(crate) fn exec_quote(exe: &Path) -> String {
@@ -245,12 +188,8 @@ pub(crate) fn exec_quote(exe: &Path) -> String {
 /// The full text of the entry.
 ///
 /// Every key except `Exec` matches `installers/linux/poltertype.desktop`
-/// byte for byte, and a test in this crate reads that file and holds
-/// them to it — a menu entry that disagreed with the packaged one about
-/// the app's own name is exactly the drift nobody would notice.
-///
-/// `X-PolterType-Version` is not decoration: it is what makes an
-/// upgrade rewrite the icons. See [`install_desktop_entry`].
+/// byte for byte, and a test in this crate holds them to it.
+/// `X-PolterType-Version` is what makes an upgrade rewrite the icons.
 #[cfg(target_os = "linux")]
 pub(crate) fn entry_body(exec: &Path) -> String {
     format!(
@@ -273,11 +212,9 @@ pub(crate) fn entry_body(exec: &Path) -> String {
     )
 }
 
-/// Render the mark into the user's `hicolor` theme.
-///
-/// One failed size is reported and skipped rather than aborting the
-/// rest: a theme with four of five sizes still draws an icon
-/// everywhere, by scaling.
+/// Render the mark into the user's `hicolor` theme. A failed size is
+/// skipped rather than aborting the rest — the remaining sizes still
+/// draw everywhere, by scaling.
 #[cfg(target_os = "linux")]
 fn write_icons(data_home: &Path) {
     for &size in HICOLOR_SIZES {
@@ -298,7 +235,6 @@ fn write_icons(data_home: &Path) {
     }
 }
 
-/// Write `bytes` to `path`, creating the directory above it.
 #[cfg(target_os = "linux")]
 fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {

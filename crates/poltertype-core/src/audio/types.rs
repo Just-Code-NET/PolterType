@@ -9,10 +9,8 @@ use tracing::{debug, warn};
 /// State owned by the audio worker thread. Not `Send` (because of
 /// `OutputStream`); never escapes the worker.
 pub(crate) struct WorkerState {
-    /// Lazily-opened, long-lived stream. `None` means "not yet opened
-    /// or just invalidated; open on next play". `last_opened` is set
-    /// when the current `stream` was created — used to time the idle
-    /// refresh.
+    /// Lazily-opened, long-lived stream. `None` means "not yet opened or
+    /// just invalidated; open on next play".
     pub(crate) stream: Option<(OutputStream, OutputStreamHandle)>,
     pub(crate) last_opened: Instant,
     pub(crate) theme_dir: Option<PathBuf>,
@@ -35,9 +33,7 @@ impl WorkerState {
     /// now" and skip the play silently.
     pub(crate) fn handle(&mut self) -> Option<OutputStreamHandle> {
         // Refresh after long idle so default-device changes (BT
-        // headphones, HDMI, OS sound-settings change) are eventually
-        // picked up. Stream creation is what costs ~20-50 ms; reuse
-        // is essentially free.
+        // headphones, HDMI, OS sound settings) are eventually picked up.
         if self
             .stream
             .as_ref()
@@ -61,11 +57,10 @@ impl WorkerState {
         self.stream.as_ref().map(|(_, h)| h.clone())
     }
 
-    /// Drop the cached stream so the next `handle()` call reopens
-    /// from scratch. Used when a play fails: the device may have
-    /// gone away (USB unplugged, BT disconnect, OS audio service
-    /// restart) and we don't want to keep retrying against a dead
-    /// handle.
+    /// Drop the cached stream so the next `handle()` reopens from
+    /// scratch. Used when a play fails: the device may have gone away
+    /// (USB unplugged, BT disconnect, audio service restart) and
+    /// retrying against a dead handle never recovers.
     pub(crate) fn invalidate(&mut self) {
         self.stream = None;
     }

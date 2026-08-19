@@ -22,7 +22,6 @@ pub fn init_without_desktop_check() -> Option<GnomeSwitcher> {
 }
 
 fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
-    // Reject if `gsettings` is not in PATH at all.
     let exists = Command::new("gsettings")
         .arg("--version")
         .stdout(std::process::Stdio::null())
@@ -33,15 +32,10 @@ fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
     if !exists {
         return None;
     }
-    // Reject if the schema is not installed — `gsettings get` exits
-    // non-zero then.
-    //
-    // Reading the value rather than the exit status is deliberate: the
-    // schema ships with GTK, so plenty of machines running no
-    // GNOME-family desktop have it. There `sources` reads back empty,
-    // and claiming the session on that basis would hand every switch to
-    // a backend with nothing to switch between, shadowing the X11/XKB
-    // one that would have worked.
+    // Reading the value, not the exit status: the schema ships with
+    // GTK, so machines running no GNOME-family desktop have it too, and
+    // there `sources` reads back empty. Claiming the session on that
+    // basis shadows the X11/XKB backend that would have worked.
     let sources = read_sources().unwrap_or_default();
     if sources.is_empty() {
         return None;
@@ -79,8 +73,6 @@ impl LayoutSwitcher for GnomeSwitcher {
         let Some(idx) = sources.iter().position(|s| s == id) else {
             return Err(LayoutError::NotActive(id.clone()));
         };
-        // We use `gsettings set` to write — bypasses the need to bring
-        // in a full GSettings client.
         let status = Command::new("gsettings")
             .args(["set", SCHEMA, "current", &idx.to_string()])
             .status()
@@ -93,9 +85,8 @@ impl LayoutSwitcher for GnomeSwitcher {
     }
 
     fn backend_name(&self) -> &'static str {
-        // "gsettings" is the honest backend tag — it's what we shell
-        // out to. Picked up by GNOME / Unity / Cinnamon / Budgie /
-        // Pantheon / MATE.
+        // Named for what we shell out to: one tag for every desktop this
+        // backend can end up driving.
         "linux-gsettings"
     }
 }

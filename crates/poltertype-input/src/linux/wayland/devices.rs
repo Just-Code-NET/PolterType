@@ -18,9 +18,9 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, trace, warn};
 
 pub(crate) fn open_keyboard_devices() -> Vec<OpenDevice> {
-    // evdev 0.13's `enumerate()` is infallible — it yields whatever is
-    // openable and silently skips the rest. Permission errors on
-    // individual devices fall through, which is exactly what we want.
+    // evdev 0.13's `enumerate()` is infallible: it yields whatever is
+    // openable and silently skips the rest, so a permission error on one
+    // device costs us only that device.
     evdev::enumerate()
         .filter_map(|(path, dev)| accept_device(path, dev, true))
         .collect()
@@ -30,16 +30,14 @@ pub(crate) fn open_keyboard_devices() -> Vec<OpenDevice> {
 /// keyboard, a Bluetooth one powered back on, or our own emitter.
 ///
 /// Deliberately not `evdev::enumerate()`: opening every node under
-/// `/dev/input` and reading its capabilities costs 70–140 ms, and this
-/// runs on the thread that reads key events. Paying it every 2 s left
-/// the engine blind ~5 % of the time, with events arriving late in a
-/// burst exactly where the correction logic is timing-sensitive.
+/// `/dev/input` and reading its capabilities costs 70–140 ms on the
+/// thread that reads key events. Paying it every 2 s left the engine
+/// blind ~5 % of the time, events arriving late in a burst exactly
+/// where the correction logic is timing-sensitive.
 ///
-/// Pure function because both halves are easy to get subtly wrong and
-/// impossible to test against a live `/dev/input`: forgetting nothing
-/// makes a replugged keyboard invisible, since its node number is
-/// reused; forgetting everything re-opens a dozen sound cards every 2 s
-/// on the keystroke thread.
+/// Both halves matter: forgetting nothing makes a replugged keyboard
+/// invisible (its node number is reused), forgetting everything
+/// re-opens a dozen sound cards every 2 s.
 pub(crate) fn plan_rescan(
     present: &HashSet<PathBuf>,
     known: &HashSet<PathBuf>,
@@ -166,10 +164,8 @@ pub(crate) fn drain_devices(
     let mut alt_down = false;
     let mut super_down = false;
     let mut caps_on = false;
-    // Re-enumerate `/dev/input` on this cadence to pick up keyboards that
-    // were plugged in (or a Bluetooth keyboard powered back on) after the
-    // listener started. Cheap enough at 2 s; well below the time a human
-    // takes to reconnect a device and start typing.
+    // Cheap enough at 2 s, and well below the time a human takes to
+    // reconnect a device and start typing.
     let rescan_every = Duration::from_secs(2);
     let mut last_rescan = Instant::now();
     // Every `/dev/input/event*` path already judged, so the rescan only
@@ -227,9 +223,8 @@ pub(crate) fn drain_devices(
             let gone = devices.swap_remove(idx);
             known_paths.remove(&gone.path);
         }
-        // Periodically re-enumerate so a reconnected keyboard is picked
-        // back up. We keep the thread alive even when `devices` is empty
-        // (every keyboard unplugged) so the rescan can revive it.
+        // The thread stays alive even when `devices` is empty (every
+        // keyboard unplugged) so this rescan can revive it.
         if last_rescan.elapsed() >= rescan_every {
             last_rescan = Instant::now();
             let fresh = open_new_keyboard_devices(&mut known_paths);

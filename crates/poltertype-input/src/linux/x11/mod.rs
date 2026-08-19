@@ -14,8 +14,7 @@
 //! `xdotool` technique), which smart-commands need.
 //!
 //! XTest events come back through XInput2 with no synthetic marker —
-//! the same trap as uinput-behind-keyd — so every emitted key is
-//! recorded in an echo log and consumed off the key stream via
+//! the same trap as uinput-behind-keyd — hence the echo log behind
 //! [`KeyEmitter::take_emitted`].
 
 #![allow(unused_imports, dead_code)] // Linux-only; gated by cfg in lib.rs.

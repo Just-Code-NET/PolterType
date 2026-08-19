@@ -83,21 +83,16 @@ fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
 /// list PolterType used to ship. Returns `true` when the caller should
 /// persist the change.
 ///
-/// An existing config has to be touched at all because the old default
-/// was not a suggestion — all 69 entries were *written into the user's
-/// file* on first launch. Shipping an empty default fixes nothing for
-/// anyone who ran an older build; their file still spells the list out,
-/// and PolterType would go on being mute in their editor for ever.
+/// An existing config has to be touched because the old default was
+/// written into the user's file — all 69 entries — on first launch, so
+/// shipping an empty default fixes nothing for anyone who ran an older
+/// build.
 ///
-/// Only on an exact match, because a curated skip-list is a deliberate
-/// statement about where the user does not want us typing. Set equality
-/// against the frozen historical list — order- and
-/// duplicate-insensitive, since TOML round-trips do not promise order —
-/// is the narrowest test that catches every untouched config and no
-/// touched one.
-///
-/// Idempotent by construction: once cleared the list can never match a
-/// 69-element set again, so there is no migration flag to keep.
+/// Only on an exact match: a curated skip-list is a deliberate statement
+/// about where the user does not want us typing. Set equality against
+/// the frozen historical list, since TOML round-trips do not promise
+/// order. Idempotent by construction — once cleared the list can never
+/// match a 69-element set again, so there is no migration flag to keep.
 pub(crate) fn retire_default_skip_list(settings: &mut Settings) -> bool {
     let current: std::collections::BTreeSet<&str> = settings
         .exceptions

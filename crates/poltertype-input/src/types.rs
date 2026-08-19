@@ -17,8 +17,8 @@ pub struct ReplayKey {
 /// Where injected events echo back indistinguishable from real typing
 /// — Linux/uinput behind a remapper — the engine collects these via
 /// [`KeyEmitter::take_emitted`] and match-and-consumes the echoes,
-/// rather than suppressing everything for a fixed window, which used to
-/// eat the first characters typed after a correction.
+/// rather than suppressing everything for a fixed window, which eats
+/// the first characters typed after a correction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmittedKey {
     pub scancode: u32,

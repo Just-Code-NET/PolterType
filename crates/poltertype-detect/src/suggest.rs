@@ -1,14 +1,10 @@
 //! Spelling suggestions: fuzzy search over the surface-form FSTs plus a
 //! keyboard-aware ranking metric. See [`Suggester::suggest`].
 //!
-//! Canonicalise the token, stream every dictionary word within
-//! Levenshtein distance 1 off the layout's surface FST (distance 2 as a
-//! second pass when the first found little and the token is long enough
-//! for d=2 to mean something), sweep the small user overlay linearly
-//! because its entries are user intent, then re-rank with a *weighted*
-//! optimal-string-alignment distance: a physical-neighbour substitution
-//! costs less than a random one, a transposition less than two edits,
-//! and a matching first letter is rewarded.
+//! Candidates come off the FST by Levenshtein distance, then re-rank by
+//! a *weighted* optimal-string-alignment distance: a physical-neighbour
+//! substitution costs less than a random one, a transposition less than
+//! two edits, and a matching first letter is rewarded.
 //!
 //! Pure computation over data the crate already owns — no OS access,
 //! and token contents never reach a log.
@@ -131,9 +127,9 @@ fn substitution_cost(geo: Option<&KeyboardGeometry>, a: char, b: char) -> f32 {
 }
 
 /// Weighted optimal-string-alignment (restricted Damerau-Levenshtein)
-/// distance. Costs: exact match 0, neighbour-key substitution
-/// [`ADJACENT_SUB_COST`], other substitution 1, adjacent transposition
-/// [`TRANSPOSITION_COST`], insertion/deletion 1.
+/// distance. Costs: exact match 0, substitution per
+/// [`substitution_cost`], adjacent transposition [`TRANSPOSITION_COST`],
+/// insertion/deletion 1.
 fn weighted_osa(typed: &[char], cand: &[char], geo: Option<&KeyboardGeometry>) -> f32 {
     let n = typed.len();
     let m = cand.len();
@@ -264,10 +260,10 @@ impl Suggester {
                     }
                 }
 
-                // User-overlay sweep. Overlay entries are stored in the
-                // lossy membership shape, but they are explicit user
-                // intent — a project word the user whitelisted should
-                // be suggestable even though it lives outside the FST.
+                // Overlay entries are stored in the lossy membership
+                // shape, but they are explicit user intent: a
+                // whitelisted project word must be suggestable even
+                // though it lives outside the FST.
                 for word in &dict.user_overlay {
                     let len = word.chars().count();
                     if len < MIN_TOKEN_LETTERS
@@ -297,11 +293,9 @@ impl SuggestionProvider for Suggester {
         if self.dicts.is_word(layout, &stripped) {
             return true;
         }
-        // Another form of a word the user has already added counts as
-        // known. Without this, every inflection of one piece of
-        // jargon costs its own trip through the tooltip — the single
-        // loudest complaint this feature produces in an inflected
-        // language.
+        // Another form of a word the user already added counts as
+        // known: otherwise every inflection of one piece of jargon costs
+        // its own trip through the tooltip.
         self.dicts.overlay_covers_inflection(layout, &stripped)
     }
 
@@ -354,10 +348,9 @@ impl SuggestionProvider for Suggester {
         });
         scored.truncate(max);
 
-        // Restore the typed capitalisation: `Слоао` should offer
-        // `Слово`, not `слово`. ALL-CAPS tokens never get here (the
-        // engine suppresses them upstream), so first-letter title
-        // case is the only shape worth mirroring.
+        // Restore the typed capitalisation. ALL-CAPS tokens never get
+        // here (the engine suppresses them upstream), so first-letter
+        // title case is the only shape worth mirroring.
         if typed_rendering
             .chars()
             .find(|c| c.is_alphabetic())

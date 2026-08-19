@@ -1,11 +1,10 @@
 //! Shared CPU renderer: turns a [`PopupModel`] into a premultiplied
-//! RGBA pixmap plus clickable row hit-boxes. Pure — no OS handles —
-//! so both Linux backends reuse it and tests run headless.
+//! RGBA pixmap plus clickable row hit-boxes. Pure — no OS handles — so
+//! every backend reuses it and tests run headless.
 //!
 //! Layout is computed in *logical* pixels and every panel dimension is
-//! rounded to a whole logical pixel before scaling, so the device-pixel
-//! buffer is always an exact multiple of the (integer) output scale —
-//! Wayland requires buffer size = surface size × buffer scale.
+//! rounded to a whole logical pixel before scaling, because Wayland
+//! requires buffer size = surface size × buffer scale.
 
 use cosmic_text::{
     Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, SwashContent, Weight,
@@ -86,7 +85,7 @@ pub(crate) fn hit_row(rows: &[RowRect], x: f32, y: f32) -> Option<usize> {
         .map(|r| r.index)
 }
 
-/// Owns the font system and glyph cache — creating a [`FontSystem`]
+/// Owns the font system and glyph cache. Creating a [`FontSystem`]
 /// scans the system font directories, so build one per backend thread
 /// and keep it for the process lifetime.
 pub(crate) struct Renderer {
@@ -102,9 +101,9 @@ impl Renderer {
         }
     }
 
-    /// `true` when fontconfig found at least one face. Headless test
-    /// environments without fonts render empty text runs; callers that
-    /// assert on text output should check this first.
+    /// `true` when fontconfig found at least one face. A headless
+    /// environment without fonts renders empty text runs, so tests
+    /// asserting on text output must check this first.
     #[cfg(test)]
     pub fn has_fonts(&self) -> bool {
         self.fonts.db().faces().next().is_some()
@@ -151,7 +150,6 @@ impl Renderer {
             };
         };
 
-        // Panel: fill, then a 1-logical-px inner border.
         let pw = panel_w * s;
         let ph = panel_h * s;
         if let Some(path) = rounded_rect(0.5 * s, 0.5 * s, pw - s, ph - s, PANEL_RADIUS * s) {
@@ -159,7 +157,6 @@ impl Renderer {
             stroke(&mut pixmap, &path, PANEL_BORDER, s);
         }
 
-        // Header: struck-through original word.
         let header_avail = (panel_w - 2.0 * PAD) * s;
         let header_txt = self.ellipsize(
             &model.original,
@@ -188,7 +185,6 @@ impl Renderer {
             HEADER_FG,
         );
 
-        // Rows.
         let mut rows = Vec::with_capacity(n);
         let row_x = PAD * s;
         let row_w = (panel_w - 2.0 * PAD) * s;
@@ -196,9 +192,8 @@ impl Renderer {
             let row_y = (PAD + HEADER_H + i as f32 * (ROW_H + ROW_GAP)) * s;
             let hovered = hover == Some(i);
 
-            // Hairline above the first action row — separates the
-            // "replace with…" block from the "do something else"
-            // block.
+            // Hairline separating the "replace with…" rows from the
+            // "do something else" ones.
             if entry.is_action
                 && model
                     .entries
@@ -219,7 +214,6 @@ impl Renderer {
                 }
             }
 
-            // Digit badge.
             let badge_y = row_y + (ROW_H - BADGE_SIZE) / 2.0 * s;
             if let Some(path) = rounded_rect(
                 row_x,
@@ -248,7 +242,6 @@ impl Renderer {
                 Weight::BOLD,
             );
 
-            // Right-aligned layout-switch tag, in a subtle pill.
             let mut text_avail = row_w - (BADGE_SIZE + BADGE_GAP) * s;
             if let Some(tag) = &entry.badge {
                 let tag_w = self.measure(tag, TAG_FONT * s, Weight::NORMAL);
@@ -295,7 +288,6 @@ impl Renderer {
             });
         }
 
-        // Footer.
         let footer_y = (PAD + HEADER_H + rows_h) * s;
         self.draw_text(
             &mut pixmap,
@@ -321,8 +313,8 @@ impl Renderer {
             .fold(0.0, f32::max)
     }
 
-    /// Trim with `…` until the line fits `max_w`. Shapes per attempt,
-    /// which is fine at popup sizes (≤ 9 short rows).
+    /// Trim with `…` until the line fits `max_w`. Re-shapes per
+    /// attempt, which is fine at popup sizes (≤ 9 short rows).
     fn ellipsize(&mut self, text: &str, font_size: f32, weight: Weight, max_w: f32) -> String {
         if self.measure(text, font_size, weight) <= max_w {
             return text.to_string();
@@ -371,9 +363,9 @@ impl Renderer {
             for glyph in run.glyphs.iter() {
                 let phys = glyph.physical((pos.0, 0.0), 1.0);
                 if let Some(image) = self.cache.get_image(&mut self.fonts, phys.cache_key) {
-                    // Color glyphs (emoji) are skipped: the popup shows
+                    // Color glyphs (emoji) skipped: the popup shows
                     // dictionary words, and a missing emoji beats
-                    // pulling per-pixel color compositing in here.
+                    // pulling per-pixel colour compositing in here.
                     if image.content != SwashContent::Mask {
                         continue;
                     }

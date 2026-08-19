@@ -17,13 +17,12 @@ use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
     /// Match the raw key event against the keystream hotkeys (Wayland
-    /// path), mirroring what the OS `global-hotkey` grab does elsewhere
-    /// and dispatching the same [`EngineCommand`]s.
+    /// path), mirroring what the OS `global-hotkey` grab does elsewhere.
     ///
-    /// Our own replayed corrections cannot re-trigger a chord:
-    /// `injected` events are ignored, and untagged echoes were already
-    /// consumed by `consume_echo`. Runs before the paused early-return
-    /// in `handle_key`, so the pause chord can also *resume*.
+    /// Runs before the paused early-return in `handle_key`, so the pause
+    /// chord can also *resume*. Our own replayed corrections cannot
+    /// re-trigger a chord: `injected` events are ignored, and untagged
+    /// echoes were already consumed by `consume_echo`.
     pub(super) fn check_keystream_hotkeys(
         &self,
         ev: &KeyEvent,
@@ -52,10 +51,9 @@ impl SwitcherEngine {
     ///
     /// Runs on *every* backend, not just Wayland: registering nine
     /// OS-level global hotkeys would steal those combos from every
-    /// application even with no tooltip up, whereas stream matching
-    /// costs one mutex peek per digit and only while an offer is
-    /// pending. The trade-off is that the keypress still reaches the
-    /// focused app, which is why the default chord is Ctrl+Shift+digit.
+    /// application even with no tooltip up. The trade-off is that the
+    /// keypress still reaches the focused app, which is why the default
+    /// chord is Ctrl+Shift+digit.
     fn check_suggestion_chord(
         &self,
         ev: &KeyEvent,
@@ -111,12 +109,12 @@ impl SwitcherEngine {
     /// Run a matched smart command: backspace the typed trigger plus the
     /// boundary character, then dispatch the action.
     ///
-    /// `backspace_count` is precomputed by the caller as characters, not
-    /// bytes — what `emit_backspace` uses across multibyte triggers.
+    /// `backspace_count` is in characters, not bytes — what
+    /// `emit_backspace` uses across multibyte triggers.
     ///
     /// `TypeText` re-emits the boundary after the expansion so the
-    /// user's flow continues naturally. `SwitchLayout` and `OpenPath`
-    /// keep it consumed: the user wanted a side effect, not text.
+    /// user's flow continues. `SwitchLayout` and `OpenPath` keep it
+    /// consumed: the user wanted a side effect, not text.
     pub(super) fn dispatch_smart_command(
         &self,
         cmd: &UserCommand,
@@ -143,10 +141,6 @@ impl SwitcherEngine {
                     warn!(?e, id = %cmd.id, "smart command: send_text failed");
                     return;
                 }
-                // Re-emit the boundary so the user's typing flow
-                // continues — they typed `anrl<space>`, they expect
-                // `<expansion><space>` afterward, not the cursor
-                // glued to the end.
                 let mut buf = [0u8; 4];
                 let s = boundary_char.encode_utf8(&mut buf);
                 let sent = self.key_emitter.send_text(s);
@@ -156,11 +150,8 @@ impl SwitcherEngine {
                 }
             }
             CommandAction::SwitchLayout { layout } => {
-                // Same pre-flight as `apply_correction`: confirm the
-                // layout is reachable before doing anything else.
-                // Backspaces have already happened — if the switch
-                // is impossible we can't recover the deleted text,
-                // but we log loudly so the user notices.
+                // Backspaces have already gone out, so an impossible
+                // switch cannot be recovered from — log loudly.
                 match self.layout_switcher.list_active() {
                     Ok(list) if !list.contains(layout) => {
                         warn!(
@@ -196,9 +187,8 @@ impl SwitcherEngine {
     /// Run a `run_shell` command off the correction path.
     ///
     /// The word-boundary handler stands between the user's keystroke and
-    /// the corrected word and must return promptly, while a user command
-    /// can block for up to `shell::RUN_TIMEOUT` — so it starts on a
-    /// worker thread, which types the output if there is any.
+    /// the corrected word and must return promptly, while a command can
+    /// block for up to `shell::RUN_TIMEOUT` — hence the worker thread.
     ///
     /// The refusal check happens here as well as at settings load:
     /// `allow_run_shell` can be turned off while the app runs, and an
@@ -224,10 +214,9 @@ impl SwitcherEngine {
                 let Some(output) = crate::commands::run(&shell) else {
                     return;
                 };
-                // Typing from a worker thread is safe for the same
-                // reason the correction replay is: the emitter is
-                // `Send + Sync` and every emitted key comes back
-                // through the listener marked as ours.
+                // Safe off-thread for the same reason the correction
+                // replay is: the emitter is `Send + Sync` and every
+                // emitted key comes back through the listener as ours.
                 let mut text = output;
                 text.push(boundary_char);
                 if let Err(e) = emitter.send_text(&text) {

@@ -94,8 +94,8 @@ impl LayoutDictionary {
     ///
     /// Not test-only: the layout loader builds dictionaries this way for
     /// any language with user overlays but no bundled wordlist. Shares
-    /// [`EMPTY_FST`] rather than leaking a fresh one per call, which
-    /// used to cost a permanent allocation on every settings reload.
+    /// [`EMPTY_FST`] rather than leaking a fresh one per call — that is
+    /// a permanent allocation on every settings reload.
     pub fn from_overlay_only(
         overlay: HashSet<String>,
         short_stop_words: HashSet<String>,
@@ -126,10 +126,8 @@ impl LayoutDictionary {
             || self.embedded.contains(word_lowercase.as_bytes())
     }
 
-    /// Short-token containment check (used for ≤ 2-letter tokens).
-    /// Deliberately ignores the FST — it ships too many spurious
-    /// 1- and 2-letter "words" (`ws`, `ax`, `oe`, …) that would
-    /// trigger false-positive Keep verdicts on short Cyrillic input.
+    /// Short-token containment check (≤ 2-letter tokens). Deliberately
+    /// ignores the FST — see [`LayoutDictionary::short_stop_words`].
     pub fn contains_short(&self, word_lowercase: &str) -> bool {
         self.contains_in_overlay(word_lowercase)
     }
@@ -171,13 +169,12 @@ const INFLECTION_TAIL_MAX: usize = 4;
 
 /// Do two words look like the same word in different grammatical forms?
 /// Deliberately a shape rule, not a stemmer: a real stemmer per
-/// language is a data set of its own and this has to work for whatever
+/// language is a data set of its own, and this has to work for whatever
 /// languages the user added. Being wrong is cheap in one direction
 /// only — it can silence a suggestion, never authorise a correction —
-/// so the rule lives on the suggestion path alone.
-///
-/// Motivating case: a user who adds `деплой` gets asked again about
-/// `деплою`, `деплоїмо`, `деплоїти`.
+/// so the rule lives on the suggestion path alone. Without it, a user
+/// who adds `деплой` is asked again about `деплою`, `деплоїмо`,
+/// `деплоїти`.
 fn shares_inflection_stem(a: &str, b: &str) -> bool {
     let shared = a.chars().zip(b.chars()).take_while(|(x, y)| x == y).count();
     if shared < STEM_MIN_CHARS {
@@ -315,12 +312,10 @@ impl DictionaryDetector {
                 layout != ctx.current_layout
                     && paired_segments(current_raw, alt_raw)
                         .and_then(|pairs| pairs.get(i).map(|(_, alt)| *alt))
-                        // A layout that renders this segment identically
-                        // explains nothing: switching to it would leave
-                        // the text exactly as typed. es-ES and de-DE
-                        // reproduce most Latin tokens character for
-                        // character, so without this every such layout
-                        // counted as a rival reading of `client`.
+                        // A layout rendering this segment identically
+                        // explains nothing — switching to it would leave
+                        // the text exactly as typed, and es-ES and de-DE
+                        // reproduce most Latin tokens verbatim.
                         .filter(|alt| *alt != *segment)
                         .is_some_and(|alt| self.is_word(layout, &letters_only_lower(alt)))
             });
@@ -360,17 +355,13 @@ impl Detector for DictionaryDetector {
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
         let current_raw = ctx.text_for(ctx.current_layout).unwrap_or("");
 
-        // Strip non-letters before lookup: a scancode can render as
-        // punctuation in the current layout and a letter in the alt
-        // (0x27 → `;` in en-US, `ж` in uk-UA), so a Cyrillic word typed
-        // in the wrong layout carries a `;` mid-string.
         let current_text = letters_only_lower(current_raw);
 
-        // …but a raw render that does carry stray punctuation is not the
-        // word the user typed, so a letters-only match is coincidence
+        // A raw render carrying stray punctuation is not the word the
+        // user typed, so its letters-only match is coincidence
         // (`ma;ana` → `maana`, which the en-US FST contains). Such a hit
         // must never short-circuit a Keep, though it still wins when no
-        // alternate hits either. Apostrophes and hyphens are not stray.
+        // alternate hits either.
         let current_has_stray = non_word_char_count(current_raw) > 0;
 
         let letter_count = current_text.chars().count();
@@ -378,10 +369,8 @@ impl Detector for DictionaryDetector {
             return Verdict::NoOpinion;
         }
 
-        // Two regimes — see `LayoutDictionary` doc-comment for why:
-        //   ≤ 2 letters: trust only the curated short-stop list
-        //                (embedded FST is too noisy at this length).
-        //   ≥ 3 letters: trust the full FST (+ user overlay).
+        // ≤ 2 letters: the curated short-stop list only, the FST being
+        // too noisy at that length. See `LayoutDictionary`.
         let short = letter_count <= 2;
 
         let lookup = |layout: &LayoutId, text: &str| -> bool {
@@ -393,9 +382,8 @@ impl Detector for DictionaryDetector {
         };
         let label = if short { "short-stop" } else { "dictionary" };
 
-        // Computed once; both sweeps below walk them. The alt rendering
-        // is stripped too, for the rare scancode that is a letter in the
-        // current layout and punctuation in the alt.
+        // The alt rendering is stripped too, for the rare scancode that
+        // is a letter in the current layout and punctuation in the alt.
         let alts: Vec<(&LayoutId, String)> = ctx
             .candidates
             .iter()
@@ -404,13 +392,10 @@ impl Detector for DictionaryDetector {
             .filter(|(_, t)| !t.is_empty())
             .collect();
 
-        // Phase 1 — overlay-priority sweep.
-        //
-        // An overlay entry is an explicit user signal and outranks a
-        // coincidental embedded match on the cross-layout twin: uk-UA
-        // `будь` renders as `,elm` in en-US, which cleans to the real
-        // English word `elm`, and the current-side Keep would
-        // short-circuit before any alt got scored.
+        // Phase 1 — overlay-priority sweep. An overlay entry is an
+        // explicit user signal and outranks a coincidental embedded
+        // match on the cross-layout twin: uk-UA `будь` renders as `,elm`
+        // in en-US, which cleans to the real English word `elm`.
         if !current_has_stray && self.is_in_overlay(ctx.current_layout, &current_text) {
             return Verdict::Keep {
                 reason: format!(
@@ -420,14 +405,9 @@ impl Detector for DictionaryDetector {
                 ),
             };
         }
-        // Compound guard. `cqrs-client` looks up as `cqrsclient` and
-        // misses every dictionary, so the whole token falls through to
-        // shape scoring — which reads the acronym as noise and switches.
-        // Per segment, `client` is a plain English word.
-        //
         // A segment only counts when **no** alternate explains the same
         // position: the en-US FST is over-inclusive at three letters
-        // (`ult` is in it), and without this the Russian `где-то` →
+        // (`ult` is in it), and without that the Russian `где-то` →
         // `ult-nj` stopped being corrected. Runs before the alt sweeps,
         // because an alt hit on a compound's *joined* letters is the
         // weaker claim.
@@ -448,13 +428,11 @@ impl Detector for DictionaryDetector {
             }
         }
 
-        // Phase 2 — embedded-dictionary sweep.
-        //
-        // A current-side hit flagged `weak` does not short-circuit Keep:
-        // walk the alts first and switch if any is in dict. Fires only
-        // for ≥3-letter tokens, since the short regime never consults
-        // the FST. Without it, Hunspell-only forms like uk-UA `туче`
-        // shadow the far likelier intent (en-US `next`).
+        // Phase 2 — embedded-dictionary sweep. A current-side hit
+        // flagged `weak` does not short-circuit Keep: walk the alts
+        // first and switch if any is in dict. Without it, Hunspell-only
+        // forms like uk-UA `туче` shadow the far likelier intent (en-US
+        // `next`).
         let current_in_dict = lookup(ctx.current_layout, &current_text);
         let current_is_weak = !short && self.is_weak(ctx.current_layout, &current_text);
         if current_in_dict && !current_is_weak && !current_has_stray {
@@ -499,10 +477,9 @@ impl Detector for DictionaryDetector {
             }
         }
 
-        // Current was a weak or stray-punctuation hit but no alt was
-        // in dict → keep (a weak word IS valid, and a stray-carrying
-        // token with no better explanation stays as typed). Logged
-        // separately so the verdict-trail makes this path obvious.
+        // A weak word IS valid, and a stray-carrying token with no
+        // better explanation stays as typed. Logged apart so the
+        // verdict-trail makes this path obvious.
         if current_in_dict {
             let qualifier = if current_is_weak {
                 "weak"

@@ -66,8 +66,6 @@ impl UinputEmitter {
         for code in 0u16..=255 {
             keys.insert(KeyCode::new(code));
         }
-        // evdev 0.13 superseded `VirtualDeviceBuilder::new()` with
-        // `VirtualDevice::builder()`.
         let mut dev = VirtualDevice::builder()
             .map_err(|e| InputError::Os(format!("uinput build: {e}")))?
             .name(EMITTER_DEVICE_NAME)
@@ -173,15 +171,11 @@ impl KeyEmitter for UinputEmitter {
             }
             // The last key is the boundary the user typed, and we react
             // to its *press* within ~10 ms — so it is still physically
-            // held down here. Injecting a press for an already-down key
-            // is a no-op at the compositor, so the boundary character
-            // never appeared and corrected words ran together: the
-            // long-standing "space gets cut" report.
-            //
-            // Emitting a release first clears the held state (harmless
-            // if they already let go), so the following press is a real
-            // down edge. The user's own release then lands on an
-            // already-up key and is ignored.
+            // held down here, and injecting a press for an already-down
+            // key is a no-op at the compositor: the "space gets cut"
+            // report. Emitting a release first (harmless if they already
+            // let go) makes the following press a real down edge; the
+            // user's own release then lands on an already-up key.
             if is_last {
                 emit_one(dev, &self.emitted, InputEvent::new(EventType::KEY.0, kc, 0))?;
                 thread::sleep(boundary_guard);
@@ -245,21 +239,18 @@ impl KeyEmitter for UinputEmitter {
             .as_mut()
             .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
 
-        // Drive the GTK/Qt unicode-input combo: Ctrl+Shift+U <hex>
-        // Space. This is the standard Linux-wide "type a Unicode
-        // codepoint" sequence; it works in Firefox, Chromium, GTK and
-        // Qt apps. Terminal emulators that disable it will need a
-        // different path (Phase 6.x).
+        // The GTK/Qt unicode-input combo, Ctrl+Shift+U <hex> Space: the
+        // standard Linux-wide "type a Unicode codepoint" sequence, good
+        // in Firefox, Chromium, GTK and Qt. Terminal emulators that
+        // disable it are deliberately not covered.
         for c in text.chars() {
             let cp = c as u32;
             let hex = format!("{cp:x}");
-            // Ctrl+Shift+U
             press(dev, &self.emitted, KeyCode::KEY_LEFTCTRL)?;
             press(dev, &self.emitted, KeyCode::KEY_LEFTSHIFT)?;
             tap(dev, &self.emitted, KeyCode::KEY_U)?;
             release(dev, &self.emitted, KeyCode::KEY_LEFTSHIFT)?;
             release(dev, &self.emitted, KeyCode::KEY_LEFTCTRL)?;
-            // Hex digits
             for ch in hex.chars() {
                 if let Some(kc) = ascii_hex_to_keycode(ch) {
                     tap(dev, &self.emitted, kc)?;

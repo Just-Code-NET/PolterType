@@ -28,10 +28,8 @@ fn icon_is_buildable_for_known_layouts() {
 
 #[test]
 fn paused_icon_differs_from_active_icon() {
-    // Smoke test: the paused variant should produce a different
-    // pixel buffer than the active variant for the same layout.
-    // (We compare the underlying render() output to avoid
-    // depending on Icon equality.)
+    // Compares the underlying render() output rather than the icons, to
+    // avoid depending on `Icon` equality.
     let normal = render(b"EN", color_for(&LayoutId::from("en-US")));
     let mut paused = render(b"EN", PAUSED_BG);
     draw_pause_indicator(&mut paused);

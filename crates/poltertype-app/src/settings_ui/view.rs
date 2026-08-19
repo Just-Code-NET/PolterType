@@ -64,11 +64,9 @@ impl SettingsApp {
             )
             .height(Length::Fill);
 
-        // Root backdrop quad. The colour is the theme's window
-        // background nudged by an invisible per-rebuild epsilon —
-        // NOT cosmetic, it defeats buggy partial presents in iced
-        // 0.13's tiny-skia compositor. See
-        // [`SettingsApp::backdrop_color`].
+        // Root backdrop quad. NOT cosmetic: the per-rebuild epsilon in
+        // its colour defeats buggy partial presents in iced 0.13's
+        // tiny-skia compositor. See [`SettingsApp::backdrop_color`].
         let backdrop = self.backdrop_color();
         Container::new(main)
             .style(move |_| container::Style {
@@ -155,18 +153,18 @@ impl SettingsApp {
 
     pub(super) fn view_languages(&self) -> Element<'_, Message> {
         let b = self.brand();
-        // The answer the engine would give if asked right now: an
-        // empty allow-list means every OS layout is active. Displaying
-        // the raw list is why a freshly-installed user saw zero ticked
-        // boxes while every layout was in fact being considered.
+        // The effective state, not the raw list: an empty allow-list
+        // means every OS layout is active, and rendering it literally
+        // showed a fresh install zero ticked boxes while every layout
+        // was in fact being considered.
         let allow_list = &self.settings.languages.active;
         let implicit_all = allow_list.is_empty();
 
         // Lead with WHERE the list comes from — first-run users read
-        // "en-US / uk-UA" as a product default and go looking for an
-        // "add language" button that (deliberately) doesn't exist:
-        // PolterType follows the OS keyboard configuration instead of
-        // keeping a second list to drift out of sync.
+        // "en-US / uk-UA" as a product default and hunt for an "add
+        // language" button that deliberately does not exist: the OS
+        // keyboard configuration is the list, so there is no second one
+        // to drift out of sync.
         let subtitle = tr(
             "languages.subtitle",
             "This list mirrors the keyboard layouts enabled in your \
@@ -416,10 +414,8 @@ impl SettingsApp {
                 ),
         );
 
-        // Trigger row: text input for the typed token (e.g. `anrl`).
-        // The buffer resets at every word boundary, so triggers must
-        // be a single token — the validation path on Add will refuse
-        // any whitespace.
+        // The buffer resets at every word boundary, so a trigger must
+        // be a single token; Add refuses any whitespace.
         form = form.push(
             Row::new()
                 .spacing(8)
@@ -434,7 +430,6 @@ impl SettingsApp {
                 ),
         );
 
-        // Action kind picker (radio-style chips).
         let mk_kind_btn = |kind: CommandActionKind| -> Element<'_, Message> {
             Button::new(Text::new(kind.label()).size(12))
                 .on_press(Message::CommandDraftActionKindChanged(kind))
@@ -462,7 +457,6 @@ impl SettingsApp {
                 ),
         );
 
-        // Param input (placeholder swaps based on action kind).
         form = form.push(
             Row::new()
                 .spacing(8)
@@ -484,7 +478,6 @@ impl SettingsApp {
                 ),
         );
 
-        // Optional apps filter.
         form = form.push(
             Row::new()
                 .spacing(8)
@@ -503,7 +496,6 @@ impl SettingsApp {
                 ),
         );
 
-        // Status + Add row.
         let status: Element<'_, Message> = match &self.command_status {
             Some(banner) => status_line(b, banner),
             None => Space::with_width(Length::Shrink).into(),
@@ -577,11 +569,9 @@ impl SettingsApp {
         let mut pickers = Column::new().spacing(8);
 
         // ── Profile picker (Global + each configured profile) ──────
-        // Only shown when the user has at least one profile configured;
-        // otherwise the row would be a redundant single "Global"
-        // button. Add profiles via `[[wordlists.profiles]]` in
-        // config.toml — full profile-list management UI is queued for
-        // a follow-up.
+        // Only shown once a profile exists; otherwise the row is a
+        // single redundant "Global" button. Profiles are added by hand
+        // in `[[wordlists.profiles]]` — there is no UI for that yet.
         if !self.settings.wordlists.profiles.is_empty() {
             let profile_btn = |id: &str, pick_label: &str| -> Element<'_, Message> {
                 Button::new(Text::new(pick_label.to_owned()).size(12))
@@ -706,12 +696,10 @@ impl SettingsApp {
             None => Space::with_width(Length::Shrink).into(),
         };
 
-        // Per-pane Save / Reload buttons were removed in beta.12 —
-        // the single footer Save+Reload pair now covers everything
-        // (config.toml + the active wordlist edit) for a less
-        // ambiguous UI. Dirty marker + status banner stay so the
-        // user still sees "unsaved changes" + auto-save outcomes
-        // from layout/profile/kind switches.
+        // No per-pane Save / Reload: the footer pair covers
+        // `config.toml` and the active wordlist edit alike. The dirty
+        // marker and status banner stay, so "unsaved changes" and
+        // auto-save outcomes are still visible.
         col = col.push(
             Row::new()
                 .spacing(8)
@@ -905,8 +893,7 @@ impl SettingsApp {
                     ),
             );
 
-        // Theme picker applies instantly (no Save needed to preview);
-        // the choice persists to `[general].ui_theme` via footer Save.
+        // Applies instantly; persisted by the footer Save.
         let mut theme_row = Row::new().spacing(6);
         for choice in ThemeChoice::ALL {
             theme_row = theme_row.push(
@@ -934,18 +921,14 @@ impl SettingsApp {
                 .color(b.muted),
             );
 
-        // Updates. This pane is the app's disclosure surface for the one
-        // thing it does that reaches outside the machine, so it names
-        // the exact URL rather than saying "checks for updates" and
-        // leaving the user to trust us. The interval row is only
-        // interactive while updates are on — greying it out is how the
-        // UI says "this number means nothing right now" without a
-        // second sentence of explanation.
+        // This card is the app's disclosure surface for the one thing it
+        // does that reaches outside the machine, so it names the exact
+        // URL rather than saying "checks for updates" and leaving the
+        // user to trust us.
         let u = &self.settings.updates;
         // `on_press` only when updates are on: an iced Button with no
-        // handler renders disabled, which is the whole signal we want
-        // here — with checking switched off, the interval is a number
-        // that means nothing.
+        // handler renders disabled, which is exactly the signal wanted
+        // — with checking off, the interval means nothing.
         let step = |label: &'static str, delta: i64| {
             let btn = Button::new(Text::new(label).size(12))
                 .style(theme::secondary)
@@ -1037,10 +1020,9 @@ impl SettingsApp {
         let b = self.brand();
         let s = &self.settings.suggestions;
 
-        // `on_press` only while suggestions are on — an iced Button
-        // with no handler renders disabled, the same "this number
-        // means nothing right now" signal the Updates card uses for
-        // its interval row.
+        // `on_press` only while suggestions are on — the same
+        // handler-less-Button-renders-disabled signal the Updates card
+        // uses for its interval row.
         let step = |label: &'static str, msg: Message| {
             let btn = Button::new(Text::new(label).size(12))
                 .style(theme::secondary)
@@ -1119,8 +1101,7 @@ impl SettingsApp {
             .push(max_row)
             .push(timeout_row);
 
-        // A `TextInput` without `on_input` renders disabled — same
-        // conditional-handler trick as the steppers above.
+        // A `TextInput` without `on_input` renders disabled.
         let mut modifiers_input = TextInput::new("e.g. Ctrl+Shift", &s.accept_modifiers)
             .style(theme::input)
             .size(13)
@@ -1158,9 +1139,9 @@ impl SettingsApp {
                 .color(b.muted),
             );
         // Non-empty but chord-disabling input (bare `Shift`, a typo)
-        // gets a warning instead of a rejection — the engine treats
-        // it as "no chord" rather than erroring, so the pane must
-        // say so or the setting looks configured while doing nothing.
+        // warns instead of being rejected: the engine treats it as "no
+        // chord", so without this the setting looks configured while
+        // doing nothing.
         if !s.accept_modifiers.trim().is_empty()
             && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
         {
@@ -1339,8 +1320,7 @@ impl SettingsApp {
 
 // ── Shared building blocks ──────────────────────────────────────────
 
-/// Pane title + one-paragraph explainer, replacing the old pattern of
-/// a bare `Text::new(title).size(24)` followed by unstyled body text.
+/// Pane title + one-paragraph explainer.
 pub(super) fn pane_header(
     b: &'static theme::BrandPalette,
     title: &'static str,
@@ -1405,9 +1385,8 @@ fn keycap_chip(text: String) -> Element<'static, Message> {
         .into()
 }
 
-/// A hotkey combo as a row of keycap chips: `Ctrl+Shift+Space` →
-/// [Ctrl] + [Shift] + [Space] — the same rendering the site uses for
-/// hotkey chords. On macOS the chips use the platform's glyphs
+/// A hotkey combo as a row of keycap chips, the same rendering the site
+/// uses for chords. On macOS the chips carry the platform glyphs
 /// (⌃⇧⌘) via `display_key_token`.
 fn hotkey_chips(b: &'static theme::BrandPalette, combo: &str) -> Element<'static, Message> {
     let mut row = Row::new().spacing(4).align_y(Alignment::Center);

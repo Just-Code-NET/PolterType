@@ -30,7 +30,6 @@ pub(crate) trait GateDevice {
     fn ungrab(&mut self) -> std::io::Result<()>;
     fn state(&self) -> &GateState;
     fn state_mut(&mut self) -> &mut GateState;
-    /// Identifies the device in log lines.
     fn label(&self) -> String;
 }
 
@@ -69,8 +68,8 @@ pub struct EvdevGate {
     /// Bumped by every `hold()`, so the device thread knows to give
     /// each device one fresh grab attempt and no more.
     epoch: AtomicU64,
-    /// The epoch whose emitter-proxy re-verification already ran —
-    /// see the top of [`Self::service`]'s hold path.
+    /// The epoch whose emitter-proxy re-verification already ran — see
+    /// [`Self::service`].
     verified_epoch: AtomicU64,
     origin: Instant,
 }
@@ -112,18 +111,17 @@ impl EvdevGate {
 
     /// Decide whether grabbing can work on this stack at all.
     ///
-    /// The hazard is an input remapper. Those hold every keyboard
+    /// The hazard is an input remapper: those hold every keyboard
     /// exclusively — ours included — and re-emit through one virtual
-    /// keyboard, which then carries *our* injected keys too, so
-    /// grabbing it would block the very correction we are protecting.
-    /// The symptom is corrections that silently do nothing.
+    /// keyboard carrying *our* injected keys too, so grabbing it would
+    /// block the very correction we are protecting. The symptom is
+    /// corrections that silently do nothing.
     ///
     /// The tell is cheap: if we can grab our own emitter, nobody is
-    /// proxying it and grabbing the user's keyboards is safe. `EBUSY`
-    /// means something sits between us and the compositor and the gate
-    /// stays off. Excluding our device in the remapper's config flips
-    /// the probe on restart — `docs/PERMISSIONS.md` has the keyd
-    /// one-liner.
+    /// proxying it. `EBUSY` means something sits between us and the
+    /// compositor and the gate stays off until the user excludes our
+    /// device in the remapper's config — `docs/PERMISSIONS.md` has the
+    /// keyd one-liner.
     pub(crate) fn probe_availability(&self) {
         let found = evdev::enumerate().find(|(_, dev)| dev.name() == Some(EMITTER_DEVICE_NAME));
         let ok = match found {
@@ -320,8 +318,8 @@ impl EvdevGate {
         self.hold_expiring_for_test(MAX_HOLD);
     }
 
-    /// As above, with an explicit lifetime so the watchdog can be
-    /// tested without waiting it out.
+    /// [`Self::hold_for_test`] with an explicit lifetime, so the
+    /// watchdog can be tested without waiting it out.
     #[cfg(test)]
     pub(crate) fn hold_expiring_for_test(&self, within: Duration) {
         self.deadline_ms

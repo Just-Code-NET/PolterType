@@ -8,8 +8,7 @@
 //! Mouse messages are *posted*, so they arrive through the thread's
 //! queue and can be read with `PeekMessageW` before dispatch. Doing the
 //! hit-test here, with the row rectangles in scope, keeps the window
-//! procedure a bare `DefWindowProcW` and this state out of a C callback
-//! reached through `GWLP_USERDATA`.
+//! procedure a bare `DefWindowProcW`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -193,10 +192,6 @@ fn anchor_probe(anchor: &PopupAnchor) -> (i32, i32) {
 /// for `Point`, centred on the anchor window with the bottom edge
 /// `BOTTOM_OFFSET` above its bottom for `WindowRect`; clamped to the
 /// virtual desktop either way.
-///
-/// The bounds are the union of every monitor rather than the primary
-/// one, so a tooltip near the edge of a second screen slides along that
-/// edge instead of being yanked back to the first.
 fn place(w: i32, h: i32, anchor: &PopupAnchor) -> (i32, i32) {
     let (vx, vy, vw, vh) = PopupWindow::virtual_screen();
     let (px, py) = match *anchor {

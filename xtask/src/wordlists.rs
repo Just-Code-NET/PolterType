@@ -24,11 +24,9 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
     println!("  saved {} ({} bytes)", en_src_path.display(), en_raw.len());
     process_en(&en_src_path, &wl_dir.join("en_us.txt.gz"))?;
 
-    // Hunspell-based languages: each gets its `.dic` AND `.aff`,
-    // then the affix expander turns ~350k stems into ~1-3M surface
-    // forms (the ones a user actually types). Each language is
-    // independent — a transient 404 / 5xx on one source shouldn't
-    // take the whole script down.
+    // The affix expander turns ~350k stems into ~1-3M surface forms.
+    // Each language is independent — a transient 404/5xx on one source
+    // shouldn't take the whole script down.
     let mut failed: Vec<&str> = Vec::new();
     for source in HUNSPELL_SOURCES {
         if !fetch_hunspell(&src_dir, &wl_dir, source) {
@@ -36,20 +34,17 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
         }
     }
 
-    // uk_UA additionally ships a README that we keep next to the
-    // sources for license-attribution purposes.
+    // uk_UA's README is kept next to the sources for license
+    // attribution.
     if let Ok(readme) = http_get(UK_README_URL) {
         let p = src_dir.join("uk_UA-README.txt");
         let _ = fs::write(&p, &readme);
         println!("  saved {} ({} bytes)", p.display(), readme.len());
     }
 
-    // A dead upstream URL used to cost one stderr line and still exit
-    // 0, leaving whatever stale `.txt.gz` was already committed in
-    // place — which is exactly how the French source sat broken
-    // unnoticed. Per-language recovery is still the right behaviour,
-    // so we keep going and report at the end; the exit code is what
-    // changes.
+    // Per-language recovery is right, but a non-zero exit is what stops
+    // a dead upstream URL from passing for a green run while a stale
+    // `.txt.gz` stays committed — see the French entry in `consts`.
     if !failed.is_empty() {
         bail!(
             "{} of {} Hunspell sources failed: {}. \
@@ -66,12 +61,11 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
 }
 
 /// Download one language's `.dic` and `.aff` into `sources/`, then run
-/// the affix expander to produce `<wl_dir>/<output>` with all surface
-/// forms.
+/// the affix expander to produce `<wl_dir>/<output>`.
 ///
 /// Errors go to stderr without aborting the rest of the run — partial
-/// progress beats none for a multi-source script. Returns whether this
-/// language came through, so the caller can still fail the command.
+/// progress beats none here. Returns whether this language came
+/// through, so the caller can still fail the command.
 pub(crate) fn fetch_hunspell(src_dir: &Path, wl_dir: &Path, source: &HunspellSource) -> bool {
     let dic_path = src_dir.join(format!("{}.dic", source.base));
     let aff_path = src_dir.join(format!("{}.aff", source.base));
@@ -104,14 +98,11 @@ pub(crate) fn download(url: &str, dest: &Path) -> Result<()> {
 /// Read the `SET <encoding>` directive out of a `.aff`.
 ///
 /// **This is the encoding of the whole dictionary pair, `.dic`
-/// included.** Hunspell declares it once, in the `.aff`. Reading each
-/// file's own bytes and falling back to Latin-1 is how Polish and Greek
-/// shipped as mojibake: the `.aff` decoded correctly, the `.dic` did
-/// not, and nothing failed. German came through only because German
-/// *is* Latin-1.
-///
-/// An unrecognised or absent `SET` is an error rather than a guess, for
-/// the same reason.
+/// included** — Hunspell declares it once. Reading each file's own
+/// bytes and falling back to Latin-1 is how Polish and Greek shipped as
+/// mojibake: the `.aff` decoded, the `.dic` did not, and nothing
+/// failed. (German survived only because German *is* Latin-1.) So an
+/// unrecognised or absent `SET` is an error rather than a guess.
 pub(crate) fn detect_encoding(aff_path: &Path) -> Result<Encoding> {
     let bytes = fs::read(aff_path).with_context(|| format!("read {}", aff_path.display()))?;
     encoding_of_aff(&bytes)
@@ -125,9 +116,8 @@ pub(crate) fn encoding_of_aff(bytes: &[u8]) -> Result<Encoding> {
     // first line and hide a `SET` sitting there — pt_BR ships one.
     let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
 
-    // Latin-1 view of the first 2 KB — enough to find a SET line, and
-    // safe on any byte, which matters because we don't yet know the
-    // encoding we're looking for.
+    // Latin-1 view of the first 2 KB: safe on any byte, which matters
+    // because the encoding is what we are still looking for.
     let preview: String = bytes.iter().take(2048).map(|&b| b as char).collect();
     let declared = preview
         .lines()
@@ -162,9 +152,9 @@ pub(crate) fn encoding_of_aff(bytes: &[u8]) -> Result<Encoding> {
 /// [`detect_encoding`] found in the pair's `.aff`.
 pub(crate) fn read_hunspell_text(path: &Path, encoding: Encoding) -> Result<String> {
     let raw = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    // Same BOM as `encoding_of_aff` skips. Left in place it becomes a
-    // U+FEFF on the front of the first line — which `str::trim` does
-    // not remove, so it would quietly corrupt the first `.dic` entry.
+    // Left in place the BOM becomes a U+FEFF on the first line, which
+    // `str::trim` does not remove — quietly corrupting the first `.dic`
+    // entry.
     let bytes = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&raw);
     match encoding {
         Encoding::Utf8 => std::str::from_utf8(bytes)
@@ -213,16 +203,10 @@ pub(crate) fn process_en(input: &Path, output: &Path) -> Result<()> {
 
 /// Hunspell `.dic` + `.aff` → expanded surface-form list.
 ///
-/// Parse the `.aff` once, expand every `<stem>/<flags>` entry into its
-/// surface forms, then lowercase, filter to entries that read as words,
-/// dedupe through a `BTreeSet` and write sorted.
-///
-/// Same cleanup pipeline as the older strip-flags-only path; the
-/// difference is 1M+ entries instead of 350k for inflected languages,
-/// which FST encoding grows ~3-5× on disk — within the embed budget.
-///
-/// [`ExpandMode::StemsOnly`] skips the expansion and keeps bare stems;
-/// see the enum for the one dictionary that needs it.
+/// Expansion takes an inflected language from ~350k stems to 1M+
+/// entries, which FST encoding grows a further ~3-5× on disk — still
+/// within the embed budget. [`ExpandMode::StemsOnly`] skips it; see the
+/// enum for the one dictionary that needs that.
 pub(crate) fn process_hunspell_with_aff(
     dic: &Path,
     aff: &Path,
@@ -280,12 +264,9 @@ pub(crate) fn process_hunspell_with_aff(
     Ok(())
 }
 
-/// Write `words` sorted, one per line, to `path`.
-///
-/// Gzip-aware: if `path` ends in `.gz` the output stream is wrapped
-/// in `GzEncoder`. Cuts the on-disk footprint of the bulk wordlists
-/// by ~5× (uk_ua is 84 MB raw, ~25 MB gzipped) which keeps the
-/// repo's first-clone size under control.
+/// Write `words` sorted, one per line, to `path`. A `.gz` suffix wraps
+/// the stream in `GzEncoder`, cutting the bulk wordlists ~5× (uk_ua:
+/// 84 MB raw, ~25 MB gzipped) and with them the first-clone size.
 pub(crate) fn write_sorted(path: &Path, words: &BTreeSet<String>) -> Result<()> {
     let file = File::create(path).with_context(|| format!("create {}", path.display()))?;
     let is_gz = path
@@ -293,8 +274,7 @@ pub(crate) fn write_sorted(path: &Path, words: &BTreeSet<String>) -> Result<()> 
         .and_then(|s| s.to_str())
         .is_some_and(|s| s.eq_ignore_ascii_case("gz"));
     let mut w: Box<dyn Write> = if is_gz {
-        // Default `Compression::default()` is level 6 — same trade-off
-        // GitHub's CDN uses on its own gzipped responses.
+        // `Compression::default()` is level 6.
         Box::new(BufWriter::new(flate2::write::GzEncoder::new(
             file,
             flate2::Compression::default(),

@@ -1,11 +1,8 @@
 //! The setup walkthrough's model: what the user still has to grant.
 //!
-//! A failed keyboard hook has always produced a tray alert and a link
-//! to `docs/PERMISSIONS.md`, which stops the app failing silently and
-//! then leaves the user reading a markdown file to fix their machine.
-//! This module is the data the Settings window's **Setup** pane renders
-//! instead: the same advice, specific to this OS and session, and
-//! re-checkable after the user changes something.
+//! The data the Settings window's **Setup** pane renders: the advice of
+//! `docs/PERMISSIONS.md`, specific to this OS and session, re-checkable
+//! after the user changes something.
 //!
 //! It lives in this crate because probing input permissions is platform
 //! code. The app renders [`SetupReport`]; it does not know what a udev

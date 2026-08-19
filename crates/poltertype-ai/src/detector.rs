@@ -3,12 +3,9 @@
 //! It knows how to ask a question and read an answer; *what* answers is
 //! whatever the user pointed it at, with a key only they hold.
 //!
-//! Three properties the rest of this file exists to hold up:
+//! Two properties the rest of this file exists to hold up (the
+//! enablement gates are in [`crate`]):
 //!
-//! * **Off unless asked for, twice.** `[ai].enabled` builds it, and a
-//!   non-loopback host additionally needs `[ai].allow_remote`. A
-//!   detector that may not run returns no opinion rather than failing
-//!   to construct.
 //! * **It cannot slow typing down.** The default mode never waits: it
 //!   answers from the cache and queues the miss. `blocking` exists, is
 //!   capped, and is the user putting a model in the path of their own
@@ -39,7 +36,7 @@ pub struct LlmSettings {
     pub format: WireFormat,
     pub model: String,
     pub api_key: Option<String>,
-    /// A key was configured but the keychain could not supply it. The
+    /// A key was configured but the keychain could not supply it — the
     /// detector loads and stays silent rather than calling an endpoint
     /// that will certainly reject it.
     pub key_unavailable: bool,
@@ -63,10 +60,8 @@ impl LlmSettings {
     }
 }
 
-/// A question handed to the background worker.
-///
-/// Only read by the worker, which only exists with an HTTP client —
-/// so without the feature this is a type nothing consumes.
+/// A question handed to the background worker. Without the `remote`
+/// feature there is no worker, so nothing consumes this type.
 #[cfg_attr(not(feature = "remote"), allow(dead_code))]
 struct Job {
     key: u64,
@@ -105,9 +100,7 @@ impl LlmDetector {
             None
         };
 
-        // The worker only exists in background mode, and only when the
-        // detector is actually allowed to call. No permission, no
-        // thread.
+        // No permission, no thread.
         let queue = if settings.mode == QueryMode::Background && settings.permitted() {
             let (tx, rx) = sync_channel::<Job>(QUEUE_DEPTH);
             #[cfg(feature = "remote")]
@@ -138,8 +131,8 @@ impl LlmDetector {
     }
 
     /// Say once, at construction, what this detector will do. `judge`
-    /// stays silent — it runs per word, and a detector that logs on
-    /// the correction path costs more than it gives.
+    /// stays silent — it runs per word, and logging on the correction
+    /// path costs more than it gives.
     fn announce(&self) {
         let s = &self.settings;
         if !cfg!(feature = "remote") {
@@ -219,10 +212,9 @@ impl Detector for LlmDetector {
 
         match self.settings.mode {
             QueryMode::Background => {
-                // Queue and get out of the way. A full queue means the
-                // endpoint is slower than the user types, in which
-                // case dropping is right — a stale answer to a word
-                // typed a minute ago helps nobody.
+                // A full queue means the endpoint is slower than the
+                // user types, so dropping is right — a stale answer to
+                // a word typed a minute ago helps nobody.
                 if let Some(q) = &self.queue {
                     let _ = q.try_send(Job {
                         key,
@@ -273,10 +265,8 @@ impl LlmDetector {
 }
 
 /// Turn a remembered index into a verdict against the live context.
-///
-/// The index is into the candidate list, which is rebuilt per word —
-/// so a cached answer is only reused when the candidate list matches,
-/// which is what the cache key guarantees.
+/// The index points into the candidate list, so it is only meaningful
+/// for an identical list — which is what the cache key guarantees.
 fn to_verdict(decision: Decision, ctx: &DetectionContext<'_>, id: &str) -> Verdict {
     let Some(idx) = decision else {
         return Verdict::NoOpinion;
@@ -285,8 +275,8 @@ fn to_verdict(decision: Decision, ctx: &DetectionContext<'_>, id: &str) -> Verdi
         return Verdict::NoOpinion;
     };
     if layout == ctx.current_layout {
-        // The model picked the reading the user is already producing:
-        // that is a vote to leave the word alone, not a switch.
+        // The model picked the reading the user is already producing —
+        // a vote to leave the word alone, not a switch.
         return Verdict::Keep {
             reason: format!("llm[{id}]: current layout reads as real text"),
         };

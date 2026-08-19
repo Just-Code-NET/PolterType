@@ -1,15 +1,13 @@
 //! Endpoints, limits and on-disk names for the updater.
 
 /// The release manifest. `releases/latest/download/<asset>` is GitHub's
-/// own redirector to the newest **published, non-prerelease** release,
-/// which is exactly the gate we want between "CI built it" and "users
-/// get it".
+/// redirector to the newest **published, non-prerelease** release — the
+/// gate between "CI built it" and "users get it".
 ///
-/// Not configurable at runtime, on purpose: a knob pointing the updater
-/// at an arbitrary host would turn a hand-edited `config.toml` into a
+/// Not configurable at runtime: a knob pointing the updater at an
+/// arbitrary host would turn a hand-edited `config.toml` into a
 /// code-execution vector. Public so the Settings window can show the
-/// exact URL the app talks to — "it phones home" should be checkable
-/// rather than taken on faith.
+/// exact URL the app talks to.
 pub const MANIFEST_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/releases/latest/download/latest.json";
 
@@ -67,31 +65,17 @@ pub(crate) const TRUSTED_PUBLIC_KEY: &str = include_str!("../release-signing-key
 /// be replayed as a manifest signature.
 pub(crate) const PAYLOAD_HEADER: &str = "poltertype-manifest-v1";
 
-/// Whether a manifest without a signature is refused.
+/// Whether a manifest without a signature is refused. `true` since
+/// v0.17.2; see docs/DECISIONS.md, 2026-08-16, for the two-stage
+/// rollout that got here.
 ///
-/// Signing and verifying landed together in v0.7.0 but could not
-/// become mandatory in the same release: a user on that build would
-/// have been checking a manifest published before anyone signed one.
-/// So the rollout was two stages, and **v0.17.2 is the second**.
+/// **The trap:** an unsigned release is no longer a warning, it is
+/// every updater on v0.17.2+ refusing to see it, until somebody signs
+/// and re-uploads `latest.json`. Signing is manual by design — the
+/// private key must not be a CI secret, since the attacker it defends
+/// against is someone who can publish a release — so the only thing
+/// standing between us and that outage is `docs/RELEASING.md` §7.
 ///
-/// 1. **`false`, v0.7.0 → v0.17.1** — a signature that is *present*
-///    must verify and a wrong one is refused loudly; a missing one
-///    only warns. This is when signed manifests start being published.
-/// 2. **`true`, from v0.17.2** — every release from v0.7.0 to v0.17.1
-///    was in fact signed, checked live through the redirector, so the
-///    manifest a user's updater resolves to has carried a signature
-///    for eighteen releases. From here an attacker who can publish a
-///    GitHub release can no longer publish an update.
-///
-/// **What this now costs us:** a release whose manifest nobody signs
-/// is not a warning any more, it is every updater on v0.17.2+ refusing
-/// to see it — an outage that lasts until somebody signs and re-uploads
-/// `latest.json`. Signing stays a manual step by design (the private
-/// key must not be a CI secret, since the attacker it defends against
-/// is someone who can publish a release), so the thing standing
-/// between us and that outage is `docs/RELEASING.md` §7. Nothing else
-/// checks.
-///
-/// Older builds are unaffected: they carry their own copy of this
-/// constant, still `false`, and go on accepting what they always did.
+/// Setting it back to `false` is the recovery path if the key is ever
+/// lost; older builds carry their own copy and are unaffected.
 pub(crate) const REQUIRE_SIGNATURE: bool = true;

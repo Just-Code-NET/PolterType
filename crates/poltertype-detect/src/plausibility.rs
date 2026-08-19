@@ -51,31 +51,21 @@ impl WordPlausibilityDetector {
         Some(Self::score(prof, text))
     }
 
-    /// Why this compound should stay as typed, or `None`.
+    /// Why this compound should stay as typed, or `None`: a segment
+    /// that reads *better* here than under any alternate. See
+    /// DECISIONS.md (2026-08-20); the corpus in
+    /// `poltertype-core/tests/compound_corpus.rs` guards it.
     ///
-    /// `cqrs-client` scores 0.00 for en-US as one string — the
-    /// vowel-less acronym drags the joined letters under every
-    /// threshold — while `сйкы-сдшуте` reads as a plausible 0.75. Per
-    /// segment the picture inverts: `client` is a perfect 1.00 against
-    /// its counterpart's 0.75.
+    /// Two traps, both cheap to re-break:
     ///
-    /// Two rules keep that from costing real corrections, and the
-    /// corpus in `poltertype-core/tests/compound_corpus.rs` is what
-    /// forced both:
-    ///
-    /// * **Better, not merely good.** An absolute "some segment reads
-    ///   well here" test vetoed a fifth of a real Russian corpus:
-    ///   `по-нашему` renders `gj-yfitve`, and `yfitve` scores 1.00
-    ///   under en-US just as `нашему` does under ru-RU.
-    /// * **Better than *every* alternate.** Comparing only against the
-    ///   winner picks whichever layout happens to score that segment
-    ///   worst — with all layouts loaded, `куда-то` lost to a bg-BG
-    ///   reading while ru-RU explained it perfectly.
-    ///
-    /// A layout rendering the segment identically is skipped: switching
-    /// to it would leave the text exactly as typed, so it is no rival
-    /// reading. Without that, es-ES and de-DE veto-block every Latin
-    /// identifier they reproduce character for character.
+    /// * **Better than *every* alternate**, not just the best-fitting
+    ///   one — that picks whichever layout scores the segment worst,
+    ///   and `куда-то` lost to a bg-BG reading while ru-RU explained it
+    ///   perfectly.
+    /// * **A layout rendering the segment identically is no rival**:
+    ///   switching to it would leave the text exactly as typed. Without
+    ///   that, es-ES and de-DE veto every Latin identifier they
+    ///   reproduce character for character.
     fn compound_keeps(&self, ctx: &DetectionContext<'_>, current_text: &str) -> Option<String> {
         let segments = compound_segments(current_text)?;
         for (i, segment) in segments.iter().enumerate() {
@@ -119,19 +109,17 @@ impl WordPlausibilityDetector {
             return 0.0;
         }
 
-        // (1) Script fit: penalty for letters outside the layout's script.
         let script_hits = letters
             .iter()
             .filter(|&&c| Script::of(c) == prof.script)
             .count();
         let script_fit = script_hits as f32 / letters.len() as f32;
 
-        // (2) Vowel ratio: real words land in a wide band. The plateau
-        //     reaches 2/3 to cover V-C-V patterns — `має`, `оса`, `eye`,
-        //     `our` all sit at 0.667 and would otherwise score just
-        //     below `keep_threshold` and be switched away. Centred at
-        //     0.46 with slope 2.5, so gibberish like `руддщ` (0.2) still
-        //     falls off. See DECISIONS.md (2026-05-07).
+        // The plateau reaches 2/3 to cover V-C-V patterns: `має`,
+        // `оса`, `our` sit at 0.667 and would otherwise fall under
+        // `keep_threshold` and be switched away. Centred at 0.46 with
+        // slope 2.5, so `руддщ` (0.2) still falls off. See DECISIONS.md
+        // (2026-05-07).
         let vowels = letters.iter().filter(|c| prof.vowels.contains(c)).count();
         let vowel_ratio = vowels as f32 / letters.len() as f32;
         let vowel_fit: f32 = match vowel_ratio {
@@ -139,9 +127,8 @@ impl WordPlausibilityDetector {
             r => (1.0 - (r - 0.46).abs() * 2.5).clamp(0.0, 1.0),
         };
 
-        // (3) Consonant clusters: count the longest run of non-vowel
-        //     letters; words with 4+ consecutive consonants in EN/UK
-        //     are extremely rare.
+        // Longest run of non-vowel letters: 4+ consecutive consonants
+        // are extremely rare in EN/UK.
         let mut max_run: u32 = 0;
         let mut run: u32 = 0;
         for c in &letters {
@@ -164,14 +151,11 @@ impl WordPlausibilityDetector {
             _ => 0.75,
         };
 
-        // (4) Stray punctuation: characters that cannot be part of a
-        //     word in any layout (`;`, `]`, digits), apostrophes and
-        //     hyphens exempt. In the wrong-layout case these are exactly
-        //     the scancodes whose alt rendering *is* a letter, so the
-        //     rendering that keeps them as punctuation cannot be the
-        //     layout meant. Without this term `espa;ol` scored a perfect
-        //     1.0 en-US fit and froze the correction. 0.4 per stray: one
-        //     drops a 1.0 fit under `keep_threshold`.
+        // A stray is exactly a scancode whose alt rendering *is* a
+        // letter, so the rendering that keeps it as punctuation cannot
+        // be the layout meant. Without this term `espa;ol` scored a
+        // perfect 1.0 en-US fit and froze the correction. 0.4 per
+        // stray: one drops a 1.0 fit under `keep_threshold`.
         let stray_penalty = non_word_char_count(text) as f32 * 0.4;
 
         (script_fit * 0.5 + vowel_fit * 0.5 - cluster_penalty - stray_penalty).clamp(0.0, 1.0)
@@ -179,24 +163,17 @@ impl WordPlausibilityDetector {
 }
 
 /// Recognise a dot-separated compound — hostname, file name, dotted
-/// identifier — and hand back its segments.
+/// identifier — and hand back its segments. `None`, the ordinary path,
+/// unless the whole token is dots plus word characters: any other stray
+/// means a wrong-layout rendering, and an empty segment is not
+/// structure.
 ///
 /// The `.` key is a *letter* in the Cyrillic layouts (0x34 is `ю`), so
-/// the buffer keeps a domain together as one token and the two
-/// renderings are wildly asymmetric: uk-UA gets clean letters while
-/// en-US keeps literal dots and eats two stray penalties. The correctly
-/// typed domain scored 0.00 against 0.75 and was "corrected" into
-/// gibberish, then switched back on the next prose word.
-///
-/// Dots in a compound are structure, not the cross-layout artifacts the
-/// stray term targets. Scoring each segment and keeping the worst
-/// separates the populations: every segment of a real hostname reads as
-/// a word, whereas a Cyrillic word that merely contains `ю` (`союз` →
-/// `cj.p`) leaves segments that read as nothing.
-///
-/// `None` — the ordinary path — unless the whole token is dots plus
-/// word characters. Any other stray character means a wrong-layout
-/// rendering, and an empty segment is not compound structure.
+/// a domain stays one token and the en-US rendering eats two stray
+/// penalties — 0.00 against uk-UA's 0.75, and a correctly typed domain
+/// was "corrected" into gibberish. Scoring each segment and keeping the
+/// worst separates that from a Cyrillic word merely containing `ю`
+/// (`союз` → `cj.p`), whose segments read as nothing.
 fn dotted_compound(text: &str) -> Option<impl Iterator<Item = &str>> {
     if !text.contains('.') {
         return None;
@@ -216,7 +193,6 @@ impl Detector for WordPlausibilityDetector {
     }
 
     fn judge(&self, ctx: &DetectionContext<'_>) -> Verdict {
-        // Need a long-enough buffer somewhere to bother deciding.
         let any_long = ctx
             .candidates
             .iter()
@@ -228,12 +204,9 @@ impl Detector for WordPlausibilityDetector {
         let current_text = ctx.text_for(ctx.current_layout).unwrap_or("");
         let current_fit = self.fit(ctx.current_layout, current_text).unwrap_or(0.0);
 
-        // Acronym guard: a short all-uppercase token reads as low-vowel
-        // noise under its own layout while the alt rendering lands a
-        // vowel and looks plausible (`SQL` ↔ `ІЙД`). The dict catches
-        // the well-known ones through the EN extras; this is the long
-        // tail. Capped at 5 letters so shouted words (`ПРИВІТ`) still
-        // score normally.
+        // A short all-uppercase token reads as low-vowel noise under
+        // its own layout while the alt rendering lands a vowel and looks
+        // plausible (`SQL` ↔ `ІЙД`).
         if looks_like_acronym(current_text) {
             return Verdict::Keep {
                 reason: format!(
@@ -243,11 +216,6 @@ impl Detector for WordPlausibilityDetector {
             };
         }
 
-        // Conservative veto: if current already reads as plausible
-        // for its layout, don't switch even if the alternate is
-        // marginally better. This is what catches `kubectl` /
-        // `docker` / surnames that aren't in our dictionary but
-        // shouldn't get auto-corrected to Cyrillic noise.
         if current_fit >= self.keep_threshold {
             return Verdict::Keep {
                 reason: format!(

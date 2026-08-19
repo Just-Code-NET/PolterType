@@ -105,26 +105,21 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
 /// Ask the server which modifier keys are *actually* down, and correct
 /// our latched view if it disagrees.
 ///
-/// Tracking modifiers by press and release edges is only sound while we
-/// see every edge, and we do not: any client holding an active keyboard
-/// grab stops XInput2 raw events reaching us for as long as it holds
-/// one — measured on X.org, three key taps produced nine raw events
-/// without a grab and **zero** during one, with no error. A modifier
-/// pressed just before a grab and released inside it stays latched for
-/// ever, `Modifiers::is_command()` then makes the engine treat every
-/// later keystroke as a shortcut, and the app goes quiet until
-/// restarted.
-///
-/// The reliable way to hit that is a desktop keybinding bound to a bare
-/// modifier — Cinnamon's per-layout switch shortcuts grab for the
-/// accelerator, and PolterType makes them fire often by changing the
-/// layout under the user
+/// Edges go missing: any client holding an active keyboard grab stops
+/// XInput2 raw events reaching us while it holds one — measured on
+/// X.org, three key taps produced nine raw events without a grab and
+/// **zero** during one, with no error. A modifier left latched makes
+/// `Modifiers::is_command()` read every later keystroke as a shortcut,
+/// and the app goes quiet until restarted. Reproduced with a desktop
+/// keybinding bound to a bare modifier — Cinnamon's per-layout switch
+/// shortcuts, which PolterType makes fire often by changing the layout
+/// under the user
 /// ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
 ///
-/// `XQueryKeymap` answers from the server's own device state rather
-/// than from event delivery and keeps working through a foreign grab.
-/// One round-trip per [`MOD_RESYNC_INTERVAL`], and only while we
-/// believe a modifier is held.
+/// `XQueryKeymap` answers from the server's own device state and keeps
+/// working through a foreign grab. One round-trip per
+/// [`MOD_RESYNC_INTERVAL`], and only while we believe a modifier is
+/// held.
 fn resync_modifiers(conn: &RustConnection, mods: &mut ModState, last: &mut Instant) {
     if !mods.any_held() || last.elapsed() < MOD_RESYNC_INTERVAL {
         return;

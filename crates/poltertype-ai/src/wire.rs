@@ -1,10 +1,9 @@
 //! Turning a question into a request body, and a response into an
 //! answer, for each supported endpoint shape.
 //!
-//! Free of any HTTP type on purpose: the bodies are plain strings, so
-//! the whole contract is unit-testable on every host, including those
-//! where the `remote` feature is off and `reqwest` is not compiled at
-//! all. The transport only sends the bytes.
+//! Free of any HTTP type on purpose: bodies are plain strings, so the
+//! whole contract is unit-testable even where the `remote` feature is
+//! off and `reqwest` is not compiled at all.
 
 use crate::consts::{ANTHROPIC_VERSION, SYSTEM_PROMPT};
 use crate::enums::WireFormat;
@@ -17,9 +16,9 @@ pub struct Question<'a> {
 }
 
 impl Question<'_> {
-    /// The user-visible half of the prompt. Only the candidate strings
-    /// — no surrounding text, no application name, no layout ids
-    /// (which would leak which languages the user has installed).
+    /// The user-visible half of the prompt: only the candidate strings
+    /// — no surrounding text, no application name, and no layout ids,
+    /// which would leak the languages the user has installed.
     pub fn prompt(&self) -> String {
         let mut s = String::with_capacity(32 + self.candidates.len() * 16);
         for (i, cand) in self.candidates.iter().enumerate() {
@@ -31,9 +30,8 @@ impl Question<'_> {
 
 /// JSON-encode a string value, including the surrounding quotes.
 ///
-/// Hand-rolled to keep `serde_json` out of the dependency tree for a
-/// job this small. Escapes what RFC 8259 requires: quote, backslash,
-/// and everything below U+0020.
+/// Hand-rolled to keep `serde_json` out of the dependency tree. Escapes
+/// what RFC 8259 requires: quote, backslash, everything below U+0020.
 fn json_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -98,11 +96,10 @@ pub fn headers(format: WireFormat, api_key: Option<&str>) -> Vec<(String, String
 
 /// Pull the model's answer text out of a response body.
 ///
-/// A hand-rolled scan for the one field each format puts the text in.
-/// This is not a JSON parser and does not pretend to be: it finds the
-/// key, then reads the following JSON string with escape handling. A
-/// response shaped differently than expected yields `None`, which the
-/// caller turns into "no opinion" — the same as any other failure.
+/// **Not a JSON parser**: it finds the one key each format puts the
+/// text under, then reads the following JSON string with escape
+/// handling. An unexpected shape yields `None`, which the caller turns
+/// into "no opinion" like any other failure.
 pub fn extract_text(format: WireFormat, body: &str) -> Option<String> {
     let key = match format {
         WireFormat::OpenAiChat => "\"content\"",
@@ -144,19 +141,16 @@ fn read_json_string(s: &str) -> Option<String> {
 /// Interpret the model's reply as a 1-based index into the candidate
 /// list, or `None` for "none of them" and anything unparseable.
 ///
-/// Tolerant of the ways a model garnishes a number, and strict about
-/// the result: the first run of digits must name a candidate that
-/// exists. Everything else is no opinion, the safe answer on the
-/// correction path.
+/// Tolerant of the ways a model garnishes a number, strict about the
+/// result: the first run of digits must name a candidate that exists.
 pub fn parse_choice(reply: &str, candidate_count: usize) -> Option<usize> {
     let trimmed = reply.trim();
     let chars: Vec<char> = trimmed.chars().collect();
     let first_digit = chars.iter().position(char::is_ascii_digit)?;
 
-    // A minus sign immediately before the digits makes this a negative
-    // number, and the only thing a model means by one is "none of
-    // these". Skipping the sign would read `-1` as candidate 1 and
-    // retype the user's word as something they did not ask for.
+    // A model means "none of these" by a negative number. Skipping the
+    // sign would read `-1` as candidate 1 and retype the user's word as
+    // something they did not ask for.
     if first_digit > 0 && chars[first_digit - 1] == '-' {
         return None;
     }

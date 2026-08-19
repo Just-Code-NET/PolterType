@@ -10,16 +10,11 @@ use tracing::{info, warn};
 
 /// Parse a one-word-per-line file into a `HashSet` normalised exactly
 /// as a typed token is by the dictionary detector — non-letters
-/// stripped, lowercased.
+/// stripped, lowercased. Stored verbatim, an entry like `v-strel-zbook`
+/// or `ім'я` would never match the lookup key.
 ///
-/// Without that, the on-disk format and the lookup pipeline disagree:
-/// `letters_only_lower` strips hyphens, apostrophes and digits off the
-/// buffered token, so an entry like `v-strel-zbook` or `ім'я` stored
-/// verbatim never matched the lookup key.
-///
-/// Blank lines and `#` comments are skipped, as are lines with no
-/// alphabetic characters at all — they would normalise to the empty
-/// string and pollute the set.
+/// Blank lines, `#` comments and lines with no alphabetic characters
+/// are skipped; the last would normalise to the empty string.
 pub fn parse_wordlist(input: &str) -> HashSet<String> {
     input
         .lines()
@@ -64,12 +59,9 @@ pub fn build_dictionary(
             return None;
         }
     };
-    // FST bytes outlive every reasonable use of the dictionary —
-    // they're loaded once on startup and the dictionary handles
-    // get cloned into detectors that live for the whole program.
-    // Leaking matches the previous `include_bytes!` lifetime
-    // exactly (`&'static [u8]`) at the cost of one allocation per
-    // language at startup.
+    // Loaded once at startup and cloned into detectors that live for the
+    // whole program, so leaking costs one allocation per language and
+    // gives the `&'static [u8]` the FST reader wants.
     let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
     let bundled_fst = match FstSet::new(leaked) {
         Ok(s) => s,
@@ -79,13 +71,11 @@ pub fn build_dictionary(
         }
     };
 
-    // ── short-stop list: bundled baseline + optional user file ──
     let mut short_stop_words = read_stop_words(data_dir, stem);
     if let Some(extra) = load_overlay_file(overlay_dir, stem, "-stop") {
         short_stop_words.extend(extra);
     }
 
-    // ── user overlay: <stem>.txt and <stem>-extras.txt merged ──
     let mut user_overlay: HashSet<String> = HashSet::new();
     if let Some(extra) = load_overlay_file(overlay_dir, stem, "") {
         user_overlay.extend(extra);
@@ -94,7 +84,6 @@ pub fn build_dictionary(
         user_overlay.extend(extra);
     }
 
-    // ── weak list: bundled baseline + optional user file ──
     let mut weak = read_weak_words(data_dir, stem);
     if let Some(extra) = load_overlay_file(overlay_dir, stem, "-weak") {
         weak.extend(extra);
@@ -102,9 +91,8 @@ pub fn build_dictionary(
 
     let mut dict = LayoutDictionary::new(bundled_fst, user_overlay, short_stop_words, weak);
 
-    // ── surface-form FST (suggestions corpus) ──
-    // Same leak-for-'static pattern as the membership FST above.
-    // Missing file is fine: older data dirs predate suggestions, and
+    // Surface-form FST (suggestions corpus), leaked like the membership
+    // one. Missing file is fine: older data dirs predate suggestions and
     // the feature degrades to overlay-only candidates.
     let surface_path = data_dir
         .join("wordlists")
@@ -226,8 +214,8 @@ pub fn load_overlay_file(
 }
 
 /// Path under which user-supplied wordlist overrides live:
-/// `<config-dir>/poltertype/wordlists/`. Three optional files per
-/// layout (see [`build_dictionary`]).
+/// `<config-dir>/poltertype/wordlists/`. Optional files per layout are
+/// listed in [`build_dictionary`].
 pub fn user_wordlist_dir() -> Option<PathBuf> {
     crate::settings::SettingsStore::project_dirs()
         .ok()

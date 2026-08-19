@@ -26,11 +26,9 @@ use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
 // ─── Accessibility permission prompt ─────────────────────────────────
 //
 // `CGEventTapCreate` fails *silently* without Accessibility rights — no
-// system dialog. The supported way to ask is
-// `AXIsProcessTrustedWithOptions` with the prompt option, which opens
-// System Settings and shows the alert. Called when the tap fails to
-// attach, so a first-launch user gets the prompt instead of a dead tray
-// icon.
+// system dialog. `AXIsProcessTrustedWithOptions` with the prompt option
+// is the supported way to ask; without it a first-launch user gets a
+// dead tray icon and no explanation.
 
 use core_foundation::dictionary::CFDictionaryRef;
 use core_foundation::string::CFStringRef;
@@ -41,7 +39,6 @@ unsafe extern "C" {
     static kAXTrustedCheckOptionPrompt: CFStringRef;
 }
 
-/// Check Accessibility trust; prompt the user when not yet trusted.
 fn request_accessibility_prompt() {
     unsafe {
         let key =
@@ -70,7 +67,7 @@ fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
 pub struct MacosListener {
     started: bool,
     /// The key gate the tap callback consults on every keystroke.
-    /// `None` = observe-only, the pre-gate behaviour.
+    /// `None` = observe only, never swallow.
     gate: Option<Arc<MacosGate>>,
 }
 
@@ -82,8 +79,8 @@ impl MacosListener {
         }
     }
 
-    /// Wire the listener to the gate the engine holds, so the tap
-    /// callback can swallow a keystroke instead of only observing it.
+    /// Wire the listener to the engine's gate, so the tap callback may
+    /// swallow a keystroke instead of only observing it.
     pub fn with_gate(gate: Arc<MacosGate>) -> Self {
         Self {
             started: false,
@@ -129,27 +126,23 @@ impl InputListener for MacosListener {
 }
 
 /// Translate one tap event into a [`KeyEvent`], or `None` for events
-/// the engine has no use for.
-///
-/// Split out of the callback so the direction/flag rules it leans on
-/// stay in one place; the callback itself must do nothing but this and
-/// a `try_send`.
+/// the engine has no use for. Runs inside the tap callback, which must
+/// do nothing but this and a `try_send` — see [`TAP_PORT`].
 fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
-    // `CGEventField` is a `u32` type-alias in core-graphics 0.24, so we
-    // feed the documented Apple constants straight through
-    // `get_integer_value_field`.
+    // `CGEventField` is a `u32` type-alias in core-graphics 0.24, so the
+    // documented Apple constants go straight through.
     let vk = event.get_integer_value_field(K_CG_KEYBOARD_EVENT_KEYCODE) as u32;
     let flags = event.get_flags();
 
     let direction = match ev_type {
         CGEventType::KeyDown => KeyDirection::Press,
         CGEventType::KeyUp => KeyDirection::Release,
-        // A modifier moved. macOS reports no direction of its own: the
-        // flags describe the state *after* the change, so the bit
-        // belonging to the key that moved tells us which way it went.
-        // Keys we don't mirror (Fn, media) yield `None` and are dropped
-        // rather than falling through the SC-1 identity mapping into
-        // the classifier's "end the word" range.
+        // A modifier moved, and macOS reports no direction of its own:
+        // the flags describe the state *after* the change, so the bit
+        // of the key that moved tells us which way it went. Keys we
+        // don't mirror (Fn, media) yield `None` and are dropped rather
+        // than falling through the SC-1 identity mapping into the
+        // classifier's "end the word" range.
         CGEventType::FlagsChanged => flags_changed_direction(vk as u16, flags.bits())?,
         _ => return None,
     };
@@ -175,16 +168,13 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
     })
 }
 
-/// The tap's mach port, stashed after creation so the callback can
-/// re-enable the tap when the OS disables it
-/// (`kCGEventTapDisabledByTimeout` can arrive under load even though
-/// our callback is a few atomic loads).
+/// The tap's mach port, stashed so the callback can re-enable the tap
+/// when the OS disables it — `kCGEventTapDisabledByTimeout` arrives
+/// under load even though our callback is a few atomic loads.
 ///
-/// One tap per process by construction — `listener.start()` is called
-/// once — so `OnceLock::set`'s silent first-wins is never observed. The
-/// set runs after `tap.enable()`; a tap disabled inside that gap would
-/// re-enable against a stale port, which fails toward keys reaching the
-/// application, the safe direction.
+/// The set runs after `tap.enable()`; a tap disabled inside that gap
+/// re-enables against a stale port, which fails toward keys reaching
+/// the application — the safe direction.
 static TAP_PORT: OnceLock<usize> = OnceLock::new();
 
 fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), String>>) {
@@ -192,7 +182,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
 
     // The gate only gets to make swallow decisions when the tap is
     // *active* — a listen-only tap's return value is ignored by the
-    // window server. Disabled-by-env gates keep the old listen-only tap.
+    // window server. A gate disabled by env keeps a listen-only tap.
     let active = gate.as_ref().is_some_and(|g| g.wants_active_tap());
     let gate_for_callback = gate.clone();
 
@@ -252,7 +242,6 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                     }
                 }
             }
-            // Pass-through; we listen but don't suppress.
             CallbackResult::Keep
         };
 
@@ -265,12 +254,9 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
             CGEventTapOptions::ListenOnly
         },
         // `FlagsChanged` is how macOS reports a modifier press or
-        // release — there is no KeyDown for Shift. Subscribing gives
-        // the engine the same discrete modifier stream the Windows and
-        // Linux backends produce, which is what `held_modifiers` (and
-        // therefore `release_modifiers`) needs to stay accurate between
-        // ordinary keystrokes. Cost is one extra event per modifier
-        // edge; the callback stays a translate-and-send.
+        // release — there is no KeyDown for Shift. Without it
+        // `held_modifiers` (and so `release_modifiers`) goes stale
+        // between ordinary keystrokes.
         vec![
             CGEventType::KeyDown,
             CGEventType::KeyUp,
@@ -280,9 +266,6 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     ) {
         Ok(t) => t,
         Err(()) => {
-            // Trigger the system Accessibility prompt so the user has
-            // a one-click path to System Settings, then report the
-            // failure as before.
             request_accessibility_prompt();
             let _ = ready_tx.send(Err(
                 "CGEventTapCreate failed (likely missing Accessibility permission)".into(),
@@ -340,10 +323,8 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
 
 // ─── Direct FFI: only the things core-foundation 0.10 doesn't expose ──
 //
-// `CFMachPortCreateRunLoopSource` is the one bit of glue that's not
-// re-exported reliably across core-foundation crate versions. Declare
-// it ourselves so we don't depend on whichever module the active
-// version ships it from.
+// `CFMachPortCreateRunLoopSource` moves between modules across
+// core-foundation versions; declaring it here decouples us from that.
 
 type CFAllocatorRef = *const c_void;
 type CFIndex = c_long;

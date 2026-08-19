@@ -9,9 +9,8 @@ use crate::staging;
 use crate::types::PendingUpdate;
 use crate::version::is_newer;
 
-/// Version of the running binary. Single source of truth for every
-/// comparison in this crate — the manifest is always measured against
-/// what is *executing*, never against what is installed on disk.
+/// Version of the running binary — the manifest is always measured
+/// against what is *executing*, never against what is on disk.
 pub fn current_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
@@ -35,10 +34,8 @@ pub fn check_and_stage() -> Result<Option<PendingUpdate>, UpdateError> {
             %current,
             "no update available"
         );
-        // We are at or ahead of the published release. If an artifact is
-        // still staged, it is either the update that just installed
-        // successfully or one that has been superseded — either way it
-        // has no future, and keeping it would leave a stale "Restart to
+        // A still-staged artifact here either just installed or was
+        // superseded; keeping it would leave a stale "Restart to
         // update" in the tray forever.
         if let Some(stale) = staging::read_pending() {
             info!(
@@ -51,9 +48,8 @@ pub fn check_and_stage() -> Result<Option<PendingUpdate>, UpdateError> {
         return Ok(None);
     }
 
-    // Already downloaded and verified on an earlier pass? Reuse it. The
-    // artifact only exists at its final path if its checksum matched
-    // (see `download::fetch_verified`), so there is nothing to re-check.
+    // An artifact only exists at its final path if its checksum matched
+    // (`download::fetch_verified`), so a reused one needs no re-check.
     if let Some(pending) = staging::read_pending() {
         if pending.version == manifest.version {
             debug!(version = %pending.version, "update already staged");

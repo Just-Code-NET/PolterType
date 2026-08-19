@@ -70,11 +70,8 @@ fn make_extension(root: &Path, id: &str, exe_stem: &str) {
 #[test]
 fn installs_an_extension_whose_program_carries_the_platform_suffix() {
     // The manifest says `helper`; on Windows the file in `bin/` is
-    // `helper.exe`, because that is what every toolchain writes. The
-    // installer refusing that pack would make a portable manifest
-    // uninstallable on the one platform that decorates the name — so
-    // resolution has to know about the suffix on both doors into
-    // "run this program", install as well as discovery.
+    // `helper.exe`. Install is one of the two doors into "run this
+    // program" and must resolve the suffix like discovery does.
     let src = Scratch::new("ext-src");
     let data = Scratch::new("ext-data");
     make_extension(src.path(), "testext", "helper");
@@ -104,9 +101,8 @@ fn installs_a_well_formed_pack() {
     assert!(out.path.join("manifest.toml").is_file());
 }
 
-/// Installing over an existing pack is the update path, and is
-/// deliberately the same code — an update that behaved differently
-/// would be tested half as often.
+/// Installing over an existing pack is the update path, deliberately
+/// the same code.
 #[test]
 fn installing_again_replaces_and_reports_it() {
     let src = Scratch::new("src2");

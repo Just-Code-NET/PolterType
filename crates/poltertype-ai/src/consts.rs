@@ -6,8 +6,8 @@ use crate::enums::WireFormat;
 pub const TYPE_LLM: &str = "llm";
 
 /// Kind strings from before 0.10.0, kept only to produce a useful
-/// error. They named backends PolterType no longer pretends to
-/// provide: a bundled ONNX model and a vendor-specific client.
+/// error. They named backends PolterType no longer provides: a bundled
+/// ONNX model and a vendor-specific client.
 pub const RETIRED_TYPES: &[&str] = &["local-onnx", "remote-llm"];
 
 /// Budget for one query when the entry does not set one. Generous
@@ -30,11 +30,10 @@ pub const QUEUE_DEPTH: usize = 32;
 
 /// `(preset name, endpoint, wire format)` for `provider = "..."`.
 ///
-/// A preset only fills in what the entry leaves blank — it is a
-/// shorthand for two fields, never a special case in the code that
-/// follows. Everything here is a URL the *user* has to be running or
-/// have an account for; PolterType ships no credentials and no
-/// default endpoint.
+/// A preset only fills in what the entry leaves blank — shorthand for
+/// two fields, never a special case downstream. Every URL here is one
+/// the *user* has to be running or hold an account for; PolterType
+/// ships no credentials and no default endpoint.
 pub const PRESETS: &[(&str, &str, WireFormat)] = &[
     (
         "ollama",
@@ -68,11 +67,10 @@ pub const ANTHROPIC_VERSION: &str = "2023-06-01";
 
 /// The instruction sent with every query.
 ///
-/// Deliberately tiny. It ships one word and a list of candidate
-/// readings of that word — never the surrounding sentence, never the
-/// document, never anything identifying. The model is asked for one
-/// token back, which keeps the response cheap to parse and leaves no
-/// room for it to editorialise into our decision.
+/// Deliberately tiny: one word and the candidate readings of it, never
+/// the surrounding sentence, the document or anything identifying. One
+/// token back, which is cheap to parse and leaves no room for the model
+/// to editorialise into our decision.
 pub const SYSTEM_PROMPT: &str = "\
 You identify which keyboard layout a typed word was meant for. \
 You will be given numbered candidate readings of the same keystrokes \

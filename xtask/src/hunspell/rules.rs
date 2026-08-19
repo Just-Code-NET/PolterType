@@ -4,9 +4,8 @@ use super::*;
 
 /// Split the rule's `<add>` field into its `(add, continuation_flags)`
 /// halves. The `/`-suffix syntax (`"ed/Y"`, `"ing/MX"`) means "after
-/// adding `ed`, also recursively apply rules tagged with flags `Y`,
-/// then recursively apply with `M` and `X`." We respect the parent
-/// `.aff`'s flag mode when chunking the continuation flags.
+/// adding `ed`, also recursively apply the rules tagged `Y`" — chunked
+/// according to the parent `.aff`'s flag mode.
 pub(crate) fn parse_add(part: &str, flag_type: FlagType) -> (String, Vec<String>) {
     let (add_raw, cont_raw) = match part.split_once('/') {
         Some((a, c)) => (a, c),
@@ -33,10 +32,9 @@ pub(crate) fn split_flags(s: &str, flag_type: FlagType) -> Vec<String> {
             let chars: Vec<char> = s.chars().collect();
             chars.chunks(2).map(|c| c.iter().collect()).collect()
         }
-        // `FLAG num` is the one mode with an explicit separator, so
-        // it is also the one mode where an empty chunk is possible
-        // (`"1,,2"`, a trailing comma). Drop those rather than
-        // registering a flag named "" that every rule would match.
+        // `FLAG num` is the only mode with an explicit separator, so
+        // the only one where an empty chunk is possible (`"1,,2"`).
+        // Dropping them avoids a flag named "" that every rule matches.
         FlagType::Num => s
             .split(',')
             .map(str::trim)

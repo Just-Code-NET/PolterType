@@ -13,17 +13,16 @@ use super::state::*;
 
 impl SettingsApp {
     pub(super) fn update(&mut self, msg: Message) -> Task<Message> {
-        // Any user-visible edit clears the previous banner — keeps
-        // the footer accurate (otherwise "Saved!" sticks around even
-        // as the user starts editing again).
+        // Any user-visible edit clears the previous banner, so "Saved!"
+        // cannot linger while the user is editing again.
         if !matches!(msg, Message::Save | Message::Reload) {
             self.save_banner = None;
         }
 
-        // Doing anything other than typing in the same box settles what
-        // was typed into a plug-in's box — including asking to close
-        // the window, which is why this sits above the match rather
-        // than in each arm. See [`PluginPane::flush_edits`].
+        // Anything other than typing in the same box settles what was
+        // typed into a plug-in's box — closing the window included,
+        // which is why this sits above the match and not in each arm.
+        // See [`PluginPane::flush_edits`].
         let typing = match &msg {
             Message::PluginTextChanged(plugin, control, _) => {
                 Some((*plugin, Typing::Control(*control)))
@@ -55,8 +54,8 @@ impl SettingsApp {
 
             // Every plug-in edit writes straight through to the
             // plug-in's own file: it may be running and watching that
-            // file, so a pane holding changes back would be showing a
-            // state the plug-in is not in.
+            // file, so held-back changes would show a state the plug-in
+            // is not in.
             Message::PluginToggled(plugin, index, on) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.set(index, SettingValue::Bool(on));
@@ -97,10 +96,9 @@ impl SettingsApp {
                     pane.remove_record(index, row);
                 }
             }
-            // A row's own button. Everything typed settles first: the
-            // plug-in reads its config file to find out what it was
-            // asked to do, so a message still sitting in a text box
-            // would be a message it is not going to send.
+            // Everything typed settles first: the plug-in reads its
+            // config file to find out what it was asked to do, so a
+            // message still in a text box is one it will not send.
             Message::PluginRecordAction(plugin, index, row, command) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.flush_edits(None);
@@ -108,10 +106,8 @@ impl SettingsApp {
                 let Some(pane) = self.plugins.get_mut(plugin) else {
                     return Task::none();
                 };
-                // Nothing to run it against: the field the manifest named
-                // as the row's identity is empty, which for "send the
-                // message called X" would be a command run against no
-                // message at all.
+                // Nothing to run it against: the field the manifest
+                // named as the row's identity is empty.
                 let Some(id) = pane.record_id(index, row) else {
                     pane.status = Some(
                         "This one has no name yet — give it one before acting on it.".to_owned(),
@@ -122,11 +118,10 @@ impl SettingsApp {
                 pane.status = Some(format!("Running “{id}”…"));
                 let ext = pane.ext.clone();
 
-                // Waited on, off the UI thread. The action behind such a
-                // button steals focus, switches somebody else's chat
+                // Waited on off the UI thread: the action behind such a
+                // button steals focus, drives somebody else's chat
                 // client and types a sentence — seconds, not
-                // milliseconds — and the whole reason it is here is to be
-                // watched once.
+                // milliseconds.
                 let (tx, rx) = iced::futures::channel::oneshot::channel();
                 let handed = id.clone();
                 std::thread::spawn(move || {
@@ -149,10 +144,8 @@ impl SettingsApp {
                     };
                     pane.set_action_running(None);
                     pane.status = Some(match &outcome {
-                        // The plug-in's own words, not ours. It is the
-                        // only thing here that knows whether the message
-                        // went, and it says so in a sentence written for
-                        // a person.
+                        // The plug-in's own words: it is the only thing
+                        // here that knows whether the message went.
                         Ok(text) if !text.trim().is_empty() => first_lines(text, 3),
                         Ok(_) => format!("“{id}” finished without saying anything."),
                         // The plug-in usually names the row itself —
@@ -161,11 +154,10 @@ impl SettingsApp {
                         Err(why) if why.contains(id.as_str()) => why.clone(),
                         Err(why) => format!("“{id}”: {why}"),
                     });
-                    // Whatever the plug-in reports about this group is now
-                    // out of date — it just changed it. Only the reports:
+                    // The reports on this group are out of date — the
+                    // action just changed them. Only the reports:
                     // re-asking a conversation list would read a chat
-                    // client's sidebar for a button press that had
-                    // nothing to do with it.
+                    // client's sidebar for an unrelated button press.
                     pane.reports_on_screen()
                 };
                 return self.load_output(plugin, refresh);
@@ -173,9 +165,8 @@ impl SettingsApp {
             Message::PluginSuggestPicked(plugin, slot, value) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.set_suggestion(slot, &value);
-                    // Picking is the end of choosing. Leaving the list up
-                    // would leave it filtered by a name that is now the
-                    // answer, which reads as a list with one thing in it.
+                    // Leaving the list up would leave it filtered by a
+                    // name that is now the answer — a list of one.
                     pane.close_suggest();
                 }
             }
@@ -189,10 +180,9 @@ impl SettingsApp {
                     pane.select_section(index);
                 }
                 // Reaching a section is what makes its command-backed
-                // controls visible — and a control nobody asked for
-                // shows "Asking the plug-in…" for ever otherwise. It is
-                // also why a chat client is only ever read when its own
-                // section is open.
+                // controls visible; without this they show "Asking the
+                // plug-in…" for ever. It is also why a chat client is
+                // read only while its own section is open.
                 return self.load_pending_outputs();
             }
             Message::PluginListToggled(plugin, control, member, on) => {
@@ -235,11 +225,10 @@ impl SettingsApp {
             Message::LanguageToggled(id, active) => {
                 // The checkbox renders the *effective* state: an empty
                 // `[languages].active` means "every OS layout", so all
-                // boxes start ticked. Unticking one in that implicit-all
-                // mode materialises the list as everything-except-this,
-                // so the intent survives a save. Re-ticking appends;
-                // the list is never auto-collapsed back to empty, so a
-                // layout added later is still honoured.
+                // boxes start ticked. Unticking one there materialises
+                // the list as everything-except-this, so the intent
+                // survives a save; it is never auto-collapsed back to
+                // empty.
                 let list = &mut self.settings.languages.active;
                 let was_implicit_all = list.is_empty();
                 if active {
@@ -280,11 +269,11 @@ impl SettingsApp {
             }
             Message::AutoUpdateToggled(b) => self.settings.updates.enabled = b,
             Message::UpdateIntervalDelta(delta) => {
-                // Floor is the same `MIN_UPDATE_INTERVAL_HOURS` the
-                // engine clamps to at read time — the UI must not be
-                // able to express a value the app would silently ignore.
-                // Ceiling is a week: beyond that "automatic updates" is
-                // a checkbox that lies.
+                // Floor is the `MIN_UPDATE_INTERVAL_HOURS` the engine
+                // clamps to at read time: the UI must not express a
+                // value the app would silently ignore. Ceiling is a
+                // week — beyond that "automatic updates" is a checkbox
+                // that lies.
                 let cur = i64::try_from(self.settings.updates.check_interval_hours).unwrap_or(24);
                 let floor = i64::try_from(MIN_UPDATE_INTERVAL_HOURS).unwrap_or(1);
                 let next = (cur + delta).clamp(floor, 24 * 7);
@@ -335,10 +324,8 @@ impl SettingsApp {
             Message::CommandDraftTriggerChanged(s) => self.command_draft_trigger = s,
             Message::CommandDraftActionKindChanged(kind) => {
                 if self.command_draft_action_kind != kind {
-                    // Different action variants take wildly different
-                    // content (snippet vs layout id vs URL); flipping
-                    // the radio without clearing the field would leave
-                    // a confusing half-typed value behind.
+                    // Snippet vs layout id vs URL: keeping the field
+                    // would leave a half-typed value of the wrong kind.
                     self.command_draft_param.clear();
                 }
                 self.command_draft_action_kind = kind;
@@ -349,7 +336,6 @@ impl SettingsApp {
                 Ok(cmd) => {
                     info!(id = %cmd.id, "adding user command from UI");
                     self.settings.commands.push(cmd);
-                    // Clear the draft on success.
                     self.command_draft_name.clear();
                     self.command_draft_trigger.clear();
                     self.command_draft_param.clear();
@@ -379,11 +365,10 @@ impl SettingsApp {
 
             // ── Wordlists ────────────────────────────────────────
             //
-            // All three selectors auto-flush the editor to disk before
-            // switching context: the next handler overwrites the buffer
-            // with the freshly-loaded file, so without this a user who
-            // clicked another layout to "see what's there" would
-            // silently lose unsaved content.
+            // All three selectors auto-flush the editor to disk first:
+            // they overwrite the buffer with the freshly-loaded file, so
+            // without this a click on another layout to "see what's
+            // there" silently loses unsaved content.
             Message::WordlistProfileSelected(profile_id) => {
                 let outcome = self.flush_wordlist_to_disk();
                 self.wordlist_profile = profile_id;
@@ -415,10 +400,9 @@ impl SettingsApp {
                 }
             }
             Message::WordlistEdit(action) => {
-                // `Action::is_edit()` flips the dirty flag only on
-                // semantic edits (insert / delete / paste). Cursor
-                // moves and scroll events leave it false so we don't
-                // ask the user to save a buffer they only looked at.
+                // Only semantic edits go dirty; cursor moves and scrolls
+                // must not make us ask to save a buffer that was merely
+                // looked at.
                 if action.is_edit() {
                     self.wordlist_dirty = true;
                 }
@@ -427,18 +411,16 @@ impl SettingsApp {
             // ── Suggestions ──────────────────────────────────────
             Message::SuggestionsToggled(b) => self.settings.suggestions.enabled = b,
             Message::SuggestionMaxDelta(delta) => {
-                // 1..=9 is the same clamp `SuggestionSettings::
-                // max_clamped` applies at read time — each entry is
-                // addressed by one digit key, so the UI must not be
-                // able to express a count the engine would ignore.
+                // 1..=9 is the clamp `SuggestionSettings::max_clamped`
+                // applies at read time — one digit key per entry — and
+                // the UI must not express what the engine ignores.
                 let cur = i64::try_from(self.settings.suggestions.max_suggestions).unwrap_or(5);
                 let next = (cur + delta).clamp(1, 9);
                 self.settings.suggestions.max_suggestions = usize::try_from(next).unwrap_or(5);
             }
             Message::SuggestionTimeoutDelta(delta) => {
-                // Same 3..=600 window `SuggestionSettings::timeout`
-                // clamps to at read time — see the update-interval
-                // rationale above for why the UI mirrors the clamp.
+                // The 3..=600 window `SuggestionSettings::timeout`
+                // clamps to at read time.
                 let cur =
                     i64::try_from(self.settings.suggestions.tooltip_timeout_secs).unwrap_or(30);
                 let next = (cur + delta).clamp(3, 600);
@@ -456,10 +438,9 @@ impl SettingsApp {
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
                     self.settings = fresh.snapshot();
-                    // Also re-read the current wordlist file, so
-                    // Reload means one thing everywhere: reset every
-                    // on-disk-backed view to what is on disk. Discards
-                    // unsaved editor content by design.
+                    // Reload means one thing everywhere: every
+                    // on-disk-backed view resets to what is on disk.
+                    // Unsaved editor content is discarded by design.
                     if let Some(id) = self.wordlist_layout.clone() {
                         let text = read_overlay_file_or_empty(
                             &self.wordlist_profile,
@@ -484,12 +465,10 @@ impl SettingsApp {
             },
             Message::Save => {
                 // Footer Save saves EVERYTHING — `config.toml` and any
-                // unsaved Wordlists edit. It carries more visual weight
-                // than the per-pane Save, so a user who used it and
-                // closed the window used to lose the edit silently.
-                //
-                // Wordlist first, so the pane's own banner reflects what
-                // happened before the global one is set.
+                // unsaved Wordlists edit; it carries more visual weight
+                // than the per-pane Save, and a user who trusts it must
+                // not lose the edit. Wordlist first, so the pane's own
+                // banner reflects what happened before the global one.
                 let wordlist_outcome = self.flush_wordlist_to_disk();
                 if !matches!(wordlist_outcome, WordlistFlushOutcome::Nothing) {
                     self.wordlist_status = Some(banner_for_wordlist_save(wordlist_outcome));
@@ -539,12 +518,10 @@ impl SettingsApp {
                 let _ = opener::open(url);
             }
             Message::PluginOpenLink(url) => {
-                // Checked once more at the point of opening, not only at
-                // manifest load. The validator is the reason this can
-                // only ever be `https`, and repeating the test here means
-                // a future path that reaches this message without going
-                // through the validator cannot hand `opener` a `file://`
-                // or a shell-ish scheme.
+                // Re-checked at the point of opening, not only at
+                // manifest load: a future path reaching this message
+                // without the validator must still not be able to hand
+                // `opener` a `file://` or a shell-ish scheme.
                 if url.starts_with("https://") {
                     let _ = opener::open(&url);
                 }
@@ -554,10 +531,9 @@ impl SettingsApp {
             Message::SetupRecheck => {
                 let before = self.setup.clone();
                 self.setup = poltertype_input::setup::probe_setup();
-                // Say something either way. A button that silently
+                // Say something either way: a button that silently
                 // redraws the same screen reads as broken, and "still
-                // not granted" is the answer a user in the middle of
-                // fixing permissions most needs to hear.
+                // not granted" is what the user most needs to hear.
                 self.setup_status = Some(if self.setup == before {
                     SaveBanner {
                         text: if self.setup.needs_attention() {
@@ -576,9 +552,9 @@ impl SettingsApp {
                 });
             }
             Message::SetupOpen(url) => {
-                // Covers http(s) documentation links and macOS
-                // `x-apple.systempreferences:` deep links alike —
-                // `opener` hands both to the OS handler.
+                // `opener` hands http(s) docs links and macOS
+                // `x-apple.systempreferences:` deep links alike to the
+                // OS handler.
                 if let Err(e) = opener::open(&url) {
                     warn!(?e, %url, "could not open setup link");
                     self.setup_status = Some(SaveBanner {
@@ -618,17 +594,6 @@ impl SettingsApp {
         Task::none()
     }
 
-    /// Write the current wordlist editor buffer to its resolved overlay
-    /// file, returning an outcome so the caller can pick the banner
-    /// phrasing.
-    ///
-    /// The single shared "save the wordlist now" path — explicit
-    /// per-pane Save, footer Save, and the auto-save before a
-    /// profile / layout / kind switch all land here.
-    ///
-    /// Clears the dirty flag on success but does not touch
-    /// `wordlist_status`: the caller phrases it ("Saved." vs
-    /// "Auto-saved.") so the banner matches the trigger.
     /// What the window has to do the moment it exists, before anybody
     /// clicks anything.
     pub(super) fn startup_task(&mut self) -> Task<Message> {
@@ -695,6 +660,11 @@ impl SettingsApp {
         )
     }
 
+    /// The single shared "save the wordlist now" path — per-pane Save,
+    /// footer Save and the auto-save before a profile / layout / kind
+    /// switch all land here. Clears the dirty flag on success but never
+    /// touches `wordlist_status`: the caller phrases the banner so it
+    /// matches the trigger.
     pub(super) fn flush_wordlist_to_disk(&mut self) -> WordlistFlushOutcome {
         if !self.wordlist_dirty {
             return WordlistFlushOutcome::Nothing;

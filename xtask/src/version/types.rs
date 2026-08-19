@@ -4,9 +4,8 @@
 /// optional `-<word>.<counter>` suffix.
 ///
 /// A deliberate **subset** of SemVer — no multiple suffix components,
-/// no build metadata, no non-numeric counters. Every release we have
-/// cut fits it, and rejecting weirder shapes catches typos a permissive
-/// parser would accept.
+/// no build metadata, no non-numeric counters. Rejecting weirder shapes
+/// catches typos a permissive parser would accept.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Version {
     pub(crate) major: u64,

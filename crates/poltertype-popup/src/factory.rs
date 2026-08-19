@@ -46,11 +46,10 @@ fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup>
     Box::new(NoopPopup)
 }
 
-/// Windows has one backend and it needs nothing probed: a layered
-/// topmost window is available on every version we ship to. It can
-/// still fail to be created (a session with no interactive window
-/// station, for one), and then the tooltip degrades to the keyboard
-/// accept chord exactly as it does elsewhere.
+/// Windows needs nothing probed: a layered topmost window exists on
+/// every version we ship to. Creation can still fail — a session with
+/// no interactive window station, for one — and then the tooltip
+/// degrades to the keyboard accept chord as it does elsewhere.
 #[cfg(windows)]
 fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
     match crate::windows::WindowsPopup::try_new(events) {
@@ -62,10 +61,8 @@ fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup>
     }
 }
 
-/// macOS gets the `NSPanel` backend. It cannot fail at construction:
-/// the panel is created lazily on the first `show`, because
-/// `create_popup` runs before the tao event loop starts pumping the
-/// main queue that every AppKit call must hop to.
+/// macOS gets the `NSPanel` backend, which cannot fail at construction
+/// — see `MacosPopup::new`.
 #[cfg(target_os = "macos")]
 fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
     Box::new(crate::macos::MacosPopup::new(events))

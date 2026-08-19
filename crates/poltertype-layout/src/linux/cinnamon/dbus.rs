@@ -140,10 +140,9 @@ fn split_top_level(body: &str, sep: u8) -> Vec<&str> {
     out
 }
 
-/// Both scanners below start at byte 0 whatever `from` says: quoting
-/// state is only correct if every byte is fed to the scan, and a
-/// caller resuming mid-string would otherwise read its contents as
-/// syntax.
+/// Starts at byte 0 whatever `from` says — as does [`matching`]:
+/// quoting state is only correct if every byte is fed to the scan, and
+/// a caller resuming mid-string would read its contents as syntax.
 fn find_unquoted(s: &str, needle: u8, from: usize) -> Option<usize> {
     let mut strings = StringScan::default();
     s.as_bytes()

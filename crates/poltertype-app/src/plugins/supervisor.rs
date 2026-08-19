@@ -43,16 +43,14 @@ pub struct Departed {
 
 /// The command id a plug-in may declare to be told "wind up now".
 ///
-/// Reserved rather than invented per plug-in, because the supervisor
-/// has to know the name without being configured; a plug-in that does
-/// not declare it is simply not asked.
+/// Reserved rather than invented per plug-in: the supervisor has to know
+/// the name without being configured, and a plug-in that does not declare
+/// it is simply not asked.
 ///
-/// This is how a graceful stop works on **every** platform, and it
-/// exists because the per-OS mechanisms do not: SIGTERM still needs the
-/// plug-in to install a handler, and Windows' console control event was
-/// measured here and refused — see `docs/DECISIONS.md`. A declared
-/// command has neither problem, and what "stop cleanly" means stays the
-/// plug-in author's to define.
+/// This is the graceful stop on **every** platform, because the per-OS
+/// mechanisms are not: SIGTERM still needs the plug-in to install a
+/// handler, and Windows' console control event was measured here and
+/// refused — see `docs/DECISIONS.md`.
 pub const STOP_COMMAND: &str = "stop";
 
 /// Owns every plug-in process this app started.
@@ -97,10 +95,9 @@ impl Supervisor {
     /// Report any service that has exited since the last check, and
     /// forget it.
     ///
-    /// Called from the plug-in heartbeat, so a service dying is noticed
-    /// while it happens rather than at the user's next tray click — the
-    /// mode is answered by a one-shot command that works whether the
-    /// service is alive or not, so nothing else would notice.
+    /// Called from the plug-in heartbeat: nothing else would notice a
+    /// death, because the tray entries behind a service are one-shot
+    /// commands that work whether it is alive or not.
     ///
     /// Reaping is also what stops the corpse being a zombie.
     pub fn reap(&mut self) -> Vec<Departed> {
@@ -149,9 +146,7 @@ impl Supervisor {
     pub fn stop_all(&mut self) {
         for r in &mut self.running {
             // The plug-in's own idea of stopping, first and on every
-            // platform. A plug-in that declares nothing is not asked,
-            // and falls through to the two lines below exactly as
-            // before.
+            // platform. One that declares nothing is not asked.
             if declares_stop(&r.ext) {
                 match run_command(&r.ext, STOP_COMMAND) {
                     Ok(()) => info!(id = %r.id, "asked the plug-in to stop"),
@@ -159,14 +154,12 @@ impl Supervisor {
                 }
             }
             // And the OS's own way of asking, where there is one. Both
-            // are requests; neither is guaranteed, which is why the
-            // kill below is not optional.
+            // are requests, so the kill below is not optional.
             poltertype_shell::request_stop(r.child.id());
         }
-        // A grace period, then whatever is left is killed. Deliberately
-        // short: this runs on the way out of a tray app, and a user
-        // clicking Quit should not have to wait for somebody else's
-        // shutdown code.
+        // A grace period, then whatever is left is killed. Short on
+        // purpose: a user clicking Quit should not have to wait for
+        // somebody else's shutdown code.
         std::thread::sleep(std::time::Duration::from_millis(400));
         for r in &mut self.running {
             match r.child.try_wait() {
@@ -210,15 +203,12 @@ pub fn run_command(ext: &DiscoveredExtension, command_id: &str) -> Result<(), St
         .find(|c| c.id == command_id)
         .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
 
-    // No log file for a one-shot: it inherits, as it always has. The
-    // service log exists because a service dies unobserved; a command
-    // is something the user just clicked and is watching for.
+    // No log file for a one-shot: it inherits. The service log exists
+    // because a service dies unobserved.
     spawn(&ext.exe, &cmd.args, &ext.dir, None)
         .map(|child| {
             info!(id = %ext.id, command = %command_id, pid = child.id(), "plug-in command started");
-            // Deliberately not waited on: these are user-facing actions
-            // that may take seconds, and the tray must not block. The
-            // child is reparented when it outlives us, which for a
+            // The child is reparented when it outlives us, which for a
             // one-shot command is the right outcome.
         })
         .map_err(|e| format!("could not run {command_id:?}: {e}"))
@@ -268,18 +258,14 @@ pub const ROW_ID_PLACEHOLDER: &str = "{id}";
 /// The same substitution as [`run_command_for_row`], but waiting for the
 /// answer — what a pane's own row button needs.
 ///
-/// A tray entry can afford to fire and forget: the menu closes and the
-/// user is looking at whatever the plug-in does next. A button on a card
-/// cannot. "Send this message now" that produces no visible outcome
-/// leaves the one question it was pressed to answer — did it go? —
-/// answered nowhere, and the pane's report only says so after somebody
-/// thinks to press Refresh.
+/// A tray entry can afford to fire and forget; a button on a card cannot
+/// — "Send this message now" with no visible outcome leaves the one
+/// question it was pressed to answer unanswered.
 ///
-/// So this waits, off the UI thread, with a deadline of its own:
-/// [`ACTION_TIMEOUT`] rather than a report's six seconds, because the
-/// action behind such a button is not a query. Sending a standing
-/// message opens a chat client, waits for the conversation to switch and
-/// types a sentence at human speed.
+/// So this waits, off the UI thread, with [`ACTION_TIMEOUT`] rather than
+/// a report's six seconds: the action behind such a button is not a
+/// query. Sending a standing message opens a chat client, waits for the
+/// conversation to switch and types a sentence at human speed.
 pub fn run_command_for_row_waiting(
     ext: &DiscoveredExtension,
     command_id: &str,
@@ -365,9 +351,8 @@ pub fn read_state(ext: &DiscoveredExtension) -> Option<HashMap<String, String>> 
 /// Run the state command and return its stdout, or give up.
 ///
 /// The deadline is why this is not one `output()` call: that waits for
-/// ever, and this runs on the UI thread while a menu is being drawn. A
-/// stale tick is a far smaller problem than a tray that stops
-/// responding, so the process is killed and the previous state kept.
+/// ever, and this runs on the UI thread while a menu is drawn. A stale
+/// tick beats a tray that stops responding.
 fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
     capture_output(
         ext,
@@ -379,10 +364,9 @@ fn state_output(ext: &DiscoveredExtension) -> Result<String, String> {
 
 /// Run one of a plug-in's declared commands and return what it printed.
 ///
-/// Separate from [`run_command`] rather than a flag on it: that one
-/// must return before the child does, because it runs on the thread
-/// drawing a menu. This one backs a pane that is *showing* an answer,
-/// so it waits — off the UI thread, with its own deadline.
+/// Separate from [`run_command`] rather than a flag on it: that one must
+/// return before the child does, because it runs on the thread drawing a
+/// menu. This one backs a pane *showing* an answer, so it waits.
 pub fn read_report(ext: &DiscoveredExtension, command_id: &str) -> Result<String, String> {
     let cmd = ext
         .manifest
@@ -409,11 +393,9 @@ fn capture_output(
         .current_dir(&ext.dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        // Drained but never *shown* on success. A program says why it
-        // failed on stderr, and "exited with status 1" is the one
-        // sentence that tells the user nothing they can act on — while
-        // the plug-in was, one pipe away, explaining that the
-        // conversation is not on the allow-list.
+        // Drained but never *shown* on success: a program says why it
+        // failed on stderr, and "exited with status 1" tells the user
+        // nothing they can act on.
         .stderr(Stdio::piped());
     // The state read runs every time the tray menu is drawn, so a
     // console window here would flash on every click, not once at
@@ -447,10 +429,8 @@ fn capture_output(
                     Ok(out)
                 } else {
                     // The plug-in's own sentence, unprefixed: the caller
-                    // knows what it ran, and "row action: Ранкове: …"
-                    // stacks three names in front of the one thing worth
-                    // reading. The prefix stays where there are no words
-                    // to quote and the status code is all there is.
+                    // knows what it ran. The prefix stays only where there
+                    // are no words to quote.
                     Err(match last_words(&err) {
                         Some(why) => why,
                         None => format!("{what} exited {status}"),
@@ -516,9 +496,9 @@ fn spawn(
         // config means what its author expected.
         .current_dir(dir)
         .stdin(Stdio::null());
-    // Both streams to the same file, in the order the plug-in wrote
-    // them. Without a log file we inherit, which is what this always
-    // did and is still right when there *is* a terminal.
+    // Both streams to the same file, in the order the plug-in wrote them.
+    // Without a log file we inherit, which is right when there *is* a
+    // terminal.
     if let Some((_, file)) = log {
         match (file.try_clone(), file.try_clone()) {
             (Ok(out), Ok(err)) => {

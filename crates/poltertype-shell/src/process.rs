@@ -1,20 +1,15 @@
 //! Spawning a plug-in's process, and asking it to stop.
 //!
-//! Here rather than in the app because these are the two operations in
-//! "supervise a plug-in" whose meaning is per-platform: how a child is
-//! created, which only Windows has an opinion about
+//! Only two operations in "supervise a plug-in" are per-platform: how a
+//! child is created, which only Windows has an opinion about
 //! ([`configure_child`]), and how it is asked to leave, which only Unix
-//! has a mechanism for ([`request_stop`]). Everything else is
-//! `std::process` and needs no `cfg`.
+//! has a mechanism for ([`request_stop`]).
 
 use std::process::Command;
 
-/// `CREATE_NO_WINDOW`. Run a console program without giving it a
-/// console window of its own.
-///
-/// Spelled out rather than pulled from `windows-sys`: one stable ABI
-/// constant is cheaper than a Win32 binding crate for a single `u32`.
-/// Documented under `CreateProcess` → *Process Creation Flags*.
+/// `CREATE_NO_WINDOW`, spelled out rather than pulled from
+/// `windows-sys` — one stable ABI constant is cheaper than a Win32
+/// binding crate. See `CreateProcess` → *Process Creation Flags*.
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -22,12 +17,9 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 ///
 /// PolterType links as a GUI image and owns no console, so a console
 /// child spawned from it gets one **allocated**, window and all — a
-/// black window beside the tray for a daemon, and one flashing up every
-/// time the menu is drawn for the state query. `CREATE_NO_WINDOW` gives
-/// the child its console without a window.
-///
-/// Nothing to configure elsewhere: no other platform we ship attaches a
-/// window to a process for being a console program.
+/// black window beside the tray for a daemon, and one flashing up on
+/// every menu draw for the state query. `CREATE_NO_WINDOW` gives the
+/// child its console without a window.
 #[cfg(windows)]
 pub fn configure_child(cmd: &mut Command) {
     use std::os::windows::process::CommandExt as _;
@@ -39,21 +31,15 @@ pub fn configure_child(_cmd: &mut Command) {}
 
 /// Ask the process with this id to exit cleanly.
 ///
-/// Best-effort by nature — it may already be gone, may ignore the
-/// request, or may be on a platform with no way to make it. None of
-/// those are errors; the caller's timeout and kill make stopping
-/// certain.
-///
 /// **Stop is a request, kill is not.** A plug-in may hold state worth
-/// flushing on the way out, so it is asked first and killed only if it
-/// does not go. Where a platform cannot ask, this is honestly a no-op —
-/// which is why the caller must always have a kill.
+/// flushing, so it is asked first and killed only if it does not go.
+/// Best-effort by nature — it may already be gone, ignore the request,
+/// or be on a platform with no way to make one, and none of those are
+/// errors. The caller must always have a kill.
 #[cfg(unix)]
 pub fn request_stop(pid: u32) {
-    // Spawning `kill` rather than linking libc: this crate has no
-    // unsafe and no C dependency, and one process spawn at shutdown is
-    // not worth either. `kill` is in POSIX, so it is present wherever
-    // this arm compiles.
+    // Spawning `kill` rather than linking libc keeps this crate free of
+    // `unsafe` and of a C dependency, for one spawn at shutdown.
     let _ = std::process::Command::new("kill")
         .arg("-TERM")
         .arg(pid.to_string())

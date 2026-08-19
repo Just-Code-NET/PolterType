@@ -35,7 +35,6 @@ impl PortalEmitter {
         })
     }
 
-    /// Press and release one keycode, recording both edges.
     fn tap(&self, keycode: i32) -> Result<(), InputError> {
         self.press(keycode, true)?;
         self.press(keycode, false)

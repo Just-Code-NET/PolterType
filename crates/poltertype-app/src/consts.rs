@@ -4,11 +4,6 @@ pub(crate) const APP_ID: &str = "dev.opensource.poltertype";
 
 pub(crate) const APP_NAME: &str = "PolterType";
 
-/// Parse a hotkey string from `[hotkeys]` (e.g. `"Ctrl+Shift+Space"`)
-/// using `global-hotkey`'s native `FromStr`. On parse failure we log
-/// a warning and fall back to `default_str` so the app boots with a
-/// usable hotkey rather than nothing — matches the Settings UI's
-/// "loud-but-graceful" approach to bad config values.
 /// Cross-platform default for the manual "switch the last word" hotkey.
 pub(crate) const DEFAULT_SWITCH_LAST: &str = "Ctrl+Shift+Backspace";
 
@@ -31,17 +26,15 @@ pub(crate) const MACOS_SAFE_PAUSE_TOGGLE: &str = "Ctrl+Shift+P";
 /// keystream backend; any explicit custom binding wins.
 pub(crate) const WAYLAND_SAFE_SWITCH_LAST: &str = "Ctrl+Shift+F9";
 
-/// Permissions / onboarding guide the tray's "Setup Guide…" alert
-/// entry opens when keyboard hooks fail to start. Pinned to `main` —
-/// the guide must track the latest setup script, not the version of
-/// the binary that failed.
+/// Permissions / onboarding guide, linked from the Settings Setup pane.
+/// Pinned to `main` — the guide must track the latest setup script, not
+/// the version of the binary that failed.
 pub(crate) const SETUP_GUIDE_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";
 
 /// Where to send a user whose install can't update itself in place (a
 /// distro package, a dev build, a bare binary) — or whose installer
-/// failed. The fallback is always "here is the download page", never a
-/// dead end.
+/// failed.
 pub(crate) const RELEASES_URL: &str = "https://github.com/Just-Code-NET/PolterType/releases/latest";
 
 /// One-time README seeded into the user layouts folder. Mirrors the
@@ -96,9 +89,8 @@ Override the bundled mapping:
     the bundled mapping.
 ";
 
-/// One-time README seeded into the user wordlists folder. Plain
-/// text (no markdown), short, and readable in any editor / preview
-/// pane. Matches the file conventions documented in
+/// One-time README seeded into the user wordlists folder. The file
+/// conventions it describes are enforced in
 /// `poltertype_core::layouts::build_dictionary`.
 pub(crate) const USER_WORDLISTS_README: &str = "\
 PolterType — user wordlists

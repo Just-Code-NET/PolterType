@@ -15,21 +15,19 @@
 //! PolterType then refuses to start with a message naming neither the
 //! plug-in nor the possibility. Clean shutdown is not the fix — the
 //! whole point is the cases where it does not happen — and closing
-//! descriptors in the child means `pre_exec` and `unsafe` in a crate
-//! that deliberately has none. So Linux binds the abstract name with
-//! `std`, whose sockets are close-on-exec by construction. The name is
-//! deliberately the same string `single-instance` used, so builds from
-//! either side of the change still see each other.
+//! descriptors in the child means `pre_exec` and `unsafe`. So Linux
+//! binds the abstract name with `std`, whose sockets are close-on-exec
+//! by construction, keeping the exact string `single-instance` used so
+//! builds from either side of the change still see each other.
 
 use std::path::Path;
 
 /// A held single-instance lock.
 ///
-/// Dropping it releases the lock, and so does the process ending for
-/// any reason at all, including one that runs no destructors — what is
-/// held is a kernel object. That is the property being bought: no stale
-/// lock to clean up after a crash, and no "delete this file to recover"
-/// instruction for anyone to find.
+/// What is held is a kernel object, so the lock is released by dropping
+/// this *and* by the process ending for any reason, including one that
+/// runs no destructors. That is the property being bought: no stale
+/// lock after a crash, and no "delete this file to recover" step.
 pub struct InstanceLock {
     #[cfg(target_os = "linux")]
     _socket: std::os::unix::net::UnixListener,

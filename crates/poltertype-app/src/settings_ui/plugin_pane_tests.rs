@@ -258,9 +258,8 @@ fn a_failed_report_is_remembered_rather_than_retried_forever() {
 
 #[test]
 fn list_rows_are_parsed_leniently() {
-    // The plug-in prints something a person could also read. A line
-    // with no tabs is a name that is its own label; extra fields are
-    // ignored; blank lines are skipped.
+    // The plug-in prints something a person could also read: no tabs
+    // means the name is its own label, extra fields are ignored.
     let root = scratch("listrows");
     let mut pane = PluginPane::load(
         extension(vec![PaneControl {
@@ -342,9 +341,7 @@ fn ticking_a_row_writes_the_plugins_own_config() {
 #[test]
 fn a_ticked_box_is_answered_without_touching_the_disk() {
     // `in_array` is called once per row on every frame, so it reads the
-    // cache. The regression that matters is the cache going stale: what
-    // is on screen has to follow the file, not the last thing this pane
-    // happened to know.
+    // cache. The regression that matters is that cache going stale.
     let root = scratch("listcache");
     let mut pane = PluginPane::load(
         extension(vec![control(ControlKind::List, "capture.allow_apps")]),
@@ -353,9 +350,8 @@ fn a_ticked_box_is_answered_without_touching_the_disk() {
     pane.set_array_member(0, "code", true);
     assert!(pane.in_array(0, "code"), "{:?}", pane.status);
 
-    // The file goes away underneath us. Nothing has told the pane, so
-    // the answer is still the one it last read — that is the trade the
-    // cache makes, and it is worth stating.
+    // The file changes underneath us. Nothing has told the pane, so the
+    // answer is still the one it last read — the trade the cache makes.
     let config = root.join("demo-plugin").join("config.toml");
     std::fs::write(&config, "[capture]\nallow_apps = []\n").unwrap();
     assert!(pane.in_array(0, "code"), "stale until something re-reads");
@@ -458,9 +454,8 @@ fn one_section_is_on_screen_at_a_time() {
 
 #[test]
 fn a_section_nobody_opened_costs_no_process() {
-    // Every command-backed control spawns the plug-in. Asking on behalf
-    // of a section that is not on screen is a chat client woken up for
-    // a list nobody is looking at.
+    // Every command-backed control spawns the plug-in, so a section
+    // nobody opened would wake a chat client for nothing.
     let root = scratch("unasked");
     let mut pane = PluginPane::load(
         extension(vec![
@@ -517,8 +512,7 @@ fn a_plugin_with_no_sections_shows_everything() {
 #[test]
 fn typing_reaches_the_file_only_once_it_settles() {
     // The prefixes of "0.85" include "0", and a threshold that is 0 for
-    // the length of a keystroke is a gate the user never opened. So
-    // nothing is written until the user does something else.
+    // the length of a keystroke is a gate the user never opened.
     let root = scratch("decimal");
     let mut pane = PluginPane::load(
         extension(vec![control(ControlKind::Decimal, "act.min_confidence")]),
@@ -617,9 +611,8 @@ fn a_trailing_comma_does_not_put_an_empty_name_in_the_list() {
 
 #[test]
 fn select_all_ticks_every_row_on_screen_in_one_write() {
-    // Sixty conversations is what this exists for: the user thinks of it
-    // as one action, so it is one edit of the file another program is
-    // reading.
+    // One action to the user, so one edit of the file another program
+    // is reading.
     let root = scratch("listall");
     let mut pane = PluginPane::load(
         extension(vec![PaneControl {
@@ -647,9 +640,8 @@ fn select_all_ticks_every_row_on_screen_in_one_write() {
 
 #[test]
 fn select_all_with_nothing_offered_writes_nothing() {
-    // No rows means the plug-in has not answered — or has nothing to
-    // say. Either way there is nothing to tick, and a write would only
-    // create an empty array in somebody else's file.
+    // No rows means nothing to tick, and a write would only create an
+    // empty array in somebody else's file.
     let root = scratch("listallempty");
     let mut pane = PluginPane::load(
         extension(vec![control(ControlKind::List, "capture.allow_apps")]),
@@ -688,9 +680,9 @@ fn schedule_group() -> PaneControl {
 
 #[test]
 fn one_answer_serves_every_card() {
-    // Which conversations exist is a question about the chat client, not
-    // about the row. Asking it once per card is that client's sidebar
-    // read once per scheduled message.
+    // Which conversations exist is a question about the chat client,
+    // not about the row: once per card would read its sidebar once per
+    // scheduled message.
     let root = scratch("records-ask-once");
     let dir = root.join("demo-plugin");
     std::fs::create_dir_all(&dir).unwrap();
@@ -735,9 +727,8 @@ fn one_answer_serves_every_card() {
 
 #[test]
 fn picking_a_suggestion_writes_the_id_not_the_label() {
-    // What is picked is what is stored. A friendlier label in the list
-    // would be a box that saves something other than what it shows —
-    // and for a conversation name, one that names nobody.
+    // What is picked is what is stored: a friendlier label would save a
+    // conversation name that names nobody.
     let root = scratch("records-pick");
     let dir = root.join("demo-plugin");
     std::fs::create_dir_all(&dir).unwrap();
@@ -783,10 +774,8 @@ fn a_card_with_no_name_cannot_be_acted_on() {
 
 #[test]
 fn a_message_reaches_the_file_when_it_is_finished_not_while_it_is_typed() {
-    // Every keystroke used to settle the previous one, so a message on
-    // its way to being written arrived in the plug-in's config one
-    // prefix at a time — and the plug-in reads that file to find out
-    // what it was asked to send.
+    // The plug-in reads this file to find out what it was asked to
+    // send, so a message must not arrive one prefix at a time.
     let root = scratch("records-typing");
     let dir = root.join("demo-plugin");
     std::fs::create_dir_all(&dir).unwrap();

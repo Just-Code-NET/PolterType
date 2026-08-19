@@ -2,12 +2,12 @@
 //!
 //! An `.ico` is a directory of independent images, and Windows picks
 //! whichever entry matches the size it is about to draw. Hand-rolled
-//! rather than delegated to `image`, because the format is a header, a
-//! table and the images themselves — about eighty lines, against a
-//! dependency that decodes a dozen formats we never read.
+//! rather than delegated to `image`: a header, a table and the images
+//! is about eighty lines, against a dependency that decodes a dozen
+//! formats we never read.
 //!
-//! Two encodings live side by side inside one file: PNG for the large
-//! entries and raw DIB for the small ones, split at [`ICO_PNG_FROM`].
+//! Two encodings live side by side inside one file — PNG for the large
+//! entries, raw DIB for the small ones, split at [`ICO_PNG_FROM`].
 //! That is the shell's own convention, not ours.
 
 use crate::*;

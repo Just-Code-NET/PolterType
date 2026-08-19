@@ -241,7 +241,7 @@ fn char_at(vk: u32, sc: u32, hkl: HKL, shift: bool) -> Option<char> {
         // Dead key — feed it the same keystroke again so the pending
         // composition resolves and nothing is left waiting.
         let mut scratch = [0u16; 8];
-        // Safety: as above.
+        // Safety: both buffers are ours and correctly sized.
         unsafe { ToUnicodeEx(vk, sc, &state, &mut scratch, TOUNICODE_NO_STATE_CHANGE, hkl) };
     }
     if n == 0 {

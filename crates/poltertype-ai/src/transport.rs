@@ -1,10 +1,9 @@
 //! The one place in this crate that opens a socket.
 //!
-//! Isolated behind the `remote` cargo feature so that a default build
+//! Isolated behind the `remote` cargo feature so a default build
 //! contains no HTTP client at all — not a disabled one, not one behind
 //! a runtime flag. `cargo tree` on a stock build shows no `reqwest`,
-//! which is a stronger statement than any amount of documentation
-//! about what the app does not do.
+//! which is a stronger claim than documentation can make.
 
 use crate::AiError;
 use crate::enums::WireFormat;
@@ -39,10 +38,9 @@ pub fn ask(client: &reqwest::blocking::Client, call: &Call<'_>) -> Result<Option
     }
 
     let resp = req.body(body).send()?;
-    // A non-2xx is not an exception here — a wrong key or a model name
-    // the server doesn't know is an ordinary misconfiguration. Report
-    // it as a failure so the caller can announce it once, and make
-    // sure the body (which may quote the request) never reaches a log.
+    // A non-2xx is ordinary misconfiguration (wrong key, unknown model
+    // name), reported so the caller announces it once. The body may
+    // quote the request, so it must never reach a log.
     if !resp.status().is_success() {
         return Err(AiError::RemoteDisabled(format!(
             "endpoint returned HTTP {}",

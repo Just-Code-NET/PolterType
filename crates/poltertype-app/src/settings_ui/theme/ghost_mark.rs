@@ -36,18 +36,15 @@ impl<Message> canvas::Program<Message> for GhostMark {
         _cursor: Cursor,
     ) -> Vec<Geometry> {
         // NOT the idiomatic `Frame::new(renderer, bounds.size())`: that
-        // stores the clip rectangle in canvas-local coordinates, and
-        // iced 0.13's tiny-skia compositor applies it as a
-        // window-global mask, so any canvas away from the window's
-        // top-left has its fills masked out. An infinite clip fixes the
-        // masking but poisons the damage tracker, and the window then
-        // blinks between stale buffers after a palette change.
-        //
-        // So build the raw frame with the clip set to the widget's real
-        // window-global bounds, then cancel the translation the frame
-        // bakes in — the canvas widget already positions the geometry
-        // group, so the paths stay local. Mask lands on the widget,
-        // damage stays finite. Drop this at iced 0.14.
+        // stores the clip in canvas-local coordinates while iced 0.13's
+        // tiny-skia compositor applies it as a window-global mask, so
+        // any canvas away from the window's top-left has its fills
+        // masked out. (An infinite clip unmasks them but poisons damage
+        // tracking, and the window blinks between stale buffers after a
+        // palette change.) Clip to the real window-global bounds
+        // instead, then cancel the translation the frame bakes in — the
+        // canvas widget already positions the geometry group. Drop this
+        // at iced 0.14.
         let mut frame = RawFrame::with_clip(bounds);
         frame.translate(Vector::new(-bounds.x, -bounds.y));
         // Author coordinates below are the SVG's 64×64 viewBox.

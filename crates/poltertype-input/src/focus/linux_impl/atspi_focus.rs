@@ -2,16 +2,9 @@
 //! tracking on compositors that answer no window query.
 //!
 //! GNOME and KDE on Wayland expose no "which window is active"
-//! interface, for the same reason they expose no global keyboard. The
-//! plan of record was a KWin script plus a GNOME Shell extension: two
-//! out-of-tree artifacts, in two languages, that the user has to
-//! install and neither testable without running that desktop.
-//!
-//! This is cheaper and covers more. Every AT-SPI event arrives from the
-//! *application's own* connection, so the bus can be asked who that
-//! connection belongs to — `GetConnectionUnixProcessID` gives the PID
-//! and `/proc/<pid>/exe` the executable basename, exactly what the
-//! Hyprland and X11 trackers already report.
+//! interface, so the executable is derived from the a11y bus instead —
+//! see [`connection_pid`]. No compositor extension, no user-installed
+//! script.
 //!
 //! **Only applications with a live accessibility bridge are ever
 //! seen.** GTK, Qt and Electron-with-a11y answer; a terminal typically
@@ -20,7 +13,8 @@
 //! the freshest answer can be stale in a way a real window query never
 //! is. That is why [`AtspiFocusWatcher::latest`] returns the sample's
 //! age and lets the caller decide. Do not describe this as "focus
-//! tracking works on GNOME/KDE".
+//! tracking works on GNOME/KDE" — `docs/KNOWN-GAPS.md` carries the
+//! full caveat.
 //!
 //! PRIVACY: this module reads *identity*, never content. Sender names,
 //! PIDs and executable paths only — no accessible names, no window
@@ -41,7 +35,6 @@ use super::proc_exe::exe_basename_for_pid;
 /// motion, but the same burst-shedding logic applies.
 const SIGNAL_QUEUE: usize = 16;
 
-/// A focus observation: which executable, and when we learned it.
 #[derive(Debug, Clone)]
 pub(crate) struct FocusSample {
     pub(crate) exe: String,

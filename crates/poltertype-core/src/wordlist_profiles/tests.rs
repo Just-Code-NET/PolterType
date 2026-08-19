@@ -107,16 +107,12 @@ fn resolve_falls_back_to_default_profile() {
     assert_eq!(resolve_active_profile(&bad, Some("chrome.exe")), None);
 }
 
-/// Profile id is also a directory name; reject obviously
-/// path-traversal-y or empty ids on the parsing side. (The
-/// loader has its own checks but this is the canonical "is
-/// this id sane" pin.)
+/// Profile id is also a directory name; the loader has its own checks,
+/// but this is the canonical "is this id sane" pin.
 #[test]
 fn profile_id_validation_basic() {
-    // We don't ship a `validate(id)` API yet — but we want a
-    // place to anchor the contract: ids should be ASCII,
-    // non-empty, no path separators. Future loader code can
-    // call into this once the helper lands.
+    // Local, because there is deliberately no shipped `validate(id)`
+    // API: this pins the contract, not an implementation.
     fn looks_safe(id: &str) -> bool {
         !id.is_empty()
             && id

@@ -1,8 +1,8 @@
-//! Engine unit + integration tests, split out of `mod.rs`.
+//! Engine unit + integration tests.
 //!
 //! This prelude re-imports the engine's public API plus the internal
 //! submodules, so the inner test modules resolve names through
-//! `use super::*` exactly as they did when they lived inline.
+//! `use super::*`.
 
 use std::time::{Duration, Instant};
 
@@ -46,20 +46,20 @@ mod engine_integration_tests {
     /// Fires from inside a replay burst — see `MockEmitter::during_replay`.
     type ReplayHook = Box<dyn Fn() + Send>;
 
-    /// Records every operation and mimics the uinput emitter's echo
-    /// log (press+release per backspace / replay key, shift presses
+    /// Records every operation and mimics the uinput emitter's echo log
+    /// (press+release per backspace / replay key, shift presses
     /// included) so tests can replay realistic keyd-style echoes.
-    /// `emitted` is drained by the engine's `take_emitted`; the test
-    /// keeps its own copy in `echo_copy` for replaying.
+    /// `emitted` is drained by the engine's `take_emitted`; `echo_copy`
+    /// is the test's own copy to replay from.
     #[derive(Default)]
     struct MockEmitter {
         ops: Mutex<Vec<EmitOp>>,
         emitted: Mutex<Vec<EmittedKey>>,
         echo_copy: Mutex<Vec<EmittedKey>>,
-        /// Every replay burst with its shift levels intact.
-        /// `EmitOp::Keys` keeps scancodes only, and which *shift level*
-        /// the boundary key went out at is the whole point of one
-        /// regression below.
+        /// Every replay burst with its shift levels intact —
+        /// `EmitOp::Keys` keeps scancodes only, and the boundary key's
+        /// shift level is the whole point of
+        /// `boundary_character_survives_the_layout_flip`.
         replays: Mutex<Vec<Vec<(u32, bool)>>>,
         /// Called from `send_keys` once the burst is on the wire: a
         /// test's stand-in for a physical keystroke the compositor
@@ -253,8 +253,8 @@ mod engine_integration_tests {
         }
 
         /// The widest constructor: `tweak` gets the whole `Settings`
-        /// before the engine starts, for the settings no narrower
-        /// parameter covers (`[exceptions]`, and whatever comes next).
+        /// before the engine starts, for anything no narrower parameter
+        /// covers.
         fn start_configured(
             idle_timeout_ms: u64,
             emitter: MockEmitter,
@@ -369,7 +369,7 @@ mod engine_integration_tests {
 
         /// Wait until the engine has drained everything sent AND its
         /// emit-op log has stopped moving. Corrections deliberately
-        /// dawdle (quiet-gap absorption, the echo-settle wait, chained
+        /// dawdle (quiet-gap absorption, echo settle, chained
         /// decisions), so the stability window must outlast the
         /// engine's longest internal quiet stretch.
         fn settle(&self) {
@@ -391,11 +391,10 @@ mod engine_integration_tests {
             panic!("engine never settled");
         }
 
-        /// Wait until the emitter has recorded at least `n` operations
-        /// — i.e. a correction's emission has actually happened. Used
-        /// to time echo replays realistically (echoes arrive while the
+        /// Wait until the emitter has recorded at least `n` operations.
+        /// Times echo replays realistically: echoes arrive while the
         /// engine is still inside its post-replay settle window, not
-        /// seconds later).
+        /// seconds later.
         fn wait_ops(&self, n: usize) {
             for _ in 0..400 {
                 if self.emitter.ops.lock().len() >= n {
@@ -437,8 +436,8 @@ mod engine_integration_tests {
     }
 
     /// The real pipeline the app wires up: dictionary first,
-    /// word-plausibility second. Needed by the domain regression
-    /// below — the bug it covers only exists against real scoring.
+    /// word-plausibility second. The domain regressions need it — the
+    /// bug they cover only exists against real scoring.
     fn real_detectors() -> Vec<Box<dyn Detector>> {
         use crate::layouts::LayoutDb;
         let layouts = LayoutDb::load_embedded();
@@ -484,12 +483,10 @@ mod engine_integration_tests {
         }
     }
 
-    /// Regression: a domain used to be switched **twice** — once to
-    /// mangle the host, then back on the next prose word. `.` is `ю` in
-    /// uk-UA, so a host stays one token and its en-US rendering scored
-    /// 0.00 against the Cyrillic 0.75. Host and surrounding sentence
-    /// must survive, while a genuine wrong-layout word carrying a dot
-    /// is still corrected.
+    /// Regression: a domain was switched **twice** — once to mangle the
+    /// host, then back on the next prose word. `.` is `ю` in uk-UA, so a
+    /// host stays one token and its en-US rendering scored 0.00 against
+    /// the Cyrillic 0.75.
     #[test]
     fn domain_in_a_sentence_does_not_switch_the_layout() {
         let h = Harness::start_full(
@@ -513,9 +510,9 @@ mod engine_integration_tests {
         );
     }
 
-    /// The guard above must not go so wide that it swallows real
-    /// corrections: `союз` typed under en-US comes out as `cj.p` —
-    /// dot and all — and still has to be fixed.
+    /// The domain guard must not go so wide that it swallows real
+    /// corrections: `союз` typed under en-US comes out as `cj.p` — dot
+    /// and all — and still has to be fixed.
     #[test]
     fn cyrillic_word_rendering_with_a_dot_is_still_corrected() {
         let h = Harness::start_full(
@@ -534,8 +531,7 @@ mod engine_integration_tests {
         );
     }
 
-    /// Baseline: a mistyped word + space triggers exactly one
-    /// correction — switch first, then word-length+boundary
+    /// Baseline ordering: switch first, then word-length+boundary
     /// backspaces, then the scancode replay ending in the boundary.
     #[test]
     fn basic_correction_switches_then_deletes_then_replays() {
@@ -558,15 +554,14 @@ mod engine_integration_tests {
         );
     }
 
-    /// The separator that closed a word is not part of the mistake and
-    /// must survive the correction as the character the user saw.
+    /// The separator that closed a word must survive the correction as
+    /// the character the user saw. Reported as: `Photos` then `,` under
+    /// uk-UA came out `Photos?`, the boundary key having been replayed
+    /// by scancode against the *new* layout.
     ///
-    /// Reported as: typing `Photos` and then `,` under uk-UA came out
-    /// `Photos?`, because the boundary key was replayed by scancode
-    /// against the *new* layout. The reported key was `Shift`+`0x35`
-    /// (`,` in uk-UA, `?` in en-US); this harness loads all fifteen
-    /// bundled layouts and bg-BG carries a letter there, which makes it
-    /// a word key rather than a boundary, so the test uses the same trap
+    /// The reported key was `Shift`+`0x35`, but this harness loads all
+    /// fifteen bundled layouts and bg-BG carries a letter there, which
+    /// makes it a word key rather than a boundary. Hence the same trap
     /// one row up: `Shift`+`0x08` is `?` under uk-UA and `&` under
     /// en-US, and `?` lives on `Shift`+`0x35` in en-US.
     #[test]
@@ -593,18 +588,16 @@ mod engine_integration_tests {
     }
 
     /// Switching the layout by hand between a word and the key that
-    /// closes it must not make the engine "correct" text that is
-    /// already right — the word on screen is still the old layout's
-    /// rendering, and re-reading it under the new one only finds
-    /// gibberish. Reported as: type `Photos` in en-US, switch to uk-UA,
+    /// closes it must not make the engine "correct" text that is already
+    /// right. Reported as: type `Photos` in en-US, switch to uk-UA,
     /// press `,` — and the whole word is retyped.
     #[test]
     fn manual_switch_before_the_boundary_suppresses_the_correction() {
         let h = Harness::start(60_000);
         type_word(&h, &GHBDSN);
-        // The engine must have seen the word's first key before the
-        // layout moves, or it stamps the word with the new layout and
-        // there is nothing to notice.
+        // The engine must see the word's first key before the layout
+        // moves, or it stamps the word with the new layout and there is
+        // nothing to notice.
         h.settle();
         *h.switcher.current.lock() = LayoutId::from("uk-UA");
         h.tap(SPACE);
@@ -617,9 +610,9 @@ mod engine_integration_tests {
         assert!(ops.is_empty(), "nothing should have been retyped: {ops:?}");
     }
 
-    /// If the layout switch fails, the correction must abort BEFORE
-    /// any backspace reaches the user's text. (The old order deleted
-    /// the word first and then discovered the switch was impossible.)
+    /// If the layout switch fails, the correction must abort BEFORE any
+    /// backspace reaches the user's text — deleting first and then
+    /// discovering the switch is impossible destroys the word.
     #[test]
     fn failed_switch_leaves_text_untouched() {
         let h = Harness::start_with(60_000, MockEmitter::default(), true);
@@ -642,12 +635,11 @@ mod engine_integration_tests {
         let h = Harness::start(60_000);
         type_word(&h, &GHBDSN);
         h.tap(SPACE);
-        // Echoes arrive promptly (one keyd round-trip), while the
-        // engine is still inside its post-replay settle window.
+        // Echoes arrive one keyd round-trip later, while the engine is
+        // still inside its post-replay settle window.
         h.wait_ops(2);
         h.replay_echoes();
         h.settle();
-        // Still exactly one correction.
         assert_eq!(h.emitter.ops().len(), 2, "echoes must not re-correct");
 
         // Buffer unpolluted: the next mistyped word corrects with the
@@ -659,11 +651,10 @@ mod engine_integration_tests {
         assert_eq!(ops[2], EmitOp::Backspaces(7));
     }
 
-    /// СИМПТОМ 2: type a word, complete it, backspace over the space
-    /// and two letters, retype them, complete again. The second
-    /// correction must cover the WHOLE word (7 backspaces), not just
-    /// the retyped tail (3) — under-counting here is what chopped
-    /// words in half.
+    /// Reported symptom "word chopped in half": complete a word,
+    /// backspace over the space and two letters, retype them, complete
+    /// again. The second correction must cover the WHOLE word (7
+    /// backspaces), not just the retyped tail (3).
     #[test]
     fn backspace_edit_recorrects_whole_word() {
         let h = Harness::start(60_000);
@@ -673,8 +664,6 @@ mod engine_integration_tests {
         h.replay_echoes(); // keyd delivers our correction's echoes
         h.settle();
 
-        // User edits: BS over the space, BS over the last letter,
-        // retype it, complete again.
         h.tap(BACKSPACE);
         h.tap(BACKSPACE);
         h.tap(GHBDSN[5]);
@@ -695,18 +684,17 @@ mod engine_integration_tests {
         );
     }
 
-    /// СИМПТОМ 1: the user keeps typing while the correction is in
-    /// flight. The raced keystroke is absorbed into the plan before
-    /// anything is deleted: one extra backspace, re-typed after the
-    /// boundary, and seeded into the next word's buffer.
+    /// Reported symptom "typing through a correction": the raced
+    /// keystroke is absorbed into the plan before anything is deleted —
+    /// one extra backspace, re-typed after the boundary, and seeded into
+    /// the next word's buffer.
     #[test]
     fn raced_keystroke_is_compensated() {
         let h = Harness::start(60_000);
         type_word(&h, &GHBDSN);
         h.tap(SPACE);
-        // Next word's first letter, already in flight before the
-        // engine begins the correction — deterministic because the
-        // engine watches the channel for a quiet gap before deleting.
+        // Deterministic: the engine watches the channel for a quiet gap
+        // before deleting, so this letter is always already in flight.
         h.press(GHBDSN[0]);
         h.release(GHBDSN[0]);
         h.settle();
@@ -726,8 +714,8 @@ mod engine_integration_tests {
             "raced key must be re-typed after the boundary"
         );
 
-        // And it seeds the next word: finish the word with 5 more
-        // letters — the next correction must count all 6 + boundary.
+        // Finish the word with 5 more letters: the next correction must
+        // count all 6 + boundary.
         for &sc in &GHBDSN[1..] {
             h.tap(sc);
         }
@@ -754,9 +742,8 @@ mod engine_integration_tests {
         h.settle();
 
         let ops = h.emitter.ops();
-        // Correction 1 absorbs word2 up to its boundary: deletes
-        // word1(6) + space(1) + word2(6) + space(1) = 14, replays all
-        // of it in order.
+        // Correction 1 absorbs word2 up to its boundary:
+        // word1(6) + space(1) + word2(6) + space(1) = 14.
         assert_eq!(
             ops[0],
             EmitOp::Backspaces(14),
@@ -774,9 +761,9 @@ mod engine_integration_tests {
             EmitOp::Keys(expected_replay),
             "replay must preserve typed order, got {ops:?}"
         );
-        // The resume boundary routed word2 through the normal
-        // pipeline; the flip-flop mock detector then corrected it as
-        // its own word (7 = 6 keys + boundary).
+        // The resume boundary routed word2 through the normal pipeline,
+        // where the flip-flop mock detector corrects it in its own right
+        // (7 = 6 keys + boundary).
         assert_eq!(
             ops.get(2),
             Some(&EmitOp::Backspaces(7)),
@@ -793,16 +780,15 @@ mod engine_integration_tests {
         );
     }
 
-    /// A key that appears nowhere in the correction being replayed.
-    /// An intruder sharing a scancode with our own replay can be
-    /// swallowed by the echo queue instead — which is a real hazard,
-    /// but not the one these tests are about, and it made them depend
-    /// on how fast the echoes happened to arrive.
+    /// A key that appears nowhere in the correction being replayed: an
+    /// intruder sharing a scancode with our own replay is swallowed by
+    /// the echo queue instead, which makes these tests depend on how
+    /// fast the echoes happen to arrive.
     const INTRUDER: u32 = 0x2D; // `X` — not in GHBDSN, not SPACE
 
     /// Send one press+release of `sc` into the engine's key stream from
-    /// wherever it is called — used to simulate a keystroke the
-    /// compositor interleaves with a burst we are still emitting.
+    /// wherever it is called — a keystroke the compositor interleaves
+    /// with a burst we are still emitting.
     fn intrude(key_tx: &Sender<KeyEvent>, sc: u32) {
         for direction in [KeyDirection::Press, KeyDirection::Release] {
             let _ = key_tx.send(KeyEvent {
@@ -883,17 +869,15 @@ mod engine_integration_tests {
     /// A correction fired by a chord starts while that chord's modifiers
     /// are still down, and the replay reaches the application the way
     /// the user's keys do — so under a held Ctrl every replayed key
-    /// arrives as a shortcut and nothing is typed. Confirmed against a
-    /// real compositor both ways.
+    /// arrives as a shortcut and nothing is typed.
     #[test]
     fn accept_chord_releases_its_own_modifiers_before_typing() {
-        // This user's configured chord, which also exercises parsing
-        // `Meta` — the half the default `Ctrl+Shift` never touches.
+        // `Ctrl+Meta` also exercises parsing `Meta` — the half the
+        // default `Ctrl+Shift` never touches.
         let h = suggestion_harness_with_chord(Some("Ctrl+Meta"));
         type_word(&h, &HWLLO);
         h.tap(SPACE);
         let _generation = ready_generation(&h);
-        // Ctrl+Meta, the modifier half of this user's accept chord.
         let chord = poltertype_types::Modifiers {
             control: true,
             meta: true,
@@ -954,9 +938,8 @@ mod engine_integration_tests {
         );
     }
 
-    /// An idle pause mid-word (thinking) must not let the engine
-    /// correct the tail it saw afterwards — that used to leave the
-    /// word's head behind.
+    /// An idle pause mid-word must not let the engine correct only the
+    /// tail it saw afterwards, leaving the word's head behind.
     #[test]
     fn idle_gap_mid_word_suppresses_correction() {
         let h = Harness::start(50); // 50 ms idle timeout
@@ -993,10 +976,9 @@ mod engine_integration_tests {
         );
     }
 
-    /// The flip side — the main chat-box flow: click into an input
-    /// field (nothing mid-flight), type a word in the wrong layout,
-    /// hit space. That word must still correct, with exactly its own
-    /// length. A click must not cost the user their next correction.
+    /// The main chat-box flow: click into an input field, type a word in
+    /// the wrong layout, hit space. A click must not cost the user their
+    /// next correction, and the count must be exactly the word's length.
     #[test]
     fn click_then_fresh_word_corrects_normally() {
         let h = Harness::start(60_000);
@@ -1017,8 +999,8 @@ mod engine_integration_tests {
 
     // ─── Spelling suggestions ────────────────────────────────────────
 
-    /// Never has an opinion — leaves every word as typed, so the
-    /// suggestions gate is reached on each completed word.
+    /// Leaves every word as typed, so the suggestions gate is reached on
+    /// each completed word.
     struct NoOpinionDetector;
 
     impl Detector for NoOpinionDetector {
@@ -1125,16 +1107,14 @@ mod engine_integration_tests {
         assert_eq!(entries[0].text, "hello");
         assert!(entries[0].switch_to.is_none());
         assert_eq!(entries[0].action, SuggestionAction::Replace);
-        // The escape hatch always closes the list, carrying the typed
-        // word so the accept path knows what to add.
+        // The escape hatch closes the list, carrying the typed word so
+        // the accept path knows what to add.
         assert_eq!(entries[1].action, SuggestionAction::AddToDictionary);
         assert_eq!(entries[1].text, "hwllo");
         let (ops, _) = h.stop();
         assert!(ops.is_empty(), "an offer alone must not emit keystrokes");
     }
 
-    /// Accepting the add-to-dictionary row must emit the
-    /// `AddToDictionary` event and touch nothing on screen.
     #[test]
     fn add_to_dictionary_entry_emits_event_and_no_keystrokes() {
         let h = suggestion_harness();
@@ -1375,11 +1355,7 @@ mod engine_integration_tests {
     /// Regression for the two bugs the first live Hyprland run hit: the
     /// evdev listener stamps a modifier's own press with its flag, which
     /// read as a command and killed the accept chord; and pausing to
-    /// *read* the tooltip past `idle_timeout_ms` voided the offer on the
-    /// chord itself.
-    ///
-    /// Drives word → pause past the timeout → the full chord with
-    /// listener-faithful modifier flags. The replacement must land.
+    /// *read* the tooltip past `idle_timeout_ms` voided the offer.
     #[test]
     fn accept_chord_survives_modifier_presses_and_idle_gap() {
         let h = Harness::start_full(
@@ -1410,10 +1386,9 @@ mod engine_integration_tests {
         assert_eq!(
             ops,
             vec![
-                // No `ReleaseModifiers` here, unlike the test above:
-                // this run lets Ctrl and Shift back up while the
-                // correction is still absorbing, so by the time it
-                // types there is nothing held to get in the way.
+                // No `ReleaseModifiers`: this run lets Ctrl and Shift
+                // back up while the correction is still absorbing, so by
+                // the time it types nothing is held.
                 EmitOp::Backspaces(7),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ],
@@ -1532,10 +1507,9 @@ mod engine_integration_tests {
     }
 
     /// `[exceptions].word_whitelist` says "never auto-correct this
-    /// word", and for a long time it only silenced the suggestion
-    /// tooltip while the correction went ahead regardless. The
-    /// detector here switches everything it is shown, so anything
-    /// that reaches it corrects — nothing must.
+    /// word"; it once only silenced the suggestion tooltip while the
+    /// correction went ahead regardless. The detector here switches
+    /// everything it is shown, so anything reaching it corrects.
     #[test]
     fn whitelisted_word_is_not_auto_corrected() {
         let h = Harness::start_configured(
@@ -1563,11 +1537,10 @@ mod engine_integration_tests {
         );
     }
 
-    /// The manual hotkey after one of our own corrections puts the
-    /// word back — it used to re-apply the same correction, which
-    /// deleted the word and retyped it identically — and takes the
-    /// rescued word into the user's dictionary, the only route the
-    /// auto-correction path has into it.
+    /// The manual hotkey after one of our own corrections puts the word
+    /// back (re-applying the same correction deleted it and retyped it
+    /// identically) and takes the rescued word into the user's
+    /// dictionary — the only route the auto-correction path has in.
     #[test]
     fn manual_hotkey_undoes_a_correction_and_learns_the_word() {
         let h = Harness::start(60_000);
@@ -1670,11 +1643,10 @@ mod boundary_tests {
         }
     }
 
+    /// Space and ordinary punctuation are safe to re-emit, so
+    /// auto-correct must still fire on them.
     #[test]
     fn submission_boundary_ignores_space_and_punctuation() {
-        // Space and ordinary punctuation are safe to re-emit, so they
-        // must NOT be treated as submission boundaries (auto-correct
-        // should still fire on them).
         for c in [' ', '.', ',', ';', '!', '?', ':', '/'] {
             assert!(
                 !is_submission_boundary(c),
@@ -1683,11 +1655,8 @@ mod boundary_tests {
         }
     }
 
-    /// Real ALL-CAPS abbreviations are exactly what the filter targets:
-    /// the user held Shift / Caps Lock and typed a known acronym in
-    /// either script. Switching `URL` because it looks like a Cyrillic
-    /// noun under uk-UA is the kind of "correction" the user hated, so
-    /// the filter must fire for both Latin and Cyrillic variants.
+    /// Switching `URL` because it looks like a Cyrillic noun under uk-UA
+    /// is exactly what this filter exists to stop, in either script.
     #[test]
     fn all_caps_flags_latin_and_cyrillic_abbreviations() {
         for w in ["URL", "HTTP", "API", "OK", "IP", "ССЫЛКА", "АПІ"] {
@@ -1695,9 +1664,8 @@ mod boundary_tests {
         }
     }
 
-    /// Lone uppercase letters are ambiguous — "I just hit Shift to
-    /// start a sentence" looks identical to "I'm typing the pronoun
-    /// `I`". Don't fire the suppressor on those.
+    /// Lone uppercase letters are ambiguous: a sentence-initial Shift
+    /// looks identical to the pronoun `I`.
     #[test]
     fn all_caps_ignores_single_uppercase_letter() {
         for w in ["I", "A", "Я", "Є"] {
@@ -1708,11 +1676,9 @@ mod boundary_tests {
         }
     }
 
-    /// Any lowercase letter at all disqualifies the buffer: that's
-    /// normal prose typing where the user just hit Shift for the
-    /// initial / a proper noun, and we should let the detector run as
-    /// usual. `iPhone` / `IPv4` mix case on purpose and must fall
-    /// through too.
+    /// Any lowercase letter disqualifies the buffer: that is prose with
+    /// a Shift for the initial, and the detector should run as usual.
+    /// `iPhone` / `IPv4` mix case on purpose and fall through too.
     #[test]
     fn all_caps_rejects_mixed_and_lowercase() {
         for w in [
@@ -1732,10 +1698,8 @@ mod boundary_tests {
     }
 
     /// Digits and the in-word apostrophe live in the buffer alongside
-    /// real letters (see `is_word_char`). They're case-less, so they
-    /// shouldn't tip the verdict either way — `URL2` and `DON'T` are
-    /// still ALL CAPS; `1234` and a lone `'` are not (no upper-letter
-    /// count).
+    /// real letters (see `is_word_char`) but are case-less, so they must
+    /// not tip the verdict either way.
     #[test]
     fn all_caps_treats_digits_and_apostrophe_as_neutral() {
         assert!(looks_like_all_caps("URL2"));
@@ -1744,10 +1708,8 @@ mod boundary_tests {
         assert!(!looks_like_all_caps("'"));
     }
 
-    /// Empty input is a defensive case — the engine doesn't call us
-    /// with an empty buffer (`decide` short-circuits earlier) but the
-    /// helper should still return `false` rather than panic or claim
-    /// "yes" via vacuous truth.
+    /// Defensive: `decide` short-circuits before an empty buffer gets
+    /// here, but the helper must not claim "yes" by vacuous truth.
     #[test]
     fn all_caps_rejects_empty_string() {
         assert!(!looks_like_all_caps(""));
@@ -1769,16 +1731,14 @@ mod last_word_consume_tests {
     /// correction, so the text accumulated and the sound looped until
     /// the app was killed.
     ///
-    /// A full `SwitcherEngine` is impractical here, so this exercises
-    /// the storage primitive directly: what must not regress is that
-    /// `write().take()` is load-bearing and clone-and-read re-introduces
-    /// the loop.
+    /// A full `SwitcherEngine` is impractical here, so this pins the
+    /// storage primitive: `write().take()` is load-bearing and
+    /// clone-and-read re-introduces the loop.
     #[test]
     fn take_consumes_last_word_so_repeated_fires_no_op() {
         let storage: Arc<RwLock<Option<LastWord>>> = Arc::new(RwLock::new(None));
 
-        // Engine stashes a last word after auto-correcting `цщц`
-        // → `wow `.
+        // As stashed after auto-correcting `цщц` → `wow `.
         *storage.write() = Some(LastWord {
             keys: Vec::new(),
             rendered: "цщц".into(),
@@ -1789,15 +1749,14 @@ mod last_word_consume_tests {
             corrected_to: Some(LayoutId::new("en-US")),
         });
 
-        // First fire of the manual hotkey: take wins, processes.
         let first = storage.write().take();
         assert!(
             first.is_some(),
             "first manual switch must see the stashed last_word"
         );
 
-        // Echo / auto-repeat fires: subsequent takes find None.
-        // This is what stops the loop and the sound spam.
+        // Echo / auto-repeat fires: subsequent takes find None, which is
+        // what stops the loop and the sound spam.
         for _ in 0..50 {
             let echo = storage.write().take();
             assert!(
@@ -1823,11 +1782,9 @@ mod code_check_render_tests {
         }
     }
 
-    /// Regression: typing the Ukrainian word `Друже` while en-US is
-    /// active produces the en-US render `Lhe;t` (because 0x27, the
-    /// uk-UA letter `ж`, is `;` under en-US). The bare `;` made
-    /// `looks_like_code_token` veto the auto-switch. The cleaned
-    /// rendering should drop that `;` and read `Lhet`.
+    /// Regression: `Друже` typed while en-US is active renders `Lhe;t`
+    /// (0x27, the uk-UA letter `ж`, is `;` under en-US), and that bare
+    /// `;` made `looks_like_code_token` veto the auto-switch.
     #[test]
     fn strips_cross_layout_punct_from_render() {
         let db = LayoutDb::load_embedded();
@@ -1845,10 +1802,9 @@ mod code_check_render_tests {
         assert_eq!(cleaned, "Lhet");
     }
 
-    /// Real `_` typed under en-US is genuine code intent — the
-    /// scancode (0x0C with shift) is `_` in both layouts and not a
-    /// letter anywhere. It must survive the cleanup so the
-    /// snake_case heuristic still fires on real code.
+    /// A real `_` (0x0C with shift) is `_` in both layouts and a letter
+    /// in neither, so it must survive the cleanup — otherwise the
+    /// snake_case heuristic stops firing on real code.
     #[test]
     fn keeps_genuine_underscore() {
         let db = LayoutDb::load_embedded();
@@ -1884,8 +1840,8 @@ mod code_check_render_tests {
         assert_eq!(cleaned, "Друже");
     }
 
-    /// Fallback: if the current layout isn't in the DB the function
-    /// should return the supplied `fallback` string untouched.
+    /// A current layout missing from the DB returns `fallback`
+    /// untouched, so the mid-decision path can continue.
     #[test]
     fn falls_back_when_layout_missing() {
         let db = LayoutDb::load_embedded();
@@ -1929,8 +1885,8 @@ mod boundary_key_tests {
     }
 
     /// A character the target produces on the very key that was typed
-    /// must keep it, rather than wandering to some other key that
-    /// happens to carry the same glyph.
+    /// keeps it, rather than wandering to another key carrying the same
+    /// glyph.
     #[test]
     fn key_is_kept_when_the_target_agrees() {
         let db = LayoutDb::load_embedded();
@@ -1952,9 +1908,8 @@ mod boundary_key_tests {
     }
 
     /// Nothing to remap to (unknown layout, or a character the target
-    /// cannot type) leaves the key as it was — the correction is still
-    /// worth making with the wrong separator, which is what shipped
-    /// before this function existed.
+    /// cannot type) leaves the key as it was: the correction is still
+    /// worth making with the wrong separator.
     #[test]
     fn falls_back_to_the_typed_key() {
         let db = LayoutDb::load_embedded();
@@ -1975,8 +1930,7 @@ mod boundary_key_tests {
     /// Deliberately just these two: the bundled tables cover the plain
     /// and shift levels only, and a few layouts reach some punctuation
     /// through AltGr, which PolterType does not track at all (bg-BG has
-    /// no `(`, pt-BR no `?`). Those fall back to the key as typed, the
-    /// same as before this function existed.
+    /// no `(`, pt-BR no `?`). Those fall back to the key as typed.
     #[test]
     fn every_bundled_layout_can_type_a_full_stop_and_a_comma() {
         let db = LayoutDb::load_embedded();
@@ -1999,11 +1953,9 @@ mod layout_eligibility_tests {
         LayoutId::from(s)
     }
 
-    /// The original "http " bug: detector picked `fr-FR` even though
-    /// the user only had en-US / ru-RU / uk-UA active in the OS, and
-    /// `switch_to(fr-FR)` then aborted *after* backspaces had already
-    /// destroyed the word. The OS-active filter must drop fr-FR from
-    /// the candidate set before the detector ever sees it.
+    /// The original "http " bug: the detector picked `fr-FR` with only
+    /// en-US / ru-RU / uk-UA active in the OS, and `switch_to(fr-FR)`
+    /// then aborted *after* backspaces had destroyed the word.
     #[test]
     fn os_inactive_layout_is_dropped_from_candidates() {
         let current = id("uk-UA");
@@ -2032,11 +1984,10 @@ mod layout_eligibility_tests {
         ));
     }
 
-    /// The current layout always passes, even if the OS list
-    /// transiently doesn't report it. Without this, a query race could
-    /// strip the layout the user is *currently typing in* from the
-    /// candidate set, leaving the engine unable to render the buffer
-    /// for the "keep current" code path.
+    /// The current layout always passes, even when the OS list
+    /// transiently omits it: a query race would otherwise strip the
+    /// layout the user is *currently typing in* from the candidate set,
+    /// leaving nothing to render the buffer with.
     #[test]
     fn current_layout_always_passes() {
         let current = id("uk-UA");
@@ -2050,19 +2001,17 @@ mod layout_eligibility_tests {
         ));
     }
 
-    /// When the OS query fails (`None`) we fail open — fall back to the
-    /// pre-fix behaviour where settings are the only filter. Better to
-    /// occasionally pick an unreachable layout (caught by the
-    /// apply_correction pre-flight) than freeze the engine entirely.
+    /// A failed OS query (`None`) fails open, leaving settings as the
+    /// only filter: occasionally picking an unreachable layout (caught
+    /// by the `apply_correction` pre-flight) beats freezing the engine.
     #[test]
     fn fail_open_when_os_query_unavailable() {
         let current = id("uk-UA");
         assert!(is_layout_eligible(&id("fr-FR"), &current, &[], &[], None,));
     }
 
-    /// Settings `ignored` always wins, even over OS-active. If a user
-    /// disables a layout in our settings, we honour that regardless of
-    /// what the OS reports.
+    /// Settings `ignored` wins over OS-active: a layout the user
+    /// disabled stays disabled whatever the OS reports.
     #[test]
     fn ignored_wins_over_os_active() {
         let current = id("uk-UA");
@@ -2156,7 +2105,6 @@ mod chord_tests {
     #[test]
     fn fires_once_per_press_ignoring_autorepeat() {
         let mut down = false;
-        // First press fires.
         assert!(match_chord(
             &ev(SPACE, KeyDirection::Press, ctrl_shift()),
             CTRL_SHIFT_SPACE,
@@ -2183,7 +2131,6 @@ mod chord_tests {
             CTRL_SHIFT_SPACE,
             &mut down
         ));
-        // Re-armed — a fresh press fires again.
         assert!(match_chord(
             &ev(SPACE, KeyDirection::Press, ctrl_shift()),
             CTRL_SHIFT_SPACE,
@@ -2229,7 +2176,6 @@ mod chord_tests {
             &mut down
         ));
         assert!(!down);
-        // The real chord still fires on its first press.
         assert!(match_chord(
             &ev(SPACE, KeyDirection::Press, ctrl_shift()),
             CTRL_SHIFT_SPACE,
@@ -2295,13 +2241,11 @@ mod paste_shortcut_tests {
 
     #[test]
     fn ignores_plain_v_and_other_ctrl_combos() {
-        // Plain `v` is just a letter, not a paste.
         assert!(!is_paste_shortcut(&ev(
             SC_V,
             KeyDirection::Press,
             Modifiers::NONE
         )));
-        // Ctrl+C must not be mistaken for a paste.
         let ctrl_c = 0x2E; // SC1 / evdev KEY_C
         assert!(!is_paste_shortcut(&ev(ctrl_c, KeyDirection::Press, ctrl())));
     }

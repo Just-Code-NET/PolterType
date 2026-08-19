@@ -51,8 +51,7 @@ fn empty_words_are_not_recorded() {
 
 // ── matching ─────────────────────────────────────────────────────────
 
-/// The pre-existing behaviour, unchanged: a one-word trigger ignores
-/// history entirely.
+/// A one-word trigger ignores history entirely.
 #[test]
 fn a_single_token_trigger_matches_on_the_current_word_alone() {
     let c = command("anrl");

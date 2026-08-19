@@ -5,16 +5,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) fn read_version(cargo_toml_body: &str) -> Result<String> {
-    // We deliberately don't pull in toml-edit just for one read —
-    // the workspace.package.version line has a fixed shape that's
-    // been the same since Phase 0 of the project.
+    // No toml-edit for one read: the workspace.package.version line has
+    // a fixed shape in this repo.
     for line in cargo_toml_body.lines() {
         let trimmed = line.trim_start();
         if let Some(rest) = trimmed.strip_prefix("version") {
-            // Match e.g. `version       = "0.1.0-beta.6"` or
-            // `version="..."`. Anchored on the start of trimmed
-            // text so a stray `version` substring inside a comment
-            // doesn't match.
+            // Anchored on the start of trimmed text so a stray
+            // `version` substring inside a comment doesn't match.
             let after_eq = rest.trim_start().strip_prefix('=').map(str::trim_start);
             if let Some(after_eq) = after_eq {
                 if let Some(quoted) = after_eq.strip_prefix('"') {
@@ -29,11 +26,9 @@ pub(crate) fn read_version(cargo_toml_body: &str) -> Result<String> {
 }
 
 pub(crate) fn replace_version_line(body: &str, current: &str, next: &str) -> Result<String> {
-    // Replace the FIRST occurrence of `version = "<current>"`.
-    // Doing a global string replace would also rewrite e.g. a
-    // `poltertype-types = { version = "0.1.0-beta.6" }` inside a dep entry
-    // — we only want the workspace.package one, which is the first
-    // version line in our Cargo.toml shape.
+    // FIRST occurrence only: a global replace would also rewrite a
+    // `poltertype-types = { version = "…" }` dep pin. The
+    // workspace.package one is the first version line in this file.
     let needle = format!("version       = \"{current}\"");
     if let Some(found) = body.find(&needle) {
         let mut out = String::with_capacity(body.len());
@@ -42,10 +37,8 @@ pub(crate) fn replace_version_line(body: &str, current: &str, next: &str) -> Res
         out.push_str(&body[found + needle.len()..]);
         return Ok(out);
     }
-    // Fallback for Cargo.toml shapes that don't pad the equals
-    // (e.g. someone reformatted the file). Less surgical, but only
-    // matches the FIRST `version = "<current>"` so we still don't
-    // touch dep version pins later in the file.
+    // Fallback for a Cargo.toml that doesn't pad the equals. Still
+    // first-occurrence only, so dep pins stay untouched.
     let alt_needle = format!("version = \"{current}\"");
     if let Some(found) = body.find(&alt_needle) {
         let mut out = String::with_capacity(body.len());
@@ -61,9 +54,8 @@ pub(crate) fn update_changelog(path: &Path, current: &str, next: &str) -> Result
     let Ok(body) = fs::read_to_string(path) else {
         return Ok(false);
     };
-    // We only auto-update `## [Unreleased] — <ver>` headings — that's
-    // the convention this repo follows. A user with a different
-    // CHANGELOG shape gets the warning message and can edit by hand.
+    // Only `## [Unreleased] — <ver>` headings; any other shape gets the
+    // warning and is edited by hand.
     let needle = format!("## [Unreleased] — {current}");
     let Some(found) = body.find(&needle) else {
         return Ok(false);
@@ -77,9 +69,8 @@ pub(crate) fn update_changelog(path: &Path, current: &str, next: &str) -> Result
 }
 
 pub(crate) fn workspace_root() -> Result<PathBuf> {
-    // The script is always invoked via `cargo xtask`, which sets
-    // `CARGO_MANIFEST_DIR` to the xtask crate's directory. The
-    // workspace root is one level up.
+    // `cargo xtask` sets `CARGO_MANIFEST_DIR` to the xtask crate's
+    // directory; the workspace root is one level up.
     let manifest = std::env::var("CARGO_MANIFEST_DIR")
         .context("CARGO_MANIFEST_DIR not set — run via `cargo xtask`, not the binary directly")?;
     Ok(PathBuf::from(manifest)
@@ -93,8 +84,7 @@ pub(crate) fn workspace_cargo_toml() -> Result<PathBuf> {
 }
 
 pub(crate) fn cargo_bin() -> String {
-    // Honour `CARGO` if cargo set it (it always does when run via
-    // `cargo xtask`); fall back to the bare command for the rare
-    // case of running the xtask binary directly.
+    // `CARGO` is always set under `cargo xtask`; the fallback covers
+    // running the xtask binary directly.
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".into())
 }

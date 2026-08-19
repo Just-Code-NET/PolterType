@@ -2,14 +2,11 @@
 //! path at all.
 //!
 //! A query takes 30 ms on a warm local model and seconds on a hosted
-//! API; a correction has to happen in the pause between two words. So
-//! the detector never waits by default: it answers from here, and a
-//! miss queues the question so the *next* occurrence is decided.
-//!
-//! That trade works because the same person types the same few thousand
-//! words over and over, so even a small cache reaches a high hit rate
-//! within a session, and the cost is a one-off "no opinion" the first
-//! time a word appears.
+//! API, while a correction has to happen in the pause between two
+//! words. So the detector never waits by default: it answers from here,
+//! and a miss queues the question so the *next* occurrence is decided.
+//! The trade works because one person retypes the same few thousand
+//! words, so even a small cache gets hot within a session.
 //!
 //! **What is stored is a verdict, not text a human can read back.**
 //! Keys are hashes of the candidate list, never the words, and nothing
@@ -22,11 +19,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 /// it was given, or `None` for "none of these".
 pub type Decision = Option<usize>;
 
-/// Fixed-capacity map from question-hash to decision, with a
-/// second-chance eviction: once full, insertion clears the oldest
-/// half. Cruder than a true LRU and deliberately so — it needs no
-/// per-entry bookkeeping on the read path, which is the path that
-/// runs while the user is mid-correction.
+/// Fixed-capacity map from question-hash to decision. Once full,
+/// insertion clears the oldest half — cruder than a true LRU on
+/// purpose, since it needs no per-entry bookkeeping on the read path,
+/// the one that runs while the user is mid-correction.
 pub struct DecisionCache {
     entries: HashMap<u64, Decision>,
     order: Vec<u64>,
@@ -42,12 +38,10 @@ impl DecisionCache {
         }
     }
 
-    /// Hash a question into a cache key.
-    ///
-    /// The candidate list *is* the question — same renderings, same
-    /// answer — so it alone determines the key. Hashing rather than
-    /// storing means the cache holds no recoverable copy of what was
-    /// typed.
+    /// Hash a question into a cache key. The candidate list *is* the
+    /// question, so it alone determines the key; hashing rather than
+    /// storing keeps any recoverable copy of what was typed out of the
+    /// cache.
     pub fn key(candidates: &[String]) -> u64 {
         let mut h = DefaultHasher::new();
         candidates.len().hash(&mut h);
@@ -65,17 +59,15 @@ impl DecisionCache {
         if self.capacity == 0 {
             return;
         }
-        // An existing key is an update, not a new occupant: it must
-        // not take a second slot in `order`, or a word re-decided a
-        // few times would evict everything around it.
+        // An existing key must not take a second slot in `order`, or a
+        // word re-decided a few times would evict everything around it.
         if let std::collections::hash_map::Entry::Occupied(mut e) = self.entries.entry(key) {
             e.insert(decision);
             return;
         }
         if self.entries.len() >= self.capacity {
-            // Drop the oldest half in one pass rather than one entry
-            // per insert: amortised, and it keeps `order` from needing
-            // an O(n) remove on every write.
+            // Oldest half in one pass, so `order` never needs an O(n)
+            // remove on a write.
             let cut = self.order.len() / 2;
             for old in self.order.drain(..cut) {
                 self.entries.remove(&old);
@@ -85,8 +77,8 @@ impl DecisionCache {
         self.order.push(key);
     }
 
-    /// Live entry count. Not used on any hot path — it exists so the
-    /// eviction policy can be asserted rather than assumed.
+    /// Live entry count, so the eviction policy can be asserted rather
+    /// than assumed. Not on any hot path.
     #[cfg(test)]
     pub fn len(&self) -> usize {
         self.entries.len()

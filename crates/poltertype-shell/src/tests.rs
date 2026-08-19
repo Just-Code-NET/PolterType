@@ -1,19 +1,16 @@
 //! Unit tests for the shell quirks.
 //!
-//! Each assertion is written twice, once per branch of the platform
-//! it describes, so the test says what the *other* platforms do
-//! rather than silently skipping them. The behaviours here are all
-//! ones that failed quietly in the field: a lock id that was a name
-//! where a path was wanted, and key names the user could not map to
-//! their keyboard.
+//! Each assertion is written twice, once per branch of the platform it
+//! describes, so the test says what the *other* platforms do rather
+//! than silently skipping them.
 
 use crate::{acquire_instance_lock, key_glyph, key_name_with_glyph};
 
 #[test]
 fn the_lock_admits_one_holder_and_releases_on_drop() {
-    // The property the whole thing exists for. Deliberately exercised
-    // through the real primitive rather than a stand-in: what broke
-    // before was the primitive's own behaviour, not our logic about it.
+    // Exercised through the real primitive rather than a stand-in: what
+    // broke before was the primitive's own behaviour, not our logic
+    // about it.
     let id = format!("dev.opensource.poltertype-test-{}", std::process::id());
     let dir = std::env::temp_dir().join(&id);
 
@@ -79,9 +76,8 @@ fn annotation_keeps_the_name_the_config_uses() {
 
 #[test]
 fn a_linux_window_declares_the_app_id_and_others_declare_nothing() {
-    // The regression this whole module exists for. Empty is not a
-    // neutral value here: it is passed on as an empty Wayland
-    // `app_id` and an empty X11 `WM_CLASS`, and the window ends up
+    // Empty is not a neutral value: it is passed on as an empty Wayland
+    // `app_id` and an empty X11 `WM_CLASS`, leaving the window
     // belonging to no application at all.
     #[cfg(target_os = "linux")]
     {
@@ -91,9 +87,9 @@ fn a_linux_window_declares_the_app_id_and_others_declare_nothing() {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        // Nothing to assert about the value — the struct has no such
-        // field. What matters is that the call compiles and the binary
-        // needs no `#[cfg]` of its own to make it.
+        // Nothing to assert — the struct has no such field. What
+        // matters is that the call compiles, so the binary needs no
+        // `#[cfg]` of its own.
         let _ = crate::window_platform_specific();
     }
 }
@@ -138,13 +134,11 @@ mod desktop {
 
     #[test]
     fn the_written_entry_agrees_with_the_packaged_one() {
-        // Two files describe the same application to the same desktop:
-        // this one, and the one the AppImage ships. `Exec` is the only
-        // key that legitimately differs — a package can say
-        // `poltertype` because it put the binary on `PATH`, and we
-        // cannot. Anything else drifting means a user sees one name in
-        // the menu and another in the switcher depending on how they
-        // installed.
+        // Two files describe the same app to the same desktop: this one
+        // and the AppImage's. `Exec` is the only key that legitimately
+        // differs — a package can say `poltertype` because it put the
+        // binary on `PATH`. Anything else drifting means the name in
+        // the menu depends on how the user installed.
         let ours = keys(&entry_body(&PathBuf::from("/opt/poltertype")));
         for (key, value) in keys(&packaged_entry()) {
             if key == "Exec" {
@@ -164,9 +158,8 @@ mod desktop {
         let body = entry_body(&PathBuf::from("/home/a b/poltertype"));
         assert!(body.starts_with("[Desktop Entry]\n"));
         assert!(body.contains(&format!("\nIcon={DESKTOP_ID}\n")), "{body}");
-        // X11 matches a window to its entry by `WM_CLASS`. The stem
-        // already matches, but saying it outright costs one line and
-        // covers desktops that only look at this key.
+        // X11 matches a window to its entry by `WM_CLASS`; some
+        // desktops look at nothing else.
         assert!(
             body.contains(&format!("\nStartupWMClass={DESKTOP_ID}\n")),
             "{body}"
@@ -205,9 +198,9 @@ mod desktop {
             );
         }
 
-        // The second call is what runs on every subsequent launch, and
-        // it must be a read and a compare — not five rasterisations of
-        // an icon that is already on disk.
+        // The second call runs on every subsequent launch and must be a
+        // read and a compare, not five rasterisations of an icon
+        // already on disk.
         assert!(
             !crate::desktop::install_into(&root, &exec),
             "an up-to-date install must not rewrite anything"

@@ -10,14 +10,12 @@
 //! the synth tone, and `try_default()` also fails intermittently while
 //! the OS default device is mid-switch.
 //!
-//! Device changes are still tracked, by dropping the cached stream
-//! after [`STREAM_IDLE_REFRESH`] of disuse and on any play error, so
-//! "user just plugged in headphones" works without paying the reopen
-//! during a pause/resume burst.
-//!
-//! The idle release matters for a second reason: a permanently open
-//! CoreAudio output on an HDMI device keeps coreaudiod's power
-//! assertion alive, which blocks display and system sleep on macOS.
+//! The cached stream is dropped after [`STREAM_IDLE_REFRESH`] of disuse
+//! and on any play error. That tracks device changes ("user just plugged
+//! in headphones") without paying the reopen during a pause/resume
+//! burst, and it releases the device: a permanently open CoreAudio
+//! output on HDMI keeps coreaudiod's power assertion alive, which blocks
+//! display and system sleep on macOS.
 //!
 //! Themes live in `<config-dir>/sound-themes/<name>/<event>.ogg`;
 //! missing files are silent, never a crash.

@@ -76,11 +76,9 @@ fn a_sane_check_interval_is_honoured() {
     assert_eq!(s.interval(), std::time::Duration::from_secs(12 * 3600));
 }
 
-/// User commands sit in their own `[[commands]]` table. A full
-/// config block including one must round-trip through the live
-/// `Settings` struct — the regression we care about is that
-/// `CommandsSettings` is wired in correctly (no `serde(skip)`,
-/// no `default` collision dropping the user data on save).
+/// A full config block with a `[[commands]]` entry must round-trip
+/// through the live `Settings` struct: a `serde(skip)` or a `default`
+/// collision would drop the user's data on first save.
 #[test]
 fn commands_section_round_trips_inside_full_settings() {
     let raw = r#"
@@ -96,9 +94,7 @@ action  = { type = "type_text", text = "Anatomical Reference List" }
     assert_eq!(parsed.commands[0].id, "anrl");
     assert_eq!(parsed.commands[0].trigger, "anrl");
 
-    // And the round-trip back to TOML must preserve the entry —
-    // a `Default` collision or stray `serde(skip)` would silently
-    // drop it on first save, which is the worst kind of bug.
+    // The round-trip back to TOML must preserve the entry.
     let serialised = toml::to_string_pretty(&parsed).expect("serialise");
     let back: Settings = toml::from_str(&serialised).expect("parse round-trip");
     assert_eq!(back.commands.len(), 1);
@@ -272,10 +268,9 @@ fn retires_the_shipped_list_regardless_of_order() {
     assert!(s.exceptions.disabled_apps.is_empty());
 }
 
-/// The load-bearing guard. Anything the user actually curated survives
-/// — dropping one entry from the old default is enough to prove intent,
-/// and wiping a list somebody wrote on purpose would be a worse bug
-/// than the one this migration exists to fix.
+/// The load-bearing guard: anything the user curated survives. Dropping
+/// one entry from the old default is enough to prove intent, and wiping
+/// a deliberate list is a worse bug than the one this migration fixes.
 #[test]
 fn leaves_a_curated_skip_list_alone() {
     for curated in [
@@ -322,8 +317,7 @@ fn retiring_the_skip_list_is_idempotent() {
 // ─── AI plug-ins ──────────────────────────────────────────────────────
 
 /// The `[[ai.plugins]]` table has to survive the trip from a config
-/// file to the struct the AI factory reads. Before 0.8.0 there was no
-/// such table at all and `[ai]` was two booleans nothing consulted.
+/// file to the struct the AI factory reads.
 #[test]
 fn ai_plugins_parse_from_config() {
     let raw = r#"

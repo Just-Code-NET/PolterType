@@ -13,16 +13,14 @@ pub enum AiError {
     #[error("LLM disabled: {0}")]
     RemoteDisabled(String),
     /// The `[[ai.plugins]]` entry does not describe a buildable
-    /// plug-in. Always names the entry's `id` at the call site, so a
-    /// user with three plug-ins learns which one is wrong.
+    /// plug-in. Always names the entry's `id`, so a user with three
+    /// plug-ins learns which one is wrong.
     #[error("invalid plug-in config: {0}")]
     Config(String),
 }
 
-/// The wire shape of the endpoint we are talking to.
-///
-/// Three formats cover essentially every self-hosted and hosted
-/// option, because everything that isn't Anthropic or Ollama's native
+/// The wire shape of the endpoint we are talking to. Three cover
+/// essentially everything: what is not Anthropic or Ollama's native
 /// API has settled on OpenAI's chat-completions shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WireFormat {
@@ -51,13 +49,13 @@ impl WireFormat {
 /// When the query happens relative to the correction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueryMode {
-    /// Answer from cache; on a miss return no opinion and queue the
-    /// query so the *next* occurrence of that word is decided. The
-    /// default, because it cannot slow a correction down.
+    /// Answer from cache; a miss returns no opinion and queues the
+    /// query so the *next* occurrence is decided. The default, because
+    /// it cannot slow a correction down.
     Background,
-    /// Perform the call inline, inside the deadline. Only sane against
-    /// a local endpoint, and even then it is the user choosing to put
-    /// a model in the path of their own typing.
+    /// Call inline, inside the deadline. Only sane against a local
+    /// endpoint, and even then it is the user choosing to put a model
+    /// in the path of their own typing.
     Blocking,
 }
 
@@ -71,14 +69,9 @@ impl QueryMode {
     }
 }
 
-/// Whether an endpoint's host keeps the request on this machine.
-///
-/// This is the distinction that lets a local model work without the
-/// network switch: `[ai].allow_remote` exists to gate *typed text
-/// leaving the computer*, and a request to `127.0.0.1` does not leave
-/// it. Treating "uses HTTP" and "goes on the network" as the same
-/// thing would force a user to enable remote access in order to run a
-/// model that is entirely offline.
+/// Whether an endpoint's host keeps the request on this machine — the
+/// distinction that lets a local model work without `allow_remote`.
+/// See [`crate::locality`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Locality {
     Loopback,

@@ -53,10 +53,10 @@ pub(crate) const KEY_STEP: Duration = Duration::from_millis(2);
 
 // The wait for a locked XKB group to reach focused clients
 // (`XkbLatchLockState` is asynchronous — replaying sooner resolves the
-// scancodes under the *old* layout) lives in the engine now, as
-// `LAYOUT_SETTLE` in poltertype-core: waited out from the moment of
-// the switch and before the deletion burst, so it can never sit
-// between our last look at the key stream and our first emitted key.
+// scancodes under the *old* layout) deliberately lives in the engine,
+// as `LAYOUT_SETTLE` in poltertype-core: waited out from the switch and
+// before the deletion burst, so it can never sit between our last look
+// at the key stream and our first emitted key.
 
 /// How long to let a remapped scratch keycode settle before tapping
 /// it. `ChangeKeyboardMapping` broadcasts a `MappingNotify`, and

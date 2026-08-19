@@ -11,14 +11,12 @@
 //!    `scripts/setup-linux.sh`; without them the listener returns
 //!    `InputError::Os` and the tray shows an onboarding banner.
 //!
-//! There is no third backend and there will be no AT-SPI one. The
-//! accessibility stack looked like a way around `input`-group
-//! membership, but `at-spi2-registryd` has no keyboard of its own — on
-//! Wayland it relays only what the compositor hands it, and only mutter
-//! does. Measured on wlroots: `RegisterKeystrokeListener` returns false
-//! and no events arrive even with injected keys. On X11, where it would
-//! work, the XInput2 listener already needs no permissions. See
-//! `DECISIONS.md`, 2026-08-01.
+//! There is no third backend and there will be no AT-SPI one:
+//! `at-spi2-registryd` has no keyboard of its own — on Wayland it
+//! relays only what the compositor hands it, and only mutter does
+//! (measured on wlroots: `RegisterKeystrokeListener` returns false and
+//! no events arrive even with injected keys). See `DECISIONS.md`,
+//! 2026-08-01.
 
 #![allow(unused_imports, dead_code)] // Linux-only code; Windows doesn't compile this.
 

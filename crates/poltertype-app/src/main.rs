@@ -4,8 +4,7 @@
 //! wordlist-profile watcher.
 //!
 //! The Settings GUI is a separate process (`poltertype --settings`).
-//! Smart commands are text triggers, not hotkeys — neither is wired
-//! here. See `docs/ARCHITECTURE.md`.
+//! See `docs/ARCHITECTURE.md`.
 
 // A tray-only app must not own a console: without this Windows links
 // the binary as a CUI image and allocates a conhost the moment it is
@@ -83,12 +82,8 @@ use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
 const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Move the mark on the tray icon to match what the plug-ins are waiting
-/// on, redrawing only when the number actually changed.
-///
-/// Called from both places that can change it — the heartbeat and a menu
-/// click — because a click is the one the user is watching. The icon is
-/// rasterised from scratch on every redraw, so "only when it changed"
-/// is doing real work, not tidiness.
+/// on, redrawing only when the number changed: the icon is rasterised
+/// from scratch on every redraw.
 fn sync_attention(
     tray: &TrayIcon,
     item_pause: &tray_icon::menu::MenuItem,
@@ -144,8 +139,6 @@ fn main() -> Result<()> {
     let Some(_instance) = poltertype_shell::acquire_instance_lock(APP_ID, &config_dir)
         .context("create single-instance lock")?
     else {
-        // Named rather than merely stated: "another instance is already
-        // running" gave nobody anything to act on.
         warn!(
             "another instance is already running, exiting — if no PolterType window or tray \
              icon exists, look for a leftover PolterType or plug-in process"
@@ -163,8 +156,7 @@ fn main() -> Result<()> {
     };
     info!(path = ?settings.path(), "settings loaded");
 
-    // Make the OS autostart entry match the setting. Runs on every
-    // startup so a config edited by hand takes effect too.
+    // Runs on every startup, so a config edited by hand takes effect too.
     poltertype_autostart::sync(
         settings.snapshot().general.autostart,
         poltertype_autostart::App {
@@ -174,11 +166,9 @@ fn main() -> Result<()> {
         },
     );
 
-    // Make sure the desktop can draw this app: a menu entry and an
-    // icon, written only where nothing has installed them already.
-    // Not a setting like autostart above — this changes nothing about
-    // what the machine does, and without it a Wayland session has no
-    // icon for our windows to wear at all.
+    // A menu entry and an icon, written only where nothing has installed
+    // them already: without them a Wayland session has no icon for our
+    // windows to wear at all.
     poltertype_shell::install_desktop_entry();
 
     // ─── Layout switcher (built first so we can query active OS
@@ -195,11 +185,9 @@ fn main() -> Result<()> {
     };
 
     // ─── Layouts ───────────────────────────────────────────────────
-    // Mappings and FST wordlists ship as plain files; the runtime
-    // resolver in `poltertype_core::data_dir` finds the live path (see
-    // `docs/DATA_LAYOUT.md`). Only the layouts the OS reports as
-    // enabled are loaded, which saves the FST RAM for everything else
-    // and stops the detector picking an unreachable layout.
+    // Data files are resolved at runtime — see `docs/DATA_LAYOUT.md`.
+    // Only the layouts the OS reports as enabled are loaded: saves the
+    // FST RAM and stops the detector picking an unreachable layout.
     let data_dir = poltertype_core::resolve_data_dir().context("resolve data directory")?;
     info!(?data_dir, "data directory resolved");
 
@@ -221,9 +209,8 @@ fn main() -> Result<()> {
 
     // `list_active` names languages, but a language is not a keyboard —
     // Bulgarian alone has three under `bg-BG` and a bundled mapping can
-    // describe only one. Ask the backend what the installed keyboards
-    // produce; one that cannot answer returns nothing and the bundled
-    // tables stand.
+    // describe only one. A backend that cannot answer returns nothing
+    // and the bundled tables stand.
     let os_keymaps = match layout_switcher.describe_keymaps() {
         Ok(maps) => {
             info!(
@@ -289,32 +276,26 @@ fn main() -> Result<()> {
     // look plausible either way), word-plausibility as the fallback.
     // The engine stops at the first non-NoOpinion verdict.
     let dictionary = build_dictionary_detector(&layouts);
-    // Shares the inner `Arc<RwLock>` with the detector inside the
-    // engine, so "Reload Settings" and the profile watcher below can
-    // swap dictionaries without a restart.
+    // Shares the inner `Arc<RwLock>` with the detector inside the engine,
+    // so "Reload Settings" and the profile watcher can swap dictionaries
+    // without a restart. The suggester takes another clone of the same
+    // handle, so a swap reaches suggestions too.
     let dict_reload_handle = dictionary.handle();
-    // The suggester shares the same hot-swappable dict set through
-    // another handle clone — per-app profile swaps and settings
-    // reloads reach suggestions without any extra plumbing.
     let suggester = build_suggester(&layouts, dictionary.handle());
     let mut detectors: Vec<Box<dyn Detector>> = vec![
         Box::new(dictionary),
         Box::new(build_plausibility_detector(&layouts)),
     ];
-    // Appended, never substituted: the offline pipeline above decides
-    // on its own and an AI plug-in only adds a voice. See
-    // `detectors::build_ai_detectors` for the gates it has to pass.
+    // Appended, never substituted: an AI plug-in only adds a voice. The
+    // gates it has to pass are in `detectors::build_ai_detectors`.
     detectors.extend(build_ai_detectors(&settings.snapshot().ai));
 
     // ── Wordlist profile cache + focus watcher ───────────────────────
     //
     // One dictionary set per configured profile, built up front: the
     // FSTs are already Arc-shared, so this only rebuilds the user
-    // overlays. The watcher thread polls `focused_exe()` every ~250 ms
-    // and swaps the set under a single `RwLock::write()`.
-    //
-    // Shared so the settings close-handler can rebuild it from disk;
-    // without that, per-profile edits would need a tray restart.
+    // overlays. Shared so the settings close-handler can rebuild it from
+    // disk; without that, per-profile edits would need a tray restart.
     let profile_dict_cache: ProfileDictCache = Arc::new(RwLock::new(build_full_profile_cache(
         &layouts,
         &data_dir,
@@ -337,9 +318,8 @@ fn main() -> Result<()> {
     let (engine_event_tx, engine_event_rx) = unbounded::<SwitcherEvent>();
     let (engine_cmd_tx, engine_cmd_rx) = unbounded::<EngineCommand>();
 
-    // Clone the event sender before handing it to the engine — the
-    // layout poller below also publishes LayoutChanged events through
-    // the same channel.
+    // Cloned before the engine takes it: the layout poller publishes
+    // LayoutChanged through the same channel.
     let engine_event_tx_for_poller = engine_event_tx.clone();
 
     let engine = SwitcherEngine::new(EngineDeps {
@@ -361,8 +341,7 @@ fn main() -> Result<()> {
 
     // ─── Input listener ────────────────────────────────────────────
     // A failure here turns off the app's whole reason to exist, so the
-    // error text is kept and surfaced as an onboarding alert. A log
-    // file the user has never heard of is not a user interface.
+    // error text is kept and surfaced as an onboarding alert.
     let mut input_alert: Option<String> = None;
     let mut input_listener = match create_listener(&key_gate) {
         Ok(l) => Some(l),
@@ -405,8 +384,7 @@ fn main() -> Result<()> {
     poltertype_shell::keep_out_of_dock(&mut event_loop);
 
     let menu = Menu::new();
-    // Present only when the keyboard hooks failed to start. Opens the
-    // Settings window on its Setup pane, which probes this machine.
+    // Only when the keyboard hooks failed to start.
     let item_setup = input_alert
         .as_ref()
         .map(|_| MenuItem::new("⚠ Keyboard hooks unavailable — Setup…", true, None));
@@ -422,14 +400,8 @@ fn main() -> Result<()> {
     let item_reload = MenuItem::new("Reload Settings", true, None);
     let item_pause = MenuItem::new("Pause auto-switch", true, None);
 
-    // One dual-purpose entry: "Check for updates…" until the worker has
-    // staged a release, then "⟳ Restart to update". Hidden entirely
-    // when `[updates].enabled` is off.
-    //
-    // A staged update may already exist — downloaded in a previous
-    // session that never quit through the menu.
-    // `pending_for_this_build` recovers it, and throws it away if it
-    // turns out to be the update this process already is.
+    // One dual-purpose entry — "Check for updates…" or "⟳ Restart to
+    // update"; hidden entirely when `[updates].enabled` is off.
     let updates_enabled = settings.snapshot().updates.enabled;
     let mut update_pending = if updates_enabled {
         pending_for_this_build()
@@ -534,18 +506,13 @@ fn main() -> Result<()> {
         ));
     }
 
-    // Cloned into the event loop to flip the item's text on a state
-    // change. `MenuItem` is internally Arc-shared, so this is a refcount.
+    // `MenuItem` is internally Arc-shared, so this clone is a refcount.
     let item_pause_for_loop = item_pause.clone();
 
-    // Strings come from `[hotkeys]`. A malformed entry falls back to the
-    // documented default, so a typo cannot silently cost the user their
-    // hotkeys.
     let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
-    // Backend-dependent default: on macOS `Ctrl+Space` and
-    // `Ctrl+Shift+Space` belong to the system input-source switcher.
     // Keyed off the live backend rather than the build target, so a
-    // config written on one OS means the same on another.
+    // config written on one OS means the same on another. Why this chord:
+    // see `MACOS_SAFE_PAUSE_TOGGLE`.
     let configured_pause = settings.snapshot().hotkeys.pause_toggle;
     let on_macos_tis = layout_switcher.backend_name() == "macos-tis";
     let pause_src = if on_macos_tis && configured_pause == DEFAULT_PAUSE_TOGGLE {
@@ -558,12 +525,10 @@ fn main() -> Result<()> {
         &configured_pause
     };
     let hk_pause = parse_hotkey_or_default(pause_src, DEFAULT_PAUSE_TOGGLE);
-    // Backend-dependent default. `Ctrl+Shift+Backspace` is fine where
-    // the OS *consumes* the hotkey, but on the Wayland keystream path we
-    // only observe — the Backspace also reaches the focused app, where
-    // `Ctrl+Backspace` deletes the previous word and corrupts the text
-    // we are about to correct. Only rebound when the user is still on
-    // the default; an explicit binding is honoured as-is.
+    // `Ctrl+Shift+Backspace` is fine where the OS *consumes* the hotkey,
+    // but the Wayland keystream path only observes — the Backspace also
+    // reaches the focused app, where `Ctrl+Backspace` deletes the very
+    // word we are about to correct.
     let configured_switch = settings.snapshot().hotkeys.manual_switch_last;
     let switch_src = if use_keystream_hotkeys && configured_switch == DEFAULT_SWITCH_LAST {
         info!(
@@ -576,9 +541,6 @@ fn main() -> Result<()> {
     };
     let hk_switch = parse_hotkey_or_default(switch_src, DEFAULT_SWITCH_LAST);
     if use_keystream_hotkeys {
-        // Wayland: feed resolved chords to the engine; it matches them
-        // off the evdev stream. Unmappable keys (no SC Set-1 equivalent
-        // in our table) are dropped with a warning rather than failing.
         let chords = poltertype_core::engine::KeystreamHotkeys {
             pause: chord_from_hotkey(&hk_pause),
             switch_last: chord_from_hotkey(&hk_switch),
@@ -629,14 +591,8 @@ fn main() -> Result<()> {
         info!("automatic updates are disabled in config.toml; no update checks will be made");
     }
 
-    // The engine emits `LayoutChanged` only for its own switches, so
-    // user-driven ones (Win+Space, language bar, ibus…) are caught by
-    // polling the OS every ~250 ms.
     spawn_layout_poller(Arc::clone(&layout_switcher), engine_event_tx_for_poller)?;
 
-    // Focus-driven wordlist profile watcher: same cadence as the
-    // layout poller. Cheap when no profiles are configured (the
-    // profile-cache HashMap is empty so the swap path is a no-op).
     if !profile_dict_cache.read().is_empty() {
         spawn_profile_watcher(
             Arc::clone(&focus_tracker),
@@ -652,9 +608,6 @@ fn main() -> Result<()> {
     let cmd_tx_for_loop = engine_cmd_tx.clone();
     let settings_for_loop = Arc::clone(&settings);
 
-    // Tray-side mirror of engine state. Updated from PausedChanged
-    // and LayoutChanged events; consulted whenever we need to redraw
-    // (icon + tooltip both depend on both fields).
     let mut tray_state = TrayState {
         layout: initial_layout,
         paused: false,
@@ -665,13 +618,13 @@ fn main() -> Result<()> {
     info!("entering event loop");
     // A slow heartbeat, so a mode changed from the command line — or an
     // authority that expired on its own — reaches the menu without a
-    // click. A thread and the event-loop proxy rather than
-    // `ControlFlow::WaitUntil`, because the GTK backend never delivers
-    // the timed wake-up and the timer version silently never fired.
+    // click. A thread rather than `ControlFlow::WaitUntil`: the GTK
+    // backend never delivers the timed wake-up, and the timer version
+    // silently never fired.
     //
-    // Armed only when there is a plug-in to watch, so stock PolterType
-    // stays idle. A service counts even if it reports no state: this is
-    // also the only thing that notices one dying.
+    // Armed only when there is a plug-in to watch. A service counts even
+    // if it reports no state: this is also the only thing that notices
+    // one dying.
     if plugin_menu.reports_state() || supervisor.has_services() {
         let proxy = event_loop.create_proxy();
         std::thread::Builder::new()
@@ -696,16 +649,12 @@ fn main() -> Result<()> {
                 sync_attention(&tray, &item_pause, &mut tray_state, &plugin_menu);
             }
             Event::UserEvent(UserEvent::Menu(id)) => {
-                // A service that died since the last heartbeat is
-                // reported now rather than at the next one.
                 announce_departed(supervisor.reap());
                 if plugin_menu.handle(&id) {
-                    // Belonged to a plug-in. It has already re-read its
-                    // state, and the mark on the icon has to move with it:
-                    // clearing a queue and watching the dot stay put for
-                    // another fifteen seconds reads as the click not having
-                    // worked, which is the one thing a direct action must
-                    // never look like.
+                    // Belonged to a plug-in, which has re-read its state:
+                    // the mark has to move with it, or clearing a queue
+                    // looks like a click that did nothing for another
+                    // fifteen seconds.
                     sync_attention(&tray, &item_pause, &mut tray_state, &plugin_menu);
                 } else if id == quit_id {
                     info!("Quit clicked — shutting down");
@@ -725,7 +674,6 @@ fn main() -> Result<()> {
                     *control_flow = ControlFlow::Exit;
                 } else if Some(&id) == update_id.as_ref() {
                     match update_pending.as_ref() {
-                        // Staged and verified — install it and come back.
                         Some(pending) => {
                             info!(version = %pending.version, "Restart to update clicked");
                             if let Some(mut listener) = input_listener.take() {
@@ -734,14 +682,8 @@ fn main() -> Result<()> {
                             apply_now(pending, true);
                             *control_flow = ControlFlow::Exit;
                         }
-                        // Nothing staged — the user is asking "well, is
-                        // there one?". Wake the worker; it reports back
-                        // through UserEvent::Update like any other check.
                         None => {
                             info!("manual update check");
-                            // `try_send` on a bounded(1): if a check is
-                            // already queued, a second click is a no-op
-                            // rather than a second round-trip.
                             let _ = check_now_tx.try_send(());
                         }
                     }
@@ -766,16 +708,12 @@ fn main() -> Result<()> {
                         warn!("log directory unknown");
                     }
                 } else if id == wordlists_id {
-                    // First run: create the directory and seed a README
-                    // naming the files that are recognised.
                     match ensure_user_wordlist_dir() {
                         Ok(dir) => open_path(&dir, "user wordlists folder"),
                         Err(e) => warn!(?e, "could not prepare user wordlists folder"),
                     }
                 } else if id == layouts_id {
-                    // Same first-run treatment, with a README for the
-                    // TOML schema. New layouts here are picked up on
-                    // app restart.
+                    // New layouts here are picked up only on app restart.
                     match ensure_user_layout_dir() {
                         Ok(dir) => open_path(&dir, "user layouts folder"),
                         Err(e) => warn!(?e, "could not prepare user layouts folder"),
@@ -802,7 +740,7 @@ fn main() -> Result<()> {
                 } else if Some(&id) == setup_id.as_ref() {
                     // The Setup pane, not a browser tab: it says what is
                     // missing *on this machine* and re-checks after the
-                    // user has fixed it. A markdown file can do neither.
+                    // user has fixed it.
                     spawn_setup_ui(SettingsCloseDeps {
                         settings: Arc::clone(&settings_for_loop),
                         layouts: Arc::clone(&layouts),
@@ -923,11 +861,8 @@ fn main() -> Result<()> {
 ///
 /// A stopped plug-in is invisible by construction: its tray entries are
 /// one-shot commands that keep working, so the menu looks identical
-/// whether the service behind it is running or dead.
-///
-/// On the error-notification path, so it is not gated by
-/// `show_notifications` — this is not chatter about something that
-/// worked.
+/// whether the service behind it is running or dead. On the
+/// error-notification path, so `show_notifications` does not gate it.
 fn announce_departed(gone: Vec<plugins::Departed>) {
     for d in gone {
         spawn_error_notification(format!(
@@ -940,9 +875,6 @@ fn announce_departed(gone: Vec<plugins::Departed>) {
     }
 }
 
-/// CLI help text. Kept short and stable — most users never invoke
-/// poltertype with arguments, but `--help` should still answer the
-/// "what does this thing do" question without a manpage.
 fn print_help() {
     println!(
         "{APP_NAME} {ver}\n\
@@ -957,9 +889,9 @@ fn print_help() {
     );
 }
 
-/// Init `tracing` with both a stderr layer and a file appender that
-/// rotates daily under `<data_dir>/poltertype/logs/`. Returns the
-/// guard for the file writer; dropping it would close the file.
+/// Init `tracing` with a stderr layer and a daily-rotating file appender
+/// under `<data_dir>/poltertype/logs/`. Returns the file writer's guard —
+/// dropping it closes the file.
 fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
@@ -1008,5 +940,3 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 
     guard
 }
-
-// ─── Noop key emitter (graceful fallback on unimplemented platforms) ──

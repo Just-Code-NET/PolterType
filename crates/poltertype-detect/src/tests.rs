@@ -83,10 +83,8 @@ fn keeps_current_when_text_already_native() {
     let en = LayoutId::from("en-US");
     let uk = LayoutId::from("uk-UA");
     let cands = vec![(en.clone(), "hello".into()), (uk.clone(), "руддщ".into())];
-    // `hello` scores ≥ keep_threshold for en-US, so the
-    // detector now actively vetoes the switch (Keep) instead
-    // of merely abstaining (NoOpinion). Either way the engine
-    // doesn't switch — but Keep is the stronger signal.
+    // `hello` scores ≥ keep_threshold for en-US, so the detector
+    // vetoes (Keep) rather than merely abstaining (NoOpinion).
     match detector().judge(&ctx(&en, &cands)) {
         Verdict::Keep { .. } => (),
         other => panic!("expected Keep, got {other:?}"),
@@ -303,13 +301,9 @@ fn dict_switches_short_en_acronym_from_uk_layout() {
 /// switched to gibberish.
 #[test]
 fn dict_weak_current_defers_to_strong_alt() {
-    // Both `next` and `туче` live in their respective EMBEDDED
-    // FSTs (mirrors the real-world Hunspell-derived bundled
-    // dicts). `туче` is additionally on the uk weak list. The
-    // weak sub-rule lives in Phase 2 of `judge`; Phase 1
-    // (overlay-priority) must NOT fire here, so neither word is
-    // in any overlay — that's why we use the FST-baking helper
-    // rather than `from_overlay_only`.
+    // The weak sub-rule lives in Phase 2 of `judge`, so Phase 1
+    // (overlay-priority) must not fire: neither word may be in an
+    // overlay, hence the FST-baking helper over `from_overlay_only`.
     let mut m = HashMap::new();
     let uk_weak: HashSet<String> = ["туче"].iter().map(|s| (*s).to_owned()).collect();
     m.insert(
@@ -328,17 +322,13 @@ fn dict_weak_current_defers_to_strong_alt() {
     assert_switches_to(&det, &ctx(&uk, &cands), &en);
 }
 
-/// Counter-regression: a weak current-side hit must still Keep
-/// when no alt is in the dict — the weak list never blocks a
-/// switch *by itself*, it only opens the door to one when a
-/// strong cross-layout alt exists. A user actually typing `туче`
-/// in uk-UA (the poet writing about clouds) with no en-US match
-/// for the buffer must NOT get auto-switched to gibberish.
+/// Counter-regression: a weak current-side hit must still Keep when no
+/// alt is in the dict — the weak list never blocks a switch *by itself*,
+/// it only opens the door to one when a strong cross-layout alt exists.
 #[test]
 fn dict_weak_current_keeps_when_no_alt_in_dict() {
-    // Same shape as the previous test, but with no en-US FST entry
-    // matching the alt rendering: current is weak and no alt is in
-    // dict, so the weak-but-no-strong-alt branch must still Keep.
+    // No en-US FST entry matches the alt rendering, so the
+    // weak-but-no-strong-alt branch must Keep.
     let mut m = HashMap::new();
     let uk_weak: HashSet<String> = ["туче"].iter().map(|s| (*s).to_owned()).collect();
     m.insert(
@@ -1225,8 +1215,7 @@ fn plausibility_does_not_veto_short_segment_compound() {
 /// `інтернет-магазин` renders `synthytn-vfufpby` under en-US, where
 /// `synthytn` scores a respectable 0.75 — but `інтернет` scores 1.00 in
 /// the layout the switch would move to. A segment that reads *no better*
-/// here is no evidence at all; an absolute "reads well here" test vetoed
-/// a fifth of a real Russian corpus.
+/// here is no evidence at all.
 #[test]
 fn plausibility_compound_guard_needs_an_advantage_not_just_a_good_score() {
     let en = LayoutId::from("en-US");
@@ -1240,8 +1229,7 @@ fn plausibility_compound_guard_needs_an_advantage_not_just_a_good_score() {
 
 /// Dictionary side of the same class: a compound segment that is a real
 /// word in the *current* layout keeps the token, even though the joined
-/// skeleton misses in every dictionary. This is the half shape scoring
-/// cannot reach — `rhythm` is a real word that reads as noise.
+/// skeleton misses in every dictionary.
 #[test]
 fn dict_keeps_compound_with_real_word_segment() {
     let en = LayoutId::from("en-US");

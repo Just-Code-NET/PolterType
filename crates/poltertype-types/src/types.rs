@@ -36,10 +36,8 @@ impl From<&str> for LayoutId {
 /// platform layout backend and consumed by the layout DB.
 ///
 /// [`LayoutId`] names a *language*, which is all the OS layout APIs
-/// agree on — but a language is not a keyboard. Bulgarian alone ships
-/// three genuinely different Windows keyboards under `bg-BG`, and
-/// asking the OS what its keys produce is the only way to know which
-/// one is installed.
+/// agree on — but a language is not a keyboard: Bulgarian alone ships
+/// three genuinely different Windows keyboards under `bg-BG`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OsKeymap {
     /// The language id this keyboard reports as — the same namespace
@@ -110,8 +108,8 @@ pub struct WordKey {
     pub timestamp_ms: u64,
 }
 
-/// Input passed to a [`Detector`] (in `poltertype-detect`). Borrowed slice +
-/// strings to avoid an allocation per detect-call.
+/// Input passed to a [`Detector`] (in `poltertype-detect`). Borrowed to
+/// avoid an allocation per detect-call.
 #[derive(Debug, Clone, Copy)]
 pub struct DetectionInput<'a> {
     pub current_layout: &'a LayoutId,
@@ -119,7 +117,8 @@ pub struct DetectionInput<'a> {
     /// Buffer text rendered under the *current* layout — what the user
     /// actually sees on screen.
     pub current_text: &'a str,
-    /// Recent context (a few preceding words). Empty for v0.1.
+    /// Recent context (a few preceding words). Always empty today —
+    /// nothing populates it yet.
     pub recent_context: &'a str,
 }
 

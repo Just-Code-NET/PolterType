@@ -24,10 +24,9 @@ pub(crate) fn run(prog: &str, args: &[&str]) -> Result<String, LayoutError> {
 }
 
 /// `run` with `--literal`, for calls whose return type qdbus refuses to
-/// pretty-print. Without it `getLayoutsList` answers with the sentence
-/// "I don't know how to display an argument of type 'a(sss)'" **on
-/// stdout, exit code 0** — indistinguishable from a real answer to
-/// [`run`]. See [`super::parse::layout_short_names`] for the shapes.
+/// pretty-print — without it `getLayoutsList` answers with an error
+/// sentence on stdout and exit code 0, indistinguishable from a real
+/// answer to [`run`]. See [`super::parse::layout_short_names`].
 pub(crate) fn run_literal(prog: &str, args: &[&str]) -> Result<String, LayoutError> {
     let mut argv = vec!["--literal"];
     argv.extend_from_slice(args);

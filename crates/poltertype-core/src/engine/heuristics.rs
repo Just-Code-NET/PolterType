@@ -35,7 +35,7 @@ pub fn match_chord(ev: &KeyEvent, chord: Chord, key_down: &mut bool) -> bool {
 }
 
 /// True for the common clipboard-paste chords: `Ctrl+V`, `Ctrl+Shift+V`
-/// (terminals), and `Shift+Insert`. We only need the press edge.
+/// (terminals), and `Shift+Insert`.
 pub fn is_paste_shortcut(ev: &KeyEvent) -> bool {
     if ev.direction != KeyDirection::Press {
         return false;
@@ -52,11 +52,11 @@ pub fn is_submission_scancode(sc: u32) -> bool {
 }
 
 /// Bare modifier keys: left/right Ctrl, Shift, Alt, Meta and Caps Lock.
-/// A modifier's own press can never edit text, but the Linux listener
-/// emits it with its flag already set — so without this exemption
-/// `Ctrl↓` alone reads as a command and abandons the buffer, killing
-/// the suggestion-accept chord before its digit arrives. Left-hand
-/// codes are SC Set-1, right-hand ones the raw evdev codes.
+/// The Linux listener emits a modifier's own press with its flag
+/// already set, so without this exemption `Ctrl↓` alone reads as a
+/// command and abandons the buffer, killing the suggestion-accept chord
+/// before its digit arrives. Left-hand codes are SC Set-1, right-hand
+/// ones the raw evdev codes.
 pub fn is_modifier_scancode(sc: u32) -> bool {
     matches!(
         sc,
@@ -65,8 +65,8 @@ pub fn is_modifier_scancode(sc: u32) -> bool {
 }
 
 /// Case-insensitive basename match against the user's disabled-apps
-/// list. We use ASCII-lowercase rather than full Unicode lowering
-/// because every executable basename we ever match is ASCII.
+/// list. ASCII-lowercase rather than full Unicode lowering: every
+/// executable basename we ever match is ASCII.
 pub fn app_is_disabled(exe: &str, disabled: &[String]) -> bool {
     let needle = exe.to_ascii_lowercase();
     disabled
@@ -74,40 +74,33 @@ pub fn app_is_disabled(exe: &str, disabled: &[String]) -> bool {
         .any(|entry| entry.eq_ignore_ascii_case(&needle))
 }
 
-/// Boundary characters that mean the user is typing a URL, path, email,
-/// config expression or source code rather than prose, and that
-/// therefore suppress auto-switching.
+/// Boundary characters that mean URL / path / email / code rather than
+/// prose, and therefore suppress auto-switching.
 ///
-/// Conservative by design — only characters that are almost always
-/// structural, never sentence punctuation: `:` `/` `\` `@` `=` `#` `&`.
-/// Notably absent are `.` (also sentence-end), the brackets and `"`
-/// (common in prose), and `+ * < > | ~ \`` (rarer in prose, but too
-/// low-confidence to call structural).
+/// Deliberately only characters that are almost never sentence
+/// punctuation. `.`, the brackets, `"` and `+ * < > | ~ \`` are left
+/// out on purpose: too common in prose to call structural.
 pub fn is_structural_boundary(ch: char) -> bool {
     matches!(ch, ':' | '/' | '\\' | '@' | '=' | '#' | '&')
 }
 
-/// A boundary that *submits* or *navigates* rather than separating words
-/// mid-line: Enter/Return, Tab. Auto-correction re-emits the boundary
-/// after the corrected word, and re-pressing one of these runs a
-/// command, sends a message or moves focus — and by the time the
-/// correction fires the line is usually gone anyway, so the replay
-/// lands on a fresh prompt as garbage. The manual hotkey still works;
-/// `last_word` is stashed before this filter.
+/// A boundary that *submits* or *navigates* rather than separating
+/// words mid-line. Auto-correction re-emits the boundary after the
+/// corrected word, and re-pressing one of these runs a command or moves
+/// focus — with the line usually gone, so the replay lands on a fresh
+/// prompt as garbage. The manual hotkey still works: `last_word` is
+/// stashed before this filter.
 pub fn is_submission_boundary(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\t')
 }
 
 /// True when the rendered word looks like a deliberate ALL-CAPS
-/// abbreviation: at least two cased letters, every one uppercase. A
-/// lone capital (`I`, `A`, `Я`) is ambiguous with a sentence start, so
-/// ≥2 is required.
+/// abbreviation: at least two cased letters, every one uppercase.
 ///
-/// One lowercase letter disqualifies (`iPhone`, `IPv4`). Digits and
-/// apostrophes are skipped, so `URL2` and `DON'T` still register.
-/// Uncased characters neither help nor hurt, so a word with only
-/// uncased letters is never ALL CAPS — the right call for languages
-/// without case.
+/// A lone capital (`I`, `A`, `Я`) is ambiguous with a sentence start,
+/// hence ≥2. One lowercase letter disqualifies (`iPhone`, `IPv4`).
+/// Uncased characters neither help nor hurt, so `URL2` and `DON'T`
+/// register while a caseless script never does.
 pub fn looks_like_all_caps(text: &str) -> bool {
     let mut upper_letters = 0usize;
     for c in text.chars() {
@@ -124,16 +117,12 @@ pub fn looks_like_all_caps(text: &str) -> bool {
 /// Decide whether `id` belongs in the candidate set the detectors score
 /// against. Three filters, AND'd:
 ///
-/// * **`active`** — empty means no allow-list. Non-empty admits only
-///   listed layouts, plus the *current* one always, so a Switch verdict
-///   is never locked in by the user typing in a layout they did not
-///   whitelist.
+/// * **`active`** — empty means no allow-list. The *current* layout is
+///   always admitted, so a user typing in a layout they did not
+///   whitelist cannot be locked into a Switch verdict.
 /// * **`ignored`** — never passes, period.
-/// * **`os_active`** — `Some(list)` filters to layouts the OS reports as
-///   enabled, again with the current one as a safety net. `None` means
-///   the query failed and we fail open.
-///
-/// Standalone so it is unit-testable without a full engine.
+/// * **`os_active`** — layouts the OS reports as enabled, again with
+///   the current one as a safety net. `None` = query failed, fail open.
 pub fn is_layout_eligible(
     id: &LayoutId,
     current: &LayoutId,
@@ -151,19 +140,17 @@ pub fn is_layout_eligible(
 
 /// Which key reproduces the boundary character `ch` under `target`.
 ///
-/// A correction replays the boundary key *after* the layout has flipped,
-/// so its glyph follows the new mapping rather than the one the user
-/// typed against: `Shift`+`0x35` is `,` under uk-UA and `?` under en-US,
-/// and a corrected word came out ending in a question mark the user
-/// never pressed. The word itself is meant to be re-read under the new
-/// layout — that is the whole correction — but the separator that closed
-/// it is not part of the mistake and has to survive it unchanged.
+/// The separator that closed a word is not part of the mistake, but the
+/// replay happens *after* the layout flipped: `Shift`+`0x35` is `,`
+/// under uk-UA and `?` under en-US, so replaying it as pressed rewrote
+/// the user's punctuation. See `docs/ARCHITECTURE.md` § The correction
+/// path.
 ///
 /// The scancode is kept as typed when the target produces the same
 /// character anyway, when the key is layout-independent (space, Enter,
 /// Tab are in no mapping table), and when the target cannot produce the
-/// character at all — there the old glyph still beats abandoning an
-/// otherwise correct fix.
+/// character at all — the old glyph beats abandoning an otherwise
+/// correct fix.
 pub fn boundary_key_for(
     layouts: &LayoutDb,
     target: &LayoutId,
@@ -189,15 +176,13 @@ pub fn boundary_key_for(
 /// *cross-layout artifact* — punctuation under the current layout whose
 /// scancode is a letter somewhere else.
 ///
-/// A buffer can hold scancodes rendering as `;` / `[` / `'` where the
-/// user clearly meant a Cyrillic letter. The dictionary detector strips
-/// those before lookup and the code-token guard needs the same
-/// courtesy, or it fires on every Ukrainian word containing `ж`, `х`,
-/// `ї`, `є`. Concretely: `Друже` under en-US renders `Lhe;t`, and that
-/// `;` made `looks_like_code_token` veto the switch.
+/// The dictionary detector strips those before lookup and the code-token
+/// guard needs the same courtesy, or it fires on every Ukrainian word
+/// containing `ж`, `х`, `ї`, `є`: `Друже` under en-US renders `Lhe;t`,
+/// and that `;` made `looks_like_code_token` veto the switch.
 ///
-/// Falls back to the computed `current_text` when the current layout is
-/// not in the DB, so the mid-decision path can always continue.
+/// Falls back to `fallback` when the current layout is not in the DB, so
+/// the mid-decision path can always continue.
 pub fn render_for_code_check(
     keys: &[poltertype_types::WordKey],
     current_layout: &LayoutId,
@@ -212,8 +197,6 @@ pub fn render_for_code_check(
         let Some(c) = mapping.translate_key(k) else {
             continue;
         };
-        // Cross-layout artifact: not a letter here, but this scancode
-        // at this shift is one elsewhere — the user meant a letter.
         // Shift granularity is critical: without it, 0x0C unshifted
         // being `ß` in de-DE would strip the shifted `_` of `foo_bar`.
         if !c.is_alphabetic() && layouts.is_letter_in_any_layout(k.scancode, k.shift) {

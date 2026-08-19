@@ -72,9 +72,9 @@ pub(super) fn apply_os_keymaps(keymaps: &[OsKeymap], by_id: &mut HashMap<LayoutI
             .map(|&(scancode, plain, shift)| (scancode, (plain, shift)))
             .collect();
 
-        // Worth counting rather than just swapping: a large number
-        // here is the signature of the variant problem, and it is the
-        // one line in the log that says which keyboard the user has.
+        // Counted rather than just swapped: a large number here is the
+        // signature of the variant problem, and it is the one log line
+        // that says which keyboard the user has.
         let replaced = derived
             .iter()
             .filter(|(scancode, produced)| mapping.keys.get(*scancode) != Some(*produced))
@@ -94,10 +94,9 @@ pub(super) fn apply_os_keymaps(keymaps: &[OsKeymap], by_id: &mut HashMap<LayoutI
             "adopted the OS keymap for this keyboard"
         );
 
-        // Which keys, not just how many. "My `ґ` stopped working" is
-        // the shape a report of this taking a wrong turn will have,
-        // and this is the line that answers it in one read. Layout
-        // tables are not typed text — nothing here is user input.
+        // Which keys, not just how many: "my `ґ` stopped working" is the
+        // shape of the bug report this answers. Safe to log — a layout
+        // table is not typed text.
         if replaced > 0 || dropped > 0 {
             let mut changes: Vec<String> = derived
                 .iter()

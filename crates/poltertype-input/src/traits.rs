@@ -26,10 +26,11 @@ pub trait InputListener: Send {
 /// Synthesises keystrokes — used by the corrector to delete the
 /// just-typed word and re-type it after switching layouts.
 ///
-/// All emitted events come back through [`InputListener`] with
-/// `injected = true`; the engine drops those to avoid feedback.
+/// Emitted events come back through [`InputListener`]. Where the OS
+/// tags them `injected` the engine drops them on that flag; where it
+/// does not — Linux behind a remapper, XTest — it matches them against
+/// [`Self::take_emitted`] instead.
 pub trait KeyEmitter: Send + Sync {
-    /// Emit `n` Backspace presses, one after another.
     fn send_backspaces(&self, n: usize) -> Result<(), InputError>;
 
     /// Emit `text` as Unicode characters. On Windows uses

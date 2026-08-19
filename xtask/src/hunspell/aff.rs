@@ -19,20 +19,18 @@ impl Aff {
         let mut sfx: HashMap<String, AffixGroup> = HashMap::new();
         let mut pfx: HashMap<String, AffixGroup> = HashMap::new();
 
-        // While we're inside an SFX/PFX block, append rule lines into
-        // this slot; when we hit the next block header (or EOF), flush
-        // it into `sfx` / `pfx`.
+        // Rule lines accumulate here until the next block header or
+        // EOF flushes them into `sfx` / `pfx`.
         let mut current: Option<(bool, String, AffixGroup)> = None;
 
         for raw in text.lines() {
-            // Strip inline `#` comments and surrounding whitespace.
             let line = raw.split('#').next().unwrap_or("").trim();
             if line.is_empty() {
                 continue;
             }
 
-            // FLAG <type> — must be honoured before any rule line is
-            // parsed, since the parser reads flag strings.
+            // FLAG <type> must be honoured before any rule line is
+            // parsed, since parsing a rule reads flag strings.
             if let Some(rest) = line.strip_prefix("FLAG ") {
                 flag_type = match rest.trim() {
                     "long" => FlagType::Long,
@@ -66,7 +64,6 @@ impl Aff {
                     cross_product,
                     rules: Vec::new(),
                 };
-                // Flush the previous block before opening a new one.
                 if let Some((was_sfx, prev_flag, prev_group)) = current.take() {
                     let target = if was_sfx { &mut sfx } else { &mut pfx };
                     target.insert(prev_flag, prev_group);
@@ -111,7 +108,6 @@ impl Aff {
             }
         }
 
-        // Flush trailing block.
         if let Some((was_sfx, prev_flag, prev_group)) = current.take() {
             let target = if was_sfx { &mut sfx } else { &mut pfx };
             target.insert(prev_flag, prev_group);
@@ -131,10 +127,9 @@ impl Aff {
         let mut out: HashSet<String> = HashSet::new();
         out.insert(stem.to_string());
 
-        // BFS over (form, flags-still-to-apply) — each rule with
-        // continuation pushes a new (form, cont_flags) frontier.
-        // Capped depth is a safety net against pathological circular
-        // continuation flags in third-party dictionaries.
+        // BFS over (form, flags-still-to-apply). The depth cap is a
+        // safety net against circular continuation flags in third-party
+        // dictionaries.
         const MAX_DEPTH: usize = 4;
         let mut frontier: Vec<(String, Vec<String>, usize)> =
             vec![(stem.to_string(), self.parse_flags(flags_str), 0)];

@@ -13,15 +13,13 @@ pub(crate) const UNITS: f32 = 64.0;
 
 // ── output ────────────────────────────────────────────────────────────
 
-/// Every size baked into the `.ico`, because Windows picks a different
-/// one for the taskbar, the Start menu, Explorer's views and Alt-Tab,
-/// and scales the nearest match when the exact size is absent — which
-/// is the difference between a crisp icon and a smeared one.
+/// Every size baked into the `.ico`: Windows picks a different one per
+/// surface and scales the nearest match when the exact size is absent,
+/// which is the difference between a crisp icon and a smeared one.
 ///
-/// Rendered directly at each size rather than downsampled from one
-/// large image: the sampler already anti-aliases by coverage, and a
-/// box filter over a 256 px master throws away exactly the contrast
-/// the 16 px entry needs.
+/// Rendered directly at each size rather than downsampled from a
+/// master — the sampler anti-aliases by coverage, and a box filter over
+/// 256 px throws away exactly the contrast the 16 px entry needs.
 pub const ICO_SIZES: &[u32] = &[16, 32, 48, 64, 128, 256];
 
 /// Sizes at or above this go into the `.ico` PNG-compressed; smaller
@@ -106,11 +104,9 @@ pub(crate) const GHOST_DOME_EXP: f32 = 2.13;
 pub(crate) const GHOST_HEM_TOP: f32 = 43.0;
 
 /// The skirt, as a closed outline: four lobes separated by three sharp
-/// notches. These are the SVG path's own vertices, with its curved
-/// segments flattened into three points each — the lobes need the
-/// roundness, while the notches stay the hard corners they are in the
-/// original. Wound left to right along the bottom, closing across the
-/// top of the band.
+/// notches. The SVG path's own vertices, its curved segments flattened
+/// into three points each; the notches stay the hard corners they are
+/// in the original. Wound left to right, closing across the top.
 pub(crate) const GHOST_HEM: [(f32, f32); 25] = [
     (GHOST_LEFT, GHOST_HEM_TOP),
     (17.0, 44.0),
@@ -145,8 +141,7 @@ pub(crate) const EYE_LEFT_X: f32 = 26.5;
 pub(crate) const EYE_RIGHT_X: f32 = 37.5;
 
 /// The smile's centre line: the SVG's cubic sampled at eighths.
-/// Stroking it as a polyline gets the round caps and joins for free —
-/// every point within half a stroke width of the line is ink.
+/// Stroking it as a polyline gets round caps and joins for free.
 pub(crate) const SMILE_PATH: [(f32, f32); 9] = [
     (29.5, 36.5),
     (30.109, 36.927),
@@ -163,6 +158,5 @@ pub(crate) const SMILE_PATH: [(f32, f32); 9] = [
 pub(crate) const SMILE_HALF_STROKE: f32 = 1.0;
 
 /// `SMILE_PATH` grown by the stroke, as `(x0, y0, x1, y1)`. `in_smile`
-/// runs for every sample in the image, so it rejects on this box before
-/// measuring distance to anything.
+/// runs for every sample in the image, so it rejects on this box first.
 pub(crate) const SMILE_BOX: (f32, f32, f32, f32) = (28.5, 35.5, 35.5, 38.5);

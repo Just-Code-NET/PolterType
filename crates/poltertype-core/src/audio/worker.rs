@@ -15,19 +15,17 @@ pub(crate) fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
     let mut state = WorkerState::new();
 
     loop {
-        // Block indefinitely while there is no stream to release;
-        // only poll on a timeout while a stream is cached. Waiting
-        // with `recv_timeout` unconditionally would wake the worker
-        // every 30 s for the life of the process just to discover
-        // there is nothing to drop.
+        // Block indefinitely while there is no stream to release; poll
+        // on a timeout only while one is cached. An unconditional
+        // `recv_timeout` would wake the worker for the life of the
+        // process just to discover there is nothing to drop.
         let cmd = if state.stream.is_some() {
             match rx.recv_timeout(STREAM_IDLE_REFRESH) {
                 Ok(cmd) => cmd,
                 Err(RecvTimeoutError::Timeout) => {
-                    // No plays for a whole refresh window — hand the
-                    // device back, so a long-lived output cannot keep
-                    // macOS awake. Costs one ~20-50 ms reopen, cushioned
-                    // by the lead silence.
+                    // Hand the device back so a long-lived output cannot
+                    // keep macOS awake. Costs one ~20-50 ms reopen,
+                    // cushioned by the lead silence.
                     debug!("audio: idle timeout — releasing output stream");
                     state.invalidate();
                     continue;
@@ -65,8 +63,7 @@ pub(crate) fn run_worker(rx: crossbeam_channel::Receiver<AudioCmd>) {
 pub(crate) fn play_event(state: &mut WorkerState, event: SoundEvent) {
     for attempt in 0..2 {
         let Some(handle) = state.handle() else {
-            // No device available; no point retrying inside this
-            // event. Next event will try again.
+            // No device: the next event tries again.
             return;
         };
         let result = play_with_handle(&handle, event, state.theme_dir.as_deref(), state.volume);
@@ -177,11 +174,10 @@ pub(crate) fn synthesise_blip(
 
     let mut samples = Vec::with_capacity(lead_silence_n + tone_total + tail_silence_n);
 
-    // Lead silence cushion.
     samples.resize(lead_silence_n, 0.0);
 
-    // Tone body with linear fade-in and fade-out, anchored to exact
-    // 0.0 at sample 0 and at sample (tone_total - 1).
+    // Envelope anchored to exactly 0.0 at sample 0 and at
+    // `tone_total - 1`, so neither end can click.
     for i in 0..tone_total {
         let envelope = if fade_in > 1 && i < fade_in {
             i as f32 / (fade_in - 1) as f32
@@ -196,7 +192,6 @@ pub(crate) fn synthesise_blip(
         samples.push(v);
     }
 
-    // Tail silence cushion.
     samples.resize(samples.len() + tail_silence_n, 0.0);
 
     SamplesBuffer::new(1, sample_rate, samples)

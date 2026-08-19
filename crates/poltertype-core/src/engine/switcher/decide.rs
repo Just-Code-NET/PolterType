@@ -57,12 +57,10 @@ impl SwitcherEngine {
             }
         };
 
-        // Candidates must survive all three layers: `[languages].active`
-        // (empty = every loaded layout), `[languages].ignored`, and the
-        // OS's own active list. Layer 3 matters — an unreachable layout
+        // The OS-active layer matters most: an unreachable layout
         // reaching the detector means `switch_to` rejects it *after* the
-        // backspaces went out, destroying the word. A failed OS query
-        // fails open; `apply_correction` pre-flights again.
+        // backspaces went out, destroying the word. A failed query fails
+        // open; `apply_correction` pre-flights again.
         let os_active: Option<Vec<LayoutId>> = match self.layout_switcher.list_active() {
             Ok(list) => Some(list),
             Err(e) => {
@@ -84,27 +82,23 @@ impl SwitcherEngine {
             .map(|(id, m)| (id.clone(), m.translate_buffer(&keys)))
             .collect();
 
-        // The layout the word was typed under, which is not necessarily
-        // the one active now — the user may have switched by hand
-        // between the last letter and the key that closed the word. See
-        // `word_layout`.
+        // Not necessarily the layout active now: the user may have
+        // switched by hand between the last letter and the key that
+        // closed the word. See `word_layout`.
         let typed_layout = self
             .word_layout
             .read()
             .clone()
             .unwrap_or_else(|| current_layout.clone());
 
-        // Stashed early: "force switch last" needs it whether or not
-        // the auto-decision proceeds. Rendered under the layout it was
-        // typed in, because that is what is on screen.
+        // Rendered under the layout it was typed in, because that is
+        // what is on screen.
         let current_text = self
             .layouts
             .get(&typed_layout)
             .map(|m| m.translate_buffer(&keys))
             .unwrap_or_default();
 
-        // Stored even if the decision below is skipped, so the manual
-        // hotkey still works.
         let boundary_char = self
             .layouts
             .get(&current_layout)
@@ -123,6 +117,8 @@ impl SwitcherEngine {
             })
             .unwrap_or(' ');
 
+        // Stashed before any filter below can return: the manual
+        // switch-last hotkey works on words the automatic path skips.
         *self.last_word.write() = Some(LastWord {
             keys: keys.clone(),
             rendered: current_text.clone(),
@@ -135,14 +131,11 @@ impl SwitcherEngine {
             corrected_to: None,
         });
 
-        // A layout switch between the word and the key that closed it.
+        // A hand switch between the word and the key that closed it.
         // The word on screen is still the *old* layout's rendering, so
         // reading it under the new one turns correct text into
-        // gibberish — and correcting that gibberish retypes a word that
-        // was already right and pulls the layout back off the one the
-        // user had just chosen by hand. Nothing below can tell the two
-        // halves apart, so the automatic path stops here; the stash
-        // above keeps the manual switch-last hotkey working.
+        // gibberish, and "correcting" that retypes a word that was
+        // already right. Nothing below can tell the two halves apart.
         if typed_layout != current_layout {
             debug!(
                 typed = %typed_layout,
@@ -159,18 +152,16 @@ impl SwitcherEngine {
             return;
         }
 
-        // Smart commands run before the auto-switch filters: expansion
-        // is a direct user intent, not a guess. Matching is on the
-        // rendering in the *current* layout, so the same physical keys
-        // under another layout fall through to layout-correction.
-        // See `docs/ARCHITECTURE.md` § Smart commands.
+        // Before the auto-switch filters: expansion is a direct user
+        // intent, not a guess. Matching is on the *current* layout's
+        // rendering, so the same physical keys under another layout fall
+        // through to layout-correction.
         let focused_basename = self.focus_tracker.focused_exe().and_then(|exe| {
             std::path::Path::new(&exe)
                 .file_name()
                 .and_then(|f| f.to_str())
                 .map(str::to_owned)
         });
-        // A multi-token trigger also has to see the preceding words.
         let history = self.word_history.read().clone();
         if let Some(cmd) = find_matching_command(
             &snap.commands,
@@ -178,10 +169,8 @@ impl SwitcherEngine {
             focused_basename.as_deref(),
             &history,
         ) {
-            // One on-screen character per buffered key plus the
-            // boundary (and, for a phrase, the earlier words and their
-            // separators). Counting keys rather than rendered chars
-            // survives scancodes the mapping table cannot render.
+            // Counting keys rather than rendered chars survives
+            // scancodes the mapping table cannot render.
             self.dispatch_smart_command(cmd, erase_len(cmd, keys.len()), boundary_char);
             // The trigger text is gone from screen: not re-openable by
             // backspace, not matchable again.
@@ -256,8 +245,7 @@ impl SwitcherEngine {
         // layout — and it renders as letter-like bait for the detector.
         // Held Shift catches it everywhere; Caps Lock only on
         // Linux/Wayland, where the listener folds caps into the shift
-        // bit. `last_word` was stashed above, so the manual hotkey
-        // still works on these buffers.
+        // bit.
         if snap.engine.suppress_for_all_caps && looks_like_all_caps(&current_text) {
             debug!(
                 token = %logsafe::redact_word(&current_text),
@@ -283,11 +271,9 @@ impl SwitcherEngine {
             }
         }
 
-        // Filter 2: identifier-shaped token (camelCase / snake_case /
-        // letter+digit / code punctuation). Fed a *cleaned* rendering —
-        // otherwise a Ukrainian `ж` under en-US shows up as a mid-string
-        // `;` and the heuristic calls prose "code". See
-        // `render_for_code_check`.
+        // Filter 2: identifier-shaped token. Fed a *cleaned* rendering,
+        // or a Ukrainian `ж` under en-US shows up as a mid-string `;`
+        // and the heuristic calls prose "code".
         let token_for_code_check =
             render_for_code_check(&keys, &current_layout, &self.layouts, &current_text);
         if snap.engine.suppress_in_identifiers && looks_like_code_token(&token_for_code_check) {
@@ -345,9 +331,8 @@ impl SwitcherEngine {
                 SwitchAction::SwitchAndReplay {
                     target_layout: v.best_layout,
                     corrected_text: corrected_with_boundary,
-                    // One on-screen character per buffered key + the
-                    // boundary. Keys, not rendered chars: under-counting
-                    // is how word heads get left behind.
+                    // Keys, not rendered chars: under-counting is how
+                    // word heads get left behind.
                     backspaces: keys.len() + 1,
                     reason: v.reason,
                 }
@@ -373,9 +358,8 @@ impl SwitcherEngine {
             SwitchAction::KeepCurrent { reason } => {
                 debug!(%reason, "decision: keep current");
                 let _ = self.out_tx.send(SwitcherEvent::KeptCurrent { reason });
-                // Word stays as typed — offer spelling suggestions, but
-                // only if it started right after an observed boundary. On
-                // a fragment of a longer word a suggestion is noise that
+                // Only for a word that started right after an observed
+                // boundary: on a fragment of a longer word a suggestion
                 // corrupts it if accepted.
                 if started_clean {
                     self.maybe_offer_suggestions(
@@ -393,9 +377,9 @@ impl SwitcherEngine {
                 backspaces,
                 reason,
             } => {
-                // Original scancodes + the boundary key: re-emitted
-                // against the new mapping they produce the corrected
-                // glyphs, with no Unicode-compose dance on Wayland.
+                // Original scancodes: re-emitted against the new mapping
+                // they produce the corrected glyphs, with no
+                // Unicode-compose dance on Wayland.
                 let mut replay: Vec<ReplayKey> = keys
                     .iter()
                     .map(|k| ReplayKey {

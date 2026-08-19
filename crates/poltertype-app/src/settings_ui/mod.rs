@@ -95,35 +95,22 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
             // Sized so Commands and Wordlists render without scrolling
             // on 1080p; anything smaller clips their forms.
             size: iced::Size::new(860.0, 680.0),
-            // A hint, not a fix — and an UNVERIFIED one. A sudden large
-            // resize (not specifically narrow↔wide — a same-direction
-            // shrink straight to 300×300 reproduced it just as well)
-            // can hit an iced_tiny_skia 0.13 `debug_assert!` — some
-            // quad's height lands on exactly 0.0 for one frame — and
-            // the window dies (`panicked … Quad with non-normal
-            // height!`, engine.rs:43). Debug-only: the assert compiles
-            // out of a release build.
-            //
-            // Measured 2026-08-19: a compositor-driven resize
-            // (`hyprctl dispatch`, i.e. not a real mouse drag on the
-            // window border) sails straight past this floor — the
-            // window reached 300×300 and crashed the same way with it
-            // set. xdg-shell min-size is a hint the compositor is free
-            // to honour only for its own interactive resize grab, so
-            // this may still help an actual click-and-drag even though
-            // the one way available here to test it could not confirm
-            // that. Left in on that chance; do not treat it as a fix,
-            // and do not re-derive false confidence from it surviving
-            // a manual drag test — that path was never the one shown
-            // to bypass it.
+            // An UNVERIFIED mitigation, never a fix: a sudden large
+            // resize can hit an iced_tiny_skia 0.13 `debug_assert!` —
+            // some quad's height lands on exactly 0.0 for one frame —
+            // and the window dies (`Quad with non-normal height!`,
+            // engine.rs:43). Debug builds only. Measured 2026-08-19: a
+            // compositor-driven resize sails straight past this floor
+            // and crashed at 300×300 with it set; xdg-shell min-size
+            // binds only the compositor's own interactive grab, so a
+            // surviving mouse-drag test would prove nothing either.
             min_size: Some(iced::Size::new(480.0, 420.0)),
             position: iced::window::Position::Centered,
             icon: helpers::window_icon(),
-            // Which application this window belongs to. Left at its
-            // default it is the empty string, which on Linux is not
-            // "unset" but "no application" — and there the desktop
-            // entry it names is the only place a Wayland session can
-            // find an icon at all.
+            // Left at its default this is the empty string, which on
+            // Linux means "no application" rather than "unset" — and
+            // the desktop entry it names is the only place a Wayland
+            // session finds a window icon.
             platform_specific: poltertype_shell::window_platform_specific(),
             ..Default::default()
         });

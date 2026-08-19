@@ -12,9 +12,8 @@ use crate::layouts::PluginManifest;
 
 /// Install the pack in `src` into `<data_dir>/plugins/<id>/`.
 ///
-/// Replaces an existing pack of the same id — that is the update path,
-/// deliberately the same code, because an update that behaved
-/// differently would get tested half as often.
+/// Replaces an existing pack of the same id — the update path is
+/// deliberately this same code, so it cannot be tested half as often.
 ///
 /// Staged in a sibling directory and renamed into place, so an
 /// interrupted install leaves the previous pack intact.
@@ -31,17 +30,14 @@ pub fn install(src: &Path, data_dir: &Path) -> Result<InstalledPack, PluginError
         return Err(PluginError::UnsafeId(id));
     }
 
-    // What kind of plug-in this claims to be decides what it is
-    // allowed to carry — so it is read, and validated, before a single
-    // byte is copied.
+    // What the plug-in claims to be decides what it may carry, so it is
+    // read and validated before a single byte is copied.
     let header = read_header(src)?;
     if header.kind == PluginKind::Extension {
         check_extension(&header.extension)?;
-        // Through `exe_in`, so a pack built for a platform that
-        // decorates executable names installs. The manifest names the
-        // program without an extension on purpose — refusing the pack
-        // whose `bin/` holds the `.exe` that name resolves to would
-        // make a portable manifest uninstallable on Windows.
+        // Through `exe_in`: the manifest names the program without an
+        // extension, so demanding an exact file name would make a
+        // portable manifest uninstallable on Windows.
         if super::discover::exe_in(&src.join(EXTENSION_BIN_DIR), &header.extension.exe).is_none() {
             return Err(PluginError::NoExecutable(format!(
                 "{} declares {}/{} but there is no such file",
@@ -188,9 +184,8 @@ struct CopyPlan {
     /// Paths relative to the source root.
     files: Vec<PathBuf>,
     /// How many of `files` are actual content — layouts, wordlists,
-    /// translations. The manifest and a README are metadata; a
-    /// "pack" consisting only of those installs nothing and would
-    /// leave a directory the loader silently ignores.
+    /// translations. A "pack" of manifest and README alone installs
+    /// nothing and would leave a directory the loader silently ignores.
     content_files: usize,
     skipped: Vec<String>,
     bytes: u64,
@@ -208,8 +203,6 @@ fn plan_copy(src: &Path, kind: PluginKind) -> Result<CopyPlan, PluginError> {
         bytes: 0,
     };
 
-    // Top level: the manifest, the documentation allow-list, and the
-    // content directories. Everything else is reported and skipped.
     for entry in read_dir_sorted(src)? {
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = entry.path();
@@ -245,9 +238,8 @@ fn plan_copy(src: &Path, kind: PluginKind) -> Result<CopyPlan, PluginError> {
 /// Which content directories this kind of plug-in may populate.
 ///
 /// A pack gets the data directories and nothing else — that is what
-/// makes "a pack cannot execute" a fact about the installer rather
-/// than a hope about pack authors. An extension gets the same, plus
-/// `bin/`.
+/// makes "a pack cannot execute" a fact about the installer rather than
+/// a hope about pack authors. An extension gets the same plus `bin/`.
 fn allowed_dirs(kind: PluginKind) -> Vec<(&'static str, &'static [&'static str])> {
     let mut dirs = ALLOWED_CONTENT.to_vec();
     if kind == PluginKind::Extension {
@@ -283,11 +275,10 @@ fn collect_dir(
             plan.skipped.push(format!("{}/", rel.display()));
             continue;
         }
-        // An empty extension list means "any file", which is `bin/`:
-        // an executable on Unix has no extension at all, so listing
-        // the shapes we thought of would just be a list of the ones we
-        // forgot. Nothing in `bin/` is ever loaded — it is spawned as
-        // a separate process, by the one name the manifest declares.
+        // An empty extension list means "any file", which is `bin/`: a
+        // Unix executable has no extension at all. Nothing in `bin/` is
+        // ever loaded — it is spawned as a separate process, by the one
+        // name the manifest declares.
         let ok = exts.is_empty()
             || path
                 .extension()

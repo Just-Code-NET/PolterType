@@ -8,9 +8,8 @@ use iced::{Color, Font};
 
 use super::types::BrandPalette;
 
-/// `Color` from 8-bit sRGB components. A `const` mirror of
-/// `Color::from_rgb8`, which isn't a `const fn` in iced 0.13 — this
-/// exists only so the palettes below can be `const` items written in
+/// A `const` mirror of `Color::from_rgb8`, which is not a `const fn` in
+/// iced 0.13 — so the palettes below can be `const` items written in
 /// the same hex notation as the CSS they mirror.
 const fn rgb8(r: u8, g: u8, b: u8) -> Color {
     Color {

@@ -14,12 +14,10 @@
 //!
 //! **Not libei**, deliberately. The portal already exposes
 //! [`NotifyKeyboardKeycode`][spec] as a plain D-Bus method, which does
-//! exactly what a correction needs. Going through `ConnectToEIS`
-//! instead means a new protocol implementation and a heavyweight
-//! dependency to send twenty keystrokes, and would still need
-//! everything in [`session`] to get the descriptor. If a compositor
-//! ever drops the Notify methods, [`session`] is what already exists
-//! and `emitter` is what gets replaced.
+//! exactly what a correction needs; `ConnectToEIS` would mean a new
+//! protocol implementation and a heavyweight dependency to send twenty
+//! keystrokes, and would still need everything in [`session`] to get
+//! the descriptor.
 //!
 //! Three limits: **no `send_text`** (the portal speaks keycodes, which
 //! suits the Wayland path anyway); **it asks** — `Start` shows a

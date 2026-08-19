@@ -222,11 +222,8 @@ fn start(conn: &Connection, session_handle: &str) -> Result<Option<String>, Port
         .and_then(|v| String::try_from(v.clone()).ok()))
 }
 
-/// Subscribe to `Response` before making a call.
-///
-/// Order matters: a portal that answers immediately would emit the
-/// signal before we were listening, and we would then wait out the
-/// whole timeout for something already delivered.
+/// Subscribe to `Response` before making a call — see the module docs
+/// for why the order matters.
 fn subscribe(conn: &Connection, call: &'static str) -> Result<MessageIterator, PortalError> {
     let rule = MatchRule::builder()
         .msg_type(message::Type::Signal)
@@ -239,7 +236,6 @@ fn subscribe(conn: &Connection, call: &'static str) -> Result<MessageIterator, P
         .map_err(|source| PortalError::Call { call, source })
 }
 
-/// Wait for the `Response` belonging to `request_path`.
 fn wait_response(
     call: &'static str,
     signals: &mut MessageIterator,
@@ -316,7 +312,6 @@ fn store_restore_token(token: &str) {
     }
 }
 
-/// Test-only view of the token generator.
 #[cfg(test)]
 pub(super) fn token_for_test(prefix: &str) -> String {
     unique_token(prefix)

@@ -35,9 +35,9 @@ pub(crate) fn tooltip_for(
     }
 }
 
-/// Redraw icon + tooltip + the pause menu-item text from the current
-/// `TrayState`. Cheap (no allocation in the icon-rendering path beyond
-/// a 16x16 RGBA buffer); safe to call on every state change.
+/// Redraw icon, tooltip and the pause item's text from `TrayState`. The
+/// icon is rasterised from scratch, so call this on a state change, not
+/// on a tick.
 pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayState) {
     let waiting = state.attention > 0;
     let icon_result = match state.layout.as_ref() {

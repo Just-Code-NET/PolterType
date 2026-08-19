@@ -5,11 +5,8 @@ use anyhow::{Context, Result};
 use poltertype_types::LayoutId;
 use tray_icon::Icon;
 
-/// Build a tray icon for `layout`. The glyph is the first two
-/// alphabetic characters of `layout.as_str()`, uppercased; if we
-/// can't extract two, we fall back to "??". When `paused` is true
-/// the icon is rendered in a desaturated grey style with a small
-/// pause indicator dot — visually obvious at-a-glance.
+/// Build a tray icon for `layout`: its two-letter short code over a
+/// colour derived from the id, grey with a pause mark when `paused`.
 pub fn for_layout(layout: &LayoutId, paused: bool, waiting: bool) -> Result<Icon> {
     let code = layout_short_code(layout);
     let bg = if paused { PAUSED_BG } else { color_for(layout) };
@@ -78,8 +75,6 @@ pub(crate) fn render(text: &[u8], bg: [u8; 4]) -> Vec<u8> {
     let mut buf = vec![0u8; (W * H * 4) as usize];
     fill(&mut buf, bg);
 
-    // Two glyphs side-by-side with 1px padding around and 1px
-    // between. Glyph cells: 7px wide × 9px tall to center 4×6 inside.
     let fg = if luminance(bg) > 0.55 {
         [0x10, 0x10, 0x10, 0xFF]
     } else {
@@ -164,7 +159,7 @@ pub(crate) fn draw_waiting_badge(buf: &mut [u8]) {
 
 pub(crate) fn draw_glyph(buf: &mut [u8], ch: u8, x: i32, y: i32, fg: [u8; 4]) {
     let bits = glyph_bits(ch);
-    // 4 columns × 6 rows, packed row-major LSB = leftmost column.
+    // 4 columns × 6 rows, packed row-major; bit 3 = leftmost column.
     for (row, &row_bits) in bits.iter().enumerate() {
         for col in 0..4i32 {
             if row_bits & (1 << (3 - col)) != 0 {
@@ -174,8 +169,8 @@ pub(crate) fn draw_glyph(buf: &mut [u8], ch: u8, x: i32, y: i32, fg: [u8; 4]) {
     }
 }
 
-/// 4×6 monospace bitmap glyph for `ch`. Each row is a u8 with the
-/// top 4 bits holding the column pattern; bit 3 = leftmost column.
+/// 4×6 monospace bitmap glyph for `ch`. Each row is a u8 whose low 4
+/// bits hold the column pattern; bit 3 = leftmost column.
 pub(crate) fn glyph_bits(ch: u8) -> [u8; 6] {
     match ch {
         b'A' => [0b0110, 0b1001, 0b1001, 0b1111, 0b1001, 0b1001],

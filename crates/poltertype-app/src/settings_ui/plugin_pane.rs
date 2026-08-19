@@ -20,15 +20,12 @@ use tracing::warn;
 /// What a control that has to *ask the plug-in* is showing right now.
 ///
 /// Shared by the report, which shows the text, and the list, which
-/// parses rows out of it, so there is one cache and one place that
-/// knows a command has been asked for.
-///
-/// Three states and not two: "asked, waiting" reads very differently
-/// from "asked, got nothing", and a pane that shows an empty box for
-/// both looks broken while it is working.
+/// parses rows out of it: one cache, one place that knows a command has
+/// been asked for. Three states and not two — a pane that shows an
+/// empty box for both "waiting" and "got nothing" looks broken while it
+/// is working.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandOutput {
-    /// The command is running.
     Loading,
     /// It answered. May legitimately be empty text.
     Ready(String),
@@ -38,12 +35,10 @@ pub enum CommandOutput {
 
 /// Which box on the pane is being talked about.
 ///
-/// A control index was enough while everything that could be asked for,
-/// typed into or refreshed was one of the plug-in's own controls. A
-/// repeating group broke that: the fields inside its cards are controls
-/// too, they can have a command of their own, and each *card* has its
-/// own box holding its own half-typed text. So a box is named by all
-/// three — which control, which of its declared fields, and which card.
+/// A control index alone is not enough: the fields inside a repeating
+/// group's cards are controls too, they can carry a command of their
+/// own, and each *card* holds its own half-typed text. So a box is
+/// named by all three — control, declared field, card.
 ///
 /// The command behind a field is asked once for the whole group rather
 /// than once per card: which conversations exist is a question about the
@@ -87,8 +82,7 @@ impl Slot {
 /// The box the cursor is in.
 ///
 /// Passed to [`PluginPane::flush_edits`] so that settling everything
-/// else does not settle what somebody is halfway through typing. See
-/// that method for why writing a half-typed value is worse than waiting.
+/// else does not settle what somebody is halfway through typing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Typing {
     Control(usize),
@@ -122,69 +116,56 @@ pub struct PluginPane {
     pub values: Vec<Option<SettingValue>>,
     /// Result of the last edit, shown next to the plug-in.
     pub status: Option<String>,
-    /// What each command-backed box is showing. Absent means it has not
-    /// been asked yet — which is why it is a map and not a vector of
-    /// defaults: "never asked" and "asked, empty" are different, and
-    /// only one of them should send a command.
+    /// What each command-backed box is showing. A map rather than a
+    /// vector of defaults because absent means "never asked", which is
+    /// different from "asked, empty" — only one of them sends a command.
     ///
     /// Private, and written only through [`Self::set_output`], so the
     /// rows parsed out of it cannot be left describing an older answer.
     outputs: std::collections::HashMap<Slot, CommandOutput>,
-    /// Which section is on screen, as a control index. `None` before
-    /// anything is chosen, which means "the first one".
-    ///
-    /// One section at a time rather than an accordion: a plug-in with
-    /// a hundred settings has thirteen sections, and thirteen fold
-    /// arrows over a page that is still metres long is not navigation.
+    /// Which section is on screen, as a control index; `None` means the
+    /// first one. One section at a time rather than an accordion:
+    /// thirteen fold arrows over a page that is still metres long is not
+    /// navigation.
     pub section: Option<usize>,
     /// What is in a text box right now, before it is a value.
     ///
-    /// Without this the box can only ever show what the *file* holds,
-    /// so a number cannot be cleared and a decimal cannot be typed —
-    /// "0." is not a number, is therefore not written, and the box
-    /// snaps back before the next character arrives.
+    /// Without this the box can only show what the *file* holds, so a
+    /// number cannot be cleared and a decimal cannot be typed — "0." is
+    /// not a number, is therefore not written, and the box snaps back
+    /// before the next character arrives.
     pub edits: std::collections::HashMap<usize, String>,
     /// Which members each list control's array currently holds, by
     /// control index — what decides whether a row's box is ticked.
     ///
-    /// Cached because the answer used to be re-read from the file per
-    /// *row*: one `read_to_string` plus a whole format-preserving TOML
-    /// parse each, measured at 78 µs against a 17 KB config. `view`
-    /// rebuilds on every state change, so a chat plug-in showing two
-    /// room lists of 34 conversations read **1.2 MB and ran 68 TOML
-    /// parses for every click** — measured on this pane, against a file
-    /// the click itself had just written. Refreshed wherever the file
-    /// can have changed — see [`Self::reload_arrays`].
+    /// Cached because re-reading per *row* costs a `read_to_string` plus
+    /// a whole format-preserving TOML parse each, measured at 78 µs
+    /// against a 17 KB config: two room lists of 34 conversations read
+    /// **1.2 MB and ran 68 TOML parses for every click**, since `view`
+    /// rebuilds on every state change. Refreshed wherever the file can
+    /// have changed — see [`Self::reload_arrays`].
     arrays: std::collections::HashMap<usize, Vec<String>>,
     /// The rows a command-backed box is drawing, parsed once when the
     /// plug-in's answer arrives rather than re-split on every rebuild.
     rows: std::collections::HashMap<Slot, Vec<ListRow>>,
-    /// Which suggestion box has its list open, if any.
-    ///
-    /// One at a time, and *inline* rather than in an overlay: the pane
-    /// draws the matches under the box, bounded to a handful of rows.
-    /// An overlay sized to its options — which is what iced's own combo
-    /// box draws — covered the entire form with ninety-five
-    /// conversations, and a list you cannot see the form behind is not a
-    /// list, it is a modal nobody asked for.
+    /// Which suggestion box has its list open, if any. One at a time,
+    /// and inline: iced's own combo box draws an overlay sized to its
+    /// options, which ninety-five conversations turned into a modal over
+    /// the whole form.
     open_suggest: Option<Slot>,
-    /// Which card's button is running, and what came of the last one.
-    ///
-    /// A row action is the one thing a pane starts that takes seconds and
-    /// changes the world — the card says so while it runs, because a
-    /// button that goes quiet for twenty seconds reads as a button that
-    /// did nothing.
+    /// Which card's button is running. A row action takes seconds and
+    /// changes the world, and a button that goes quiet for twenty
+    /// seconds reads as one that did nothing.
     running_action: Option<(usize, usize)>,
     /// What each repeating-group control holds, by control index: one
     /// entry per row, each mapping the declared field names to what the
-    /// file says. Cached for the same reason `arrays` is — `view`
-    /// rebuilds on every keystroke, and reading a field at a time would
-    /// be a whole format-preserving TOML parse per field per row.
+    /// file says. Cached for the same reason `arrays` is — reading a
+    /// field at a time is a format-preserving TOML parse per field per
+    /// row, on every rebuild.
     records: std::collections::HashMap<usize, Vec<RecordRow>>,
     /// What is being typed into a record's field, before it is a value —
-    /// the per-row counterpart of `edits`, and there for the same reason:
-    /// a pane that saved on every keystroke would put every prefix of a
-    /// message into a file the plug-in is reading.
+    /// the per-row counterpart of `edits`: saving per keystroke would
+    /// put every prefix of a message into a file the plug-in reads.
     record_edits: std::collections::HashMap<(usize, usize, String), String>,
 }
 
@@ -196,12 +177,10 @@ pub type RecordRow = std::collections::HashMap<String, Option<SettingValue>>;
 impl PluginPane {
     /// Which controls need a command run and have not had one yet.
     ///
-    /// The pane asks on the way in rather than on every draw: each of
-    /// these costs a process, and `view` is rebuilt on every state
-    /// change — every click, every keystroke in a box. Only the
-    /// section on screen is asked — reading a chat client's room list
-    /// means talking to that application, and doing it for twelve
-    /// sections nobody opened is a cost with nothing to show for it.
+    /// Asked on the way in rather than on every draw: each costs a
+    /// process and `view` rebuilds on every keystroke. Only the section
+    /// on screen — reading a chat client's room list means talking to
+    /// that application, and twelve unopened sections buy nothing.
     pub fn unasked_commands(&self) -> Vec<Slot> {
         self.command_slots()
             .into_iter()
@@ -209,10 +188,9 @@ impl PluginPane {
             .collect()
     }
 
-    /// Every box on screen whose contents come from the plug-in: the
-    /// reports and tick-box lists, and the suggestion boxes — including
-    /// the ones inside a repeating group's cards, which is where a
-    /// conversation gets picked.
+    /// Every box on screen whose contents come from the plug-in:
+    /// reports, tick-box lists and suggestion boxes, including the ones
+    /// inside a repeating group's cards.
     fn command_slots(&self) -> Vec<Slot> {
         let mut slots = Vec::new();
         for (i, control) in self.ext.manifest.pane.iter().enumerate() {
@@ -278,8 +256,8 @@ impl PluginPane {
     ///
     /// A control belongs to the nearest [`ControlKind::Section`] above
     /// it. Controls declared *before* the first section belong to none
-    /// and are always shown — which is also what makes a plug-in with
-    /// no sections at all render exactly as it used to.
+    /// and are always shown, which is also what makes a plug-in with no
+    /// sections render everything.
     pub fn is_visible(&self, index: usize) -> bool {
         let controls = &self.ext.manifest.pane;
         let Some(selected) = self.selected_section() else {
@@ -366,12 +344,11 @@ impl PluginPane {
     /// What a suggestion box offers: what the manifest named, then what
     /// the plug-in answered, in that order and without repeats.
     ///
-    /// The plug-in's rows contribute their **id**, never their label —
-    /// what is picked is what is written, and a friendlier name in the
-    /// list would be a box that stores something other than what it
-    /// shows. The label's *detail* comes along beside it, because
-    /// "which of these ninety-five" is a question a name alone often
-    /// cannot answer.
+    /// The plug-in's rows contribute their **id**, never their label:
+    /// what is picked is what is written, and a friendlier name would
+    /// make the box store something other than what it shows. The
+    /// *detail* comes along beside it, since a name alone often cannot
+    /// answer "which of these ninety-five".
     pub fn suggestions(&self, slot: Slot) -> Vec<(String, String)> {
         let Some(control) = self.control(slot.control) else {
             return Vec::new();
@@ -397,13 +374,11 @@ impl PluginPane {
     }
 
     /// The ones worth drawing under the box right now: everything when
-    /// nothing has been typed into it, and what matches when something
-    /// has.
+    /// nothing has been typed, what matches when something has.
     ///
-    /// Matched case-insensitively on the value, both ways round — the
-    /// same loose match every room allow-list in these plug-ins uses, so
-    /// picking from this list and typing the name by hand mean the same
-    /// thing.
+    /// Matched case-insensitively on the value — the same loose match
+    /// the plug-ins' own room allow-lists use, so picking from this list
+    /// and typing the name by hand mean the same thing.
     pub fn suggestions_matching(&self, slot: Slot) -> Vec<(String, String)> {
         let needle = self.pending(slot).unwrap_or_default().trim().to_lowercase();
         self.suggestions(slot)
@@ -450,10 +425,10 @@ impl PluginPane {
 
     /// Re-read every list control's array from the plug-in's config.
     ///
-    /// One read and one parse per list control, on a step the user
-    /// took — not per row and not per frame. Another program owns this
-    /// file, so the answer is still taken from disk rather than
-    /// inferred from what this pane last wrote.
+    /// One read and one parse per list control, on a step the user took
+    /// — not per row and not per frame. Another program owns this file,
+    /// so the answer still comes from disk rather than from what this
+    /// pane last wrote.
     fn reload_arrays(&mut self) {
         let keys: Vec<(usize, String)> = self
             .ext
@@ -477,9 +452,8 @@ impl PluginPane {
     /// Read the current values for one extension.
     ///
     /// `config_root` is the directory holding *per-application* config
-    /// directories — the parent of ours — because a plug-in keeps its
-    /// config beside PolterType's rather than inside it. It is a
-    /// separate program; its settings are not a subsection of ours.
+    /// directories — the parent of ours. A plug-in is a separate
+    /// program, so its config sits beside PolterType's, not inside it.
     pub fn load(ext: DiscoveredExtension, config_root: &Path) -> Self {
         let config_path = config_root
             .join(&ext.id)
@@ -529,10 +503,9 @@ impl PluginPane {
 
     /// Re-read every repeating group from the file.
     ///
-    /// Called wherever the file can have changed under us, exactly like
-    /// [`Self::reload_arrays`]: adding a row, removing one, and setting a
-    /// field all rewrite the document, and a stale cache would draw the
-    /// row that was just deleted.
+    /// Called wherever the file can have changed under us, like
+    /// [`Self::reload_arrays`]: add, remove and set-field all rewrite
+    /// the document, and a stale cache would draw the deleted row.
     fn reload_records(&mut self) {
         let groups: Vec<(usize, String, Vec<String>)> = self
             .ext
@@ -605,10 +578,9 @@ impl PluginPane {
 
     /// The report controls on screen, one slot each.
     ///
-    /// What to re-ask after a row action: a report is the plug-in
-    /// describing state that the action just changed. A conversation
-    /// list is not — re-asking one reads a chat client's sidebar, and a
-    /// button press about a scheduled message is no reason to do that.
+    /// What to re-ask after a row action: a report describes state the
+    /// action just changed. A conversation list does not — re-asking one
+    /// reads a chat client's sidebar for an unrelated button press.
     pub fn reports_on_screen(&self) -> Vec<Slot> {
         self.ext
             .manifest
@@ -638,9 +610,8 @@ impl PluginPane {
     /// What one card calls itself: the value of the field the manifest
     /// named as the group's `id_field`.
     ///
-    /// `None` while that field is empty. A row action is a command run
-    /// against a name the plug-in knows, and a blank one would be a
-    /// command run against nothing at all.
+    /// `None` while that field is empty: a row action runs against a
+    /// name the plug-in knows, and a blank one names nothing.
     pub fn record_id(&self, index: usize, row: usize) -> Option<String> {
         let control = self.control(index)?;
         let field = control.id_field.trim();
@@ -734,11 +705,9 @@ impl PluginPane {
         match poltertype_core::plugins::remove_record(&current, &key, row) {
             Ok(updated) => {
                 if self.write(updated) {
-                    // Half-typed text belonging to rows that have just
-                    // shifted up would otherwise be flushed into the
-                    // wrong row the next time anything settles — and a
-                    // searching box would go on showing what was being
-                    // looked for in the card above it.
+                    // Half-typed text belonging to rows that just
+                    // shifted up would otherwise settle into the wrong
+                    // row.
                     self.record_edits.retain(|(i, _, _), _| *i != index);
                     // The list that was open belonged to a card that has
                     // just shifted; it would reopen under the wrong one.
@@ -771,17 +740,16 @@ impl PluginPane {
     /// Write everything typed since the last flush, except the box the
     /// user is still in.
     ///
-    /// Deferring the write is the point. A pane that saved on every
-    /// keystroke — which this one used to do — puts every prefix of
-    /// what is being typed into a file the plug-in is reading: a
-    /// threshold on its way from `0.9` to `0.95` passes through `0`,
-    /// and for the length of a keystroke the gate is wide open. So a
-    /// value settles when the user does something else, and at the
-    /// latest when the window closes.
+    /// Deferring the write is the point. Saving on every keystroke puts
+    /// every prefix of what is typed into a file the plug-in is
+    /// reading: a threshold on its way from `0.9` to `0.95` passes
+    /// through `0`, and for the length of a keystroke the gate is wide
+    /// open. So a value settles when the user does something else, and
+    /// at the latest when the window closes.
     ///
-    /// Text that is not yet a value of the right shape is kept in the
-    /// box and out of the file: half a number is not a number, and
-    /// writing `1` for a half-typed `1.5` would be worse than waiting.
+    /// Text that is not yet a value of the right shape stays in the box
+    /// and out of the file — writing `1` for a half-typed `1.5` would
+    /// be worse than waiting.
     pub fn flush_edits(&mut self, still_typing: Option<&Typing>) {
         let held = match still_typing {
             Some(Typing::Control(index)) => Some(*index),
@@ -830,15 +798,11 @@ impl PluginPane {
         self.flush_record_edits(still_typing);
     }
 
-    /// The same deferral for the boxes inside a repeating group.
-    ///
-    /// These were the one place a keystroke still reached the file: a
+    /// The same deferral for the boxes inside a repeating group. A
     /// card's box is addressed by row and field where a control is
-    /// addressed by an index, and the caller used to know only the
-    /// latter — so every keystroke settled the *previous* keystroke, and
-    /// a message on its way to being written arrived in the plug-in's
-    /// config one prefix at a time. [`Typing`] says which box, whichever
-    /// kind it is, and the answer is the same for both.
+    /// addressed by an index, so [`Typing`] has to name either kind —
+    /// a caller that could only name a control index would settle the
+    /// previous keystroke on every keystroke.
     fn flush_record_edits(&mut self, still_typing: Option<&Typing>) {
         let held = match still_typing {
             Some(Typing::Record {
@@ -895,10 +859,9 @@ impl PluginPane {
 
     /// Write the comma-separated box back as an array.
     ///
-    /// Empty members are dropped rather than written, so a trailing
-    /// comma while typing does not put `""` in the list — which, for
-    /// the substring matching these lists usually feed, would match
-    /// everything.
+    /// Empty members are dropped, so a trailing comma while typing does
+    /// not put `""` in the list — which, for the substring matching
+    /// these lists usually feed, would match everything.
     fn set_strings(&mut self, index: usize, raw: &str) {
         let Some(control) = self.ext.manifest.pane.get(index) else {
             return;
@@ -981,9 +944,8 @@ impl PluginPane {
     ///
     /// The rows on screen and nothing else. A list can hold names the
     /// plug-in did not offer this time — a conversation in a client that
-    /// is not running, one typed in by hand — and clearing what cannot
-    /// be seen is the worse surprise of the two: the user is acting on a
-    /// list they are looking at.
+    /// is not running, one typed by hand — and the user is acting on the
+    /// list they can see, so what is invisible is left alone.
     ///
     /// One write for the whole set, so the file another program is
     /// reading is never caught half-updated.
@@ -1019,10 +981,9 @@ impl PluginPane {
     /// Write the plug-in's config file back, reporting either way, and
     /// say whether it landed.
     ///
-    /// The one place the file is written, which is also what makes it
-    /// the one place the cached arrays have to be brought back in step
-    /// — a ticked box that re-read nothing would spring back open on
-    /// the next frame.
+    /// The one place the file is written, so also the one place the
+    /// cached arrays are brought back in step — a ticked box that
+    /// re-read nothing springs back open on the next frame.
     fn write(&mut self, updated: String) -> bool {
         if let Some(dir) = self.config_path.parent() {
             if let Err(e) = std::fs::create_dir_all(dir) {
@@ -1050,8 +1011,7 @@ impl PluginPane {
     /// Write one control's value into the plug-in's config file.
     ///
     /// Reads, edits and writes on the spot rather than batching: the
-    /// plug-in may be running and watching that file, and a pane that
-    /// held changes back would show a state the plug-in is not in.
+    /// plug-in may be running and watching that file.
     pub fn set(&mut self, index: usize, value: SettingValue) {
         let Some(control) = self.ext.manifest.pane.get(index) else {
             return;

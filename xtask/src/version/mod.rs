@@ -16,14 +16,8 @@
 //! The rarer transitions — alpha → beta, dropping the suffix at 1.0 —
 //! are worth doing explicitly with `set` rather than guessing.
 //!
-//! A missing or differently-shaped `## [Unreleased]` heading is a
-//! warning, not an error, so `CHANGELOG.md` need not exist.
-//!
-//! It deliberately does **not** commit, tag or push — a release commit
-//! is the moment to catch a wrong bump, not after the tag has hit CI —
-//! does not talk to the network, and pulls in no `semver`/`regex`
-//! dependency for a version shape the hand-rolled parser below covers
-//! in ~30 lines.
+//! It deliberately does **not** commit, tag or push: a release commit
+//! is the moment to catch a wrong bump, not after the tag has hit CI.
 
 use anyhow::{Result, bail};
 
@@ -41,9 +35,7 @@ pub(crate) use types::*;
 
 /// Entry point — dispatches `version [bump|set <V>] [--dry-run]`.
 pub fn run(rest: &[String]) -> Result<()> {
-    // Strip an optional trailing `--dry-run` flag. We accept it
-    // anywhere after the subcommand so users don't have to remember
-    // exact ordering.
+    // `--dry-run` is accepted anywhere after the subcommand.
     let dry_run = rest.iter().any(|a| a == "--dry-run");
     let positional: Vec<&str> = rest
         .iter()

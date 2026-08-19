@@ -24,9 +24,8 @@ pub(crate) fn apply_change(change: Change, dry_run: bool) -> Result<()> {
     let next = match &change {
         Change::Bump => bump(&current)?,
         Change::Set(new) => {
-            // Light validation so a typo doesn't leak into the file.
-            // The parser accepts everything we'd ever want to set;
-            // a string it rejects is almost certainly a mistake.
+            // The parser accepts everything we would ever want to set,
+            // so a string it rejects is almost certainly a typo.
             parse(new).with_context(|| format!("`{new}` is not a recognised version shape"))?;
             new.clone()
         }
@@ -46,18 +45,14 @@ pub(crate) fn apply_change(change: Change, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Step 1: rewrite Cargo.toml — single line, surgical replace
-    // anchored on the leading `version       = ` so we don't
-    // accidentally replace a version string inside a doc comment.
+    // Anchored on the leading `version       = ` so a version string
+    // inside a doc comment is not replaced.
     let new_body = replace_version_line(&body, &current, &next)?;
     fs::write(&cargo_toml, new_body).with_context(|| format!("write {}", cargo_toml.display()))?;
     println!("  ✓ Cargo.toml");
 
-    // Step 2: update CHANGELOG.md heading if present. Missing /
-    // mismatched is a warning, not an error — keeps the script
-    // useful in a fresh checkout that hasn't grown a CHANGELOG
-    // yet, and avoids forcing every consumer of the script to
-    // adopt our exact heading shape.
+    // A missing or mismatched CHANGELOG heading warns rather than
+    // failing, so a fresh checkout without one still works.
     let changelog = workspace_root()?.join("CHANGELOG.md");
     match update_changelog(&changelog, &current, &next) {
         Ok(true) => println!("  ✓ CHANGELOG.md"),
@@ -67,10 +62,8 @@ pub(crate) fn apply_change(change: Change, dry_run: bool) -> Result<()> {
         Err(e) => println!("  · CHANGELOG.md update failed: {e} — skipping"),
     }
 
-    // Step 3: refresh Cargo.lock by running `cargo check`. Any
-    // alternative (manually rewriting the lock, calling cargo
-    // metadata) would either drift or pull in cargo as a dep —
-    // shelling out is honest about what we're doing.
+    // `cargo check` refreshes Cargo.lock. Rewriting the lock by hand
+    // would drift, and `cargo metadata` means cargo as a dependency.
     println!("  · refreshing Cargo.lock via `cargo check --workspace` ...");
     let status = Command::new(cargo_bin())
         .args(["check", "--workspace", "--quiet"])

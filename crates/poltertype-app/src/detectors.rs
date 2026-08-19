@@ -17,11 +17,9 @@ use tracing::{info, warn};
 use crate::types::*;
 
 /// Build one dictionary set per configured wordlist profile, ready to
-/// swap in when focus enters the matching app. No profiles → empty
-/// cache and no watcher, so this costs nothing in the common case.
-///
-/// Each profile reuses the bundled FSTs through the `Arc` inside
-/// `LayoutDictionary`; only the user-overlay `HashSet`s are re-derived.
+/// swap in when focus enters the matching app. No profiles → empty cache
+/// and no watcher. Each profile reuses the bundled FSTs through the `Arc`
+/// inside `LayoutDictionary`; only the user overlays are re-derived.
 pub(crate) fn build_profile_dictionary_cache(
     layouts: &Arc<LayoutDb>,
     data_dir: &std::path::Path,
@@ -51,15 +49,14 @@ pub(crate) fn build_profile_dictionary_cache(
 
 /// Poll `FocusTracker::focused_exe()` every ~250 ms and swap the
 /// dictionary set when the resolved profile changes, or when
-/// `force_reapply` is set. Same cadence as `spawn_layout_poller`.
+/// `force_reapply` is set.
 ///
-/// `force_reapply` covers the case the "swap on change" rule misses:
-/// the cache was rebuilt while the user stayed on the same app, which
-/// is what happens when they save wordlist edits from the Settings UI.
+/// `force_reapply` covers the case "swap on change" misses: the cache was
+/// rebuilt while the user stayed on the same app, which is what happens
+/// when they save wordlist edits from the Settings UI.
 ///
 /// Transient tracker errors are swallowed — a flaky Wayland tracker is
-/// not worth log spam and the next poll catches up. Transitions are
-/// logged, so swaps can be verified from the log file.
+/// not worth log spam and the next poll catches up.
 pub(crate) fn spawn_profile_watcher(
     focus_tracker: Arc<dyn poltertype_input::FocusTracker>,
     settings: Arc<SettingsStore>,
@@ -86,10 +83,6 @@ pub(crate) fn spawn_profile_watcher(
 
                 let forced = force_reapply.swap(false, Ordering::AcqRel);
                 if resolved != active || forced {
-                    // The cache always holds the "" key as the global
-                    // baseline, so any transition — including back to
-                    // global — is one lookup and a swap. `forced`
-                    // re-applies the same key to pick up a rebuilt cache.
                     let dicts_opt = profile_cache.read().get(&resolved).cloned();
                     if let Some(dicts) = dicts_opt {
                         info!(
@@ -116,13 +109,12 @@ pub(crate) fn spawn_profile_watcher(
     Ok(())
 }
 
-/// Build the full per-profile cache, including the global baseline
-/// under the empty-string key. Called at startup and from the Settings
-/// UI close handler.
+/// Build the full per-profile cache, including the global baseline under
+/// the empty-string key.
 ///
-/// The empty-string key is what the watcher swaps back to when focus
-/// leaves a profiled app; without it, moving from VS Code to Chrome
-/// would keep the code overlay loaded for ever.
+/// That key is what the watcher swaps back to when focus leaves a
+/// profiled app; without it, moving from VS Code to Chrome would keep
+/// the code overlay loaded for ever.
 pub(crate) fn build_full_profile_cache(
     layouts: &Arc<LayoutDb>,
     data_dir: &Path,
@@ -182,11 +174,9 @@ pub(crate) fn collect_dicts(
         .collect()
 }
 
-/// Persist `word` into the user's global overlay for `layout` and make
-/// it live at once: append to `<config-dir>/poltertype/wordlists/
-/// <stem>.txt` and insert into the running set in place. Deliberately
-/// not a full `reload_user_dictionaries`, which re-reads and re-leaks
-/// every FST blob.
+/// Append `word` to the user's global overlay for `layout` and insert it
+/// into the running set in place. Deliberately not a full
+/// `reload_user_dictionaries`, which re-reads and re-leaks every FST blob.
 ///
 /// Known edge: while a per-app profile is active, the next profile swap
 /// replaces the in-memory set with its startup-built cache and hides
@@ -211,21 +201,18 @@ pub(crate) fn add_word_to_user_overlay(
     Ok(())
 }
 
-/// Re-read the user's wordlist overlays from disk and atomically swap
-/// the engine's dictionary set; returns how many loaded. Always
-/// rebuilds, so the log carries a clear signal that it took effect.
+/// Re-read the user's wordlist overlays from disk and atomically swap the
+/// engine's dictionary set; returns how many loaded.
 ///
 /// Only **global overlays for already-loaded layouts** are picked up
 /// live — the load-bearing case, adding vocabulary like `kubectl`.
 /// Brand-new user layouts, per-profile overlays, `[[wordlists.profiles]]`
-/// schema changes and hotkey rebinds all need a restart, because the
-/// engine holds a snapshot `Arc<LayoutDb>`, the profile cache is built
-/// once at startup, and the two built-in hotkeys are registered with
-/// the OS once. A new layout is logged loudly so the user knows.
+/// schema changes and hotkey rebinds all need a restart: the engine holds
+/// a snapshot `Arc<LayoutDb>`, the profile cache is built once at
+/// startup, and the two built-in hotkeys are registered with the OS once.
 ///
-/// `[[commands]]` text triggers are the exception: the engine reads
-/// them from `settings.snapshot()` on every word boundary, so they take
-/// effect on the next typed word.
+/// `[[commands]]` text triggers are the exception: the engine reads them
+/// from `settings.snapshot()` on every word boundary.
 pub(crate) fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
     let wordlist_dir = poltertype_core::layouts::user_wordlist_dir();
     let layout_dir = poltertype_core::layouts::user_layout_dir();
@@ -264,9 +251,8 @@ pub(crate) fn build_ai_detectors(
     ai: &poltertype_core::settings::AiSettings,
 ) -> Vec<Box<dyn poltertype_detect::Detector>> {
     if !ai.enabled {
-        // Say nothing when the whole subsystem is off — this is the
-        // default, and a line about a disabled feature in every log is
-        // noise for every user who never asked for it.
+        // Silent on purpose: this is the default, and a log line about a
+        // feature nobody asked for is noise.
         return Vec::new();
     }
     if ai.plugins.is_empty() {

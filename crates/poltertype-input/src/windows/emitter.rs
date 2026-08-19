@@ -44,9 +44,6 @@ impl KeyEmitter for WindowsEmitter {
             return Ok(());
         }
         let mut events: Vec<INPUT> = Vec::with_capacity(text.len() * 2);
-        // Encode each char as UTF-16; non-BMP codepoints take two
-        // INPUT events (high + low surrogate). Each codepoint is sent
-        // both as a key-down and key-up.
         for c in text.chars() {
             let mut buf = [0u16; 2];
             for &unit in c.encode_utf16(&mut buf).iter() {

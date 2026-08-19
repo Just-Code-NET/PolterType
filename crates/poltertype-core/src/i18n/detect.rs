@@ -4,15 +4,14 @@
 /// environment, otherwise English.
 ///
 /// `"auto"`, `"system"` and the empty string all mean "ask the
-/// environment". `"system"` is what `[general].ui_language` has shipped
-/// with since the setting was added, so honouring it costs nothing and
-/// beats silently rewriting every existing config.
+/// environment"; `"system"` is the shipped default of
+/// `[general].ui_language`.
 ///
 /// Detection is the POSIX trio (`LC_ALL`, `LC_MESSAGES`, `LANG`) in the
 /// order the C library uses. Windows sets none of these and lands on
 /// English unless the user picks a language — deliberate, since reading
 /// the Windows locale means a `#[cfg(target_os)]` in a crate that holds
-/// none, and a picker beats a guess anyway.
+/// none.
 pub fn resolve_locale(requested: Option<&str>) -> String {
     if let Some(explicit) = requested {
         let trimmed = explicit.trim();

@@ -1,20 +1,14 @@
 //! Popup enums: placement anchors and UI events.
 
-/// Where the tooltip should appear.
-///
-/// Best-first, because no Wayland protocol or X11 property answers
-/// "where is the caret" and the accessibility stack only does so for
-/// apps with a live bridge: the AT-SPI caret when fresh, the focused
-/// window's bottom-centre otherwise, a screen edge when nothing is
-/// known.
+/// Where the tooltip should appear, best-first: no Wayland protocol or
+/// X11 property answers "where is the caret", and the accessibility
+/// stack only does so for apps with a live bridge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PopupAnchor {
     /// A point of interest in global compositor coordinates — the
-    /// AT-SPI caret. `height` is the vertical extent at that point
-    /// (the caret's line height; 0 when the app reports none):
-    /// "above" placements clear the top of it,
-    /// "below" placements clear the bottom, so the tooltip never
-    /// covers the very line being typed.
+    /// AT-SPI caret. `height` is the caret's line height (0 when the
+    /// app reports none); "above" placements clear its top and "below"
+    /// its bottom, so the tooltip never covers the line being typed.
     Point {
         x: i32,
         y: i32,

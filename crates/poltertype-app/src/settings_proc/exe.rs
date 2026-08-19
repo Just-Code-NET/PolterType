@@ -24,17 +24,14 @@ pub(super) fn classify(raw: PathBuf, exists: impl Fn(&Path) -> bool) -> OwnExe {
         return OwnExe::Live(raw);
     }
     match strip_deleted_suffix(&raw) {
-        // Our binary was swapped out and something is at the old path
-        // now: a rebuilt dev binary, or the new version an in-place
-        // upgrade just installed. Either way it's the right thing to
-        // launch — the alternative is doing nothing at all.
+        // A rebuilt dev binary or an in-place upgrade now sits at the
+        // old path — launching it beats doing nothing at all.
         Some(real) if exists(&real) => OwnExe::Replaced(real),
         _ => OwnExe::Gone(raw),
     }
 }
 
-/// Undo the kernel's ` (deleted)` annotation to recover the path our
-/// binary actually lived at. See [`DELETED_SUFFIX`].
+/// Recover the path our binary lived at; see [`DELETED_SUFFIX`].
 fn strip_deleted_suffix(raw: &Path) -> Option<PathBuf> {
     let name = raw.file_name()?.to_str()?;
     let real = name.strip_suffix(DELETED_SUFFIX)?;

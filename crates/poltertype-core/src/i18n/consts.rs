@@ -11,6 +11,6 @@ pub const I18N_DIR: &str = "i18n";
 ///
 /// A locale absent from this list still *works* — drop a
 /// `<config-dir>/poltertype/i18n/<lang>.toml` in and set
-/// `[ui].language`. This is what the picker offers, not what the loader
-/// accepts.
+/// `[general].ui_language`. This is what the picker offers, not what
+/// the loader accepts.
 pub const SHIPPED_LOCALES: &[(&str, &str)] = &[("uk", "Українська")];

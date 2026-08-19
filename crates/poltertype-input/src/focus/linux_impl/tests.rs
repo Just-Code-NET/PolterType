@@ -91,8 +91,9 @@ fn cache_serves_within_ttl_without_hitting_inner() {
     );
     assert_eq!(cached.focused_exe().as_deref(), Some("counted"));
     assert_eq!(cached.focused_exe().as_deref(), Some("counted"));
-    // Only the first call reached the inner tracker; we can't read the
-    // counter back through the Box<dyn>, so assert via a zero TTL below.
+    // Only the first call reached the inner tracker; the counter cannot
+    // be read back through the `Box<dyn>`, so the pass-through direction
+    // is asserted by `cache_with_zero_ttl_always_refreshes`.
 }
 
 #[test]

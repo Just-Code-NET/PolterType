@@ -6,12 +6,10 @@
 //!
 //! The checks are about what PolterType would otherwise be tricked into
 //! doing on the plug-in's behalf, not about the plug-in being
-//! well-written: it may only ask us to run a program **out of its own
-//! `bin/`**, by plain file name, so a manifest cannot point at
-//! `/usr/bin/env` or a sibling pack; every button and tray entry must
-//! name a command that exists, so a click cannot fall through to
-//! nothing; and every stored control must name its config key, every
-//! choice offer something to choose.
+//! well-written: a program only **out of its own `bin/`**, by plain file
+//! name, so a manifest cannot point at `/usr/bin/env` or a sibling pack;
+//! every button and tray entry naming a command that exists; every
+//! stored control naming its config key.
 
 use super::enums::{ControlKind, PluginError};
 use super::types::ExtensionManifest;
@@ -39,9 +37,8 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
     }
 
     for item in &m.tray_items {
-        // A status entry reports rather than acts: it has a state key
-        // and no command, and is rendered disabled. Requiring a command
-        // of it would force plug-in authors to invent a do-nothing one.
+        // A status entry reports rather than acts, so it has no command;
+        // requiring one would force authors to invent a do-nothing one.
         if item.is_status() {
             if m.state_args.is_empty() {
                 return Err(PluginError::BadPane(format!(
@@ -72,10 +69,9 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
     for control in &m.pane {
         match control.kind {
             ControlKind::Button | ControlKind::Report => {
-                // Both name a command rather than a key. A report that
-                // pointed at a command nobody declared would render an
-                // empty box for ever, which reads as "nothing to say"
-                // rather than as the mistake it is.
+                // Both name a command rather than a key; pointed at one
+                // nobody declared, a report renders an empty box for
+                // ever, which reads as "nothing to say".
                 if !m.commands.iter().any(|c| c.id == control.command) {
                     let what = if control.kind == ControlKind::Button {
                         "button"
@@ -103,10 +99,9 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                         )));
                     }
                     // A link in a manifest is a third party naming a
-                    // place PolterType will send somebody. `https` only,
-                    // and the pane shows the address as the link text —
-                    // so what is clicked is what is read, and a plug-in
-                    // cannot label a destination as something it is not.
+                    // place PolterType will send somebody: `https` only,
+                    // and the pane shows the address as the link text,
+                    // so a plug-in cannot mislabel a destination.
                     let link = option.link().trim();
                     if !link.is_empty() && !link.starts_with("https://") {
                         return Err(PluginError::BadPane(format!(
@@ -128,9 +123,8 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
             | ControlKind::Strings => {
                 check_key(control.key.trim(), &control.label)?;
             }
-            // A heading stores nothing and runs nothing; all it needs is
-            // to say something. An unlabelled one would draw a fold
-            // arrow with no way to tell what is behind it.
+            // A heading stores nothing and runs nothing; unlabelled, it
+            // draws a fold arrow with no way to tell what is behind it.
             ControlKind::Section => {
                 if control.label.trim().is_empty() {
                     return Err(PluginError::BadPane(
@@ -139,9 +133,8 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                 }
             }
             ControlKind::List => {
-                // Both halves are load-bearing: without the command
-                // there are no rows to tick, and without the key a tick
-                // has nowhere to go.
+                // Without the command there are no rows to tick; without
+                // the key a tick has nowhere to go.
                 check_key(control.key.trim(), &control.label)?;
                 if !m.commands.iter().any(|c| c.id == control.command) {
                     return Err(PluginError::BadPane(format!(
@@ -159,9 +152,8 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                     )));
                 }
                 for field in &control.fields {
-                    // A row is one table. A dotted key inside it would be
-                    // a table inside a table, and nesting is the point at
-                    // which a settings pane becomes a config editor.
+                    // A row is one table; a dotted key inside it would
+                    // nest, and nesting makes this a config editor.
                     let key = field.key.trim();
                     if key.contains('.') {
                         return Err(PluginError::BadPane(format!(
@@ -199,9 +191,8 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
                 }
                 check_row_actions(m, control)?;
             }
-            // Nothing to check: we do not know what this control is, and
-            // refusing a manifest for containing one would defeat the
-            // point of tolerating it at all.
+            // Nothing to check: refusing a manifest for containing an
+            // unknown control would defeat the point of tolerating one.
             ControlKind::Unknown => {}
         }
     }
@@ -248,10 +239,9 @@ fn check_suggestions(
     Ok(())
 }
 
-/// Buttons on a row must run something that exists, and must know which
-/// field names the row — a `{id}` nothing fills in would run the command
-/// against the literal string, which for "send this message now" is a
-/// thing to refuse at load rather than discover at the click.
+/// Buttons on a row must run something that exists and must know which
+/// field names the row: a `{id}` nothing fills in would run the command
+/// against the literal string — refused at load, not at the click.
 fn check_row_actions(
     m: &ExtensionManifest,
     control: &super::types::PaneControl,

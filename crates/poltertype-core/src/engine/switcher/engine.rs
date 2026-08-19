@@ -27,63 +27,53 @@ pub struct SwitcherEngine {
     pub(super) layout_switcher: Arc<dyn LayoutSwitcher>,
     pub(super) key_emitter: Arc<dyn KeyEmitter>,
     /// Holds the user's keystrokes back while a correction burst is on
-    /// the wire, so nothing of theirs can land in the middle of our
-    /// text. A no-op gate (every platform but Linux/evdev, and stacks
-    /// where grabbing would gag us instead) leaves the engine on its
-    /// absorb-and-repair path.
+    /// the wire. A no-op gate (every platform but Linux/evdev, and
+    /// stacks where grabbing would gag us instead) leaves the engine on
+    /// its absorb-and-repair path.
     pub(super) key_gate: KeyGate,
-    /// Modifiers the user was holding as of the last event we saw.
-    ///
-    /// A correction triggered *by* a chord starts while those keys are
-    /// still down, and our replay travels the same path to the
-    /// application as the user's own keystrokes — under a held `Ctrl`
-    /// every replayed key arrives as a shortcut and nothing is typed.
-    /// So the emitter is told to let them go first.
+    /// Modifiers the user was holding as of the last event we saw. A
+    /// correction fired *by* a chord must let them go before replaying:
+    /// under a held `Ctrl` every replayed key arrives as a shortcut and
+    /// nothing is typed.
     pub(super) held_modifiers: RwLock<Modifiers>,
     pub(super) focus_tracker: Arc<dyn FocusTracker>,
     pub(super) audio: Arc<AudioPlayer>,
     pub(super) out_tx: Sender<SwitcherEvent>,
     pub(super) paused: Arc<RwLock<bool>>,
     /// The last few completed words, so a smart-command trigger can span
-    /// more than one (`best regards`).
-    ///
-    /// Bounded three ways — length, idle timeout, focus change —
-    /// because this is the one place the engine holds more of the
-    /// user's text than the word being typed. See
+    /// more than one (`best regards`). Bounded by length, idle timeout
+    /// and focus change, because this is the one place the engine holds
+    /// more of the user's text than the word being typed. See
     /// [`crate::commands::phrase`].
     pub(super) word_history: Arc<RwLock<WordHistory>>,
     /// Buffer of the previous fully-completed word (for "switch-last").
     pub(super) last_word: Arc<RwLock<Option<LastWord>>>,
     /// Layout in effect when the in-progress word's first key arrived.
     ///
-    /// The buffer holds scancodes, so what a word *reads* as depends
-    /// entirely on the layout that was active while it was typed — and
-    /// the user may have switched by hand since. Without this stamp
-    /// `decide` reads the word under whatever is active at the boundary,
-    /// finds gibberish where the screen holds perfectly good text, and
-    /// "corrects" it: the word is retyped and the layout dragged back
-    /// off the one the user had just chosen.
+    /// The buffer holds scancodes, so what a word *reads* as depends on
+    /// the layout active while it was typed — and the user may have
+    /// switched by hand since. Without this stamp `decide` reads the
+    /// word under whatever is active at the boundary, finds gibberish
+    /// where the screen holds good text, and "corrects" it: retyping the
+    /// word and dragging the layout off the one the user just chose.
     ///
-    /// `None` when the OS could not be asked, which reads as "assume it
-    /// never changed" — the pre-0.16 behaviour.
+    /// `None` when the OS could not be asked, read as "assume it never
+    /// changed".
     pub(super) word_layout: RwLock<Option<LayoutId>>,
     /// Expected echoes of our own injected keystrokes: the scancode of
     /// every *press* the emitter put on the wire, oldest first, each
     /// with an expiry deadline.
     ///
-    /// Our uinput device is not distinguishable from a real keyboard at
-    /// the listener level — keyd and friends proxy our events through
-    /// their own virtual keyboard, stripping the `injected` marker. Left
-    /// unguarded the engine reads its own replay back, corrects it
-    /// again, and spirals into a backspace+space loop.
+    /// keyd and friends proxy our events through their own virtual
+    /// keyboard, stripping the `injected` marker; left unguarded the
+    /// engine reads its own replay back, corrects it again, and spirals
+    /// into a backspace+space loop.
     ///
     /// Match-and-consume rather than a blanket suppression window:
     /// suppressing everything for 300–400 ms ate the first real
     /// keystrokes of the next word for fast typists, so the next
     /// correction under-counted its backspaces and left the leading
-    /// characters behind. Here each press either matches the head of
-    /// this queue and is swallowed, or is real input and is processed
-    /// however soon after a correction it arrives.
+    /// characters behind.
     ///
     /// Releases are exempt: they are state-neutral downstream, and
     /// remappers sometimes filter ours, which would desync the queue.
@@ -105,22 +95,20 @@ pub struct SwitcherEngine {
     /// user just pasted (Ctrl+V / Ctrl+Shift+V / Shift+Insert).
     ///
     /// A paste is not typing and must never be retyped into another
-    /// layout. On most backends it never reaches us as key events at
-    /// all — but on Wayland a compositor or remapper can replay the
+    /// layout, but on Wayland a compositor or remapper can replay the
     /// inserted text through a virtual keyboard, indistinguishable from
-    /// human typing. Since the events cannot be told apart one by one,
-    /// a short window after the shortcut declines to correct anything
-    /// completing inside it. The buffer keeps tracking, so correction
-    /// resumes the moment the window lapses.
+    /// human typing event by event. Hence a window rather than a filter.
+    /// The buffer keeps tracking, so correction resumes the moment it
+    /// lapses.
     pub(super) paste_guard_until: RwLock<Instant>,
 }
 
 /// Everything the engine is built out of.
 ///
-/// A struct rather than ten positional parameters because seven of
-/// these are `Arc<dyn …>` trait objects: any two of the same shape can
-/// be swapped at the call site and the compiler accepts it happily.
-/// Named fields make the wiring in `main.rs` impossible to transpose.
+/// A struct rather than positional parameters because seven of these are
+/// `Arc<dyn …>` trait objects: any two of the same shape transpose at
+/// the call site and still compile. Named fields make the wiring in
+/// `main.rs` impossible to get wrong that way.
 pub struct EngineDeps {
     pub settings: Arc<SettingsStore>,
     pub layouts: Arc<LayoutDb>,

@@ -23,14 +23,9 @@ pub fn try_init() -> Option<HyprlandSwitcher> {
 
 impl LayoutSwitcher for HyprlandSwitcher {
     fn current(&self) -> Result<LayoutId, LayoutError> {
-        // `choose_current_keymap` decides which keyboard reflects the
-        // user's typing layout (remapper virtual keyboard > `main: yes`
-        // > first; our own emitter never). Trusting `main` alone is not
-        // enough: Hyprland re-elects it when devices appear, and right
-        // after our emitter registers it often *is* the emitter — whose
-        // keymap tracks `switchxkblayout all` but never the user's
-        // per-device toggle, which killed exactly one direction of
-        // correction.
+        // Trusting `main: yes` alone is not enough: Hyprland re-elects
+        // it when devices appear, and right after our emitter registers
+        // it often *is* the emitter — see `choose_current_keymap`.
         let out = request(&["devices"])?;
         let keyboards = parse_keyboards(&out);
         choose_current_keymap(&keyboards)

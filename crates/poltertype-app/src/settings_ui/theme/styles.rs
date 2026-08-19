@@ -26,9 +26,7 @@ pub fn sidebar(theme: &Theme) -> container::Style {
     }
 }
 
-/// Card: surface colour, hairline border, the site's rounded-corner
-/// radius. Groups related controls the way the landing page groups
-/// feature blurbs.
+/// Card — groups related controls, mirroring the site's feature blocks.
 pub fn card(theme: &Theme) -> container::Style {
     let p = brand_palette(theme);
     container::Style {
@@ -154,9 +152,8 @@ pub fn danger_icon(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-/// Sidebar navigation item. Selected gets a soft brand tint (the
-/// site's hover treatment on nav links); idle rows are quiet muted
-/// text that ink up on hover.
+/// Sidebar navigation item: selected takes the site's hover treatment
+/// on nav links, idle rows stay quiet until hovered.
 pub fn nav(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
     move |theme, status| {
         let p = brand_palette(theme);

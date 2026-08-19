@@ -31,11 +31,8 @@
 //! rejected on both the signing and the verifying side. That is the
 //! whole ambiguity surface of the format.
 //!
-//! [`consts::REQUIRE_SIGNATURE`](crate::consts) was the rollout
-//! switch, and it flipped in v0.17.2: an unsigned manifest is now
-//! refused outright, where it used to be accepted with a warning. The
-//! condition for flipping — a signed manifest being the one users'
-//! updaters actually resolve to — had held since v0.7.0.
+//! [`consts::REQUIRE_SIGNATURE`](crate::consts) decides whether an
+//! unsigned manifest is refused outright. It is `true` from v0.17.2.
 
 use std::collections::BTreeMap;
 
@@ -104,19 +101,16 @@ pub(crate) fn verify(manifest: &Manifest) -> Result<(), UpdateError> {
     verify_with(manifest, &trusted_key()?)
 }
 
-/// [`verify`] against an explicit key.
-///
-/// Exists so the tests can exercise the real accept/reject path with a
-/// key they own — the private half of the shipped one is on the
-/// maintainer's machine and, by design, nowhere near this repository.
+/// [`verify`] against an explicit key, so tests can exercise the real
+/// accept/reject path with a key they own — the private half of the
+/// shipped one is, by design, nowhere near this repository.
 pub(crate) fn verify_with(manifest: &Manifest, key: &VerifyingKey) -> Result<(), UpdateError> {
     let Some(encoded) = manifest.signature.as_deref() else {
         if REQUIRE_SIGNATURE {
             return Err(UpdateError::UnsignedManifest);
         }
-        // Unreachable while `REQUIRE_SIGNATURE` is true, which it has
-        // been since v0.17.2. Both arms stay so that turning the
-        // rollout back — the recovery path if a signing key is ever
+        // Unreachable while `REQUIRE_SIGNATURE` is true. Both arms stay
+        // so the recovery path — flipping it back if a signing key is
         // lost — is one constant, not a rewrite of this function.
         warn!("release manifest carries no signature — accepted because signing is optional here");
         return Ok(());

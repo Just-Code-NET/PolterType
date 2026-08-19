@@ -7,9 +7,8 @@ use super::helpers::*;
 use super::theme;
 
 /// The capture pipeline must produce strings that `global-hotkey`'s
-/// `FromStr` accepts. Otherwise rebinding succeeds in the UI but
-/// the next tray launch silently drops the hotkey. We round-trip
-/// the canonical combos to catch that.
+/// `FromStr` accepts, or rebinding succeeds in the UI while the next
+/// tray launch silently drops the hotkey.
 #[test]
 fn captured_hotkeys_round_trip_through_global_hotkey_parse() {
     use global_hotkey::hotkey::HotKey;
@@ -40,10 +39,9 @@ fn captured_hotkeys_round_trip_through_global_hotkey_parse() {
     }
 }
 
-/// Auto-id must be deterministic and collision-free. The UI
-/// silently dedupes by appending `-2`, `-3`, … so users don't
-/// need to think about ids — but the dedup must be stable, since
-/// duplicate ids in the saved config would be a load-time error.
+/// Auto-id must be deterministic and collision-free: the UI dedupes
+/// silently so users never think about ids, and duplicates in the saved
+/// config are a load-time error.
 #[test]
 fn derive_command_id_is_kebab_case_and_unique() {
     let action = CommandAction::TypeText { text: "x".into() };
@@ -66,9 +64,8 @@ fn derive_command_id_is_kebab_case_and_unique() {
     assert_eq!(dedup, "type-text-2");
 }
 
-/// `looks_like_layout_id` is a hint, not a strict validator —
-/// must accept the canonical bundled set + multi-segment ids
-/// (Cyrillic Kazakh) and reject obviously-not-an-id strings.
+/// `looks_like_layout_id` is a hint, not a strict validator: accept the
+/// bundled set and multi-segment ids, reject obvious non-ids.
 #[test]
 fn looks_like_layout_id_accepts_real_ids_and_rejects_garbage() {
     for ok in ["en-US", "uk-UA", "kk-Cyrl-KZ", "zh-Hans-CN"] {
@@ -85,10 +82,8 @@ fn looks_like_layout_id_accepts_real_ids_and_rejects_garbage() {
     }
 }
 
-/// Summary format is what users scan first when they have a
-/// long list of commands. It must include the display name (or
-/// id fallback), the action description, and the apps filter
-/// when set — and stay on one line for any reasonable input.
+/// The summary is what users scan in a long list: display name (or id
+/// fallback), action, and the apps filter when set — on one line.
 #[test]
 fn format_command_summary_is_concise_and_complete() {
     let cmd = UserCommand {
@@ -123,11 +118,10 @@ fn format_command_summary_is_concise_and_complete() {
 }
 
 /// Stem mapping must agree with both the bundled FST file names
-/// (`data/wordlists/<stem>.fst`) and the loader's user-overlay
-/// path (`<config-dir>/poltertype/wordlists/<stem>.txt`).
-/// Otherwise the GUI would write to a file the engine never
-/// reads, and users would see "I added words but they don't take
-/// effect."
+/// (`data/wordlists/<stem>.fst`) and the loader's user-overlay path
+/// (`<config-dir>/poltertype/wordlists/<stem>.txt`) — otherwise the GUI
+/// writes to a file the engine never reads, and words added in the UI
+/// silently do nothing.
 #[test]
 fn layout_id_to_stem_matches_bundled_naming() {
     let cases = [
@@ -151,25 +145,20 @@ fn layout_id_to_stem_matches_bundled_naming() {
 }
 
 /// `WordlistKind::suffix` must round-trip with the bundled
-/// `<stem>-stop.txt` convention. Easy to fix typos here; harder
-/// to notice them at runtime since a missing stop file is
-/// silently treated as "no extras."
+/// `<stem>-stop.txt` convention. A typo is invisible at runtime: a
+/// missing stop file is silently treated as "no extras".
 #[test]
 fn wordlist_kind_suffix_matches_loader_convention() {
     assert_eq!(WordlistKind::Extras.suffix(), "");
     assert_eq!(WordlistKind::Stop.suffix(), "-stop");
 }
 
-/// The text the editor saves must round-trip through the engine's
-/// own loader without losing anything semantically meaningful.
-/// We mirror `poltertype_core::layouts::parse_wordlist` here — lowercase,
-/// comment-stripped, blank-line-skipped — and confirm typical
-/// free-form content survives. If the engine's parser ever
-/// diverges, this test makes the GUI catch it before users do.
+/// What the editor saves must survive the engine's loader. The rules of
+/// `poltertype_core::layouts::parse_wordlist` — lowercase,
+/// comment-stripped, blank-line-skipped — are mirrored here, so a
+/// divergence on the engine side shows up in the GUI's tests.
 #[test]
 fn wordlist_buffer_is_compatible_with_loader_parser() {
-    // Multi-line buffer the user might type into the editor:
-    // pure words, comments, blanks, mixed case, leading whitespace.
     let body = "# project nouns\nfoo\nBar\n  baz  \n\n#trailing comment\n";
     let words: std::collections::HashSet<String> = body
         .lines()
@@ -206,11 +195,10 @@ fn save_overlay_appends_trailing_newline() {
     assert_eq!(normalise("foo\nbar"), "foo\nbar\n");
 }
 
-/// `ui_theme` round-trips through the UI enum: every canonical
-/// config spelling parses back to itself, and anything else —
-/// typos, legacy values, hand-edited garbage — falls back to
-/// `System` instead of erroring. A wrong fallback here would make
-/// the window ignore the user's saved preference silently.
+/// `ui_theme` round-trips through the UI enum: canonical spellings
+/// parse back to themselves, anything else falls back to `System`
+/// rather than erroring. A wrong fallback here makes the window ignore
+/// the user's saved preference silently.
 #[test]
 fn theme_choice_round_trips_and_tolerates_garbage() {
     for choice in ThemeChoice::ALL {
@@ -230,13 +218,10 @@ fn theme_choice_round_trips_and_tolerates_garbage() {
     }
 }
 
-/// The portal / gsettings probe parsers must map the documented
-/// color-scheme values and treat everything else — "no preference",
-/// truncated output, errors echoed to stdout — as "no answer", so
-/// the caller falls through to the next signal instead of forcing
-/// light. This is the guts of the system-dark-mode fix: iced's own
-/// dark-light 1.x probe fails on the portal reply and reports light
-/// on Hyprland-class desktops.
+/// The probe parsers must map the documented color-scheme values and
+/// treat everything else — "no preference", truncated output, errors on
+/// stdout — as "no answer", so the caller falls through to the next
+/// signal instead of forcing light.
 #[test]
 fn system_theme_parsers_map_portal_and_gsettings_values() {
     use super::system_theme::{parse_color_scheme, parse_portal_reply};
@@ -254,11 +239,10 @@ fn system_theme_parsers_map_portal_and_gsettings_values() {
     assert_eq!(parse_color_scheme(""), None);
 }
 
-/// The branded themes must classify as light / dark respectively —
-/// `Theme::custom` derives `is_dark` from the background luminance,
-/// and `brand_palette` keys the full token set off that flag. If a
-/// future background tweak flipped the classification, every widget
-/// would silently pick tokens from the wrong palette.
+/// `Theme::custom` derives `is_dark` from background luminance and
+/// `brand_palette` keys the whole token set off that flag, so a
+/// background tweak that flipped the classification would leave every
+/// widget picking tokens from the wrong palette.
 #[test]
 fn branded_themes_classify_and_map_to_their_palettes() {
     let light = theme::light();
@@ -309,10 +293,9 @@ fn accept_modifiers_hint_mirrors_engine_parse_rule() {
     }
 }
 
-/// Lone modifier presses must not be accepted as a hotkey on
-/// their own — otherwise the moment a user clicks "Rebind" and
-/// taps Ctrl, capture finishes immediately with a useless
-/// "Ctrl"-only binding.
+/// Lone modifier presses must not be accepted as a hotkey: otherwise a
+/// user who clicks "Rebind" and taps Ctrl ends the capture immediately
+/// with a useless "Ctrl"-only binding.
 #[test]
 fn lone_modifier_keys_are_filtered() {
     for k in [

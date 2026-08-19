@@ -49,8 +49,8 @@ use crate::types::PopupModel;
 
 /// Popup bottom edge floats this many logical px above the anchor
 /// window's bottom edge (or the screen bottom) — the neighbourhood of
-/// chat inputs and shell prompts. (`Point` anchors use the shared
-/// side-picking algorithm in [`crate::place`] instead.)
+/// chat inputs and shell prompts. `Point` anchors use [`crate::place`]
+/// instead.
 const BOTTOM_OFFSET: i32 = 96;
 /// Tick period while a surface is mapped.
 const TICK: Duration = Duration::from_millis(16);
@@ -135,9 +135,9 @@ impl SuggestionPopup for WaylandPopup {
     }
 }
 
-/// Everything shown right now: surface, pixels, hit-boxes, deadline.
-/// Dropped whole on hide — destroying the `LayerSurface` (and its
-/// inner `wl_surface`) is the simplest correct unmap.
+/// Everything shown right now. Dropped whole on hide — destroying the
+/// `LayerSurface` (and its inner `wl_surface`) is the simplest correct
+/// unmap.
 struct View {
     layer: LayerSurface,
     rendered: RenderedPopup,
@@ -210,17 +210,14 @@ fn run(
 
 /// Run one command, round-tripping the queue before a `Show`.
 ///
-/// Placement needs the outputs' names, logical sizes and scales, which
-/// arrive as *events* rather than with the globals. Between popups the
-/// thread is parked on the command channel and reads nothing from the
-/// socket, so without this the first popup of every session was placed
-/// against an empty output list — no bounds to clamp against and
-/// `output: None`, handing the compositor the choice of monitor. From
-/// the second popup on the tick loop had pumped the queue, which is
-/// exactly why the bug looked intermittent.
-///
-/// Refreshing per show also picks up hotplugs and mode changes that
-/// happened while parked.
+/// Placement needs the outputs' names, sizes and scales, which arrive
+/// as *events*, not with the globals — and between popups the thread is
+/// parked on the command channel reading nothing from the socket.
+/// Without this round-trip the **first** popup of every session was
+/// placed against an empty output list (no bounds, `output: None`), and
+/// every later one was fine because the tick loop had pumped the queue:
+/// the bug looked intermittent. Also picks up hotplugs that happened
+/// while parked.
 fn serve(
     state: &mut WlState,
     queue: &mut EventQueue<WlState>,
@@ -308,16 +305,12 @@ impl WlState {
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.set_size(logical_w, logical_h);
 
-        // Output-local top-left position for the anchors that name an
-        // exact spot; `None` = bottom-centred on the output.
+        // `None` = bottom-centred on the output.
         let output_size = output
             .as_ref()
             .and_then(|o| self.output_state.info(o))
             .and_then(|info| info.logical_size);
         let placement: Option<(i32, i32)> = match model.anchor {
-            // Near the pointer — the caret proxy. The shared
-            // side-picker walks above → below → right → left and
-            // clamps inside the output.
             PopupAnchor::Point {
                 x,
                 y,
@@ -333,8 +326,6 @@ impl WlState {
                 logical_h as i32,
                 output_size,
             )),
-            // Horizontally centred on the window, bottom edge
-            // BOTTOM_OFFSET above the window's bottom.
             PopupAnchor::WindowRect {
                 x,
                 y,

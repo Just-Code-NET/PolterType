@@ -78,10 +78,9 @@ impl Default for Settings {
     }
 }
 
-/// `#[serde(default)]` on every settings struct: any field missing
-/// from the user's `config.toml` falls back to its `Default`. That
-/// gives us forward-compat — new fields added in later versions read
-/// existing configs without scary parse errors.
+/// `#[serde(default)]` on every settings struct, so a field added in a
+/// later version still reads an existing `config.toml` without a parse
+/// error.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GeneralSettings {
@@ -137,10 +136,9 @@ pub struct EngineSettings {
     /// filter. Default: on; see `docs/DECISIONS.md`.
     pub suppress_in_identifiers: bool,
     /// Skip auto-switching when the rendered word is ALL CAPS (≥2
-    /// letters, every cased one uppercase) — the textbook abbreviation
-    /// case, where the user typed deliberately and a flip is more
-    /// disruptive than helpful. The manual hotkey still works, since
-    /// `last_word` is stashed before any filter. Default: on.
+    /// letters, every cased one uppercase) — the abbreviation case, typed
+    /// deliberately. The manual hotkey still works, since `last_word` is
+    /// stashed before any filter. Default: on.
     pub suppress_for_all_caps: bool,
 }
 
@@ -166,13 +164,10 @@ pub struct ExceptionSettings {
     /// ignores this list.
     ///
     /// **Empty by default: we do not decide for the user where they are
-    /// allowed to type.** A shipped ~50-entry list of editors and
-    /// terminals was harmless only while it was inert — no Linux focus
-    /// tracker existed, so it never matched. The moment one landed the
-    /// list armed itself and the app went silent in exactly the windows
-    /// a developer types in, indistinguishable from "layout switching is
-    /// broken". The engine's own guards apply everywhere and are what
-    /// keep code safe.
+    /// allowed to type.** A shipped skip-list of editors and terminals
+    /// armed itself the moment the Linux focus tracker landed and made
+    /// the app look broken — see "Reversed: no default app skip-list" in
+    /// `docs/DECISIONS.md`. The engine's own guards apply everywhere.
     #[serde(default)]
     pub disabled_apps: Vec<String>,
     /// Words that should never be auto-corrected.
@@ -203,10 +198,9 @@ pub struct HotkeySettings {
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
-            // Platform-neutral on purpose: macOS needs a different
-            // pause chord, but that substitution belongs to the binary,
-            // which picks it off the live backend name. A default that
-            // changed with the build target would make one
+            // Platform-neutral on purpose: macOS needs a different pause
+            // chord, but the binary substitutes it off the live backend
+            // name. A default varying by build target would make one
             // `config.toml` mean two different things.
             pause_toggle: "Ctrl+Shift+Space".into(),
             manual_switch_last: "Ctrl+Shift+Backspace".into(),
@@ -279,31 +273,20 @@ impl SuggestionSettings {
     }
 }
 
-/// Automatic updates from GitHub Releases.
-///
-/// The one place a default build talks to the network, and worth being
-/// precise about. With `enabled = true` the app periodically fetches a
-/// small JSON manifest from `github.com` and, when it names a newer
-/// version, downloads that release's installer and verifies its
-/// checksum. The download is staged, never installed under the user's
-/// hands.
+/// Automatic updates from GitHub Releases — the one place a default
+/// build talks to the network.
 ///
 /// GitHub sees what any HTTP server sees: the connecting IP and a
-/// User-Agent naming the running version. There is no request body and
-/// no query string — nothing about the user, their typing, their
-/// layouts or their configuration. **This is not telemetry and it does
-/// not become telemetry.**
-///
-/// `enabled = false` switches all of it off permanently, with no
-/// residual "just one check on startup".
+/// User-Agent naming the running version. No request body, no query
+/// string, nothing about the user. **This is not telemetry and it does
+/// not become telemetry.** `enabled = false` switches all of it off
+/// permanently, with no residual "just one check on startup".
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UpdateSettings {
-    /// Check for, download and stage new releases in the background.
-    ///
-    /// On by default. The alternative — an opt-in nobody finds — leaves
-    /// users on old builds of an *unsigned* app they would then have to
-    /// update by hand, which is the worse security posture.
+    /// Check for, download and stage new releases in the background. On
+    /// by default: an opt-in nobody finds leaves users on old builds of
+    /// an *unsigned* app, which is the worse security posture.
     pub enabled: bool,
     /// Hours between checks. Clamped to a sane floor at read time
     /// (see [`UpdateSettings::interval`]) so a hand-edited `0` cannot
@@ -324,12 +307,9 @@ impl Default for UpdateSettings {
 pub const MIN_UPDATE_INTERVAL_HOURS: u64 = 1;
 
 impl UpdateSettings {
-    /// The check interval, with the hand-edit floor applied.
-    ///
-    /// Releases ship roughly monthly, so hourly versus daily makes no
-    /// difference to the user. The floor stops a
+    /// The check interval, with the hand-edit floor applied: a
     /// `check_interval_hours = 0` — a typo, or a user reasoning that
-    /// zero means "off" — hammering GitHub from every installed copy.
+    /// zero means "off" — would hammer GitHub from every installed copy.
     pub fn interval(&self) -> Duration {
         Duration::from_secs(self.check_interval_hours.max(MIN_UPDATE_INTERVAL_HOURS) * 60 * 60)
     }

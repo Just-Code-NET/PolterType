@@ -26,10 +26,10 @@ fn autostart_dir() -> Option<PathBuf> {
 
 /// Quote a program path for a Desktop Entry `Exec=` value.
 ///
-/// The spec reserves a pile of characters in `Exec` and requires
-/// backslash-escaping inside double quotes. Paths with spaces are the
-/// common case (`/home/user/My Apps/…`); the rest matter because a
-/// home directory is user-named and can contain almost anything.
+/// The spec reserves a pile of characters and requires
+/// backslash-escaping inside double quotes; a home directory is
+/// user-named and can contain almost any of them. Twin of
+/// `poltertype_shell::desktop::exec_quote` — change one, change both.
 pub(crate) fn exec_quote(exe: &Path) -> String {
     let raw = exe.display().to_string();
     let escaped = raw
@@ -41,11 +41,8 @@ pub(crate) fn exec_quote(exe: &Path) -> String {
 }
 
 pub(crate) fn desktop_body(app: App<'_>, exe: &Path) -> String {
-    // `Name` lands in the DE's own "Startup Applications" list, so it
-    // is the human name, not the id — and `Icon` is what that list
-    // draws beside it, which is the only reason a NoDisplay entry has
-    // one. Terminal=false keeps a terminal emulator from being spawned
-    // around a tray app.
+    // `Name` and `Icon` land in the DE's own "Startup Applications"
+    // list — the only reason a NoDisplay entry carries them at all.
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
@@ -88,8 +85,8 @@ pub(crate) fn sync(enabled: bool, app: App<'_>) {
     };
     let body = desktop_body(app, &exe);
 
-    // Rewrite only on drift, so a config reload does not churn the
-    // file (and the DE's file watchers) on every settings save.
+    // Rewrite only on drift, or every settings save churns the file and
+    // the DE's watchers with it.
     if std::fs::read_to_string(&path).unwrap_or_default() == body {
         return;
     }

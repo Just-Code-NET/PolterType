@@ -32,8 +32,7 @@ pub(crate) enum UpdateOutcome {
     UpToDate,
     /// The check didn't complete — no network, a proxy, GitHub having a
     /// bad day. The reason is logged by the worker and deliberately not
-    /// carried here: nothing in the tray reacts to *why* a check failed,
-    /// and a routine "you're on a train" is not something to surface.
+    /// carried here: nothing in the tray reacts to *why* it failed.
     Failed,
     /// Updates were switched off, and a staged artifact was discarded.
     Cleared,

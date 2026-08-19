@@ -17,9 +17,8 @@
 //!
 //! Backends are *probed*, not chosen from a table of desktop names:
 //! layer-shell, then X11, then noop. That is why KDE worked the whole
-//! time nobody claimed it did, and why a compositor that gains
-//! layer-shell tomorrow needs no change here. Current coverage lives in
-//! the README rather than this header, so it cannot go stale twice.
+//! time nobody claimed it did. Current coverage lives in the README
+//! rather than this header, so it cannot go stale twice.
 //!
 //! One of the platform-code islands — `#[cfg(target_os)]` is allowed
 //! here; see `CONTRIBUTING.md`.
@@ -32,10 +31,9 @@ mod factory;
 // unused on macOS, where the one backend is infallible.
 #[cfg(not(target_os = "macos"))]
 mod noop;
-// The shared placement + renderer are consumed by every real backend.
-// Still gated, because a platform with no backend compiling them would
-// trip `-D dead_code` on that CI lane; add new targets here as
-// backends land.
+// Gated because a platform with no backend compiling them would trip
+// `-D dead_code` on that CI lane; add new targets here as backends
+// land.
 #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 mod place;
 #[cfg(any(target_os = "linux", windows, target_os = "macos"))]

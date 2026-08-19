@@ -2,21 +2,17 @@
 //!
 //! Everything that decides *whether to swallow a keystroke* lives here,
 //! deliberately platform-free, so it compiles under `cfg(test)` on any
-//! host and the safety properties are tested on machines this project
-//! actually has. The Windows hook and macOS event-tap callbacks do
-//! nothing but read an event's flags and ask [`HoldState::swallow`].
+//! host. The Windows hook and macOS event-tap callbacks do nothing but
+//! read an event's flags and ask [`HoldState::swallow`].
 //!
-//! A gate that swallows keystrokes system-wide is the one feature here
-//! that can leave a user unable to type, and on Linux that fear is well
-//! earned — `EVIOCGRAB` outlives a wedged caller, and a stuck grab took
-//! a real session down on 2026-07-31.
-//!
-//! Windows fails the other way: a dead process cannot hold the
-//! keyboard, because the hook belongs to it, and neither can a hung
-//! one, because Windows removes a low-level hook whose callback
-//! overruns `LowLevelHooksTimeout`. That leaves exactly one dangerous
-//! shape — a healthy, responsive process that sets [`HoldState::hold`]
-//! and never clears it. The deadline below answers it, checked *inside
+//! A gate that swallows keystrokes system-wide can leave a user unable
+//! to type, and on Linux that fear is earned — `EVIOCGRAB` outlives a
+//! wedged caller, and a stuck grab took a real session down on
+//! 2026-07-31. Windows fails the other way: the hook belongs to the
+//! process, and Windows removes a low-level hook whose callback
+//! overruns `LowLevelHooksTimeout`. That leaves one dangerous shape —
+//! a healthy, responsive process that sets [`HoldState::hold`] and
+//! never clears it — answered by the deadline below, checked *inside
 //! the decision* rather than by a watchdog, so the very next keystroke
 //! after expiry clears the hold and passes through.
 
