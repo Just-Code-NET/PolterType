@@ -13,8 +13,15 @@
 mod linux;
 
 #[cfg(target_os = "linux")]
-pub use linux::quiet_gtk_tray_logs;
+pub use linux::{quiet_gtk_tray_logs, unavailable_reason};
 
 /// No GTK, no GLib log domain to tame.
 #[cfg(not(target_os = "linux"))]
 pub fn quiet_gtk_tray_logs() {}
+
+/// Windows and macOS build the tray against an OS API that is always
+/// there; only Linux loads it at runtime and can come up short.
+#[cfg(not(target_os = "linux"))]
+pub fn unavailable_reason() -> Option<String> {
+    None
+}

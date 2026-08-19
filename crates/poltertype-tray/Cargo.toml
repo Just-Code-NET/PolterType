@@ -21,3 +21,7 @@ tracing = { workspace = true }
 # same reason it is there at all — the GTK tray backend.
 [target.'cfg(target_os = "linux")'.dependencies]
 glib = { workspace = true }
+# Same `dlopen` `libappindicator-sys` uses, so the probe in `linux.rs`
+# asks exactly the question the tray is about to ask. Already in the
+# tree underneath it — this is a direct edge, not a new dependency.
+libloading = "0.8"

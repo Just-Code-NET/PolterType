@@ -137,6 +137,21 @@ cp "${ICON_PNG}" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png
 mkdir -p "${APPDIR}/usr/share/${APP_NAME}/data"
 cp -R "${DATA_DIR}/." "${APPDIR}/usr/share/${APP_NAME}/data/"
 
+# ─── locate the tray library ──────────────────────────────────────────
+# `tray-icon` reaches the tray through `libappindicator-sys`, which
+# `dlopen`s the object by soname. That keeps it out of the binary's
+# DT_NEEDED, so linuxdeploy's dependency walk never sees it and the
+# AppImage shipped without it — aborting on every desktop that does not
+# install it itself, KDE on Arch being the common one (issue #31).
+# Naming it explicitly makes linuxdeploy deploy it *and* its own deps.
+APPINDICATOR_SO="$(ldconfig -p | awk '/libayatana-appindicator3\.so\.1/ {print $NF; exit}')"
+if [[ -z "${APPINDICATOR_SO}" || ! -f "${APPINDICATOR_SO}" ]]; then
+    echo "libayatana-appindicator3.so.1 not found via ldconfig." >&2
+    echo "Install it before packaging (Debian/Ubuntu: libayatana-appindicator3-dev)." >&2
+    exit 1
+fi
+echo "tray library: ${APPINDICATOR_SO}"
+
 # ─── build AppImage ───────────────────────────────────────────────────
 export OUTPUT="${OUT_DIR}/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
 export VERSION
@@ -150,10 +165,21 @@ export ARCH
 .tools/linuxdeploy \
     --appdir "${APPDIR}" \
     --executable "${APPDIR}/usr/bin/${APP_NAME}" \
+    --library "${APPINDICATOR_SO}" \
     --desktop-file "${APPDIR}/usr/share/applications/${APP_NAME}.desktop" \
     --icon-file "${ICON_PNG}" \
     --icon-filename "${APP_NAME}" \
     --output appimage
+
+# The dlopen above is by soname with no path, so it resolves through
+# the loader's search path rather than the AppDir's rpath. linuxdeploy
+# points the AppRun at `usr/lib`, but assert the file is actually there
+# — a silently un-deployed library is exactly the failure this step
+# exists to prevent, and it would only surface on a user's machine.
+if ! ls "${APPDIR}/usr/lib/"libayatana-appindicator3.so.1* >/dev/null 2>&1; then
+    echo "linuxdeploy did not place libayatana-appindicator3.so.1 in the AppDir." >&2
+    exit 1
+fi
 
 echo
 echo "Built ${OUTPUT}"

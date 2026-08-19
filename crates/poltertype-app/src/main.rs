@@ -499,6 +499,14 @@ fn main() -> Result<()> {
         None => icon_render::unknown(false)?,
     };
 
+    // Ask before building, not after: on Linux the tray library is
+    // `dlopen`ed, and its absence aborts the process from inside a
+    // dependency with a message nobody can act on. See `poltertype-tray`.
+    if let Some(reason) = poltertype_tray::unavailable_reason() {
+        error!("{reason}");
+        anyhow::bail!("system tray unavailable");
+    }
+
     // Before the tray exists: the GTK backend greets its construction
     // with a deprecation warning meant for whoever links it, not for
     // the user reading the journal. See `poltertype-tray`.

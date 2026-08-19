@@ -4228,6 +4228,7 @@ name = "poltertype-tray"
 version = "0.17.2"
 dependencies = [
  "glib",
+ "libloading 0.8.9",
  "tracing",
 ]
 
