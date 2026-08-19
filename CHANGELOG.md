@@ -4,7 +4,7 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.17.2
+## [0.17.3] — a hyphen is not a mistake, and an AppImage that starts on KDE
 
 ### Fixed — a kebab-case identifier is not a mistyped word
 
