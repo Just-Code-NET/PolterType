@@ -4,6 +4,71 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.17.2
+
+### Fixed — a kebab-case identifier is not a mistyped word
+
+- **`cqrs-client` stays `cqrs-client`.** Typed under en-US with a
+  Cyrillic layout loaded, it was being replaced with `сйкы-сдшуте`.
+  Read as one string the token really does look like noise — six
+  consonants in a row and a 0.20 vowel ratio, scoring 0.00 for en-US
+  against 0.75 for the Cyrillic reading. Read as `cqrs` + `client` it
+  is obvious: the second half is a plain English word, and only the
+  acronym welded to its front made the whole thing look wrong.
+
+  Both detectors now judge a hyphen- or dot-joined token segment by
+  segment. The same fix covers the whole family — `grpc-server`,
+  `api-gateway`, `redis-cache`, `client.cqrs` — and, as it turns out,
+  ordinary hyphenated English that had the same exposure:
+  `well-known`, `read-only`, `up-to-date`, `cross-platform`.
+
+  **Hyphenated words in other languages are untouched**, which is the
+  hard half. `по-перше`, `будь-ласка`, `все-таки`, `интернет-магазин`,
+  `кое-что` are still corrected: a segment only speaks for its token
+  when it reads *better* in the layout that is already active than the
+  switch would make it. A first attempt that merely asked "does some
+  segment read well here?" passed every unit test and silently stopped
+  correcting a fifth of a real Russian corpus; a new corpus test runs
+  both directions against the real bundled dictionaries so that cannot
+  come back. See `docs/DECISIONS.md`, 2026-08-20.
+
+- **A handful of lowercase acronyms joined the bundled English
+  dictionary** — `cqrs`, `csrf`, `xss`, `webrtc`, `psql`. Typed alone
+  they have too few vowels for shape scoring to defend, and none of
+  them collides with a real Ukrainian or Russian word on the same keys.
+
+### Fixed — Linux: KDE, and an AppImage that could not start ([#31](https://github.com/Just-Code-NET/PolterType/issues/31))
+
+- **PolterType no longer aborts when the tray library is missing.**
+  The library is `dlopen`ed by name, and when no version of it is
+  installed — the default on Arch and its derivatives — the process
+  died with a SIGABRT and a dlopen dump in the system language that
+  named four `.so` files and no package. It now says what is missing
+  and which package provides it on Arch, Debian/Ubuntu, Fedora and
+  openSUSE, and exits cleanly.
+
+- **The AppImage now carries that library.** Because the load is a
+  `dlopen`, the packaging tool's dependency scan never saw it, so
+  every AppImage released so far shipped without it. This is the half
+  that means KDE users need install nothing.
+
+- **The KDE layout backend works against Plasma as it has been since
+  5.23.** Two bugs: `getLayoutsList` returns a type plain `qdbus`
+  cannot print, and it reports that on standard output *with a
+  success exit code* — so the error sentence itself was being read
+  back as the name of a keyboard layout, every bundled layout was then
+  skipped as "not active", and the engine came up with zero layouts
+  and no way to correct anything. Underneath that, `getLayout` and
+  `setLayout` have addressed layouts **by index** since Plasma 5.23
+  (2021) while we were passing xkb names like `us`.
+
+  Both are fixed against KWin's own interface definition, and the
+  backend now refuses to activate at all unless Plasma answers with a
+  layout list it can actually read — falling through to another
+  backend beats poisoning the engine with a layout that does not
+  exist. **Verified against upstream source, not against a running
+  Plasma session** — nobody here has one; see `docs/KNOWN-GAPS.md`.
+
 ## [0.17.2] — the same face on Linux, and an updater that insists
 
 ### Changed — an unsigned update is now refused, not merely noted

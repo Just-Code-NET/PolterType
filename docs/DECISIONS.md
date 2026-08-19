@@ -2667,3 +2667,149 @@ either misses a real change or invents one. Physically that means
 pressing the layout chord and the next letter almost together, which
 is rare — and the honest alternative, an uncached query per word,
 spawns a `hyprctl` per word for a case nobody has hit.
+
+---
+
+## 2026-08-20 — A compound is judged segment by segment, and comparatively
+
+`cqrs-client`, typed correctly under en-US with ru-RU loaded, was
+replaced with `сйкы-сдшуте`. Read as one string the token is
+indefensible: six consonants in a row, a 0.20 vowel ratio, 0.00 en-US
+fit against 0.75 for the Cyrillic reading. Read as
+`cqrs` + `client` it is obvious — the second half is a plain English
+word scoring a perfect 1.00, and only the acronym welded to its front
+made the whole thing look like noise.
+
+The 2026-08-07 entry below already established this shape for dots
+(a hostname is only as plausible as its worst segment). Hyphens are the
+same structure and were not covered, and neither treatment helps here
+anyway: taking the *worst* segment makes `cqrs-client` look worse, not
+better. What was missing is that a compound is a token the wrong-layout
+hypothesis has to explain **piece by piece**.
+
+**Decision:** both detectors split on `-` and `.` and compare position
+against position. The dictionary keeps the token when a segment is a
+real word here that no alternate explains; plausibility keeps it when a
+segment reads *better* here than any alternate would make it.
+
+**The comparison is the whole decision, and the first version did not
+have it.** "Some segment reads well under the current layout" passed
+every unit test in `poltertype-detect` and then vetoed **a fifth of a
+real Russian corpus**: `по-нашему` renders as `gj-yfitve`, and `yfitve`
+scores a flawless 1.00 under en-US — exactly as `нашему` does under
+ru-RU. A segment that reads equally well either way is evidence of
+nothing. Two further rules fell out of the same corpus:
+
+* **Better than *every* alternate, not just the winner.** Scoring only
+  against the best-fitting candidate picks whichever layout happens to
+  read that segment worst; with all fifteen bundled layouts loaded,
+  `куда-то` lost to a bg-BG reading while ru-RU explained it perfectly.
+* **A layout that renders the segment identically is not a rival.**
+  Switching to it would leave the text exactly as typed. es-ES and
+  de-DE reproduce most Latin tokens character for character, and
+  without this every one of them counted as an alternative reading of
+  `client`.
+
+Segments below three letters never speak for their token, and one
+carrying stray punctuation never does either — `будь-що` renders as
+`,elm-oj`, whose `oj` is a perfect English fit and whose `elm` is a
+real English word, both by pure coincidence.
+
+**Alternative considered and rejected:** treat any hyphen as code
+punctuation in `looks_like_code_token`. One line, and it would have
+fixed the report — at the cost of every hyphenated word in every
+language the app exists to correct. `по-перше`, `будь-ласка`,
+`все-таки`, `интернет-магазин` are not identifiers.
+
+**What guards this.** `poltertype-detect`'s own tests run on toy
+profiles and hand-built FSTs, which is precisely why they missed both
+failure modes. The corpus in
+`crates/poltertype-core/tests/compound_corpus.rs` runs identifiers and
+wrong-layout compounds through the real 370k/1.4M-entry dictionaries
+and the real vowel profiles, in both directions. Any change to the
+guard answers to it.
+
+---
+
+## 2026-08-20 — KDE addresses layouts by index, and has since Plasma 5.23
+
+[#31](https://github.com/Just-Code-NET/PolterType/issues/31) arrived as
+an AppImage crash on CachyOS and carried a second bug in its log:
+
+```
+INFO OS active layouts active=[LayoutId("qdbus: I don't know how to
+display an argument of type 'a(sss)', run with --literal.")] count=1
+```
+
+Every bundled layout was then skipped as "not in the active OS list"
+and the engine came up with `layouts=0` — running, and structurally
+incapable of correcting anything.
+
+Two failures compounded. `getLayoutsList` returns `a(sss)`, which plain
+`qdbus` cannot render: it prints that sentence **to stdout and exits
+0**, so an exit-status check reads it as a successful answer and the
+sentence becomes a layout id. And the backend was written against an
+interface that has not existed since Plasma 5.23 (2021): KWin's
+`KeyboardLayoutDBusInterface` (`src/keyboard_layout.h`) declares
+`getLayout() -> uint` and `setLayout(uint) -> bool`, addressing layouts
+by **position in the configured list**, not by xkb short name. We were
+passing `"us"` to a method that takes an integer.
+
+**Decision:** call `getLayoutsList` with `--literal` and parse Qt's
+`argumentToString` output (`qtbase/src/dbus/qdbusutil.cpp` — the format
+is `[Argument: a(sss) {[Argument: (sss) "us", "", "English (US)"], …}]`,
+strings unescaped, short name first); resolve `getLayout`'s index
+against that list, and map a target back to its index for `setLayout`.
+Which API is in play is probed once at init from the shape of
+`getLayout`'s answer, since xkb short names are never numeric — guessing
+wrong does not fail loudly, it switches to the wrong layout.
+
+**The probe now demands an answer, not an exit code.** `try_init`
+required only that `list_active()` returned `Ok`, which the error
+sentence satisfied. It now requires a non-empty *parsed* list, so a
+backend that cannot be understood falls through to the next one instead
+of poisoning the engine with a layout that does not exist. That is the
+same lesson as the 2026-08-07 entry on probing by what a desktop
+*does* — this time the reachability check was not merely weak, it was
+being answered by an error message.
+
+**Not fixed by moving to zbus,** which is already in the tree under
+`poltertype-input`. The CLI shell-out is a deliberate choice for these
+backends (see the crate's module doc) and the bug was never in the
+transport — it was in reading an interface we had not checked against
+its source. Verified against KWin master and Qt's own printer;
+**unverified on a running Plasma session**, because nobody here has
+one. `docs/KNOWN-GAPS.md` says so.
+
+---
+
+## 2026-08-20 — Ask for the tray library before it aborts the process
+
+The same report's crash: `libappindicator-sys` `dlopen`s the tray
+library on first use and **panics** when no soname resolves. Release
+builds are `panic = "abort"`, so a KDE box without
+`libayatana-appindicator` installed — the default on Arch — met a
+SIGABRT and a four-line dlopen dump in the system language, naming four
+`.so` files and no package. `catch_unwind` cannot help across an abort,
+and there is no feature to flip: `tray-icon` 0.24, five versions ahead
+of ours, loads the same object the same way.
+
+**Decision:** `poltertype-tray` opens the same sonames itself before
+the `TrayIcon` is built, and on failure the app exits with the package
+name for each of the four common distro families. A resolved handle is
+deliberately leaked — the tray is about to load the same object anyway,
+and `dlclose`ing a GTK-linked library only to reopen it is the riskier
+half of the trade.
+
+**And the AppImage stops needing it.** Because the load is a `dlopen`
+by soname, the library is not in the binary's `DT_NEEDED`, so
+linuxdeploy's dependency walk never saw it and every AppImage we have
+ever shipped went out without it. `--library` names it explicitly and
+deploys its own dependencies too; the build script then asserts the
+file is in the AppDir, because a silently un-deployed library is a
+failure that only appears on a user's machine.
+
+**Not chosen: run without a tray.** The engine would still correct
+text, but PolterType puts its entire UI in the tray — no Settings, no
+pause, no quit. A daemon the user cannot see or stop is a worse answer
+than a sentence telling them what to install.

@@ -169,7 +169,9 @@ crates/
                       identity, Dock activation policy, keycap glyphs,
                       the Linux desktop entry a window's icon comes from
   poltertype-tray/    library — per-OS tray quirks (Linux: keeps the GTK
-                                backend's deprecation warning off stderr)
+                                backend's deprecation warning off stderr,
+                                and checks the dlopen'd appindicator
+                                library is there before it aborts us)
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
   poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
 data/                source-of-truth, committed; consumed by build.rs
