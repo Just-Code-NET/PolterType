@@ -26,8 +26,8 @@ pub use enums::{RewriteVerdict, Script, Verdict};
 pub use plausibility::WordPlausibilityDetector;
 pub use suggest::{KeyboardGeometry, Suggester};
 pub use text::{
-    letters_only_lower, looks_like_acronym, looks_like_code_token, non_word_char_count,
-    surface_lower,
+    COMPOUND_SEGMENT_MIN_LETTERS, compound_segments, letters_only_lower, looks_like_acronym,
+    looks_like_code_token, non_word_char_count, paired_segments, segment_vouches, surface_lower,
 };
 pub use traits::{Detector, SuggestionProvider, WordRewriter};
 pub use types::{DetectionContext, LayoutProfile, RewriteRequest, Suggestion};

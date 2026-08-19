@@ -6,7 +6,9 @@ use std::collections::HashMap;
 use poltertype_types::{DetectionVerdict, LayoutId, logsafe};
 
 use crate::enums::{Script, Verdict};
-use crate::text::{looks_like_acronym, non_word_char_count};
+use crate::text::{
+    compound_segments, looks_like_acronym, non_word_char_count, paired_segments, segment_vouches,
+};
 use crate::traits::Detector;
 use crate::types::{DetectionContext, LayoutProfile};
 
@@ -47,6 +49,63 @@ impl WordPlausibilityDetector {
             );
         }
         Some(Self::score(prof, text))
+    }
+
+    /// Why this compound should stay as typed, or `None`.
+    ///
+    /// `cqrs-client` scores 0.00 for en-US as one string — the
+    /// vowel-less acronym drags the joined letters under every
+    /// threshold — while `сйкы-сдшуте` reads as a plausible 0.75. Per
+    /// segment the picture inverts: `client` is a perfect 1.00 against
+    /// its counterpart's 0.75.
+    ///
+    /// Two rules keep that from costing real corrections, and the
+    /// corpus in `poltertype-core/tests/compound_corpus.rs` is what
+    /// forced both:
+    ///
+    /// * **Better, not merely good.** An absolute "some segment reads
+    ///   well here" test vetoed a fifth of a real Russian corpus:
+    ///   `по-нашему` renders `gj-yfitve`, and `yfitve` scores 1.00
+    ///   under en-US just as `нашему` does under ru-RU.
+    /// * **Better than *every* alternate.** Comparing only against the
+    ///   winner picks whichever layout happens to score that segment
+    ///   worst — with all layouts loaded, `куда-то` lost to a bg-BG
+    ///   reading while ru-RU explained it perfectly.
+    ///
+    /// A layout rendering the segment identically is skipped: switching
+    /// to it would leave the text exactly as typed, so it is no rival
+    /// reading. Without that, es-ES and de-DE veto-block every Latin
+    /// identifier they reproduce character for character.
+    fn compound_keeps(&self, ctx: &DetectionContext<'_>, current_text: &str) -> Option<String> {
+        let segments = compound_segments(current_text)?;
+        for (i, segment) in segments.iter().enumerate() {
+            if !segment_vouches(segment) {
+                continue;
+            }
+            let here = self.fit(ctx.current_layout, segment)?;
+            let mut rivals = 0usize;
+            let best_rival = ctx
+                .candidates
+                .iter()
+                .filter(|(layout, _)| layout != ctx.current_layout)
+                .filter_map(|(layout, alt_text)| {
+                    let alt = *paired_segments(current_text, alt_text)?.get(i)?;
+                    (alt.1 != *segment).then_some((layout, alt.1))
+                })
+                .filter_map(|(layout, alt)| self.fit(layout, alt))
+                .inspect(|_| rivals += 1)
+                .fold(f32::NEG_INFINITY, f32::max);
+            if rivals > 0 && here - best_rival >= self.min_advantage {
+                return Some(format!(
+                    "compound {}: segment {} fits {} better than any alternate \
+                     ({here:.2} vs {best_rival:.2})",
+                    logsafe::redact_word(current_text),
+                    logsafe::redact_word(segment),
+                    ctx.current_layout,
+                ));
+            }
+        }
+        None
     }
 
     /// The plain word-shape score, with no compound handling.
@@ -219,6 +278,10 @@ impl Detector for WordPlausibilityDetector {
         };
         if target_fit - current_fit < self.min_advantage {
             return Verdict::NoOpinion;
+        }
+
+        if let Some(reason) = self.compound_keeps(ctx, current_text) {
+            return Verdict::Keep { reason };
         }
 
         Verdict::Switch(DetectionVerdict {

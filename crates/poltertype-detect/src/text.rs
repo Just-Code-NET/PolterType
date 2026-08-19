@@ -97,6 +97,60 @@ pub fn looks_like_acronym(text: &str) -> bool {
     letters.iter().all(|c| c.is_uppercase())
 }
 
+/// Minimum letters a compound segment needs before it may speak for the
+/// whole token in the guards below. Two-letter segments are the noisy
+/// end of both the FST and the shape scorer, and real hyphenated prose
+/// leaves exactly such stubs — `будь-що` renders as `,elm-oj`, whose
+/// `oj` scores a perfect en-US fit.
+pub const COMPOUND_SEGMENT_MIN_LETTERS: usize = 3;
+
+/// Split a hyphen- or dot-joined token into its segments, or `None`
+/// when it is not a compound.
+///
+/// A compound is a token the wrong-layout hypothesis has to explain
+/// piece by piece. Scoring the joined letters hides the structure:
+/// `cqrs-client` reads as noise under en-US because of the acronym
+/// glued to its front, so the Cyrillic rendering wins the whole token
+/// on a segment the user never meant as a word.
+///
+/// `None` on an empty segment, so a leading/trailing separator or `--`
+/// is never mistaken for structure.
+pub fn compound_segments(text: &str) -> Option<Vec<&str>> {
+    if !text.contains(['-', '.']) {
+        return None;
+    }
+    let segments: Vec<&str> = text.split(['-', '.']).collect();
+    if segments.iter().any(|s| s.is_empty()) {
+        return None;
+    }
+    Some(segments)
+}
+
+/// Pair a compound's segments with the same buffer rendered through
+/// another layout, `(current, alt)` per position.
+///
+/// `None` unless **both** renderings are compounds with the same number
+/// of segments. Separators are not universal — `-` is `ß` under de-DE —
+/// so a differing count means the two layouts disagree about where the
+/// structure is, and the guards have nothing to compare. Refusing to
+/// judge there is what keeps `Fußball` (typed in de-DE, rendered
+/// `fu-ball` under en-US) correctable: its `ball` reads as a perfect
+/// English word, and only the missing counterpart says so.
+pub fn paired_segments<'a>(current: &'a str, alt: &'a str) -> Option<Vec<(&'a str, &'a str)>> {
+    let (cur, alt) = (compound_segments(current)?, compound_segments(alt)?);
+    (cur.len() == alt.len()).then(|| cur.into_iter().zip(alt).collect())
+}
+
+/// May this segment speak for its token? At least
+/// [`COMPOUND_SEGMENT_MIN_LETTERS`] letters and no stray punctuation —
+/// a segment carrying a stray is itself a cross-layout artifact, so
+/// whatever it spells is coincidence. Same reasoning
+/// [`non_word_char_count`] exists for.
+pub fn segment_vouches(segment: &str) -> bool {
+    non_word_char_count(segment) == 0
+        && segment.chars().filter(|c| c.is_alphabetic()).count() >= COMPOUND_SEGMENT_MIN_LETTERS
+}
+
 pub fn looks_like_code_token(text: &str) -> bool {
     if text.is_empty() {
         return false;

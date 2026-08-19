@@ -9,7 +9,7 @@ use parking_lot::RwLock;
 use poltertype_types::{DetectionVerdict, LayoutId, logsafe};
 
 use crate::enums::Verdict;
-use crate::text::{letters_only_lower, non_word_char_count};
+use crate::text::{letters_only_lower, non_word_char_count, paired_segments, segment_vouches};
 use crate::traits::Detector;
 use crate::types::DetectionContext;
 
@@ -297,6 +297,47 @@ impl DictionaryDetector {
         }
     }
 
+    /// `Verdict::Keep` when `current_raw` is a compound with a segment
+    /// that is a word in the current layout and that no candidate
+    /// layout explains at the same position. See the call site in
+    /// [`Detector::judge`] for why both halves are needed.
+    fn compound_keep(&self, ctx: &DetectionContext<'_>, current_raw: &str) -> Option<Verdict> {
+        let segments = crate::text::compound_segments(current_raw)?;
+        for (i, segment) in segments.iter().enumerate() {
+            if !segment_vouches(segment) {
+                continue;
+            }
+            let word = letters_only_lower(segment);
+            if !self.is_word(ctx.current_layout, &word) {
+                continue;
+            }
+            let explained_elsewhere = ctx.candidates.iter().any(|(layout, alt_raw)| {
+                layout != ctx.current_layout
+                    && paired_segments(current_raw, alt_raw)
+                        .and_then(|pairs| pairs.get(i).map(|(_, alt)| *alt))
+                        // A layout that renders this segment identically
+                        // explains nothing: switching to it would leave
+                        // the text exactly as typed. es-ES and de-DE
+                        // reproduce most Latin tokens character for
+                        // character, so without this every such layout
+                        // counted as a rival reading of `client`.
+                        .filter(|alt| *alt != *segment)
+                        .is_some_and(|alt| self.is_word(layout, &letters_only_lower(alt)))
+            });
+            if !explained_elsewhere {
+                return Some(Verdict::Keep {
+                    reason: format!(
+                        "compound {}: segment {} is a {} dictionary word no alternate explains",
+                        logsafe::redact_word(current_raw),
+                        logsafe::redact_word(&word),
+                        ctx.current_layout
+                    ),
+                });
+            }
+        }
+        None
+    }
+
     /// Run `f` against `layout`'s dictionary under the read lock; `None`
     /// if it has none loaded. Reaching the surface FST and overlays
     /// *through* the hot-swap handle is what makes profile swaps apply
@@ -379,6 +420,21 @@ impl Detector for DictionaryDetector {
                 ),
             };
         }
+        // Compound guard. `cqrs-client` looks up as `cqrsclient` and
+        // misses every dictionary, so the whole token falls through to
+        // shape scoring — which reads the acronym as noise and switches.
+        // Per segment, `client` is a plain English word.
+        //
+        // A segment only counts when **no** alternate explains the same
+        // position: the en-US FST is over-inclusive at three letters
+        // (`ult` is in it), and without this the Russian `где-то` →
+        // `ult-nj` stopped being corrected. Runs before the alt sweeps,
+        // because an alt hit on a compound's *joined* letters is the
+        // weaker claim.
+        if let Some(keep) = self.compound_keep(ctx, current_raw) {
+            return keep;
+        }
+
         for (layout, alt_text) in &alts {
             if self.is_in_overlay(layout, alt_text) {
                 return Verdict::Switch(DetectionVerdict {

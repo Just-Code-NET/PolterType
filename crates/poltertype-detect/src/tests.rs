@@ -1099,3 +1099,200 @@ fn inflection_coverage_does_not_reach_the_detector() {
         "…though the suggestion path can still see the family"
     );
 }
+
+// ─── compound guard ────────────────────────────────────────────
+
+#[test]
+fn compound_segments_splits_hyphen_and_dot() {
+    assert_eq!(
+        compound_segments("cqrs-client"),
+        Some(vec!["cqrs", "client"])
+    );
+    assert_eq!(
+        compound_segments("api.gateway"),
+        Some(vec!["api", "gateway"])
+    );
+    assert_eq!(compound_segments("a-b.c"), Some(vec!["a", "b", "c"]));
+    assert_eq!(compound_segments("hello"), None);
+    // Empty segments are punctuation, not structure.
+    assert_eq!(compound_segments("-lead"), None);
+    assert_eq!(compound_segments("trail-"), None);
+    assert_eq!(compound_segments("double--dash"), None);
+}
+
+#[test]
+fn segment_vouches_skips_stubs_and_artifacts() {
+    // `будь-що` under en-US is `,elm-oj`: the comma is a cross-layout
+    // artifact and `oj` is too short to speak for the token.
+    assert!(!segment_vouches(",elm"));
+    assert!(!segment_vouches("oj"));
+    assert!(segment_vouches("cqrs"));
+    assert!(segment_vouches("client"));
+}
+
+#[test]
+fn paired_segments_needs_the_same_structure_on_both_sides() {
+    assert_eq!(
+        paired_segments("cqrs-client", "сйкы-сдшуте"),
+        Some(vec![("cqrs", "сйкы"), ("client", "сдшуте")])
+    );
+    // de-DE puts `ß` on the hyphen key, so a German word typed there and
+    // read under en-US splits on one side only. Nothing to compare.
+    assert_eq!(paired_segments("fu-ball", "fußball"), None);
+    assert_eq!(paired_segments("plain", "плфшт"), None);
+    assert_eq!(paired_segments("a-b-c", "а-б"), None);
+}
+
+/// Regression: `cqrs-client` typed under en-US with ru-RU loaded.
+/// Joined, `cqrsclient` has a six-consonant run and a 0.20 vowel ratio
+/// — 0.00 en-US fit — while `сйкы-сдшуте` reads as a plausible 0.75,
+/// so the engine "corrected" a perfectly good kebab-case identifier.
+#[test]
+fn plausibility_keeps_kebab_identifier_with_acronym_head() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "cqrs-client".into()),
+        (uk.clone(), "сйкі-сдшуте".into()),
+    ];
+    match detector().judge(&ctx(&en, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep for cqrs-client, got {other:?}"),
+    }
+}
+
+/// The same shape with a dot separator, and with the readable segment
+/// first — neither position may matter.
+#[test]
+fn plausibility_keeps_dotted_identifier_with_acronym_tail() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "client.cqrs".into()),
+        (uk.clone(), "сдшуте.сйкі".into()),
+    ];
+    match detector().judge(&ctx(&en, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep for client.cqrs, got {other:?}"),
+    }
+}
+
+/// The guard must not swallow genuinely hyphenated wrong-layout prose.
+/// `по-перше` renders as `gj-gthit` under en-US: no segment reads as
+/// English, so the correction still fires.
+#[test]
+fn plausibility_still_switches_hyphenated_wrong_layout_word() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "gj-gthit".into()),
+        (uk.clone(), "по-перше".into()),
+    ];
+    assert_switches_to(&detector(), &ctx(&en, &cands), &uk);
+}
+
+/// `все-таки` → `dct-nfrb`: a hyphenated word where no segment reads
+/// as English at all. The guard has to stay out of the way.
+#[test]
+fn plausibility_still_switches_hyphenated_consonant_run() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "dct-nfrb".into()),
+        (uk.clone(), "все-таки".into()),
+    ];
+    assert_switches_to(&detector(), &ctx(&en, &cands), &uk);
+}
+
+/// `будь-що` → `,elm-oj`: the only segment that reads as English is the
+/// two-letter `oj`, below the vouching floor. Above it the guard would
+/// veto — this token must stay eligible for the dictionary detector,
+/// which is what actually decides it.
+#[test]
+fn plausibility_does_not_veto_short_segment_compound() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), ",elm-oj".into()),
+        (uk.clone(), "будь-що".into()),
+    ];
+    if let Verdict::Keep { reason } = detector().judge(&ctx(&en, &cands)) {
+        panic!("compound guard vetoed `будь-що`: {reason}");
+    }
+}
+
+/// The guard is comparative, and this is the case that forced it to be.
+/// `інтернет-магазин` renders `synthytn-vfufpby` under en-US, where
+/// `synthytn` scores a respectable 0.75 — but `інтернет` scores 1.00 in
+/// the layout the switch would move to. A segment that reads *no better*
+/// here is no evidence at all; an absolute "reads well here" test vetoed
+/// a fifth of a real Russian corpus.
+#[test]
+fn plausibility_compound_guard_needs_an_advantage_not_just_a_good_score() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "synthytn-vfufpby".into()),
+        (uk.clone(), "інтернет-магазин".into()),
+    ];
+    assert_switches_to(&detector(), &ctx(&en, &cands), &uk);
+}
+
+/// Dictionary side of the same class: a compound segment that is a real
+/// word in the *current* layout keeps the token, even though the joined
+/// skeleton misses in every dictionary. This is the half shape scoring
+/// cannot reach — `rhythm` is a real word that reads as noise.
+#[test]
+fn dict_keeps_compound_with_real_word_segment() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (en.clone(), "cqrs-hello".into()),
+        (uk.clone(), "сйкі-руддщ".into()),
+    ];
+    match dict_detector().judge(&ctx(&en, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep for cqrs-hello, got {other:?}"),
+    }
+}
+
+/// …but not when the alternate explains the same position. The en-US
+/// FST is over-inclusive at three letters, and `где-то` renders as
+/// `ult-nj`, whose `ult` is in it. `где` being a real Russian word at
+/// the same position is what says which reading is the coincidence.
+#[test]
+fn dict_compound_segment_defers_to_an_alternate_that_explains_it() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let mut m = HashMap::new();
+    m.insert(en.clone(), dict_with_embedded(&["ult"], HashSet::new()));
+    // `гдето` is the joined skeleton the alt sweep looks up; `где` is
+    // the segment that has to be seen before the guard can defer to it.
+    m.insert(
+        uk.clone(),
+        dict_with_embedded(&["где", "то", "гдето"], HashSet::new()),
+    );
+    let cands = vec![(en.clone(), "ult-nj".into()), (uk.clone(), "где-то".into())];
+    assert_switches_to(&DictionaryDetector::new(m), &ctx(&en, &cands), &uk);
+}
+
+/// …and the dictionary guard must not fire on an artifact-carrying
+/// segment: `будь-ласка` renders as `,elm-kfcrf`, whose `,elm` cleans
+/// down to the real English word `elm` by coincidence alone.
+#[test]
+fn dict_ignores_compound_segment_carrying_an_artifact() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let mut m = HashMap::new();
+    m.insert(en.clone(), dict_with_embedded(&["elm"], HashSet::new()));
+    // Dictionaries hold the `letters_only_lower` skeleton, hyphen gone.
+    m.insert(
+        uk.clone(),
+        dict_with_embedded(&["будьласка"], HashSet::new()),
+    );
+    let cands = vec![
+        (en.clone(), ",elm-kfcrf".into()),
+        (uk.clone(), "будь-ласка".into()),
+    ];
+    assert_switches_to(&DictionaryDetector::new(m), &ctx(&en, &cands), &uk);
+}

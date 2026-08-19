@@ -260,6 +260,15 @@ ux
 qr
 ftp
 nas
+# Vowel-less enough that shape scoring reads them as wrong-layout
+# noise on their own — the alt rendering wins and the word is
+# "corrected" into Cyrillic. None of them collides with a real uk/ru
+# word at the same keys, so a dictionary entry is the safe fix.
+cqrs
+csrf
+xss
+webrtc
+psql
 
 # ---- Common file extensions / formats users type ----
 exe
