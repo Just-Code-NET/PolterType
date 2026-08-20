@@ -104,6 +104,32 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 # log out and back in, or run `newgrp input`
 ```
 
+#### NixOS
+
+None of the above can be applied imperatively there — `/etc/udev/rules.d`
+is a read-only symlink into the Nix store, and a group added with
+`usermod` is dropped again by the next rebuild — so the script detects
+NixOS, changes nothing, and prints the declarative equivalent for
+`/etc/nixos/configuration.nix`:
+
+```nix
+# Loads the uinput module and gives its device node to the `uinput`
+# group; `input` is what carries read access to /dev/input/event*.
+hardware.uinput.enable = true;
+users.users."<you>".extraGroups = [ "input" "uinput" ];
+
+# NixOS has no /lib64/ld-linux-x86-64.so.2, so a generic AppImage
+# cannot be exec'd at all. `binfmt` makes the .AppImage file itself
+# runnable — without it `appimage-run poltertype-…AppImage` still
+# works, but the desktop entry, the autostart entry and the updater
+# all launch the file by path, so they do not.
+programs.appimage = { enable = true; binfmt = true; };
+```
+
+`sudo nixos-rebuild switch`, then log out and back in. Re-running
+`setup-linux.sh` afterwards checks the result without changing
+anything.
+
 #### When it looks set up and still does not work
 
 All three of these leave a machine that passes a casual look and reads

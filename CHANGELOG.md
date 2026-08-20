@@ -4,6 +4,56 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.17.6
+
+### Fixed — the app could correct every word except its own
+
+- **`poltertype` is now in the bundled English dictionary.** It is a
+  coined name no general-purpose word list carries, so typing it on a
+  Cyrillic layout produced a candidate the engine had no reason to
+  believe in — the one word every user of this app is guaranteed to
+  type was the one it would not fix. A corpus test against the real
+  shipped dictionaries now holds it.
+
+- **One stray token left the list with it.** `ghjcrehby` — a Cyrillic
+  surname typed in the wrong layout — had been pasted into
+  `en_us-extras.txt` by accident and was being taught to the engine as
+  valid English, which is exactly the gibberish the app exists to
+  correct.
+
+### Fixed — autostart from an AppImage pointed at a path that no longer existed
+
+- **"Run at login", ticked from an AppImage, wrote an `Exec=` nothing
+  could launch.** The entry took its path from `current_exe()`, which
+  inside a running AppImage points into the temporary mount
+  (`/tmp/.mount_XXXXXX/usr/bin/poltertype`) — gone the moment the app
+  exits, and long gone by the time the next session reads the entry.
+  It now prefers `$APPIMAGE`, the way the desktop entry and the updater
+  already did. Nothing to redo by hand: the entry is rewritten on the
+  next launch.
+
+### Added — NixOS
+
+- **`scripts/setup-linux.sh` recognises NixOS and applies nothing.**
+  It could not: `/etc/udev/rules.d` is a read-only symlink into the Nix
+  store, so the rule write failed and the script died mid-way — after
+  `usermod` had added the user to `input`, which the next rebuild
+  silently reverts, because `users.users.<name>.extraGroups` is what
+  decides membership there. It now prints the `configuration.nix` block
+  instead (`hardware.uinput.enable`, both groups, and
+  `programs.appimage.binfmt` — without which NixOS cannot exec a
+  generic AppImage at all, the app's own `.desktop` and autostart
+  entries included), and still runs its verification, so re-running it
+  after `nixos-rebuild switch` says whether it took.
+  `docs/PERMISSIONS.md` carries the same block.
+
+- **That verification now checks `/dev/uinput` instead of noting that
+  it exists.** "✓ /dev/uinput exists" was a pass on a machine where the
+  node belongs to a group the account is not in — PolterType reads the
+  typing and cannot type the correction back, which is how NixOS is set
+  up out of the box. It now names the owning group and checks both
+  membership and the group write bit.
+
 ## [0.17.5] — the Hotkeys pane stops naming a key nothing listens for
 
 ### Fixed — Linux/Wayland: force-switch looked broken because Settings named the wrong key ([#31](https://github.com/Just-Code-NET/PolterType/issues/31))
