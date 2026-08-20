@@ -13,7 +13,10 @@ use tracing::{debug, warn};
 pub struct HyprlandSwitcher;
 
 pub fn try_init() -> Option<HyprlandSwitcher> {
-    std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE")?;
+    // A live socket rather than `HYPRLAND_INSTANCE_SIGNATURE`: an
+    // autostarted process can be running under Hyprland with the
+    // variable unset — see `ipc::instance_signature`.
+    ipc::socket_path()?;
     if !cmd_exists("hyprctl") {
         warn!("HYPRLAND_INSTANCE_SIGNATURE set but hyprctl not in PATH");
         return None;

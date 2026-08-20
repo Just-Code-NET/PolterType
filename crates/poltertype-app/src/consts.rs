@@ -140,3 +140,13 @@ Tip: the embedded dictionaries already cover ~370k EN and ~333k UK
 entries plus a curated tech-vocab list. You only need files here for
 words you actually see auto-corrected wrongly.
 ";
+
+/// How long to keep probing for a layout-switching backend at startup
+/// before giving up, and how often.
+///
+/// Every backend is probed against something the session brings up
+/// asynchronously — a compositor socket, a D-Bus name, a gsettings
+/// schema — so at login we can be started before any of it exists.
+pub(crate) const SWITCHER_PROBE_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
+pub(crate) const SWITCHER_PROBE_INTERVAL: std::time::Duration =
+    std::time::Duration::from_millis(500);

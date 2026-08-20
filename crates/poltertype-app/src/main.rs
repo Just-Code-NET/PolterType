@@ -36,6 +36,8 @@ mod updater;
 mod user_dirs;
 
 use crate::bridges::*;
+use std::time::Instant;
+
 use crate::consts::*;
 use crate::detectors::*;
 use crate::enums::*;
@@ -66,12 +68,12 @@ use poltertype_detect::Detector;
 use poltertype_input::{
     KeyEvent, create_emitter, create_focus_tracker, create_key_gate, create_listener,
 };
-use poltertype_layout::create_switcher;
+use poltertype_layout::{LayoutError, create_switcher};
 use poltertype_popup::{PopupUiEvent, create_popup};
 use poltertype_types::LayoutId;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -173,7 +175,7 @@ fn main() -> Result<()> {
 
     // ─── Layout switcher (built first so we can query active OS
     //                     layouts before loading the DB) ────────────
-    let layout_switcher: Arc<dyn poltertype_layout::LayoutSwitcher> = match create_switcher() {
+    let layout_switcher: Arc<dyn poltertype_layout::LayoutSwitcher> = match switcher_with_retry() {
         Ok(s) => {
             info!(backend = s.backend_name(), "layout switcher ready");
             Arc::from(s)
@@ -858,6 +860,30 @@ fn main() -> Result<()> {
 /// one-shot commands that keep working, so the menu looks identical
 /// whether the service behind it is running or dead. On the
 /// error-notification path, so `show_notifications` does not gate it.
+/// [`create_switcher`], retried for a few seconds before giving up.
+///
+/// At login we can be started before the session has anything to
+/// probe. That is not hypothetical: an `xdg-desktop-autostart` unit
+/// beat the Hyprland session's own environment import, PolterType
+/// probed seven backends, found none and exited 1 — so "run at login"
+/// simply did not work, with the reason in a journal nobody reads.
+///
+/// Patience costs a genuinely unsupported machine a slower error
+/// message, and buys every autostarted one a working app.
+fn switcher_with_retry() -> Result<Box<dyn poltertype_layout::LayoutSwitcher>, LayoutError> {
+    let deadline = Instant::now() + SWITCHER_PROBE_WINDOW;
+    loop {
+        match create_switcher() {
+            Ok(s) => return Ok(s),
+            Err(e) if Instant::now() >= deadline => return Err(e),
+            Err(_) => {
+                debug!("no layout switcher backend yet; the session may still be coming up");
+                std::thread::sleep(SWITCHER_PROBE_INTERVAL);
+            }
+        }
+    }
+}
+
 fn announce_departed(gone: Vec<plugins::Departed>) {
     for d in gone {
         spawn_error_notification(format!(

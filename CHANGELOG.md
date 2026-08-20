@@ -32,6 +32,50 @@ and the project follows [Semantic Versioning](https://semver.org/).
   already did. Nothing to redo by hand: the entry is rewritten on the
   next launch.
 
+### Fixed — the manual switch-last hotkey was a no-op for anyone slower than two seconds
+
+- **The stash the hotkey works on was being cleared by the idle
+  timeout.** `[engine].idle_timeout_ms` (2 s) abandons the word still
+  being typed, which is right — after a pause the caret may be anywhere.
+  It was also dropping the *last completed* word, and the first key
+  event after the pause is the hotkey's own `Ctrl`. So the sequence a
+  person actually performs — type a word, notice the layout was wrong,
+  reach for the chord — cleared the stash on the way to reading it, and
+  the hotkey did nothing at all. Reported on Arch/Hyprland, where it
+  looked like the chord was not reaching the app; it was, four times
+  over, measured on the key stream.
+
+  The stash now outlives idle by a window of its own (`LAST_WORD_TTL`,
+  60 s). Nothing else changes: a click, a nav key, deleting text we
+  never saw, or the next completed word all still drop it through their
+  own paths — this only bounds how long an untouched machine keeps one
+  word in RAM. An engine test pins the whole sequence, and fails on the
+  old code.
+
+### Fixed — "run at login" on Linux started the app before there was a session to start it into
+
+- **Autostart looked broken on Hyprland because PolterType exited 1 at
+  login.** The XDG entry was correct, systemd's generator turned it into
+  a unit, the unit ran — and the app aborted with "no layout switcher
+  backend", having probed all seven. A Hyprland session imports its own
+  environment into the systemd user manager from its config, and
+  `xdg-desktop-autostart.target` can win that race, so the process that
+  autostart launched could not see the compositor that launched it.
+
+  Two changes, either of which would have covered this one, and both of
+  which are right on their own:
+
+  - The Hyprland probe no longer depends on
+    `HYPRLAND_INSTANCE_SIGNATURE`. It resolves the instance from the
+    live socket directory when the variable is missing — which is
+    exactly the autostarted case — in the layout switcher and in the
+    focus tracker alike.
+  - Startup keeps probing for a backend for 15 s before giving up
+    instead of aborting on the first miss. Every backend is probed
+    against something a session brings up asynchronously (a compositor
+    socket, a D-Bus name, a gsettings schema); being 200 ms early is
+    not the same as being unsupported.
+
 ### Added — NixOS
 
 - **`scripts/setup-linux.sh` sets NixOS up declaratively instead of
