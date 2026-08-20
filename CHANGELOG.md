@@ -34,18 +34,30 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ### Added — NixOS
 
-- **`scripts/setup-linux.sh` recognises NixOS and applies nothing.**
-  It could not: `/etc/udev/rules.d` is a read-only symlink into the Nix
-  store, so the rule write failed and the script died mid-way — after
-  `usermod` had added the user to `input`, which the next rebuild
+- **`scripts/setup-linux.sh` sets NixOS up declaratively instead of
+  failing at it.** It could never have worked imperatively there:
+  `/etc/udev/rules.d` is a read-only symlink into the Nix store, so the
+  rule write failed and `set -e` ended the script mid-way — after
+  `usermod` had added the account to `input`, which the next rebuild
   silently reverts, because `users.users.<name>.extraGroups` is what
-  decides membership there. It now prints the `configuration.nix` block
-  instead (`hardware.uinput.enable`, both groups, and
-  `programs.appimage.binfmt` — without which NixOS cannot exec a
-  generic AppImage at all, the app's own `.desktop` and autostart
-  entries included), and still runs its verification, so re-running it
-  after `nixos-rebuild switch` says whether it took.
-  `docs/PERMISSIONS.md` carries the same block.
+  decides membership. Reported from a fresh NixOS install where
+  PolterType would not start at all afterwards.
+
+  It now writes `/etc/nixos/poltertype.nix` — `hardware.uinput.enable`,
+  the two groups, and `programs.appimage.binfmt`, without which NixOS
+  cannot exec a generic AppImage at all — and adds one line to the
+  `imports` list in `configuration.nix`, keeping the original as
+  `configuration.nix.poltertype-backup`. Both files are checked with
+  `nix-instantiate --parse` before they are left in place; an edit that
+  does not parse is rolled back rather than handed to your next
+  rebuild.
+
+  `nixos-rebuild switch` stays yours to run: it can fail on things that
+  have nothing to do with PolterType, and you want to be able to tell
+  the two apart. So does a configuration the script does not
+  understand — no `configuration.nix`, no `imports` list, or no sign of
+  the account being declared under `/etc/nixos` — where it prints the
+  block to paste and changes nothing. `docs/PERMISSIONS.md` has both.
 
 - **That verification now checks `/dev/uinput` instead of noting that
   it exists.** "✓ /dev/uinput exists" was a pass on a machine where the

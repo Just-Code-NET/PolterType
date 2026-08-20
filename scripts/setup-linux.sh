@@ -14,6 +14,10 @@
 # This script does both with one `sudo` prompt. Re-run any time —
 # it's idempotent. Pass `--yes` / `-y` to skip the confirmation prompt
 # (useful for unattended provisioning).
+#
+# On NixOS none of that can be done imperatively, so the same settings
+# are written as a module next to configuration.nix and imported from
+# it; `nixos-rebuild switch` is left to you.
 
 set -euo pipefail
 
@@ -27,7 +31,7 @@ for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
         -h|--help)
-            sed -n '1,18p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *) echo "poltertype: unknown argument: $arg" >&2; exit 2 ;;
@@ -61,8 +65,8 @@ if [[ "$USER_NAME" == "root" ]]; then
 elif id -nG "$USER_NAME" | tr ' ' '\n' | grep -qx input; then
     echo "  ✓ '${USER_NAME}' is in the 'input' group."
 elif [[ $NIXOS -eq 1 ]]; then
-    echo "  ! '${USER_NAME}' is not in the 'input' group — add it above, rebuild, and"
-    echo "    log out and back in."
+    echo "  ! '${USER_NAME}' is not in the 'input' group — run"
+    echo "    'sudo nixos-rebuild switch', then log out and back in."
     FAILED=1
 else
     echo "  ! '${USER_NAME}' is still not in the 'input' group — usermod did not take."
@@ -140,23 +144,35 @@ fi
 return 0
 }
 
-# NixOS: every mutation below is either impossible or undone on the next
-# rebuild, so refuse to half-apply it and print the declarative
-# equivalent instead. /etc/udev/rules.d is a read-only symlink into the
-# Nix store, and group membership belongs to
-# `users.users.<name>.extraGroups`, which the activation script
-# re-applies over whatever usermod did.
-if [[ -e /etc/NIXOS ]] || grep -qs '^ID=nixos$' /etc/os-release; then
-    NIXOS=1
+NIX_DIR="/etc/nixos"
+NIX_MAIN="$NIX_DIR/configuration.nix"
+NIX_MODULE="$NIX_DIR/poltertype.nix"
+NIX_BACKUP="$NIX_MAIN.poltertype-backup"
+
+# Write stdin to $1, with sudo only if the file is not ours to write.
+# /etc/nixos is root-owned on a stock install and a symlink into a
+# user-owned git repo on plenty of others; using sudo unconditionally
+# would leave root-owned files in the second kind.
+nix_write() {
+    if [[ -w "$1" ]] || { [[ ! -e "$1" ]] && [[ -w "$(dirname "$1")" ]]; }; then
+        cat >"$1"
+    else
+        sudo tee "$1" >/dev/null
+    fi
+}
+
+nix_copy() {
+    if [[ -w "$(dirname "$2")" ]]; then
+        cp "$1" "$2"
+    else
+        sudo cp "$1" "$2"
+    fi
+}
+
+# The block a user would otherwise paste by hand. Also what gets printed
+# when this script decides not to touch their configuration.
+nixos_manual_block() {
     cat <<EOF
-
-poltertype setup — NixOS detected
-=================================
-
-This script cannot do its work here: udev rules live in the read-only
-Nix store, and a group added with usermod is dropped again on the next
-rebuild. Add the equivalent to /etc/nixos/configuration.nix:
-
   # Loads the uinput module and gives its device node to the \`uinput\`
   # group, so the corrector can type the fixed word back.
   hardware.uinput.enable = true;
@@ -170,9 +186,190 @@ rebuild. Add the equivalent to /etc/nixos/configuration.nix:
   # runnable — which is what PolterType's desktop and autostart entries
   # launch.
   programs.appimage = { enable = true; binfmt = true; };
-
-Then \`sudo nixos-rebuild switch\`, and log out and back in.
 EOF
+}
+
+nixos_module_body() {
+    cat <<EOF
+# PolterType — written by scripts/setup-linux.sh, imported from
+# configuration.nix. Delete both when you uninstall PolterType.
+#
+# Everything here is what other distributions get imperatively from that
+# script: on NixOS the udev rules live in the read-only Nix store, and
+# group membership is decided by users.users.<name>.extraGroups, which
+# the activation script re-applies over anything usermod did.
+{ ... }:
+
+{
+  # Loads the uinput module and gives its device node to the \`uinput\`
+  # group, so the corrector can type the fixed word back.
+  hardware.uinput.enable = true;
+
+  # \`input\` carries read access to /dev/input/event*, \`uinput\` the
+  # write access above. List options merge, so this adds to whatever the
+  # rest of the configuration already grants the account.
+  users.users."${USER_NAME}".extraGroups = [ "input" "uinput" ];
+
+  # NixOS has no /lib64/ld-linux-x86-64.so.2, so a generic AppImage
+  # cannot be exec'd at all; binfmt makes the .AppImage file itself
+  # runnable — which is what PolterType's desktop entry, its autostart
+  # entry and its updater all launch.
+  programs.appimage = {
+    enable = true;
+    binfmt = true;
+  };
+}
+EOF
+}
+
+# Add `./poltertype.nix` to the `imports` list of $1, on stdout.
+#
+# Appended just before the list's closing bracket rather than after the
+# opening one: `imports =` and its `[` are often on separate lines, and
+# that `[` is usually followed by the comment about the hardware scan,
+# which an entry inserted after it would silently adopt.
+nix_add_import() {
+    awk '
+        BEGIN { state = 0 }
+        state == 0 && /^[[:space:]]*imports[[:space:]]*=/ { state = 1 }
+        state == 1 && index($0, "]") > 0 {
+            close_at = index($0, "]")
+            before = substr($0, 1, close_at - 1)
+            if (before ~ /[^[:space:]\[]/ && before ~ /\[/) {
+                # A one-line list: `imports = [ ./hardware.nix ];`
+                sub(/[[:space:]]+$/, "", before)
+                print before " ./poltertype.nix " substr($0, close_at)
+            } else {
+                match($0, /^[[:space:]]*/)
+                print substr($0, 1, RLENGTH) "  ./poltertype.nix"
+                print
+            }
+            state = 2
+            next
+        }
+        { print }
+        END { if (state != 2) exit 3 }
+    ' "$1"
+}
+
+# Nix files that do not parse take the whole system down at the next
+# rebuild, and this script writes one and edits another. `--parse` is
+# syntax only: no evaluation, no network, no store writes.
+nix_parses() {
+    if command -v nix-instantiate >/dev/null 2>&1; then
+        nix-instantiate --parse "$1" >/dev/null 2>&1
+    else
+        true
+    fi
+}
+
+nixos_setup() {
+    cat <<EOF
+
+poltertype setup — NixOS detected
+=================================
+
+Nothing here can be set up imperatively: udev rules live in the
+read-only Nix store, and a group added with usermod is dropped again by
+the next rebuild. The same three settings go into the configuration
+instead, as a module of their own.
+
+EOF
+
+    if [[ ! -f "$NIX_MAIN" ]]; then
+        echo "No ${NIX_MAIN} — this system's configuration lives somewhere else."
+        echo "Add this to it by hand, wherever it is:"
+        echo
+        nixos_manual_block
+        echo
+        echo "Then \`sudo nixos-rebuild switch\`, and log out and back in."
+        return
+    fi
+
+    # `users.users.<name>.extraGroups` on an account this configuration
+    # does not declare creates a half-defined user, and the rebuild fails
+    # on it — a confusing break, and one this script would have caused.
+    if ! grep -qsE "users\.users\.\"?${USER_NAME}\"?" "$NIX_DIR"/*.nix; then
+        echo "Could not find where '${USER_NAME}' is declared under ${NIX_DIR},"
+        echo "so this script will not edit anything. Add this by hand, next to"
+        echo "that account's own definition:"
+        echo
+        nixos_manual_block
+        echo
+        echo "Then \`sudo nixos-rebuild switch\`, and log out and back in."
+        return
+    fi
+
+    echo "This script will:"
+    echo "  1. Write ${NIX_MODULE}."
+    echo "  2. Add ./poltertype.nix to the 'imports' list in ${NIX_MAIN}"
+    echo "     (keeping a copy at ${NIX_BACKUP})."
+    echo "  3. Leave 'nixos-rebuild switch' to you — it is your system's"
+    echo "     rebuild, and it can fail on things that have nothing to do"
+    echo "     with PolterType."
+    echo
+
+    if [[ $ASSUME_YES -ne 1 ]]; then
+        if ! read -r -p "Continue? [y/N] " ans; then
+            ans=""
+            echo
+        fi
+        case "$ans" in
+            y|Y|yes|YES) ;;
+            *) echo "Aborted."; exit 0 ;;
+        esac
+    fi
+
+    nixos_module_body | nix_write "$NIX_MODULE"
+    if ! nix_parses "$NIX_MODULE"; then
+        echo "  ! ${NIX_MODULE} does not parse — this is a bug in this script."
+        echo "    Delete it and add the block above by hand."
+        return
+    fi
+    echo "Wrote ${NIX_MODULE}."
+
+    if grep -q 'poltertype\.nix' "$NIX_MAIN"; then
+        echo "${NIX_MAIN} already imports it."
+    else
+        nix_copy "$NIX_MAIN" "$NIX_BACKUP"
+        patched=$(mktemp)
+        if ! nix_add_import "$NIX_MAIN" >"$patched"; then
+            echo "  ! No 'imports = [ … ];' list found in ${NIX_MAIN}."
+            echo "    Add this line to it by hand:  ./poltertype.nix"
+        else
+            nix_write "$NIX_MAIN" <"$patched"
+            if nix_parses "$NIX_MAIN"; then
+                echo "Added ./poltertype.nix to the imports in ${NIX_MAIN}."
+            else
+                nix_copy "$NIX_BACKUP" "$NIX_MAIN"
+                echo "  ! The edited ${NIX_MAIN} did not parse; restored the original."
+                echo "    Add this line to its 'imports' list by hand:  ./poltertype.nix"
+            fi
+        fi
+        rm -f "$patched"
+    fi
+
+    cat <<EOF
+
+Now run:
+
+  sudo nixos-rebuild switch
+
+and log out and back in — the groups do not reach a session that started
+before them. Re-run this script afterwards to check the result.
+EOF
+}
+
+# NixOS: nothing below can be applied imperatively, and the parts that
+# look like they can are worse than useless — /etc/udev/rules.d is a
+# read-only symlink into the Nix store, and a group added with usermod
+# is dropped again by the next rebuild, because
+# `users.users.<name>.extraGroups` is what decides membership. So the
+# same job is done declaratively: a module of our own next to
+# configuration.nix, and one line added to its `imports`.
+if [[ -e /etc/NIXOS ]] || grep -qs '^ID=nixos$' /etc/os-release; then
+    NIXOS=1
+    nixos_setup
     verify_and_report
     exit $?
 fi

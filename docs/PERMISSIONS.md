@@ -108,27 +108,47 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 None of the above can be applied imperatively there — `/etc/udev/rules.d`
 is a read-only symlink into the Nix store, and a group added with
-`usermod` is dropped again by the next rebuild — so the script detects
-NixOS, changes nothing, and prints the declarative equivalent for
-`/etc/nixos/configuration.nix`:
+`usermod` is dropped again by the next rebuild — so the script does the
+same job declaratively. It writes `/etc/nixos/poltertype.nix`:
 
 ```nix
-# Loads the uinput module and gives its device node to the `uinput`
-# group; `input` is what carries read access to /dev/input/event*.
-hardware.uinput.enable = true;
-users.users."<you>".extraGroups = [ "input" "uinput" ];
+{ ... }:
 
-# NixOS has no /lib64/ld-linux-x86-64.so.2, so a generic AppImage
-# cannot be exec'd at all. `binfmt` makes the .AppImage file itself
-# runnable — without it `appimage-run poltertype-…AppImage` still
-# works, but the desktop entry, the autostart entry and the updater
-# all launch the file by path, so they do not.
-programs.appimage = { enable = true; binfmt = true; };
+{
+  # Loads the uinput module and gives its device node to the `uinput`
+  # group; `input` is what carries read access to /dev/input/event*.
+  hardware.uinput.enable = true;
+  users.users."<you>".extraGroups = [ "input" "uinput" ];
+
+  # NixOS has no /lib64/ld-linux-x86-64.so.2, so a generic AppImage
+  # cannot be exec'd at all. `binfmt` makes the .AppImage file itself
+  # runnable — without it `appimage-run poltertype-…AppImage` still
+  # works, but the desktop entry, the autostart entry and the updater
+  # all launch the file by path, so they do not.
+  programs.appimage = { enable = true; binfmt = true; };
+}
 ```
 
-`sudo nixos-rebuild switch`, then log out and back in. Re-running
-`setup-linux.sh` afterwards checks the result without changing
-anything.
+and adds one line, `./poltertype.nix`, to the `imports` list in
+`configuration.nix`, keeping the original as
+`configuration.nix.poltertype-backup`. Both files are checked with
+`nix-instantiate --parse` before they are left in place; a config that
+does not parse is restored from the backup rather than handed to your
+next rebuild.
+
+What it will not do:
+
+* **Run `nixos-rebuild switch`.** That is yours — it can fail on things
+  that have nothing to do with PolterType, and you want to be able to
+  tell the two apart. Run it, then log out and back in.
+* **Touch a configuration it does not understand.** No
+  `/etc/nixos/configuration.nix`, no `imports` list in it, or no sign of
+  your account being declared under `/etc/nixos` — and it prints the
+  block for you to paste instead, having changed nothing. (An
+  `extraGroups` line for an account the configuration does not declare
+  is a rebuild failure, not a fix.)
+
+Re-running it after the rebuild changes nothing and checks the result.
 
 #### When it looks set up and still does not work
 
