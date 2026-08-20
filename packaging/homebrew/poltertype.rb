@@ -10,8 +10,8 @@
 # release; do not hand-edit them.
 
 cask "poltertype" do
-  version "0.17.3"
-  sha256 "b210ff419fe8865898eada4215c990b270b433ae1e3c5f21af5c8b60c94f3d13"
+  version "0.17.4"
+  sha256 "53fb49d6fdae63e5e05e0ac9c56858cbaee98169aa0d092f44a0cbe9e04431e1"
 
   url "https://github.com/Just-Code-NET/PolterType/releases/download/v#{version}/poltertype-#{version}-universal-apple-darwin.dmg",
       verified: "github.com/Just-Code-NET/PolterType/"
