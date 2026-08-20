@@ -136,6 +136,12 @@ and adds one line, `./poltertype.nix`, to the `imports` list in
 does not parse is restored from the backup rather than handed to your
 next rebuild.
 
+If `/etc/nixos` is a git repository — which it is whenever the system is
+built from a flake — the new module is staged with `git add`, and
+nothing else is. A flake evaluates the *git tree*, not the directory, so
+an untracked `poltertype.nix` is invisible to the very rebuild that
+imports it, and `nixos-rebuild` fails on the import.
+
 What it will not do:
 
 * **Run `nixos-rebuild switch`.** That is yours — it can fail on things

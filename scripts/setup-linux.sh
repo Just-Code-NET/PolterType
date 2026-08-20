@@ -27,6 +27,7 @@ MODULES_LOAD_PATH="/etc/modules-load.d/uinput.conf"
 
 ASSUME_YES=0
 NIXOS=0
+NIX_WROTE=0
 for arg in "$@"; do
     case "$arg" in
         -y|--yes) ASSUME_YES=1 ;;
@@ -115,11 +116,20 @@ else
 fi
 
 if [[ $FAILED -ne 0 ]]; then
-    cat <<EOF
+    if [[ ${NIX_WROTE:-0} -eq 1 ]]; then
+        cat <<EOF
+
+Expected — the configuration above is written but not yet applied. Run
+'sudo nixos-rebuild switch', log out and back in, then re-run this
+script: every line should read ✓.
+EOF
+    else
+        cat <<EOF
 
 Setup is NOT complete — see the lines marked ! above.
   https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md
 EOF
+    fi
     return 1
 fi
 
@@ -222,6 +232,24 @@ nixos_module_body() {
 EOF
 }
 
+# Make the new module visible to a flake.
+#
+# `nixos-rebuild` on a flake evaluates the configuration from the git
+# tree, not the working directory, and a file git has never heard of is
+# not in it: the import resolves to nothing and the rebuild fails on the
+# import rather than on the file. So stage it — and nothing else, since
+# whatever else is uncommitted in there is the user's business.
+nix_git_track() {
+    git -C "$NIX_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    if git -C "$NIX_DIR" add -- poltertype.nix 2>/dev/null; then
+        echo "Staged poltertype.nix — a flake evaluates the git tree, not the directory."
+    else
+        echo "  ! ${NIX_DIR} is a git repository and poltertype.nix is untracked, which"
+        echo "    a flake-based rebuild cannot see. Stage it yourself:"
+        echo "      git -C \"${NIX_DIR}\" add poltertype.nix"
+    fi
+}
+
 # Add `./poltertype.nix` to the `imports` list of $1, on stdout.
 #
 # Appended just before the list's closing bracket rather than after the
@@ -320,6 +348,7 @@ EOF
         esac
     fi
 
+    NIX_WROTE=1
     nixos_module_body | nix_write "$NIX_MODULE"
     if ! nix_parses "$NIX_MODULE"; then
         echo "  ! ${NIX_MODULE} does not parse — this is a bug in this script."
@@ -327,6 +356,8 @@ EOF
         return
     fi
     echo "Wrote ${NIX_MODULE}."
+    nix_git_track
+
 
     if grep -q 'poltertype\.nix' "$NIX_MAIN"; then
         echo "${NIX_MAIN} already imports it."

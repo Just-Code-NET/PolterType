@@ -50,7 +50,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
   `configuration.nix.poltertype-backup`. Both files are checked with
   `nix-instantiate --parse` before they are left in place; an edit that
   does not parse is rolled back rather than handed to your next
-  rebuild.
+  rebuild. On a flake-built system the module is also staged with `git
+  add` — a flake evaluates the git tree, so an untracked module is
+  invisible to the rebuild that imports it, which is how the first real
+  run of this ended.
 
   `nixos-rebuild switch` stays yours to run: it can fail on things that
   have nothing to do with PolterType, and you want to be able to tell
