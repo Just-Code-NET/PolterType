@@ -7,11 +7,10 @@
 
 use std::path::Path;
 
-use super::consts::{
-    EVENT_DEVICE_DIR, INPUT_GROUP, PERMISSIONS_URL, SETUP_SCRIPT_COMMAND, UINPUT_DEVICE,
-};
+use super::consts::{EVENT_DEVICE_DIR, PERMISSIONS_URL, SETUP_SCRIPT_COMMAND, UINPUT_DEVICE};
 use super::enums::{StepAction, StepState};
 use super::types::{SetupReport, SetupStep};
+use crate::linux::access::{GroupState, group_state};
 use crate::linux::{SessionKind, session_kind};
 
 pub(super) fn probe() -> SetupReport {
@@ -92,33 +91,6 @@ fn step(title: &str, detail: &str, works: Option<bool>, group: GroupState) -> Se
     }
 }
 
-/// How the `input` group looks from the two places that disagree.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum GroupState {
-    /// The group database lists us *and* this session carries the gid.
-    Active,
-    /// Listed in `/etc/group`, absent from this session's credentials
-    /// — the log-out-and-back-in case.
-    InDatabaseOnly,
-    /// Not a member anywhere, or we could not tell.
-    Absent,
-}
-
-fn group_state() -> GroupState {
-    let Some(gid) = input_group_gid() else {
-        return GroupState::Absent;
-    };
-    // Safety: `getgid` takes no arguments and cannot fail.
-    let primary = unsafe { libc::getgid() };
-    if primary == gid || session_groups().is_some_and(|gs| gs.contains(&gid)) {
-        return GroupState::Active;
-    }
-    if user_listed_in_input_group() {
-        return GroupState::InDatabaseOnly;
-    }
-    GroupState::Absent
-}
-
 // ─── The probes themselves ────────────────────────────────────────────
 
 /// `None` throughout this section means "could not tell" — a missing
@@ -159,65 +131,4 @@ fn writable(path: &Path) -> Option<bool> {
         return Some(false);
     }
     Some(std::fs::OpenOptions::new().write(true).open(path).is_ok())
-}
-
-fn input_group_gid() -> Option<u32> {
-    for line in std::fs::read_to_string("/etc/group").ok()?.lines() {
-        let mut parts = line.split(':');
-        if parts.next()? != INPUT_GROUP {
-            continue;
-        }
-        let _passwd = parts.next()?;
-        return parts.next()?.parse().ok();
-    }
-    None
-}
-
-/// Is our user name in the `input` group's member list?
-///
-/// Read from `/etc/group` rather than resolved through NSS: this is a
-/// diagnostic, and the case it exists to catch — `usermod` has run,
-/// the session predates it — is exactly a local-file edit.
-fn user_listed_in_input_group() -> bool {
-    let Some(user) = current_user_name() else {
-        return false;
-    };
-    let Ok(text) = std::fs::read_to_string("/etc/group") else {
-        return false;
-    };
-    text.lines()
-        .filter(|l| l.starts_with(concat!("input", ":")))
-        .any(|l| {
-            l.rsplit(':')
-                .next()
-                .is_some_and(|members| members.split(',').any(|m| m == user))
-        })
-}
-
-fn current_user_name() -> Option<String> {
-    std::env::var("USER")
-        .or_else(|_| std::env::var("LOGNAME"))
-        .ok()
-        .filter(|u| !u.is_empty())
-}
-
-/// The supplementary groups *this process* actually carries — the
-/// half of the comparison that a `usermod` cannot change.
-fn session_groups() -> Option<Vec<u32>> {
-    // Safety: the two-call form documented in getgroups(2). The first
-    // call (size 0) only reports how many there are and writes
-    // nothing, so the null pointer is what the manual asks for.
-    let count = unsafe { libc::getgroups(0, std::ptr::null_mut()) };
-    if count < 0 {
-        return None;
-    }
-    let mut buf = vec![0 as libc::gid_t; count as usize];
-    // Safety: `buf` has room for exactly `count` gids, which is what
-    // we tell the kernel.
-    let filled = unsafe { libc::getgroups(count, buf.as_mut_ptr()) };
-    if filled < 0 {
-        return None;
-    }
-    buf.truncate(filled as usize);
-    Some(buf)
 }

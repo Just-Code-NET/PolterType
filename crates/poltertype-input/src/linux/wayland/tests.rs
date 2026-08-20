@@ -330,3 +330,23 @@ fn a_device_replugged_onto_the_same_node_is_seen_again() {
         "the node is reused, so the device behind it has to be judged afresh"
     );
 }
+
+/// Prints what this machine's `/dev/input` actually yields, plus the
+/// sentence a user would see if it yielded no keyboard. The fastest way
+/// to answer a "PolterType says it cannot read my keyboard" report
+/// without asking anyone to launch the app:
+/// `cargo test -p poltertype-input -- --ignored --nocapture evdev_scan`
+#[test]
+#[ignore = "reports this machine's real /dev/input; nothing to assert"]
+fn evdev_scan_of_this_machine() {
+    let (devices, facts) = open_keyboard_devices();
+    println!("{facts:#?}");
+    for d in &devices {
+        println!("{:?} keyboard={}", d.path, d.gate.is_keyboard);
+    }
+    println!(
+        "group={:?}\nwould say: {}",
+        crate::linux::access::group_state(),
+        crate::linux::access::no_keyboards_message(&facts, crate::linux::access::group_state())
+    );
+}

@@ -4,6 +4,47 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.17.4] — the setup script checks its own work
+
+### Fixed — Linux: told to run a script they had just run twice ([#31](https://github.com/Just-Code-NET/PolterType/issues/31))
+
+- **The keyboard-access failure now names which of five things went
+  wrong.** Every Wayland machine that could not read a key got the same
+  sentence — *"no readable keyboard devices in /dev/input/\* — run
+  scripts/setup-linux.sh to grant access"* — and for four of the five
+  causes that script is a no-op. The reporter of #31 ran it twice.
+
+  The listener now reports what it found: how many `event*` nodes
+  exist, how many opened, how many are keyboards, and the errno and
+  `uid`/`gid`/`mode` of the first one that refused. The advice follows
+  from that. A session already carrying the `input` group is told the
+  udev rule never reached the existing devices, and what the kernel
+  says they are owned by. A session that predates its own group
+  membership is told to log out — and that `newgrp input` grants the
+  group to one shell, so an app started from the desktop never sees it.
+  Only genuine non-membership is told to run the script. A container
+  with no input devices, and a machine whose devices all open but hold
+  no keyboard, each get their own answer.
+
+- **`scripts/setup-linux.sh` verifies its own work.** It re-reads the
+  group database and `stat`s every `/dev/input/event*` afterwards, and
+  exits non-zero instead of printing "Done" if the user is not in the
+  group, if any device is still not group-readable, or if `/dev/uinput`
+  is missing. It also catches being run as root with no `SUDO_USER`,
+  where it is `root` that gets added to the `input` group rather than
+  the account that will run PolterType. Its closing advice now says
+  which of log-out and `newgrp` applies to the shell it is standing in.
+
+- **A device set with no keyboard in it is a failure, not a quiet
+  start.** Opening only a mouse used to count as success: clicks tell
+  the engine to forget its buffer and nothing else, so the app ran and
+  could never correct anything, with no line in the log to say why.
+
+> The KDE half of #31 is confirmed fixed on the reporter's Plasma 6
+> session — the layout list parses and both layouts load. The layout
+> *switch* itself still has not run on a real KDE machine; see
+> `docs/KNOWN-GAPS.md`.
+
 ## [0.17.3] — a hyphen is not a mistake, and an AppImage that starts on KDE
 
 ### Fixed — a kebab-case identifier is not a mistyped word

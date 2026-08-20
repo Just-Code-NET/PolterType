@@ -1,4 +1,4 @@
-# Known gaps (as of v0.17.3)
+# Known gaps (as of v0.17.4)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,12 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.17.4 pass actually checked.** Narrower still: the evdev
+scan and the setup script's new self-check, both against this machine's
+real `/dev/input` (29 nodes, 6 keyboards) — plus the half of the KDE
+bullet below that a reporter's Plasma 6 log now settles. Nothing else
+was re-run.
 
 **What the 0.17.3 pass actually checked.** A narrow pass on top of
 0.17.2's: the two bullets below are new and rest on this release's own
@@ -41,21 +47,21 @@ tooltip backends, the macOS runtime paths — stands on its own earlier
 dated evidence and was **not** re-run here. The 0.14.3 pass is still
 what backs the Windows bullets.
 
-- **The KDE layout backend has never run on a KDE machine here.**
-  0.17.3 rewrote it — Plasma has addressed layouts by index since 5.23
-  (2021) and we were passing xkb names, and the layout *list* was being
-  read out of a `qdbus` error sentence that arrives on stdout with a
-  success exit code, which is how a user's Plasma 6 session came up
-  with zero usable layouts (issue #31). The fix is written against KWin's
-  own `src/keyboard_layout.h` and Qt's `argumentToString`, and its
-  parsing is unit-tested against the exact strings both produce — but
-  **nobody on this side has a Plasma session**, so the D-Bus call
-  itself, the index round-trip and the pre-5.23 fallback are reasoned,
-  not observed. The backend now refuses to activate unless Plasma
-  answers with a list it can parse, so the failure mode if this is
-  still wrong is "PolterType falls through to another backend or
-  reports none", not "PolterType switches to the wrong layout".
-  Confirmation from a Plasma user is what would close this.
+- **The KDE layout backend still has not *switched* a layout on a KDE
+  machine.** 0.17.3 rewrote it — Plasma has addressed layouts by index
+  since 5.23 (2021) and we were passing xkb names, and the layout *list*
+  was being read out of a `qdbus` error sentence that arrives on stdout
+  with a success exit code, which is how a user's Plasma 6 session came
+  up with zero usable layouts (issue #31). Reading is now **observed**:
+  that reporter's v0.17.3 log resolves `en-US` and `ru-RU` off a live
+  Plasma 6 and loads both. The write half — `setLayout` by index, and
+  the pre-5.23 name fallback — is still only reasoned, from KWin's own
+  `src/keyboard_layout.h` and Qt's `argumentToString`, and unit-tested
+  against the exact strings both produce; **nobody on this side has a
+  Plasma session**. The backend refuses to activate unless Plasma
+  answers with a list it can parse, so if the write half is still wrong
+  the failure is "the layout does not change", not "PolterType switches
+  to the wrong one".
 
 - **Nine of the fifteen bundled layouts have never been typed on.**
   0.9.0 added pl, cs, el, he, tr, bg, it, pt-PT and pt-BR. The

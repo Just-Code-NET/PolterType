@@ -1,25 +1,14 @@
 //! Paths, group names and the links the setup steps point at.
 
-/// The permissions guide, pinned to `main` for the same reason the
-/// tray's link is: it has to describe the current setup script, not the
-/// release the user happens to be running.
-///
-/// Only the Linux probe hands this out — elsewhere it would be dead
-/// code, which `-D warnings` treats as an error.
-#[cfg(target_os = "linux")]
-pub(super) const PERMISSIONS_URL: &str =
-    "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";
-
 // ─── Linux ────────────────────────────────────────────────────────────
 
+/// Owned by the input backend: the pane has to probe exactly the place
+/// the listener opens.
 #[cfg(target_os = "linux")]
-pub(super) const EVENT_DEVICE_DIR: &str = "/dev/input";
+pub(super) use crate::linux::access::{EVENT_DEVICE_DIR, PERMISSIONS_URL};
 
 #[cfg(target_os = "linux")]
 pub(super) const UINPUT_DEVICE: &str = "/dev/uinput";
-
-#[cfg(target_os = "linux")]
-pub(super) const INPUT_GROUP: &str = "input";
 
 /// What we put on the clipboard rather than run.
 ///

@@ -120,11 +120,77 @@ if [[ -e /dev/uinput ]]; then
     sudo chmod 0660 /dev/uinput || true
 fi
 
-cat <<EOF
+# 5. Verify, instead of assuming.
+#
+# Every step above can "succeed" and leave the app unable to read a
+# keyboard: usermod adds whoever ran the script (root, under a bare
+# `sudo -i`), and a udev rule that never reaches the existing nodes
+# leaves them owned by someone else. Reported as issue #31 by a user
+# who ran this script twice and was told to run it again.
+echo
+echo "Checking the result…"
+FAILED=0
 
-Done. To pick up the new group membership, either:
-  • log out and back in, OR
-  • run: newgrp input
+if [[ "$USER_NAME" == "root" ]]; then
+    echo "  ! Added 'root' to the 'input' group, not your account — this ran as"
+    echo "    root with no SUDO_USER. Re-run it as yourself: bash $0"
+    FAILED=1
+elif id -nG "$USER_NAME" | tr ' ' '\n' | grep -qx input; then
+    echo "  ✓ '${USER_NAME}' is in the 'input' group."
+else
+    echo "  ! '${USER_NAME}' is still not in the 'input' group — usermod did not take."
+    FAILED=1
+fi
 
-Then start poltertype.
+NODES=$(find /dev/input -maxdepth 1 -name 'event*' 2>/dev/null | wc -l)
+if [[ "$NODES" -eq 0 ]]; then
+    echo "  ! No /dev/input/event* devices exist on this machine."
+    FAILED=1
+else
+    # Group name plus the group-read bit of the symbolic mode: the two
+    # things that decide whether the app can open the node at all.
+    UNREADABLE=$(stat -c '%n %G %A' /dev/input/event* \
+        | awk '$2 != "input" || substr($3, 5, 1) != "r" { print "      " $1 " (" $2 " " $3 ")" }')
+    if [[ -n "$UNREADABLE" ]]; then
+        echo "  ! These devices are not readable by the 'input' group:"
+        echo "$UNREADABLE"
+        echo "    The udev rule did not reach them. A reboot applies it for certain."
+        FAILED=1
+    else
+        echo "  ✓ All ${NODES} input devices are readable by the 'input' group."
+    fi
+fi
+
+if [[ -e /dev/uinput ]]; then
+    echo "  ✓ /dev/uinput exists ($(stat -c '%G %A' /dev/uinput))."
+else
+    echo "  ! /dev/uinput is missing — the uinput module is not loaded."
+    FAILED=1
+fi
+
+if [[ $FAILED -ne 0 ]]; then
+    cat <<EOF
+
+Setup is NOT complete — see the lines marked ! above.
+  https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md
 EOF
+    exit 1
+fi
+
+if id -nG | tr ' ' '\n' | grep -qx input; then
+    cat <<EOF
+
+Done — this session already carries the 'input' group. Start poltertype
+(or restart it, if it was running before this script).
+EOF
+else
+    cat <<EOF
+
+Done, but this session was started before the group was granted, so it
+does not carry it yet. Log out and back in.
+
+  'newgrp input' is not a substitute: it grants the group to that one
+  shell only, so poltertype has to be started from that same shell. An
+  app launched from the desktop or the tray will still see nothing.
+EOF
+fi

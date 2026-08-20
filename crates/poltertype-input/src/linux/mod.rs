@@ -24,6 +24,7 @@ use tracing::info;
 
 use crate::{InputError, InputListener, KeyEmitter};
 
+pub(crate) mod access;
 pub mod portal;
 pub mod wayland;
 pub mod x11;

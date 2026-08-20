@@ -101,6 +101,24 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 # log out and back in, or run `newgrp input`
 ```
 
+#### When it looks set up and still does not work
+
+All three of these leave a machine that passes a casual look and reads
+no keys. Since v0.17.4 the script checks its own work and exits non-zero
+rather than printing "Done", and PolterType's own error names which one
+it hit instead of telling you to run the script again.
+
+* **`newgrp input` is not a login.** It grants the group to that one
+  shell, so PolterType has to be started *from that shell*. Launched
+  from the desktop, the tray or an autostart entry, it still sees
+  nothing. Log out and back in instead.
+* **The udev rule never reached the devices that already existed.**
+  `stat -c '%n %G %A' /dev/input/event*` must show `input` and a group
+  `r` bit on every line. If it does not, re-run the script (it
+  re-triggers udev) or reboot.
+* **The script ran as root without `sudo`.** Then `root` is what was
+  added to the `input` group, not your account.
+
 ### Option B — AT-SPI (listener: planned, not implemented)
 
 **The keyboard listener via AT-SPI does not exist.** On Wayland,

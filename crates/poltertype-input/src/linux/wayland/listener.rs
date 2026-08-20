@@ -1,6 +1,7 @@
 //! `EvdevListener` — reads raw key events from /dev/input.
 
 use super::*;
+use crate::linux::access::{group_state, no_keyboards_message};
 use crate::{
     EmittedKey, InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers, ReplayKey,
 };
@@ -39,15 +40,20 @@ impl EvdevListener {
 
 impl InputListener for EvdevListener {
     fn start(&mut self, sink: Sender<KeyEvent>) -> Result<(), InputError> {
-        let devices = open_keyboard_devices();
-        if devices.is_empty() {
-            return Err(InputError::Os(
-                "no readable keyboard devices in /dev/input/* — \
-                 run scripts/setup-linux.sh to grant access"
-                    .into(),
-            ));
+        let (devices, facts) = open_keyboard_devices();
+        // A pointer alone is not enough to run on: clicks only tell the
+        // engine to forget its buffer. Failing here rather than starting
+        // a listener that can never fire is what makes the diagnosis
+        // reach the user at all.
+        if facts.keyboards == 0 {
+            warn!(?facts, "no keyboard among the evdev devices");
+            return Err(InputError::Os(no_keyboards_message(&facts, group_state())));
         }
-        info!(count = devices.len(), "opened evdev keyboard devices");
+        info!(
+            count = devices.len(),
+            keyboards = facts.keyboards,
+            "opened evdev keyboard devices"
+        );
 
         // Decide once, now that the emitter's device exists, whether
         // holding keystrokes back during corrections is safe here.

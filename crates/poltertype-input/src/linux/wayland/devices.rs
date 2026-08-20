@@ -1,6 +1,7 @@
 //! Device discovery and the blocking drain loop.
 
 use super::*;
+use crate::linux::access::{EVENT_DEVICE_DIR, NodeFacts, ScanFacts};
 use crate::{
     EmittedKey, InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers, ReplayKey,
 };
@@ -17,13 +18,57 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, trace, warn};
 
-pub(crate) fn open_keyboard_devices() -> Vec<OpenDevice> {
-    // evdev 0.13's `enumerate()` is infallible: it yields whatever is
-    // openable and silently skips the rest, so a permission error on one
-    // device costs us only that device.
-    evdev::enumerate()
-        .filter_map(|(path, dev)| accept_device(path, dev, true))
-        .collect()
+/// Every `/dev/input/event*` node, sorted so logs and rescans are
+/// reproducible.
+pub(crate) fn event_nodes() -> std::io::Result<Vec<PathBuf>> {
+    let mut nodes: Vec<PathBuf> = std::fs::read_dir(EVENT_DEVICE_DIR)?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("event"))
+        })
+        .collect();
+    nodes.sort();
+    Ok(nodes)
+}
+
+/// The initial scan, which also has to answer *why* when it finds
+/// nothing.
+///
+/// Deliberately not `evdev::enumerate()`: that swallows every open
+/// error, so a total permission failure and a machine with no keyboard
+/// are indistinguishable — and telling those apart is the difference
+/// between "log out and back in" and "run the setup script" (#31).
+pub(crate) fn open_keyboard_devices() -> (Vec<OpenDevice>, ScanFacts) {
+    let mut facts = ScanFacts::default();
+    let nodes = match event_nodes() {
+        Ok(nodes) => nodes,
+        Err(e) => {
+            facts.first_error = Some(e.to_string());
+            return (Vec::new(), facts);
+        }
+    };
+    facts.nodes = Some(nodes.len());
+    let mut open = Vec::new();
+    for path in nodes {
+        match Device::open(&path) {
+            Ok(dev) => {
+                facts.opened += 1;
+                if let Some(od) = accept_device(path, dev, true) {
+                    facts.keyboards += usize::from(od.gate.is_keyboard);
+                    open.push(od);
+                }
+            }
+            Err(e) if facts.first_error.is_none() => {
+                facts.first_error = Some(e.to_string());
+                facts.sample = NodeFacts::of(&path);
+            }
+            Err(_) => {}
+        }
+    }
+    (open, facts)
 }
 
 /// Open keyboards that appeared since the last scan — a hot-plugged
@@ -56,18 +101,10 @@ pub(crate) fn plan_rescan(
 /// Paths that disappear are forgotten, which is what makes a device
 /// reappearing at the same node get looked at again.
 pub(crate) fn open_new_keyboard_devices(known: &mut HashSet<PathBuf>) -> Vec<OpenDevice> {
-    let Ok(entries) = std::fs::read_dir("/dev/input") else {
+    let Ok(nodes) = event_nodes() else {
         return Vec::new();
     };
-    let present: HashSet<PathBuf> = entries
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.starts_with("event"))
-        })
-        .collect();
+    let present: HashSet<PathBuf> = nodes.into_iter().collect();
     let (fresh, forgotten) = plan_rescan(&present, known);
     for p in forgotten {
         known.remove(&p);

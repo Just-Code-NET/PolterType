@@ -2813,3 +2813,53 @@ failure that only appears on a user's machine.
 text, but PolterType puts its entire UI in the tray — no Settings, no
 pause, no quit. A daemon the user cannot see or stop is a worse answer
 than a sentence telling them what to install.
+
+---
+
+## 2026-08-20 — A permission error must name its own cause
+
+The same reporter, one release later: PolterType told them
+`no readable keyboard devices in /dev/input/* — run
+scripts/setup-linux.sh to grant access`. They had run it, twice, with a
+re-login in between. The sentence was every Wayland read failure's only
+output, and the script it names is a no-op for four of the five things
+that produce it — a session that predates its own group membership, a
+udev rule that never reached the existing nodes, a container with no
+input devices, and a device set with no keyboard in it.
+
+Worse, the app knew better and did not say so. `setup::probe_setup`
+already distinguished "not set up" from "set up, but this session
+predates it" for the Settings pane; the listener that actually fails
+never consulted it.
+
+**Decision:** the scan reports facts — nodes present, nodes opened,
+keyboards among them, and the errno plus `uid`/`gid`/`mode` of the
+first refusal — and one pure function turns those into the sentence.
+Both the listener and the Setup pane read the group state from the same
+place, so they cannot tell different stories. The facts are printed
+too: a user's log paste is now the diagnosis rather than the start of
+one.
+
+**`evdev::enumerate()` had to go** for this. It swallows every open
+error, which makes a total permission failure and a machine with no
+keyboard the same empty vector — and telling those apart is the whole
+point.
+
+**A mouse alone is now a failure.** Opening only pointer devices used
+to count as a successful start: clicks tell the engine to forget its
+buffer and nothing else, so the app ran and could never correct
+anything, silently.
+
+**The script verifies itself.** `setup-linux.sh` re-reads the group
+database and `stat`s every node afterwards, and exits non-zero instead
+of printing "Done". It also catches `sudo -i`, where `root` is what
+gets added to the `input` group. A setup script that cannot fail is
+indistinguishable from one that did not run.
+
+**Not chosen: a `--doctor` flag.** The Setup pane already exists for
+this and the error string already reaches the tray alert; a third
+surface would be a third thing to keep in step.
+
+**Not chosen: acquiring the permission ourselves.** Unchanged from
+0.7.0 — the pane copies a command rather than running `sudo`, and an
+app that quietly acquires root has spent trust it will not get back.
