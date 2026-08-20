@@ -177,3 +177,30 @@ fn hyphenated_words_typed_in_the_wrong_layout_are_still_corrected() {
         missed.join("\n  ")
     );
 }
+
+/// PolterType's own name, typed on the wrong layout.
+///
+/// A coined word no general-purpose dictionary carries, so until it was
+/// added to `data/wordlists/en_us-extras.txt` the app could not fix the
+/// one word every user of it is guaranteed to type.
+#[test]
+fn the_apps_own_name_is_corrected_from_a_cyrillic_layout() {
+    let db = LayoutDb::load_embedded();
+    let en = LayoutId::from("en-US");
+    // The physical keys of "poltertype" — what reaches the app is
+    // whatever the active layout makes of them.
+    let keys = keys_for(&db, &en, "poltertype").expect("en-US maps every ASCII token");
+    let mut missed = Vec::new();
+    for native in ["uk-UA", "ru-RU"] {
+        let native = LayoutId::from(native);
+        match verdict(&db, &native, &keys) {
+            Verdict::Switch(v) if v.best_layout == en => {}
+            other => missed.push(format!("{native}: {other:?}")),
+        }
+    }
+    assert!(
+        missed.is_empty(),
+        "`poltertype` was not corrected to en-US:\n  {}",
+        missed.join("\n  ")
+    );
+}

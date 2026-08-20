@@ -407,4 +407,8 @@ copilot
 gemini
 huggingface
 midjourney
-ghjcrehby
+
+# ---- PolterType itself ----
+# A coined name no general dictionary carries — and the one word every
+# user of this app is guaranteed to type in the wrong layout.
+poltertype
