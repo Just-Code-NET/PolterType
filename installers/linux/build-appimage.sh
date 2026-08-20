@@ -137,6 +137,13 @@ cp "${ICON_PNG}" "${APPDIR}/usr/share/icons/hicolor/256x256/apps/${APP_NAME}.png
 mkdir -p "${APPDIR}/usr/share/${APP_NAME}/data"
 cp -R "${DATA_DIR}/." "${APPDIR}/usr/share/${APP_NAME}/data/"
 
+# The Wayland permission script, which the app's own error message
+# names. An AppImage is meant to be the whole product, and until now
+# that sentence sent people to clone a repository to find one file.
+mkdir -p "${APPDIR}/usr/share/${APP_NAME}/scripts"
+install -m 0755 scripts/setup-linux.sh \
+    "${APPDIR}/usr/share/${APP_NAME}/scripts/setup-linux.sh"
+
 # ─── locate the tray library ──────────────────────────────────────────
 # `tray-icon` reaches the tray through `libappindicator-sys`, which
 # `dlopen`s the object by soname. That keeps it out of the binary's

@@ -10,15 +10,10 @@ pub(super) use crate::linux::access::{EVENT_DEVICE_DIR, PERMISSIONS_URL};
 #[cfg(target_os = "linux")]
 pub(super) const UINPUT_DEVICE: &str = "/dev/uinput";
 
-/// What we put on the clipboard rather than run.
-///
-/// The script needs `sudo`, and an app that quietly asks for root has
-/// spent trust it will not get back. Handing over a command the user
-/// can read, in a terminal they opened, keeps the decision theirs. The
-/// `curl`-free form assumes a checkout or an unpacked AppImage; the
-/// guide covers the rest.
+/// What we put on the clipboard rather than run — resolved against the
+/// running binary, so an AppImage names the copy it carries.
 #[cfg(target_os = "linux")]
-pub(super) const SETUP_SCRIPT_COMMAND: &str = "bash scripts/setup-linux.sh";
+pub(super) use crate::linux::access::setup_script_command;
 
 // ─── macOS ────────────────────────────────────────────────────────────
 

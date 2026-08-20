@@ -89,7 +89,10 @@ Read raw events from `/dev/input/event*`. Permissions:
   devices.
 
 `scripts/setup-linux.sh` does both with a single `sudo` prompt (it
-also grants `/dev/uinput`, needed to send the correction back).
+also grants `/dev/uinput`, needed to send the correction back). Since
+v0.17.4 the AppImage carries its own copy under
+`usr/share/poltertype/scripts/`, and PolterType's error message names
+the path it is actually running from — there is nothing to clone.
 Equivalent manual commands:
 
 ```bash

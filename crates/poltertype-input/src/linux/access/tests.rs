@@ -53,14 +53,14 @@ fn group_granted_but_session_predates_it_says_log_out() {
     // The state the reporter of #31 was left guessing at: re-running the
     // script cannot help, and `newgrp` in a terminal does nothing for an
     // app started from the desktop.
-    assert!(!msg.contains("scripts/setup-linux.sh"), "{msg}");
+    assert!(!msg.contains("setup-linux.sh"), "{msg}");
     assert!(msg.contains("newgrp"), "{msg}");
 }
 
 #[test]
 fn no_membership_at_all_is_the_one_case_that_wants_the_script() {
     let msg = no_keyboards_message(&facts(12, 0, 0), GroupState::Absent);
-    assert!(msg.contains("bash scripts/setup-linux.sh"), "{msg}");
+    assert!(msg.contains("setup-linux.sh"), "{msg}");
 }
 
 #[test]
@@ -83,4 +83,11 @@ fn a_missing_sample_leaves_the_sentence_intact() {
     let msg = no_keyboards_message(&f, GroupState::Active);
     assert!(!msg.contains("()"), "{msg}");
     assert!(msg.contains("re-triggers udev"), "{msg}");
+}
+
+#[test]
+fn the_script_command_falls_back_to_the_repo_path_when_none_is_bundled() {
+    // A test binary has no `../share/poltertype/scripts` beside it, so
+    // this exercises the fallback an AppImage does not take.
+    assert_eq!(setup_script_command(), "bash scripts/setup-linux.sh");
 }

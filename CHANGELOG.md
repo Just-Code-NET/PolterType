@@ -35,6 +35,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
   the account that will run PolterType. Its closing advice now says
   which of log-out and `newgrp` applies to the shell it is standing in.
 
+- **The AppImage carries the setup script it tells you to run.** It
+  never did, so "run `bash scripts/setup-linux.sh`" meant "go clone the
+  repository to get one file" for everyone who downloaded a single
+  self-contained binary. It now ships at
+  `usr/share/poltertype/scripts/`, and both the error and the Setup
+  pane's copy button name the copy the running binary actually has.
+
 - **A device set with no keyboard in it is a failure, not a quiet
   start.** Opening only a mouse used to count as success: clicks tell
   the engine to forget its buffer and nothing else, so the app ran and

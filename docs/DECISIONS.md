@@ -2863,3 +2863,8 @@ surface would be a third thing to keep in step.
 **Not chosen: acquiring the permission ourselves.** Unchanged from
 0.7.0 — the pane copies a command rather than running `sudo`, and an
 app that quietly acquires root has spent trust it will not get back.
+What did change is *which* command: the AppImage now carries the script
+at `usr/share/poltertype/scripts/`, and the command names the copy the
+running binary has. Naming a repository path to someone who downloaded
+one self-contained file was the same defect as the sentence above — a
+correct instruction the reader cannot follow.

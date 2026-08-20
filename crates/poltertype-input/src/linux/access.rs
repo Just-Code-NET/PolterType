@@ -7,7 +7,7 @@
 //! by the app to run `setup-linux.sh`.
 
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(crate) const EVENT_DEVICE_DIR: &str = "/dev/input";
 
@@ -18,6 +18,29 @@ pub(crate) const INPUT_GROUP: &str = "input";
 /// release the user happens to be running.
 pub(crate) const PERMISSIONS_URL: &str =
     "https://github.com/Just-Code-NET/PolterType/blob/main/docs/PERMISSIONS.md";
+
+/// The command we hand the user — pointing at a script they actually
+/// have. An AppImage carries its own copy, and naming a repository path
+/// to someone who downloaded a single file is advice they cannot act
+/// on. Never run for them: the script needs `sudo`, and an app that
+/// quietly acquires root has spent trust it will not get back.
+pub(crate) fn setup_script_command() -> String {
+    bundled_setup_script().map_or_else(
+        || "bash scripts/setup-linux.sh".to_owned(),
+        |p| format!("bash {}", p.display()),
+    )
+}
+
+/// The AppImage lays itself out FHS-shaped, so the script sits beside
+/// the bundled data at `<exe_dir>/../share/poltertype/scripts`.
+fn bundled_setup_script() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let path = exe
+        .parent()?
+        .parent()?
+        .join("share/poltertype/scripts/setup-linux.sh");
+    path.is_file().then_some(path)
+}
 
 /// How the `input` group looks from the two places that disagree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,8 +159,9 @@ pub(crate) fn no_keyboards_message(facts: &ScanFacts, group: GroupState) -> Stri
         ),
         GroupState::Absent => format!(
             "not a member of the '{INPUT_GROUP}' group, so none of the {nodes} keyboard \
-             devices will open ({why}) — run `bash scripts/setup-linux.sh`, then log out and \
-             back in."
+             devices will open ({why}) — run `{}`, then log out and back in. What it does, \
+             and how to do it by hand: {PERMISSIONS_URL}",
+            setup_script_command()
         ),
         // Group is right and the devices still refuse: the udev rule
         // never reached the nodes that already existed. Printing what

@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use super::consts::{EVENT_DEVICE_DIR, PERMISSIONS_URL, SETUP_SCRIPT_COMMAND, UINPUT_DEVICE};
+use super::consts::{EVENT_DEVICE_DIR, PERMISSIONS_URL, UINPUT_DEVICE, setup_script_command};
 use super::enums::{StepAction, StepState};
 use super::types::{SetupReport, SetupStep};
 use crate::linux::access::{GroupState, group_state};
@@ -76,7 +76,7 @@ fn step(title: &str, detail: &str, works: Option<bool>, group: GroupState) -> Se
         (Some(false), GroupState::InDatabaseOnly) => (StepState::NeedsRelogin, None),
         (Some(false), _) => (
             StepState::Todo,
-            Some(StepAction::Copy(SETUP_SCRIPT_COMMAND.to_owned())),
+            Some(StepAction::Copy(setup_script_command())),
         ),
         (None, _) => (
             StepState::Unknown,
