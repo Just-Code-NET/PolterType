@@ -4,6 +4,38 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.17.5] — the Hotkeys pane stops naming a key nothing listens for
+
+### Fixed — Linux/Wayland: force-switch looked broken because Settings named the wrong key ([#31](https://github.com/Just-Code-NET/PolterType/issues/31))
+
+- **The Hotkeys pane now shows the chord the tray is really listening
+  for.** On the Wayland/evdev backend a hotkey is *observed* rather than
+  consumed by the OS, so `Ctrl+Shift+Backspace` would also reach the app
+  being typed in — where `Ctrl+Backspace` deletes the very word the
+  force-switch is about to fix. PolterType has therefore substituted
+  `Ctrl+Shift+F9` there since the backend existed, said so in the log,
+  and gone on displaying `Ctrl+Shift+Backspace` in Settings. Anyone who
+  trusted the window pressed a key nothing was listening for and
+  concluded force-switch was broken. It was not: `Ctrl+Shift+F9` fires
+  it, verified on this machine end to end.
+
+  The substitution is now resolved by one function that both the tray
+  and the Settings window call, so they cannot drift apart again, and
+  the pane prints a line under the row saying which chord was replaced
+  and why. Nothing is written back to `config.toml` — a config file
+  still means the same thing on every machine, which is the whole
+  reason the substitution is a runtime decision.
+
+  **The same lie was live on macOS**, where the default pause chord is
+  replaced because the system already owns `Ctrl+Shift+Space` for
+  switching input sources. Same fix, same pane, unverified on hardware
+  like everything else macOS here.
+
+- **The pane no longer claims hotkeys are "registered with the OS at
+  startup".** On the evdev backend they are read off the key stream
+  instead — which is exactly what makes the substitution necessary, so
+  the sentence was contradicting the behaviour it sat above.
+
 ## [0.17.4] — the setup script checks its own work
 
 ### Fixed — Linux: told to run a script they had just run twice ([#31](https://github.com/Just-Code-NET/PolterType/issues/31))

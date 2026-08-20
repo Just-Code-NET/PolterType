@@ -510,36 +510,31 @@ fn main() -> Result<()> {
     let item_pause_for_loop = item_pause.clone();
 
     let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
-    // Keyed off the live backend rather than the build target, so a
-    // config written on one OS means the same on another. Why this chord:
-    // see `MACOS_SAFE_PAUSE_TOGGLE`.
-    let configured_pause = settings.snapshot().hotkeys.pause_toggle;
-    let on_macos_tis = layout_switcher.backend_name() == "macos-tis";
-    let pause_src = if on_macos_tis && configured_pause == DEFAULT_PAUSE_TOGGLE {
+    // Built from the live backends rather than probed: the tray knows
+    // exactly what it started. The Settings window has neither backend
+    // and probes instead — both then run the same resolver, which is
+    // the only thing keeping the two from disagreeing (issue #31).
+    let hk_env = poltertype_input::HotkeyEnvironment {
+        observed_not_consumed: use_keystream_hotkeys,
+        system_owns_ctrl_shift_space: layout_switcher.backend_name() == "macos-tis",
+    };
+    let snap = settings.snapshot();
+    let pause = effective_pause_toggle(&snap.hotkeys.pause_toggle, hk_env);
+    let switch = effective_switch_last(&snap.hotkeys.manual_switch_last, hk_env);
+    if pause.substitution.is_some() {
         info!(
-            rebound_to = MACOS_SAFE_PAUSE_TOGGLE,
+            rebound_to = pause.chord,
             "macOS: default pause ({DEFAULT_PAUSE_TOGGLE}) is the system input-source shortcut; using a free chord"
         );
-        MACOS_SAFE_PAUSE_TOGGLE
-    } else {
-        &configured_pause
-    };
-    let hk_pause = parse_hotkey_or_default(pause_src, DEFAULT_PAUSE_TOGGLE);
-    // `Ctrl+Shift+Backspace` is fine where the OS *consumes* the hotkey,
-    // but the Wayland keystream path only observes — the Backspace also
-    // reaches the focused app, where `Ctrl+Backspace` deletes the very
-    // word we are about to correct.
-    let configured_switch = settings.snapshot().hotkeys.manual_switch_last;
-    let switch_src = if use_keystream_hotkeys && configured_switch == DEFAULT_SWITCH_LAST {
+    }
+    if switch.substitution.is_some() {
         info!(
-            rebound_to = WAYLAND_SAFE_SWITCH_LAST,
+            rebound_to = switch.chord,
             "Wayland: default switch-last ({DEFAULT_SWITCH_LAST}) is destructive in-app; using a safe key"
         );
-        WAYLAND_SAFE_SWITCH_LAST
-    } else {
-        &configured_switch
-    };
-    let hk_switch = parse_hotkey_or_default(switch_src, DEFAULT_SWITCH_LAST);
+    }
+    let hk_pause = parse_hotkey_or_default(pause.chord, DEFAULT_PAUSE_TOGGLE);
+    let hk_switch = parse_hotkey_or_default(switch.chord, DEFAULT_SWITCH_LAST);
     if use_keystream_hotkeys {
         let chords = poltertype_core::engine::KeystreamHotkeys {
             pause: chord_from_hotkey(&hk_pause),

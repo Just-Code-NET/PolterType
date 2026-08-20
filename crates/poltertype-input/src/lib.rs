@@ -29,6 +29,7 @@ mod windows;
 mod enums;
 mod factory;
 mod gate;
+mod hotkey_env;
 // The key gate's swallow decision, shared by the Windows and macOS
 // gates. Pure std, no OS imports — compiled under `cfg(test)` on every
 // host so its safety properties are tested where the project actually
@@ -41,5 +42,6 @@ mod types;
 pub use enums::*;
 pub use factory::*;
 pub use gate::*;
+pub use hotkey_env::*;
 pub use traits::*;
 pub use types::*;

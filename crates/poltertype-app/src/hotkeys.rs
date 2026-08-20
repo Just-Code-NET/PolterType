@@ -1,7 +1,74 @@
-//! Hotkey string parsing and scancode mapping.
+//! Hotkey string parsing, scancode mapping, and which chord each
+//! hotkey actually answers to here.
 
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
+use poltertype_input::HotkeyEnvironment;
 use tracing::warn;
+
+use crate::consts::{
+    DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
+};
+
+/// Why the chord in force is not the one in `config.toml`.
+///
+/// A value rather than a sentence: the tray writes it to the log, the
+/// Settings window renders it as translated prose, and neither has to
+/// know how the other says it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Substitution {
+    /// The default reaches the focused app as well as us, and
+    /// `Ctrl+Backspace` there deletes the very word we are correcting.
+    DefaultIsDestructiveHere,
+    /// The OS already owns the default chord.
+    SystemOwnsDefault,
+}
+
+/// The chord a hotkey answers to on this machine.
+///
+/// Both substitutions apply **only while the user is still on the
+/// default** — an explicit binding is always honoured — and neither is
+/// written back to `config.toml`, so one config file keeps meaning the
+/// same thing on every machine. That is also why this is resolved in
+/// two places at once and must stay one function: the tray decides
+/// what to listen for, the Settings window decides what to show, and
+/// they disagreed for a whole release (issue #31).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EffectiveHotkey<'a> {
+    pub(crate) chord: &'a str,
+    pub(crate) substitution: Option<Substitution>,
+}
+
+pub(crate) fn effective_pause_toggle(
+    configured: &str,
+    env: HotkeyEnvironment,
+) -> EffectiveHotkey<'_> {
+    if env.system_owns_ctrl_shift_space && configured == DEFAULT_PAUSE_TOGGLE {
+        return EffectiveHotkey {
+            chord: MACOS_SAFE_PAUSE_TOGGLE,
+            substitution: Some(Substitution::SystemOwnsDefault),
+        };
+    }
+    EffectiveHotkey {
+        chord: configured,
+        substitution: None,
+    }
+}
+
+pub(crate) fn effective_switch_last(
+    configured: &str,
+    env: HotkeyEnvironment,
+) -> EffectiveHotkey<'_> {
+    if env.observed_not_consumed && configured == DEFAULT_SWITCH_LAST {
+        return EffectiveHotkey {
+            chord: WAYLAND_SAFE_SWITCH_LAST,
+            substitution: Some(Substitution::DefaultIsDestructiveHere),
+        };
+    }
+    EffectiveHotkey {
+        chord: configured,
+        substitution: None,
+    }
+}
 
 /// Parse a `[hotkeys]` string, falling back to `default_str` on a bad
 /// value so a typo cannot silently cost the user their hotkeys.
@@ -102,3 +169,6 @@ pub(crate) fn code_to_sc1(code: Code) -> Option<u32> {
         _ => return None,
     })
 }
+
+#[cfg(test)]
+mod tests;

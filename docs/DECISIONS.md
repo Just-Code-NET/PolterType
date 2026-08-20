@@ -2868,3 +2868,47 @@ at `usr/share/poltertype/scripts/`, and the command names the copy the
 running binary has. Naming a repository path to someone who downloaded
 one self-contained file was the same defect as the sentence above — a
 correct instruction the reader cannot follow.
+
+---
+
+## 2026-08-20 — A substituted hotkey has to be visible where the user looks
+
+The third bug in issue #31, and the same shape as the second: the app
+knew something and told the log instead of the user. On the
+Wayland/evdev backend PolterType substitutes `Ctrl+Shift+F9` for the
+default `Ctrl+Shift+Backspace` — the chord is observed, not consumed,
+so the Backspace also reaches the focused app and `Ctrl+Backspace`
+deletes the word being corrected. The Settings window went on showing
+`Ctrl+Shift+Backspace`. The reporter pressed it, nothing happened, and
+he filed "I cannot force switch last word" with a screenshot of the
+pane next to a log line reading `rebound_to="Ctrl+Shift+F9"`.
+
+The macOS pause substitution had the identical hole, unreported only
+because nobody here runs macOS.
+
+**Decision:** one resolver, `hotkeys::effective_*`, called by both the
+tray and the Settings window. The tray builds its `HotkeyEnvironment`
+from the backends it actually started; the Settings window is a
+separate process with neither, so `poltertype_input::hotkey_environment`
+answers the same two questions from the session itself. The pane prints
+the substitution under the row: which chord was replaced, and why.
+
+**Phrased as facts, not backend names.** `observed_not_consumed` and
+`system_owns_ctrl_shift_space` say why a chord is unusable here; a
+caller comparing against `"linux-wayland-evdev"` would have to know
+what that implies, and the two places that knew it disagreed.
+
+**Not chosen: writing the substitute into `config.toml`.** It would
+make the two agree trivially and break the rule that earns the
+substitution in the first place — one config file means the same thing
+on every machine. The substitution stays a runtime decision, applied
+only while the user is on the default.
+
+**Not chosen: passing the effective chords to the child process.**
+Exact for the tray's own Settings button and wrong for
+`poltertype --settings` started by hand, which is how a user checks
+what a key is bound to.
+
+**Also fixed: the pane's own header.** It said hotkeys "are registered
+with the OS at startup" directly above the two rows the OS never sees
+on this backend.

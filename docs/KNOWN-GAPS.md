@@ -1,4 +1,4 @@
-# Known gaps (as of v0.17.4)
+# Known gaps (as of v0.17.5)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,14 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.17.5 pass actually checked.** Two things, both on this
+machine: the Hotkeys pane renders the substituted chord (screenshot,
+Hyprland/Wayland), and `Ctrl+Shift+F9` really does fire a force-switch
+on the evdev backend — injected through uinput into a scratch window,
+confirmed by `correction applied … reason=manual switch-last hotkey` in
+the app's own log. The macOS half of the same fix is unrun, like every
+macOS bullet here. Nothing else was re-verified.
 
 **What the 0.17.4 pass actually checked.** Narrower still: the evdev
 scan and the setup script's new self-check, both against this machine's

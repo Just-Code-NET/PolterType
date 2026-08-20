@@ -13,6 +13,10 @@ use iced::{Alignment, Element, Font, Length, Padding};
 
 use poltertype_core::i18n::{tr, tr_args};
 
+use crate::consts::{
+    DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
+};
+
 use super::consts::*;
 use super::enums::*;
 use super::helpers::*;
@@ -257,7 +261,17 @@ impl SettingsApp {
 
     pub(super) fn view_hotkeys(&self) -> Element<'_, Message> {
         let b = self.brand();
+        // Probed, because this window is a separate process with no
+        // listener and no layout switcher. The tray answers the same
+        // question off its live backends; showing the configured chord
+        // while the tray listened for another one is issue #31.
+        let env = poltertype_input::hotkey_environment();
         let row = |label: &'static str, current: &str, kind: HotkeyKind| -> Element<'_, Message> {
+            let effective = match kind {
+                HotkeyKind::Pause => crate::hotkeys::effective_pause_toggle(current, env),
+                HotkeyKind::SwitchLast => crate::hotkeys::effective_switch_last(current, env),
+            };
+            let current = effective.chord;
             let capturing = self.capturing == Some(kind);
             let display: Element<'_, Message> = if capturing {
                 Text::new(tr(
@@ -277,7 +291,7 @@ impl SettingsApp {
                 Button::new(Text::new(tr("hotkeys.rebind", "Rebind")).size(12))
                     .on_press(Message::HotkeyRebindStart(kind))
             };
-            Row::new()
+            let line = Row::new()
                 .spacing(16)
                 .align_y(Alignment::Center)
                 .push(Text::new(label).size(13).width(Length::FillPortion(2)))
@@ -287,8 +301,18 @@ impl SettingsApp {
                     right: 12.0,
                     bottom: 5.0,
                     left: 12.0,
-                }))
-                .into()
+                }));
+            match effective.substitution {
+                None => line.into(),
+                // Under the row, not beside it: a chord the user never
+                // chose needs a sentence, and a sentence does not fit
+                // in a table cell.
+                Some(s) => Column::new()
+                    .spacing(4)
+                    .push(line)
+                    .push(tip(b, substitution_note(s)))
+                    .into(),
+            }
         };
 
         Column::new()
@@ -296,7 +320,10 @@ impl SettingsApp {
             .push(pane_header(
                 b,
                 tr("hotkeys.hotkeys", "Hotkeys"),
-                "Global hotkeys are registered with the OS at startup. \
+                // Not "registered with the OS": on the Wayland/evdev
+                // backend they are read off the key stream instead, and
+                // the pane said otherwise while doing exactly that.
+                "Hotkeys are global — they fire whatever window has focus. \
                  Click 'Rebind', press the new combination, then save. \
                  The new binding takes effect after the tray restarts \
                  (Save, then Quit and relaunch from the tray)."
@@ -1361,6 +1388,29 @@ fn setup_nav_label(needs_attention: bool) -> &'static str {
         "Setup  (!)"
     } else {
         "Setup"
+    }
+}
+
+/// Why the chord on show is not the one in `config.toml`.
+///
+/// Named chords rather than "the default": the user cannot see the
+/// value that was replaced, and a substitution they cannot name is
+/// indistinguishable from a bug — which is how it was reported.
+fn substitution_note(s: crate::hotkeys::Substitution) -> String {
+    match s {
+        crate::hotkeys::Substitution::DefaultIsDestructiveHere => tr_args(
+            "hotkeys.substituted_observed_not_consumed",
+            "This session reads hotkeys off the key stream, so {} would reach the app you are \
+             typing in as well — where it deletes the very word being fixed. {} is used here \
+             instead. Rebind to choose your own.",
+            &[DEFAULT_SWITCH_LAST, WAYLAND_SAFE_SWITCH_LAST],
+        ),
+        crate::hotkeys::Substitution::SystemOwnsDefault => tr_args(
+            "hotkeys.substituted_system_owns",
+            "This system already uses {} to switch input sources, so {} is used here instead. \
+             Rebind to choose your own.",
+            &[DEFAULT_PAUSE_TOGGLE, MACOS_SAFE_PAUSE_TOGGLE],
+        ),
     }
 }
 
