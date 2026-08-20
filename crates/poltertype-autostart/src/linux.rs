@@ -40,6 +40,19 @@ pub(crate) fn exec_quote(exe: &Path) -> String {
     format!("\"{escaped}\"")
 }
 
+/// What the entry's `Exec` should launch.
+///
+/// `$APPIMAGE` before `current_exe`: inside a running AppImage the
+/// latter points into the mount (`/tmp/.mount_XXXXXX/usr/bin/...`),
+/// which is gone by the time the session that reads this entry starts.
+/// Twin of `poltertype_shell::desktop::exec_target`.
+fn exec_target() -> Option<PathBuf> {
+    match std::env::var_os("APPIMAGE") {
+        Some(v) if Path::new(&v).is_absolute() => Some(PathBuf::from(v)),
+        _ => std::env::current_exe().ok(),
+    }
+}
+
 pub(crate) fn desktop_body(app: App<'_>, exe: &Path) -> String {
     // `Name` and `Icon` land in the DE's own "Startup Applications"
     // list — the only reason a NoDisplay entry carries them at all.
@@ -76,12 +89,9 @@ pub(crate) fn sync(enabled: bool, app: App<'_>) {
         return;
     }
 
-    let exe = match std::env::current_exe() {
-        Ok(p) => p,
-        Err(e) => {
-            warn!(?e, "could not resolve own exe; autostart unchanged");
-            return;
-        }
+    let Some(exe) = exec_target() else {
+        warn!("could not resolve own exe; autostart unchanged");
+        return;
     };
     let body = desktop_body(app, &exe);
 
