@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{WordBoundary, WordBuffer};
-use crate::engine::consts::PASTE_GUARD;
+use crate::engine::consts::{LAST_WORD_TTL, PASTE_GUARD};
 use crate::engine::enums::{Either, EngineCommand, SwitcherEvent};
 use crate::engine::heuristics::{is_modifier_scancode, is_paste_shortcut};
 use crate::engine::types::ChordState;
@@ -71,7 +71,17 @@ impl SwitcherEngine {
                             // head, and correcting only the tail would
                             // chop it in half.
                             buffer.abandon();
-                            *self.last_word.write() = None;
+                            // The stash outlives it, up to its own
+                            // window: the manual switch-last hotkey is
+                            // what the user reaches for *because* the
+                            // automatic pass did not fire, and the
+                            // chord's own Ctrl press is a key event
+                            // arriving after exactly this pause.
+                            // Clearing here made the hotkey a no-op for
+                            // every press slower than two seconds.
+                            if last_event_at.elapsed() > LAST_WORD_TTL {
+                                *self.last_word.write() = None;
+                            }
                             // A machine left alone must not still hold
                             // a sentence, and a trigger must not fire
                             // from words typed before a long pause.

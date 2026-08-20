@@ -7,6 +7,20 @@ use std::time::Duration;
 /// genuinely-typed word.
 pub const PASTE_GUARD: Duration = Duration::from_millis(1200);
 
+/// How long the last completed word stays reachable by the manual
+/// switch-last hotkey once typing stops.
+///
+/// Separate from `[engine].idle_timeout_ms`, which abandons the word
+/// still being typed: that one is about a caret we can no longer vouch
+/// for, and two seconds is right for it. The stash is about a word
+/// already on screen, and the hotkey exists precisely for the case
+/// where the automatic pass did not fire — which a person needs longer
+/// than two seconds to notice and act on. Everything that really
+/// invalidates the stash (a click, a nav key, deleting text we never
+/// saw, the next completed word) drops it through its own path; this
+/// only bounds how long an untouched machine keeps one word in RAM.
+pub const LAST_WORD_TTL: Duration = Duration::from_secs(60);
+
 /// How long to wait after an emission burst before probing the key
 /// stream for keystrokes that raced it — the trip from the device
 /// through the listener thread into our channel. Every millisecond

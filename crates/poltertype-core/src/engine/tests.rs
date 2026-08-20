@@ -1537,6 +1537,39 @@ mod engine_integration_tests {
         );
     }
 
+    /// The same hotkey, pressed the way a person presses one: after a
+    /// pause long enough to notice the layout was wrong.
+    ///
+    /// Idle hygiene abandons the in-progress buffer, and used to drop
+    /// the stash with it — including on the chord's own Ctrl press,
+    /// which is itself a key event and arrives after the pause. Nobody
+    /// reaches for a chord inside `idle_timeout_ms` (two seconds by
+    /// default), so the one path that exists for "the automatic pass
+    /// did not fire" was dead on every press a person could make.
+    #[test]
+    fn manual_hotkey_survives_an_idle_pause() {
+        let h = Harness::start(50); // 50 ms idle timeout
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        std::thread::sleep(Duration::from_millis(120));
+        h.tap(0x1D); // the chord's own Ctrl, long after the timeout
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA"), LayoutId::from("en-US")],
+            "the hotkey must still reach the last word after a pause"
+        );
+    }
+
     /// The manual hotkey after one of our own corrections puts the word
     /// back (re-applying the same correction deleted it and retyped it
     /// identically) and takes the rescued word into the user's
