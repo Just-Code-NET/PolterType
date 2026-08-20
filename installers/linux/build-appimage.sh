@@ -151,7 +151,11 @@ install -m 0755 scripts/setup-linux.sh \
 # AppImage shipped without it — aborting on every desktop that does not
 # install it itself, KDE on Arch being the common one (issue #31).
 # Naming it explicitly makes linuxdeploy deploy it *and* its own deps.
-APPINDICATOR_SO="$(ldconfig -p | awk '/libayatana-appindicator3\.so\.1/ {print $NF; exit}')"
+# `ldconfig` lives in /sbin, which is not on a normal user's PATH on
+# Debian and its derivatives — CI never noticed because a runner's PATH
+# carries it.
+LDCONFIG="$(command -v ldconfig || echo /sbin/ldconfig)"
+APPINDICATOR_SO="$("${LDCONFIG}" -p | awk '/libayatana-appindicator3\.so\.1/ {print $NF; exit}')"
 if [[ -z "${APPINDICATOR_SO}" || ! -f "${APPINDICATOR_SO}" ]]; then
     echo "libayatana-appindicator3.so.1 not found via ldconfig." >&2
     echo "Install it before packaging (Debian/Ubuntu: libayatana-appindicator3-dev)." >&2
