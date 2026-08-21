@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-20 (v0.17.5).
+> Created: 2026-05-02. Last updated: 2026-08-21 (v0.17.6).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -123,7 +123,7 @@ integration).
 | `iced` 0.13+ | settings window UI |
 | `tray-icon` | system tray (Win/Mac/Linux) |
 | `global-hotkey` | global hotkeys |
-| ~~`auto-launch`~~ | run at login — **dropped in 0.6.2**. It sat in the manifest unused for the project's whole life while the Settings checkbox quietly did nothing. Replaced by `poltertype-autostart`, which drives each platform's own mechanism directly (LaunchAgent / run key / XDG entry) and needs no dependency at all. |
+| ~~`auto-launch`~~ | run at login — **dropped in 0.6.2**. It sat in the manifest unused for the project's whole life while the Settings checkbox quietly did nothing. Replaced by `poltertype-autostart`, which drives each platform's own mechanism directly (LaunchAgent / run key / systemd user unit, with an XDG entry where there is no user manager) and needs no dependency at all. |
 | `single-instance` | forbid a second process |
 | `tao` *(optional)* | shared event loop for tray + hotkeys + iced |
 | `tokio` | async runtime, channels, timers |
@@ -350,8 +350,9 @@ schema_version = 1
 
 [general]
 autostart = true           # honoured on all three platforms since
-                           # 0.6.2 (LaunchAgent / HKCU run key / XDG
-                           # autostart entry)
+                           # 0.6.2 (LaunchAgent / HKCU run key /
+                           # systemd user unit, XDG entry as the
+                           # fallback — see DECISIONS, 2026-08-21)
 sound_on_correct = true
 show_notifications = false
 ui_language = "system"     # or "en", "uk"
@@ -883,7 +884,7 @@ separate `poltertype --settings` process.
 - [x] `TISSelectInputSource` (layout switching) — every TIS call now
       goes through the main dispatch queue; HIToolbox asserts it and
       killed the process with SIGILL otherwise. See `DECISIONS.md`.
-- [x] **Run at login** — per-user LaunchAgent (`poltertype-autostart`).
+- [x] **Run at login** — per-user LaunchAgent / run key / systemd user unit (`poltertype-autostart`).
 - [x] **Accessibility onboarding** — the Settings window's **Setup**
       pane (0.7.0), opened by the tray's hook-failure alert. Reports
       Accessibility and Input Monitoring separately, raises the

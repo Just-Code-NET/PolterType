@@ -2912,3 +2912,111 @@ what a key is bound to.
 **Also fixed: the pane's own header.** It said hotkeys "are registered
 with the OS at startup" directly above the two rows the OS never sees
 on this backend.
+
+## 2026-08-21 — A word the user can still see outlives the buffer that typed it
+
+The manual switch-last hotkey did nothing. Not on one machine, not in
+one app: for anybody who took longer than two seconds to press it,
+which is everybody.
+
+`[engine].idle_timeout_ms` abandons the word being typed after a pause,
+because the caret can be anywhere by then. It was clearing the *stash*
+of the last completed word with it — and the first key event after the
+pause is the chord's own `Ctrl`. So the sequence the hotkey exists for
+(type, notice the layout was wrong, reach for the chord) cleared the
+stash on its way to reading it.
+
+**Decision:** the stash gets its own window, `LAST_WORD_TTL`, 60 s,
+independent of the buffer's. Not a relaxation of the caret rules — a
+click, a nav key, deleting text we never saw and the next completed
+word each still drop it through their own path. Time alone is the only
+thing that behaves differently, and it is the only one of them that
+does not mean the word moved.
+
+**Why 60 s and not "until something invalidates it":** what the idle
+clear was really buying is that a machine left alone stops holding a
+word in RAM. That is worth keeping; two seconds is simply not the
+number for it.
+
+**Not chosen: making the hotkey work on the word still being typed.**
+It is the obvious next question — press the chord mid-word and nothing
+happens — and the answer is not a flag. `force_switch_last` replays a
+boundary key after the corrected word; a word with no boundary needs
+that path to grow a second shape, inside the one function where a
+mistake corrupts the user's text rather than failing to fix it. Its own
+change, with its own testing.
+
+## 2026-08-21 — Autostart is a session mechanism, so use the session's
+
+"Run at login" wrote `~/.config/autostart/<id>.desktop` and reported
+success. On GNOME, KDE and Xfce something reads that directory. On a
+bare Hyprland, Sway or river session nothing does, so the toggle was a
+setting that lied — and those are exactly the sessions this app is
+most used on.
+
+Where systemd's `xdg-desktop-autostart.target` bridges the gap it is
+the wrong shape as well: it fires as early as the user manager can
+reach it, which on a compositor that publishes its environment from its
+own config is *before* it has. That is not theory — it is how this
+project's own machine failed. The unit ran, the app probed seven layout
+backends, found none, and exited 1.
+
+**Decision:** a systemd **user service** wanted by
+`graphical-session.target`. That target means "the session is up and
+its environment is published", which is precisely the precondition
+PolterType has. `PartOf` the same target, so logging out stops it.
+
+**The XDG entry stays as the fallback** for a machine with no user
+manager, and is removed when the unit goes in: two mechanisms start two
+copies, and the second loses to the instance lock with a log line that
+reads like a fault.
+
+**What this does not solve.** A bare compositor still has to reach
+`graphical-session.target` once — a session target of its own, started
+from the compositor config after the environment is published. We
+cannot write that safely into somebody's `hyprland.conf`, so we say it:
+the app logs a warning when it installs the unit into a session that
+never reaches the target, and `docs/PERMISSIONS.md` carries the recipe.
+A toggle that quietly does nothing was the whole complaint; being told
+is the minimum improvement.
+
+**Not chosen: `WantedBy=default.target`.** It would run everywhere,
+including a TTY or SSH login with no session at all, and — worse — with
+an environment that has no `WAYLAND_DISPLAY` in it and never will, since
+a process cannot inherit variables published after it started. Being
+early is survivable; being started into nothing is not.
+
+## 2026-08-21 — A session that is not ready yet is not an unsupported one
+
+Two ways one login killed the app outright, both found chasing the
+autostart bug above.
+
+`global-hotkey`'s X11 backend opens a display on a thread of its own
+and uses the handle without checking it: with none, its first act is
+`XDefaultRootWindow(NULL)`. We built that manager unconditionally,
+including on the evdev backend, which reads its chords off the key
+stream and never registers anything with it. A Wayland session with no
+Xwayland therefore died three log lines into startup, in a stack frame
+with none of our code in it.
+
+And a layout backend that could not be probed was an exit — so a
+compositor that had not finished coming up cost the user the entire
+session.
+
+**Decision:** build the hotkey manager only on the path that registers
+something, and only after waiting up to 15 s for an X display; run
+without OS-level hotkeys past that. Keep running without a layout
+backend too, behind `UnavailableSwitcher` and a **⚠ Layout switching
+unavailable — Setup…** entry in the tray, which is the shape a missing
+keyboard hook has had since 0.17.3.
+
+**Why a wait and not a probe:** both failures are timing, not
+capability. The same 15 s window covers a compositor socket that
+appears a second late and an Xwayland that starts after us; a probe
+answered at the wrong instant is just a faster way to be wrong.
+
+**Not chosen: refusing to start without a tray, for consistency with
+the missing-tray-library check.** That check is about a library that
+will never appear; this one is about a session that has not finished
+starting. Same symptom, opposite prognosis.
+

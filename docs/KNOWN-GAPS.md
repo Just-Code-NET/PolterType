@@ -1,4 +1,4 @@
-# Known gaps (as of v0.17.5)
+# Known gaps (as of v0.17.6)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,45 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.17.6 pass actually checked.** Linux only, on two Wayland
+machines — this Arch/Hyprland one and a NixOS 26.05 laptop (Hyprland,
+AppImage) — and every line below is something that was run, not read:
+
+- **NixOS, end to end on real hardware.** The setup script's
+  declarative path (module written, `imports` patched, backup kept,
+  staged for the flake), the owner's own `nixos-rebuild switch`, and
+  afterwards `id` showing `input` and `uinput`, `/dev/uinput` at
+  `0660 root:uinput`, binfmt registering `appimage_type_1/2`, and the
+  AppImage running by path.
+- **The entries the app writes point at the AppImage, not at its
+  mount.** Both were rewritten to
+  `~/Applications/poltertype-0.17.6-x86_64.AppImage` on that machine;
+  before this release the autostart one pointed inside a temporary
+  extraction directory.
+- **Startup with `HYPRLAND_INSTANCE_SIGNATURE` unset** — the exact
+  condition that killed the app at login — resolves the compositor from
+  its socket directory instead: `layout switcher ready
+  backend="linux-hyprland-hyprctl"`, `focus tracker ready
+  backend="linux-hyprland-ipc"`.
+- **Startup with neither that variable nor `DISPLAY`** now reaches
+  `entering event loop` and stays there. The same command on 0.17.5's
+  code left a coredump: `XDefaultRootWindow` on a null display, in
+  `global-hotkey`'s X11 thread.
+- **The systemd user service**, on a session whose
+  `graphical-session.target` is active: written, `is-enabled` →
+  `enabled`, the old `.desktop` entry removed, and
+  `systemctl --user start` → `active (running)` with the app up.
+- **The manual switch-last hotkey after a pause** — an engine test
+  driving the real sequence, which fails on 0.17.5's code. Read the
+  0.17.5 stamp below against it: that pass *did* verify this hotkey,
+  by injecting the whole sequence through uinput. Injection is faster
+  than a person, so it landed inside the two-second window the bug
+  needed, and confirmed a feature that did not work for anybody. A
+  green check can move too fast to be true.
+
+Not re-run: everything on Windows and macOS, the tooltip backends, the
+updater, and every bullet below that is not dated today.
 
 **What the 0.17.5 pass actually checked.** Two things, both on this
 machine: the Hotkeys pane renders the substituted chord (screenshot,
@@ -368,6 +407,24 @@ what backs the Windows bullets.
   hold-back — the key gate is Linux/evdev only, so on macOS as on
   Windows a keystroke can still land inside a correction.
   `focused_exe()` remains `None` there.
+- **Autostart on a bare compositor still needs one manual step.** The
+  unit PolterType installs is wanted by `graphical-session.target`,
+  which GNOME, KDE, Xfce and `uwsm` sessions reach on their own —
+  verified on one such session (Hyprland via a display manager,
+  2026-08-21). A bare Hyprland/Sway/river session started from a TTY
+  reaches neither that target nor `~/.config/autostart`, so the unit
+  sits there enabled and never runs. PolterType logs a warning when it
+  installs into such a session and `docs/PERMISSIONS.md` carries the
+  five-line wiring, but **the warning path itself is untested** — the
+  machines here both reach the target.
+- **On the X11 backend the OS hotkey grab still trusts a library that
+  does not check its display.** `global-hotkey` opens the X display on
+  its own thread and uses the handle unconditionally; PolterType now
+  waits up to 15 s for a display before building the manager, which
+  covers being started early, and skips it entirely on the evdev
+  backend, which never used it. What it cannot cover is an X server
+  that goes away *later* in the session — that is upstream's thread and
+  upstream's null check.
 - **The Settings window can crash on a sudden large resize, in debug
   builds only.** Reproduced 2026-08-19 on Linux/Hyprland: a big enough
   jump (not specifically narrow↔wide — a same-direction shrink to
