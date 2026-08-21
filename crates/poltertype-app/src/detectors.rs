@@ -187,6 +187,11 @@ pub(crate) fn add_word_to_user_overlay(
     handle: &DictionaryDetector,
 ) -> anyhow::Result<()> {
     use std::io::Write as _;
+    // One shape on disk and in memory. `parse_wordlist` runs every line
+    // back through `letters_only_lower`, so writing the raw token left
+    // the file saying `just-code.net` where the dictionary held
+    // `justcodenet`.
+    let word = poltertype_detect::letters_only_lower(word);
     let dir = crate::user_dirs::ensure_user_wordlist_dir()?;
     let stem = layout.as_str().to_lowercase().replace('-', "_");
     let path = dir.join(format!("{stem}.txt"));
@@ -194,8 +199,8 @@ pub(crate) fn add_word_to_user_overlay(
         .create(true)
         .append(true)
         .open(&path)?;
-    writeln!(f, "{}", word.to_lowercase())?;
-    let live = handle.add_overlay_word(layout, word);
+    writeln!(f, "{word}")?;
+    let live = handle.add_overlay_word(layout, &word);
     // The word itself stays out of the log, as everywhere else.
     tracing::info!(%stem, live, "added a word to the user wordlist overlay");
     Ok(())

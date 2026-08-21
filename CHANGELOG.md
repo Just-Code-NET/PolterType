@@ -36,6 +36,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
   anything there that reads as the other language typed on the wrong
   keyboard can be deleted, and takes effect on **Reload Settings**.
 
+- **A word added to a user wordlist is written in the shape the loader
+  reads back.** The file took the token as typed while the running
+  dictionary took it stripped to letters, so an entry could sit on disk
+  as `just-code.net` against `justcodenet` in the engine. Nothing
+  behaved differently — the loader normalised on the way in either way —
+  but the file is the thing people open and edit.
+
 ## [0.17.6] — three things that reported success and did nothing
 
 ### Fixed — the app could correct every word except its own
