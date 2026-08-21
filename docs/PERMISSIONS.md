@@ -174,6 +174,54 @@ it hit instead of telling you to run the script again.
 * **The script ran as root without `sudo`.** Then `root` is what was
   added to the `input` group, not your account.
 
+### Autostart on a bare compositor
+
+"Start automatically when I sign in" installs a systemd **user
+service**, `~/.config/systemd/user/dev.opensource.poltertype.service`,
+wanted by `graphical-session.target`. That target is the one thing on a
+Linux desktop that means "the session is up and its environment is
+published", which is exactly what PolterType needs to be started after:
+a compositor socket to talk to, and a `WAYLAND_DISPLAY` / `DISPLAY` to
+inherit.
+
+GNOME, KDE, Xfce and anything launched through `uwsm` reach that target
+on their own — nothing to do. A **bare Hyprland, Sway or river session
+does not**, and neither does it read `~/.config/autostart`; PolterType
+says so in the log when it installs the unit into a session that has no
+such target, because the alternative is a toggle that silently does
+nothing until the next login proves it.
+
+Wiring it once, the way Sway's own package does it — a session target
+of your own that pulls in the standard one:
+
+```ini
+# ~/.config/systemd/user/hyprland-session.target
+[Unit]
+Description=Hyprland session
+BindsTo=graphical-session.target
+Wants=graphical-session-pre.target
+After=graphical-session-pre.target
+```
+
+and, in `hyprland.conf`, after the environment is published:
+
+```bash
+exec-once = dbus-update-activation-environment --systemd --all && \
+            systemctl --user start hyprland-session.target
+```
+
+Order matters more than it looks: a unit started before that
+`dbus-update-activation-environment` inherits a session environment
+that does not exist yet. PolterType now survives being early — it
+re-probes for a compositor for 15 s and resolves Hyprland from its
+socket directory rather than from an environment variable — but a
+process with no `WAYLAND_DISPLAY` at all still has no tray to live in.
+
+`~/.config/autostart/dev.opensource.poltertype.desktop` is still
+written on a machine with **no** systemd user manager, and removed when
+there is one: two mechanisms would start two copies, and the second one
+loses to the instance lock with a message that reads like a fault.
+
 ### Option B — AT-SPI (listener: planned, not implemented)
 
 **The keyboard listener via AT-SPI does not exist.** On Wayland,

@@ -32,6 +32,57 @@ and the project follows [Semantic Versioning](https://semver.org/).
   already did. Nothing to redo by hand: the entry is rewritten on the
   next launch.
 
+### Changed — "run at login" on Linux is a systemd user service now
+
+- **`~/.config/autostart` is a desktop-environment mechanism, and half
+  our Linux users do not run one.** GNOME, KDE and Xfce read that
+  directory; a bare Hyprland, Sway or river session has nothing that
+  does, so the entry the toggle wrote sat there being read by nobody.
+  Where systemd's `xdg-desktop-autostart.target` bridges the gap it is
+  also the wrong shape — it fires as early as the user manager can
+  reach it, which is before a compositor has published the environment
+  we need.
+
+  PolterType now installs
+  `~/.config/systemd/user/dev.opensource.poltertype.service`, wanted by
+  `graphical-session.target`: started by whatever brings the session
+  up, and therefore after the same thing has imported the session's
+  environment. The old `.desktop` entry is removed when the unit goes
+  in — two mechanisms would start two copies, and the second one loses
+  to the instance lock with a message that reads like a fault. A
+  machine with no systemd user manager still gets the XDG entry.
+
+  A bare compositor still has to reach `graphical-session.target` once,
+  which is a five-line one-time wiring; PolterType logs a warning when
+  it installs the unit into a session that never gets there, instead of
+  leaving the toggle to be disproved at the next login.
+  `docs/PERMISSIONS.md` has the recipe.
+
+### Fixed — a Wayland session with no X11 crashed the app at startup
+
+- **`global-hotkey` was being built on a backend that never uses it.**
+  On Wayland/evdev the chords are read off the key stream, and nothing
+  is ever registered with the OS manager — but creating it still starts
+  `global-hotkey`'s X11 thread, which opens a display and uses the
+  handle without checking it. With no display that is
+  `XDefaultRootWindow(NULL)`: a SIGSEGV inside libX11, under our name,
+  three log lines into startup. It is now built only on the path that
+  registers something, and only after waiting up to 15 s for an X
+  display to answer — the same window, and the same reasoning, as the
+  layout backend. Past it the app starts without OS-level hotkeys
+  rather than not at all.
+
+### Changed — no layout-switching backend is an alert, not an exit
+
+- **PolterType stayed dead for the whole session over a backend that
+  was 200 ms late.** With no switcher it aborted at startup, which on
+  an autostarted process meant a tray icon that never appeared and an
+  exit code in a journal nobody reads. It now starts anyway with
+  switching turned off, puts **⚠ Layout switching unavailable —
+  Setup…** at the top of the tray menu, and the Setup pane explains the
+  rest — the same shape as a missing keyboard hook, which has worked
+  that way since 0.17.3.
+
 ### Fixed — the manual switch-last hotkey was a no-op for anyone slower than two seconds
 
 - **The stash the hotkey works on was being cleared by the idle

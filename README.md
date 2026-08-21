@@ -459,7 +459,8 @@ Two ways to configure:
 
 **"Start automatically when I sign in"** (in **General**, on by
 default) registers PolterType with the OS: a LaunchAgent on macOS, a
-per-user run key on Windows, an XDG autostart entry on Linux. Unticking
+per-user run key on Windows, a systemd user service on Linux (an XDG
+autostart entry where there is no user manager). Unticking
 it removes the entry. `config.toml` is the source of truth — deleting
 the entry by hand only lasts until the next launch, so turn the setting
 off instead. macOS shows a one-time "login item added" notification the

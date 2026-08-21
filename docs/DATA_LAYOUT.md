@@ -67,7 +67,7 @@ when auditing what PolterType leaves on a machine:
 
 | What | Where | Written when |
 |---|---|---|
-| Autostart entry | macOS `~/Library/LaunchAgents/dev.opensource.poltertype.plist`<br>Windows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `dev.opensource.poltertype`<br>Linux `$XDG_CONFIG_HOME/autostart/dev.opensource.poltertype.desktop` | `[general].autostart` is true, refreshed at every launch; deleted when it is false |
+| Autostart entry | macOS `~/Library/LaunchAgents/dev.opensource.poltertype.plist`<br>Windows `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, value `dev.opensource.poltertype`<br>Linux `$XDG_CONFIG_HOME/systemd/user/dev.opensource.poltertype.service` (plus the `graphical-session.target.wants` symlink `systemctl --user enable` makes); `$XDG_CONFIG_HOME/autostart/dev.opensource.poltertype.desktop` only where there is no systemd user manager | `[general].autostart` is true, refreshed at every launch; deleted when it is false |
 | Instance lock | macOS `<config-dir>/dev.opensource.poltertype.lock` | every launch — the `single-instance` crate `flock`s a real file on macOS, unlike the abstract socket (Linux) and named mutex (Windows) it uses elsewhere, so macOS is the only platform where a file appears |
 | Staged update | `<data_local_dir>/poltertype/updates/` | see "Staged updates" below |
 | Desktop entry + icon | Linux only: `$XDG_DATA_HOME/applications/poltertype.desktop` and `$XDG_DATA_HOME/icons/hicolor/{32,48,64,128,256}x…/apps/poltertype.png` | every launch, but written only when absent, stale or stamped with an older version — and skipped entirely when a package already installed `poltertype.desktop` under `$XDG_DATA_DIRS` |

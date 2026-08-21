@@ -45,7 +45,7 @@ mod macos {
 mod linux {
     use std::path::Path;
 
-    use crate::linux::{desktop_body, exec_quote};
+    use crate::linux::{desktop_body, exec_quote, systemd_quote, unit_body};
     use crate::types::App;
 
     #[test]
@@ -62,6 +62,57 @@ mod linux {
         assert_eq!(exec_quote(Path::new(r"/tmp/a\b")), r#""/tmp/a\\b""#);
         assert_eq!(exec_quote(Path::new("/tmp/a$b")), r#""/tmp/a\$b""#);
         assert_eq!(exec_quote(Path::new("/tmp/a`b")), r#""/tmp/a\`b""#);
+    }
+
+    #[test]
+    fn systemd_quote_escapes_what_systemd_reads_specially() {
+        assert_eq!(
+            systemd_quote(Path::new("/home/a b/poltertype")),
+            "\"/home/a b/poltertype\"",
+            "an unquoted space splits ExecStart into a command and an argument"
+        );
+        assert_eq!(systemd_quote(Path::new(r"/tmp/a\b")), r#""/tmp/a\\b""#);
+        // A dollar starts a variable reference here; the escape is a
+        // second dollar, not the backslash a desktop entry wants.
+        assert_eq!(systemd_quote(Path::new("/tmp/a$b")), r#""/tmp/a$$b""#);
+        // ...and a backtick is nothing special, so it stays as typed.
+        assert_eq!(systemd_quote(Path::new("/tmp/a`b")), "\"/tmp/a`b\"");
+    }
+
+    #[test]
+    fn unit_hangs_off_the_session_target() {
+        let body = unit_body(
+            App {
+                id: "dev.opensource.poltertype",
+                name: "PolterType",
+                icon: "poltertype",
+            },
+            Path::new("/home/a b/poltertype"),
+        );
+        assert!(body.starts_with("[Unit]\n"));
+        assert!(body.contains("\nDescription=PolterType\n"), "{body}");
+        assert!(
+            body.contains("\nExecStart=\"/home/a b/poltertype\"\n"),
+            "{body}"
+        );
+        // All three, and all on the session target: `After` for
+        // ordering, `PartOf` so logging out stops it, `WantedBy` so
+        // `systemctl enable` has somewhere to put the symlink.
+        assert!(
+            body.contains("\nAfter=graphical-session.target\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("\nPartOf=graphical-session.target\n"),
+            "{body}"
+        );
+        assert!(
+            body.contains("\nWantedBy=graphical-session.target\n"),
+            "{body}"
+        );
+        // A unit that restarts what the user quit, or reinstalls what
+        // an update just replaced, is worse than no unit.
+        assert!(!body.contains("Restart="), "{body}");
     }
 
     #[test]

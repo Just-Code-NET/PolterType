@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | macOS | per-user LaunchAgent + `launchctl` | `~/Library/LaunchAgents/<id>.plist` |
 //! | Windows | `HKCU` run key via `reg.exe` | `…\CurrentVersion\Run`, value `<id>` |
-//! | Linux | XDG autostart entry | `$XDG_CONFIG_HOME/autostart/<id>.desktop` |
+//! | Linux | systemd user service, or an XDG entry with no user manager | `$XDG_CONFIG_HOME/systemd/user/<id>.service` |
 //! | other | noop | — |
 //!
 //! One of the platform-code islands (see `CONTRIBUTING.md`), and
@@ -12,9 +12,10 @@
 //! is no backend for the caller to hold, just one idempotent operation.
 //!
 //! Each backend drives the mechanism the OS already ships — two
-//! `launchctl` calls, one `reg.exe` call, or a file write — which buys
-//! no per-OS dependency and `#![forbid(unsafe_code)]`, at the cost of a
-//! short-lived process at most twice per app start.
+//! `launchctl` calls, one `reg.exe` call, a `systemctl --user` call or
+//! a file write — which buys no per-OS dependency and
+//! `#![forbid(unsafe_code)]`, at the cost of a short-lived process at
+//! most twice per app start.
 //!
 //! It never *reads* the OS to discover intent: `config.toml` is the
 //! single source of truth and [`sync`] only pushes it outwards. Delete
