@@ -1060,6 +1060,27 @@ mod engine_integration_tests {
         }
     }
 
+    /// Answers `is_known` from a fixed `(layout, word)` list — the only
+    /// dictionary state the undo-learning guard reads.
+    struct KnownWords(&'static [(&'static str, &'static str)]);
+
+    impl poltertype_detect::SuggestionProvider for KnownWords {
+        fn is_known(&self, layout: &LayoutId, typed: &str) -> bool {
+            let typed = poltertype_detect::letters_only_lower(typed);
+            self.0
+                .iter()
+                .any(|(l, w)| layout.as_str() == *l && typed == *w)
+        }
+        fn suggest(
+            &self,
+            _layout: &LayoutId,
+            _typed: &str,
+            _max: usize,
+        ) -> Vec<poltertype_detect::Suggestion> {
+            Vec::new()
+        }
+    }
+
     fn suggestion_harness() -> Harness {
         suggestion_harness_with_chord(None)
     }
@@ -1612,6 +1633,73 @@ mod engine_integration_tests {
             vec![LayoutId::from("uk-UA"), LayoutId::from("en-US")],
             "the undo has to switch the layout back too"
         );
+    }
+
+    /// Undoing a correction the engine got *right* must not teach the
+    /// dictionary its wrong-layout twin. `ghbdsn` reached the real
+    /// en-US overlay exactly this way — an undo of a correction backed
+    /// by uk-UA `привіт` — and then rewrote every correctly typed
+    /// `привіт` back into itself, for good.
+    #[test]
+    fn manual_hotkey_undo_does_not_learn_a_wrong_layout_twin() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(KnownWords(&[("uk-UA", "привіт")]))),
+            None,
+        );
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        let switches = h.switcher.switches.lock().clone();
+        let (_, events) = h.stop();
+        assert_eq!(
+            switches,
+            vec![LayoutId::from("uk-UA"), LayoutId::from("en-US")],
+            "the undo itself must still happen — only the learning is withheld"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::AddToDictionary { .. })),
+            "the correction rested on a real uk-UA word, so its en-US twin is not one"
+        );
+    }
+
+    /// Counter-regression: with no dictionary evidence behind the
+    /// correction, the undo still means "this is a word" and still
+    /// teaches it. Without this the guard would silently retire the
+    /// auto-correction path's only escape hatch.
+    #[test]
+    fn manual_hotkey_undo_still_learns_when_the_switch_was_a_guess() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(KnownWords(&[]))),
+            None,
+        );
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
+        let SwitcherEvent::AddToDictionary { layout, word, .. } = ev else {
+            unreachable!()
+        };
+        assert_eq!(layout, LayoutId::from("en-US"));
+        assert_eq!(word, "ghbdsn");
     }
 
     /// The same hotkey on a word the engine *left alone* keeps its

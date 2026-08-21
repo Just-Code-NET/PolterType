@@ -415,19 +415,6 @@ impl Detector for DictionaryDetector {
             return keep;
         }
 
-        for (layout, alt_text) in &alts {
-            if self.is_in_overlay(layout, alt_text) {
-                return Verdict::Switch(DetectionVerdict {
-                    best_layout: (*layout).clone(),
-                    confidence: 0.95,
-                    reason: format!(
-                        "{} is a {layout} overlay {label} word",
-                        logsafe::redact_word(alt_text)
-                    ),
-                });
-            }
-        }
-
         // Phase 2 — embedded-dictionary sweep. A current-side hit
         // flagged `weak` does not short-circuit Keep: walk the alts
         // first and switch if any is in dict. Without it, Hunspell-only
@@ -435,6 +422,11 @@ impl Detector for DictionaryDetector {
         // `next`).
         let current_in_dict = lookup(ctx.current_layout, &current_text);
         let current_is_weak = !short && self.is_weak(ctx.current_layout, &current_text);
+        // Ahead of **both** alt sweeps, the overlay one included: a real
+        // word of the layout it was typed in outranks anything the other
+        // side can show. Ranking an alt overlay entry higher let a single
+        // bad one — `ghbdsn`, learned as English from an undone
+        // correction — destroy `привіт` permanently and invisibly.
         if current_in_dict && !current_is_weak && !current_has_stray {
             return Verdict::Keep {
                 reason: format!(
@@ -444,35 +436,51 @@ impl Detector for DictionaryDetector {
                 ),
             };
         }
+
+        let switch_reason = |alt_text: &str, layout: &LayoutId, overlay: bool| -> String {
+            let source = if overlay { "overlay " } else { "" };
+            if current_is_weak {
+                format!(
+                    "current {} is a weak {} {label} word; \
+                     alt {} is a strong {layout} {source}hit",
+                    logsafe::redact_word(&current_text),
+                    ctx.current_layout,
+                    logsafe::redact_word(alt_text)
+                )
+            } else if current_in_dict {
+                format!(
+                    "current render {} carries stray punctuation — \
+                     its skeleton is only a coincidental {} hit; \
+                     alt {} is a {layout} {source}{label} word",
+                    logsafe::redact_word(current_raw),
+                    ctx.current_layout,
+                    logsafe::redact_word(alt_text)
+                )
+            } else {
+                format!(
+                    "{} is a {layout} {source}{label} word",
+                    logsafe::redact_word(alt_text)
+                )
+            }
+        };
+
+        // Overlay ahead of embedded across the alts too, for the reason
+        // the current side sweeps its own overlay first.
         for (layout, alt_text) in &alts {
-            if lookup(layout, alt_text) {
-                let reason = if current_is_weak {
-                    format!(
-                        "current {} is a weak {} {label} word; \
-                         alt {} is a strong {layout} hit",
-                        logsafe::redact_word(&current_text),
-                        ctx.current_layout,
-                        logsafe::redact_word(alt_text)
-                    )
-                } else if current_in_dict {
-                    format!(
-                        "current render {} carries stray punctuation — \
-                         its skeleton is only a coincidental {} hit; \
-                         alt {} is a {layout} {label} word",
-                        logsafe::redact_word(current_raw),
-                        ctx.current_layout,
-                        logsafe::redact_word(alt_text)
-                    )
-                } else {
-                    format!(
-                        "{} is a {layout} {label} word",
-                        logsafe::redact_word(alt_text)
-                    )
-                };
+            if self.is_in_overlay(layout, alt_text) {
                 return Verdict::Switch(DetectionVerdict {
                     best_layout: (*layout).clone(),
                     confidence: 0.95,
-                    reason,
+                    reason: switch_reason(alt_text, layout, true),
+                });
+            }
+        }
+        for (layout, alt_text) in &alts {
+            if lookup(layout, alt_text) {
+                return Verdict::Switch(DetectionVerdict {
+                    best_layout: (*layout).clone(),
+                    confidence: 0.95,
+                    reason: switch_reason(alt_text, layout, false),
                 });
             }
         }

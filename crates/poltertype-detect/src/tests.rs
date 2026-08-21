@@ -464,6 +464,36 @@ fn dict_overlay_alt_overrides_embedded_current() {
     assert_switches_to(&det, &ctx(&en, &cands), &uk);
 }
 
+/// Regression: the alt-overlay sweep must not reach past a *clean*
+/// dictionary word of the current layout. An undone correction taught
+/// the en-US overlay `ghbdsn` — the en-US rendering of uk-UA `привіт` —
+/// and from then on every correctly typed `привіт` was rewritten into
+/// it. The `,elm` case above still works because its current rendering
+/// carries stray punctuation, which is what makes that hit coincidental.
+#[test]
+fn dict_alt_overlay_never_beats_a_clean_current_word() {
+    let mut m = HashMap::new();
+    // The poisoned entry, in the user's own en-US overlay.
+    let en_overlay: HashSet<String> = ["ghbdsn"].iter().map(|s| (*s).to_owned()).collect();
+    m.insert(LayoutId::from("en-US"), dict_with_embedded(&[], en_overlay));
+    // The real word, where it belongs: the bundled uk-UA FST.
+    m.insert(
+        LayoutId::from("uk-UA"),
+        dict_with_embedded(&["привіт"], HashSet::new()),
+    );
+    let det = DictionaryDetector::new(m);
+
+    let uk = LayoutId::from("uk-UA");
+    let cands = vec![
+        (LayoutId::from("en-US"), "ghbdsn".into()),
+        (uk.clone(), "привіт".into()),
+    ];
+    match det.judge(&ctx(&uk, &cands)) {
+        Verdict::Keep { .. } => (),
+        other => panic!("expected Keep for a clean current-layout word, got {other:?}"),
+    }
+}
+
 /// Inverse: user adds the token to the *current* layout's overlay
 /// (the `v-strel-zbook` case from the bug report). Strong Keep —
 /// no Switch should fire even if the alt rendering also happens

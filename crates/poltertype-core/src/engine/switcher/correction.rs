@@ -789,7 +789,7 @@ impl SwitcherEngine {
             Some((key_rx, buffer)),
         );
         if applied && undoing {
-            self.learn_undone_word(&target, &restored);
+            self.learn_undone_word(&target, &restored, &from, &on_screen);
         }
     }
 
@@ -801,8 +801,8 @@ impl SwitcherEngine {
     /// Short tokens are skipped: below three letters the dictionary runs
     /// on the curated short-stop lists rather than the FST, and a stray
     /// entry there disables correction for a whole class of real words.
-    fn learn_undone_word(&self, layout: &LayoutId, word: &str) {
-        let letters = poltertype_detect::letters_only_lower(word);
+    fn learn_undone_word(&self, target: &LayoutId, restored: &str, from: &LayoutId, undone: &str) {
+        let letters = poltertype_detect::letters_only_lower(restored);
         if letters.chars().count() < MIN_LEARNED_LETTERS {
             debug!(
                 letters = letters.chars().count(),
@@ -810,15 +810,55 @@ impl SwitcherEngine {
             );
             return;
         }
+        if !self.undo_vouches_for_word(target, restored, from, undone) {
+            debug!(
+                %target,
+                %from,
+                word = %logsafe::redact_word(restored),
+                "undo of a dictionary-backed correction — not learning it as a word"
+            );
+            return;
+        }
         debug!(
-            %layout,
-            word = %logsafe::redact_word(word),
+            %target,
+            word = %logsafe::redact_word(restored),
             "learning a word from an undone correction"
         );
         let _ = self.out_tx.send(SwitcherEvent::AddToDictionary {
-            layout: layout.clone(),
-            word: word.to_owned(),
+            layout: target.clone(),
+            word: restored.to_owned(),
             origin: DictionaryAddOrigin::UndoneCorrection,
         });
+    }
+
+    /// Does this undo claim "the restored text is a word of `target`",
+    /// or only "not this one, not now"?
+    ///
+    /// A claim, when `target` already knows the word — an overlay entry
+    /// then promotes it past a `weak` flag or a short-list gap — or when
+    /// `from` does *not* know what was on screen, meaning the engine
+    /// switched on word shape rather than on dictionary evidence.
+    ///
+    /// Otherwise the correction rested on a real word of the other
+    /// language and the restored text is that word's wrong-layout twin.
+    /// Learning it writes gibberish into the dictionary for good:
+    /// `ghbdsn` (uk-UA `привіт` under en-US) and `ефілі` (en-US `tasks`
+    /// under uk-UA) both arrived that way, from undos of corrections the
+    /// engine had got right, and each then broke the real word.
+    ///
+    /// No suggestion provider means no dictionary to ask, which fails
+    /// open; `DictionaryDetector::judge` stops a stray entry outranking
+    /// a real word either way.
+    fn undo_vouches_for_word(
+        &self,
+        target: &LayoutId,
+        restored: &str,
+        from: &LayoutId,
+        undone: &str,
+    ) -> bool {
+        let Some(provider) = self.suggester.as_ref() else {
+            return true;
+        };
+        provider.is_known(target, restored) || !provider.is_known(from, undone)
     }
 }

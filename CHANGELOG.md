@@ -4,6 +4,38 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.17.7
+
+### Fixed — the app could be taught its own gibberish, and then believed it
+
+- **A real word of the layout you typed in now outranks any overlay
+  entry on the other side.** The overlay-priority sweep ran across
+  *both* layouts before the current one's own dictionary was consulted
+  at all. One stray entry therefore beat a genuine word — every time,
+  at 0.95 confidence, silently and for good. With `ghbdsn` in a user's
+  English overlay, a correctly typed Ukrainian `Привіт` was rewritten
+  to `Ghbdsn` on every attempt. Overlay priority still wins where it
+  was designed to: a coincidental skeleton match on a render that
+  carries stray punctuation.
+
+- **Undoing a correction the engine got *right* no longer teaches its
+  wrong-layout twin as a word.** The manual switch-last hotkey doubles
+  as "you were wrong, learn this" — the auto-correction path's only
+  escape hatch — and it used to learn unconditionally. Undo a correct
+  correction, whether to try the gesture out or to want the other
+  rendering just this once, and the engine wrote the gibberish it had
+  just fixed into the dictionary as a word: `привіт`, correctly
+  switched away from en-US, came back as the English word `ghbdsn`;
+  `tasks` came back as Ukrainian `ефілі`. Each then broke the real word
+  through the path above. An undo now teaches only when it carries
+  evidence — the target layout already knows the word, or the
+  correction rested on word shape rather than on a dictionary hit.
+
+  Entries already learned this way stay until removed. They live one
+  per line in the user wordlists (`<config>/poltertype/wordlists/`);
+  anything there that reads as the other language typed on the wrong
+  keyboard can be deleted, and takes effect on **Reload Settings**.
+
 ## [0.17.6] — three things that reported success and did nothing
 
 ### Fixed — the app could correct every word except its own
