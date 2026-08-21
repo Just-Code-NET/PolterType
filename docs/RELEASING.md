@@ -313,6 +313,23 @@ wasn't bumped). Fix before committing.
 
 ## 6. Commit + tag + push (~1 min)
 
+### Name the release first
+
+`cargo xtask version bump` rewrites only the *version* inside
+`## [Unreleased] — <ver>`. It leaves the `[Unreleased]` label alone,
+because nothing but you can name the release. Turning that label into
+the shipped heading is part of the release commit:
+
+```markdown
+## [Unreleased] — 0.17.7                                   ← what the bump leaves
+## [0.17.7] — when a correctly typed word came back wrong  ← what ships
+```
+
+Every other entry in `CHANGELOG.md` has the second shape, so a heading
+still reading `[Unreleased]` is visibly the odd one out — and the
+release body sends readers straight to it. Nothing checks this: the tag
+is fine, CI is green, and the file just looks unfinished for ever.
+
 The release commit should contain only the three files above.
 No code, no doc fixes, no formatting drive-bys. If you forgot
 something, do it as a separate commit FIRST and then bump —
@@ -624,7 +641,9 @@ git commit -m "docs: refresh for <what changed>"
 # 4. Bump (writes Cargo.toml, CHANGELOG.md heading, Cargo.lock).
 cargo xtask version bump
 
-# 5. Eyeball the diff, then commit + tag + push. The bump command
+# 5. Rename the CHANGELOG heading: [Unreleased] becomes [$NEW] plus a
+#    title for the release. The bump does not do this — see step 6.
+#    Then eyeball the diff and commit + tag + push; the bump command
 #    prints the exact sequence as a copy-paste hint.
 NEW=$(cargo xtask version)
 git add Cargo.toml Cargo.lock CHANGELOG.md
