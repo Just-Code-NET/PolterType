@@ -124,6 +124,9 @@ layout id you want to extend (`en_us`, `uk_ua`, …):
 
 Format for all three:
     - one lowercase word per line
+    - letters only: digits and punctuation are stripped on load,
+      so `just-code.net` is stored as `justcodenet`. Words the
+      app adds for you are written in that same shape.
     - blank lines and `# comment` lines ignored
     - UTF-8
 

@@ -1,4 +1,4 @@
-# Known gaps (as of v0.17.6)
+# Known gaps (as of v0.17.7)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,28 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.17.7 pass actually checked.** Nothing platform-specific,
+because nothing platform-specific moved: the release is three changes to
+the detector, the undo-learning rule and the shape one line takes in a
+user wordlist file, and all three are the same code on every OS. What was
+run, on this Arch/Hyprland machine:
+
+- **The whole workspace suite**, including two engine tests and a corpus
+  test that fail on 0.17.6's code
+  (`crates/poltertype-core/tests/overlay_poisoning.rs`, which is the
+  evidence rather than a description of it). The corpus one plants the
+  stray entry in a user overlay and puts the question to the **real**
+  bundled dictionaries and layout tables, both directions.
+- **The reported failure, reproduced from the reporter's own machine
+  state** — their wordlist overlays and the app's log, which date each
+  bad entry to an undo of a correction the engine had got right.
+
+Not re-run: everything below that is not dated today, which this pass
+does not touch — every Windows and macOS bullet, the tooltip backends,
+the updater, and the NixOS and systemd bullets stamped at 0.17.6. **The
+fixed build was not driven live through uinput**; the tests above are
+what this stamp rests on.
 
 **What the 0.17.6 pass actually checked.** Linux only, on two Wayland
 machines — this Arch/Hyprland one and a NixOS 26.05 laptop (Hyprland,

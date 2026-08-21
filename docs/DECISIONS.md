@@ -3020,3 +3020,45 @@ the missing-tray-library check.** That check is about a library that
 will never appear; this one is about a session that has not finished
 starting. Same symptom, opposite prognosis.
 
+## 2026-08-21 — An undo is not always a claim, and an overlay is not always right
+
+`Привіт`, typed correctly under uk-UA, came out as `Ghbdsn`. Two
+separate things had to be true for that, and both were.
+
+The user's own en-US overlay held `ghbdsn` — `привіт`'s en-US rendering.
+It got there from the manual switch-last hotkey, which doubles as "you
+were wrong, learn this word" and learned unconditionally. Undoing a
+correction the engine got *right* — trying the gesture out, wanting the
+other rendering once — therefore taught the engine the exact gibberish
+it had just fixed. Four such entries had accumulated across two
+languages; `tasks` → `ефілі` is the same thing pointing the other way.
+
+`DictionaryDetector::judge` then made each one permanent. Its
+overlay-priority sweep ran over the *alternate* layouts before the
+current layout's own dictionary was consulted at all, so an overlay
+entry on one side outranked a bundled-dictionary hit on the other — at
+0.95 confidence against a 0.55 threshold, every single time.
+
+**Decision:** an undo teaches only when it carries evidence — the target
+layout already knows the word, so an overlay entry merely promotes it
+past a `weak` flag, or the layout being undone *from* does not know what
+was on screen, meaning the switch rested on word shape rather than on a
+dictionary hit. And a clean dictionary word of the current layout is
+checked before either alt sweep, the overlay one included.
+
+**Why both halves.** Either alone leaves the failure reachable. The
+guard cannot retire entries that older versions already wrote, and the
+ordering cannot stop anyone hand-editing nonsense into their own
+overlay. Together, a bad entry is inert and no new ones are minted.
+
+**Not chosen: a plausibility floor on what may be learned.** It was the
+first idea and it only works in one direction. `ghbdsn` scores near zero
+as English — it has no vowels at all — but `ефілі` reads as an entirely
+ordinary Ukrainian word by script, vowel ratio and consonant runs alike.
+A rule that catches half the cases would have left the other half to be
+rediscovered by a user.
+
+**Not chosen: refusing to learn whenever the other side is a real
+word.** That is the same test inverted, and it retires the case the
+gesture exists for: uk-UA `туче` is valid but `weak`, loses to en-US
+`next`, and teaching it is exactly how a user says "no, I meant туче".

@@ -15,7 +15,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.17.6 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.17.7 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland), **on Windows since
@@ -218,7 +218,7 @@ the Settings window:
 | Default                | Action                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
-| `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. On a word PolterType *just corrected* it undoes that correction and adds the word to your dictionary, so it won't happen again. |
+| `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. On a word PolterType *just corrected* it undoes that correction, and learns the word so it won't happen again — unless the correction rested on a real word of the other language, in which case putting it back is a one-off rather than a new dictionary entry. |
 
 > **On macOS the pause default is `Ctrl+Shift+P`, not
 > `Ctrl+Shift+Space`.** `Ctrl+Space` and `Ctrl+Shift+Space` are macOS's
@@ -261,9 +261,11 @@ seconds or the moment you type past it. Tune or disable it on the
 The tooltip only appears for words PolterType *keeps*. When it
 corrects a word it shouldn't have, the teaching gesture is
 `Ctrl+Shift+Backspace`: it puts the word back the way you typed it
-and adds it to your dictionary. And for vocabulary you already know
-it will get wrong, `word_whitelist` in `[exceptions]` takes words it
-must never touch.
+and adds it to your dictionary. Undoing a correction that was *right*
+teaches nothing — otherwise trying the gesture out would file the
+other language's word, typed on the wrong keyboard, as vocabulary. And
+for words you already know it will get wrong, `word_whitelist` in
+`[exceptions]` takes ones it must never touch.
 
 > The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
 > Sway and KDE Plasma, and an override-redirect window on X11 — which
