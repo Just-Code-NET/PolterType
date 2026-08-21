@@ -41,3 +41,38 @@ pub fn hotkey_environment() -> HotkeyEnvironment {
         system_owns_ctrl_shift_space: cfg!(target_os = "macos"),
     }
 }
+
+/// Wait until the OS-level hotkey backend has something to grab
+/// against, up to `window`. `true` once it has.
+///
+/// Only Linux can come up without one, and it does not come up
+/// gracefully: `global-hotkey`'s X11 backend opens a display on a
+/// thread of its own and uses the handle without checking it, so with
+/// no display its first act is `XDefaultRootWindow(NULL)` — SIGSEGV
+/// inside libX11, under our name, three log lines into startup.
+///
+/// A wait rather than a refusal because the usual way to have no
+/// display is to be early: an autostarted process can beat Xwayland to
+/// the session by a second or two. Callers that come back `false`
+/// should carry on without OS hotkeys — the app corrects text either
+/// way — rather than not start.
+pub fn wait_for_hotkey_backend(window: std::time::Duration) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let deadline = std::time::Instant::now() + window;
+        loop {
+            if x11rb::connect(None).is_ok() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = window;
+        true
+    }
+}

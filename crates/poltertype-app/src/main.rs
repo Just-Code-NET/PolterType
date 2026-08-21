@@ -175,14 +175,21 @@ fn main() -> Result<()> {
 
     // ─── Layout switcher (built first so we can query active OS
     //                     layouts before loading the DB) ────────────
+    // A missing backend is an alert, not an exit. Corrections cannot
+    // switch anything without one, but the tray, the Setup pane that
+    // explains why, and every other path stay reachable — and a session
+    // that simply had not finished coming up no longer costs the user
+    // their autostart.
+    let mut switcher_alert: Option<String> = None;
     let layout_switcher: Arc<dyn poltertype_layout::LayoutSwitcher> = match switcher_with_retry() {
         Ok(s) => {
             info!(backend = s.backend_name(), "layout switcher ready");
             Arc::from(s)
         }
         Err(e) => {
-            error!(?e, "no layout switcher backend; aborting");
-            return Err(anyhow::anyhow!(e));
+            error!(?e, "no layout switcher backend; layout switching is off");
+            switcher_alert = Some(e.to_string());
+            Arc::new(poltertype_layout::UnavailableSwitcher)
         }
     };
 
@@ -386,10 +393,16 @@ fn main() -> Result<()> {
     poltertype_shell::keep_out_of_dock(&mut event_loop);
 
     let menu = Menu::new();
-    // Only when the keyboard hooks failed to start.
-    let item_setup = input_alert
-        .as_ref()
-        .map(|_| MenuItem::new("⚠ Keyboard hooks unavailable — Setup…", true, None));
+    // Only when something the app needs failed to come up. Hooks first:
+    // without them nothing is read at all, which is the worse of the
+    // two and the one to name.
+    let alert_label = if input_alert.is_some() {
+        "⚠ Keyboard hooks unavailable — Setup…"
+    } else {
+        "⚠ Layout switching unavailable — Setup…"
+    };
+    let item_setup = (input_alert.is_some() || switcher_alert.is_some())
+        .then(|| MenuItem::new(alert_label, true, None));
     if let Some(item) = item_setup.as_ref() {
         menu.append_items(&[item, &PredefinedMenuItem::separator()])
             .context("populate tray alert entry")?;
@@ -511,7 +524,25 @@ fn main() -> Result<()> {
     // `MenuItem` is internally Arc-shared, so this clone is a refcount.
     let item_pause_for_loop = item_pause.clone();
 
-    let hotkey_manager = GlobalHotKeyManager::new().context("create global-hotkey manager")?;
+    // Only on the path that uses it. On the Wayland/evdev backend the
+    // chords are read off the key stream and nothing is ever registered
+    // here — but creating the manager still starts `global-hotkey`'s
+    // X11 thread, which segfaults on a session with no display. That is
+    // how a Wayland-only machine used to die at "entering event loop".
+    let hotkey_manager = if use_keystream_hotkeys {
+        None
+    } else if poltertype_input::wait_for_hotkey_backend(SWITCHER_PROBE_WINDOW) {
+        Some(GlobalHotKeyManager::new().context("create global-hotkey manager")?)
+    } else {
+        // Same window as the layout backend, same reasoning: being
+        // early is not the same as being unsupported. Past it, the app
+        // is worth more without its chords than not at all.
+        warn!(
+            "no X display after {}s; starting without OS-level hotkeys",
+            SWITCHER_PROBE_WINDOW.as_secs()
+        );
+        None
+    };
     // Built from the live backends rather than probed: the tray knows
     // exactly what it started. The Settings window has neither backend
     // and probes instead — both then run the same resolver, which is
@@ -551,11 +582,13 @@ fn main() -> Result<()> {
         let _ = engine_cmd_tx.send(EngineCommand::SetKeystreamHotkeys(chords));
         info!("hotkeys handled off the key stream (Wayland/evdev backend)");
     } else {
-        if let Err(e) = hotkey_manager.register(hk_pause) {
-            warn!(?e, hotkey = ?hk_pause, "could not register pause hotkey");
-        }
-        if let Err(e) = hotkey_manager.register(hk_switch) {
-            warn!(?e, hotkey = ?hk_switch, "could not register switch-last hotkey");
+        if let Some(manager) = &hotkey_manager {
+            if let Err(e) = manager.register(hk_pause) {
+                warn!(?e, hotkey = ?hk_pause, "could not register pause hotkey");
+            }
+            if let Err(e) = manager.register(hk_switch) {
+                warn!(?e, hotkey = ?hk_switch, "could not register switch-last hotkey");
+            }
         }
     }
     let pause_hotkey_id = hk_pause.id();

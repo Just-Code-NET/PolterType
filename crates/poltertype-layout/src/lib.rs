@@ -17,7 +17,9 @@ mod windows;
 mod enums;
 mod factory;
 mod traits;
+mod unavailable;
 
 pub use enums::*;
 pub use factory::*;
 pub use traits::*;
+pub use unavailable::UnavailableSwitcher;
