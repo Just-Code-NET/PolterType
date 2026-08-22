@@ -346,3 +346,58 @@ fn unmapped_scancode_is_discarded_not_boundary() {
     b.feed(press(0x56), None, false);
     assert_eq!(b.keys().len(), 2);
 }
+
+/// 0x35 is `/` under en-US. The word it opens has to carry that
+/// separator to the decision — `/tmp` is a path, `tmp` alone is not.
+#[test]
+fn word_remembers_the_separator_it_opened_after() {
+    let mut b = WordBuffer::new();
+    assert_eq!(
+        b.feed(press(0x35), Some('/'), false),
+        WordBoundary::InProgress
+    );
+    word_key(&mut b, 0x14, 't');
+    word_key(&mut b, 0x32, 'm');
+    space(&mut b);
+    assert_eq!(b.completed_lead(), Some((0x35, false)));
+    // The next word opens after the space, not after the slash.
+    word_key(&mut b, 0x14, 't');
+    space(&mut b);
+    assert_eq!(b.completed_lead(), Some((0x39, false)));
+}
+
+#[test]
+fn first_word_of_the_buffer_has_no_separator() {
+    let mut b = WordBuffer::new();
+    word_key(&mut b, 0x14, 't');
+    space(&mut b);
+    assert_eq!(b.completed_lead(), None);
+}
+
+/// Backspacing over the separator re-opens the previous word, which
+/// must come back with its own lead rather than the one it was
+/// re-opened across.
+#[test]
+fn reopened_word_restores_its_own_separator() {
+    let mut b = WordBuffer::new();
+    b.feed(press(0x35), Some('/'), false);
+    word_key(&mut b, 0x14, 't');
+    space(&mut b);
+    backspace(&mut b); // deletes the space, re-opens `t`
+    word_key(&mut b, 0x32, 'm');
+    space(&mut b);
+    assert_eq!(b.completed_lead(), Some((0x35, false)));
+}
+
+/// A caret that moved takes the separator with it: what sits left of
+/// the word is no longer something the buffer saw.
+#[test]
+fn caret_move_forgets_the_separator() {
+    let mut b = WordBuffer::new();
+    b.feed(press(0x35), Some('/'), false);
+    b.feed(press(SC_POINTER_BUTTON), None, false);
+    word_key(&mut b, 0x14, 't');
+    word_key(&mut b, 0x32, 'm');
+    space(&mut b);
+    assert_eq!(b.completed_lead(), None);
+}

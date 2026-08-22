@@ -271,7 +271,20 @@ mod engine_integration_tests {
             }
             tweak(&mut settings);
             let settings = Arc::new(SettingsStore::for_tests(settings));
-            let layouts = Arc::new(LayoutDb::load_embedded());
+            // The same two layouts the mock OS reports as active, and
+            // only those: the real app loads exactly the active list,
+            // and a bundled layout it would never load still decides
+            // which keys count as letters. bg-BG puts `б` on the `/`
+            // key, which quietly made `/tmp` one four-key token here
+            // while a real en-US + uk-UA machine sees a path.
+            let active = [LayoutId::from("en-US"), LayoutId::from("uk-UA")];
+            let layouts = Arc::new(
+                LayoutDb::load(crate::layouts::LoadOptions {
+                    active_filter: Some(&active),
+                    ..Default::default()
+                })
+                .expect("bundled layouts load"),
+            );
             let emitter = Arc::new(emitter);
             let mut switcher = MockSwitcher::new("en-US", &["en-US", "uk-UA"]);
             switcher.fail_switch = fail_switch;
@@ -528,6 +541,52 @@ mod engine_integration_tests {
             *h.switcher.switches.lock(),
             vec![LayoutId::from("uk-UA")],
             "`cj.p` is `союз` mistyped, not a hostname"
+        );
+    }
+
+    /// Regression: `/tmp ` came back as `/еьз `. The path segment ends
+    /// with an ordinary space, so the boundary that says "this is a
+    /// path" is the slash *before* it — and nothing was reading that.
+    #[test]
+    fn path_segment_after_a_slash_is_not_corrected() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us(&h, "cd /tmp ");
+        h.settle();
+        let switches = h.switcher.switches.lock().clone();
+        assert!(
+            switches.is_empty(),
+            "a path segment must not switch anything, got {switches:?}"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing should have been rewritten: {ops:?}"
+        );
+    }
+
+    /// The structural prefix must expire at the next separator, or one
+    /// slash in a line would disarm the engine for the rest of it.
+    #[test]
+    fn a_slash_earlier_in_the_line_still_leaves_prose_correctable() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us(&h, "/tmp ghbdsn ");
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "`ghbdsn` is `привіт` mistyped and opens after a space, not a slash"
         );
     }
 

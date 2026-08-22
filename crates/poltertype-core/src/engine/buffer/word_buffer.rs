@@ -15,6 +15,12 @@ pub struct WordBuffer {
     /// word, oldest first. Screen layout is
     /// `…<prev_word><boundary_run><keys>[caret]`.
     boundary_run: Vec<(u32, bool)>,
+    /// Boundary key immediately left of the word being typed, when one
+    /// was observed. `/tmp` and `foo tmp` are the same three letters to
+    /// every detector; only this says which.
+    lead: Option<(u32, bool)>,
+    /// `lead` of the completed word in `prev_word`.
+    prev_lead: Option<(u32, bool)>,
     /// Set when the current word's tracking is known-unreliable;
     /// cleared at the next boundary. See module docs.
     poisoned: bool,
@@ -35,6 +41,8 @@ impl Default for WordBuffer {
             keys: Vec::new(),
             prev_word: Vec::new(),
             boundary_run: Vec::new(),
+            lead: None,
+            prev_lead: None,
             poisoned: false,
             // Fresh tracking starts trusted: nothing is left of the
             // caret that we could be splitting.
@@ -58,6 +66,13 @@ impl WordBuffer {
     /// [`feed`](Self::feed) returned [`WordBoundary::WordCompleted`]).
     pub fn completed(&self) -> &[WordKey] {
         &self.prev_word
+    }
+
+    /// The separator the completed word opened after, if the buffer saw
+    /// one — valid at the same moment as [`Self::completed`]. `None`
+    /// after a caret move, where what precedes the word is unknown.
+    pub fn completed_lead(&self) -> Option<(u32, bool)> {
+        self.prev_lead
     }
 
     /// Boundary keys typed since the last completed word, oldest
@@ -112,6 +127,8 @@ impl WordBuffer {
         self.keys.clear();
         self.prev_word.clear();
         self.boundary_run.clear();
+        self.lead = None;
+        self.prev_lead = None;
     }
 
     /// The caret may now be anywhere — including mid-word in text the
@@ -127,6 +144,7 @@ impl WordBuffer {
     pub fn forget_completed(&mut self) {
         self.prev_word.clear();
         self.boundary_run.clear();
+        self.prev_lead = None;
     }
 
     /// Feed a [`KeyEvent`] with the character it produces under the
@@ -170,6 +188,9 @@ impl WordBuffer {
                 // separator we saw, so the caret cannot be mid-word.
                 self.poisoned = false;
                 self.context_clean = true;
+                // Whatever the last separator before the next word is,
+                // that word opened after it.
+                let lead = self.lead.replace((ev.scancode, ev.modifiers.shift));
                 if self.keys.is_empty() {
                     // A consecutive boundary (double space, ". "):
                     // extend the run guarding the stashed word.
@@ -187,6 +208,7 @@ impl WordBuffer {
                 let started_clean = self.word_clean;
                 self.prev_word = std::mem::take(&mut self.keys);
                 self.prev_clean = started_clean;
+                self.prev_lead = lead;
                 self.boundary_run.clear();
                 self.boundary_run.push((ev.scancode, ev.modifiers.shift));
                 if tainted {
@@ -212,6 +234,7 @@ impl WordBuffer {
                         // start-trust restored.
                         self.keys = std::mem::take(&mut self.prev_word);
                         self.word_clean = self.prev_clean;
+                        self.lead = self.prev_lead.take();
                     }
                     return WordBoundary::InProgress;
                 }
@@ -220,6 +243,7 @@ impl WordBuffer {
                 // drop caret-dependent state too — hence `Abandoned`.
                 self.poisoned = true;
                 self.context_clean = false;
+                self.lead = None;
                 WordBoundary::Abandoned
             }
             KeyKind::Discard => WordBoundary::InProgress,

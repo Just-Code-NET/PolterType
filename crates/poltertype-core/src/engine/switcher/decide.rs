@@ -99,16 +99,23 @@ impl SwitcherEngine {
             .map(|m| m.translate_buffer(&keys))
             .unwrap_or_default();
 
-        let boundary_char = self
-            .layouts
-            .get(&current_layout)
-            .and_then(|m| {
+        let render_key = |scancode: u32, shift: bool| {
+            self.layouts.get(&current_layout).and_then(|m| {
                 m.translate_key(poltertype_types::WordKey {
-                    scancode: boundary_scancode,
-                    shift: boundary_shift,
+                    scancode,
+                    shift,
                     timestamp_ms: 0,
                 })
             })
+        };
+
+        // The separator the word opened after — `/` of `/tmp`, `@` of
+        // `@nick`. Read before anything below can mutate the buffer.
+        let lead_char = buffer
+            .completed_lead()
+            .and_then(|(sc, shift)| render_key(sc, shift));
+
+        let boundary_char = render_key(boundary_scancode, boundary_shift)
             .or(match boundary_scancode {
                 0x39 => Some(' '),
                 0x1C | 0x60 => Some('\n'), // Enter / numpad Enter
@@ -235,6 +242,25 @@ impl SwitcherEngine {
             let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
                 reason: format!(
                     "structural boundary `{boundary_char}` after {} — likely URL / path / email / code",
+                    logsafe::redact_word(&current_text)
+                ),
+            });
+            return;
+        }
+
+        // Filter 0b-bis: the same characters *before* the word. Filter
+        // 0b only ever sees what ends a token, and a path segment ends
+        // with an ordinary space: `/tmp ` reached the detectors as a
+        // bare `tmp` and came back as `еьз`.
+        if let Some(lead) = lead_char.filter(|c| is_structural_boundary(*c)) {
+            debug!(
+                token = %logsafe::redact_word(&current_text),
+                lead = %lead,
+                "skipping auto-switch: structural prefix"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "structural prefix `{lead}` before {} — likely URL / path / email / code",
                     logsafe::redact_word(&current_text)
                 ),
             });
