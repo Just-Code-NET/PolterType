@@ -1,4 +1,4 @@
-# Known gaps (as of v0.17.7)
+# Known gaps (as of v0.17.8)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -11,12 +11,10 @@ stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
-**What the [Unreleased] pass has checked so far.** Nothing
-platform-specific, and for the same reason as the release before it:
-what has landed is one engine rule and one list of dictionary entries,
-identical code on every OS. What was run, on this Arch/Hyprland
-machine — re-stamp this heading with the version when the release is
-cut, and add whatever else ships with it:
+**What the 0.17.8 pass actually checked.** Two fixes: an engine rule
+plus a list of dictionary entries, which are the same code on every
+OS, and the Linux tooltip anchor, which is Linux only. Nothing on
+Windows or macOS moved. What was run, on this Arch/Hyprland machine:
 
 - **The whole workspace suite**, including two engine tests that fail
   on 0.17.7's code — one types `cd /tmp ` through the full pipeline and
@@ -35,11 +33,23 @@ cut, and add whatever else ships with it:
   tests were changed to load the same two layouts for that reason —
   before, they loaded all fifteen, and bg-BG's `б` on the `/` key made
   the harness disagree with every real machine.
+- **The tooltip anchor live**, on the four-output Hyprland session the
+  earlier placement work used — including a `transform: 3` output and
+  one at fractional scale — and against the real accessibility bus: VS
+  Code yields a caret that tracks the typing position, and a chat
+  client's background caret is refused while the editor is focused.
+  Nine applications across GTK, Qt, Chromium, Gecko, native Wayland and
+  XWayland were measured for the window-size check. What that pass did
+  **not** measure is an application on a fractionally-scaled output
+  answering in device pixels: it would disagree by the scale factor and
+  cost that window the caret rung, which is the direction to be wrong
+  in but is still untested.
 
 Not re-run: everything below that is not dated today — every Windows
-and macOS bullet, the tooltip backends, the updater, and the NixOS and
-systemd bullets stamped at 0.17.6. **The fixed build was not driven
-live through uinput**; the tests above are what this stamp rests on.
+and macOS bullet, the Windows and macOS tooltip backends, the updater,
+and the NixOS and systemd bullets stamped at 0.17.6. **The corrected
+engine was not driven live through uinput**; for that half the tests
+above are what this stamp rests on.
 
 **What the 0.17.7 pass actually checked.** Nothing platform-specific,
 because nothing platform-specific moved: the release is three changes to
@@ -330,7 +340,7 @@ what backs the Windows bullets.
   the focused window's bottom edge, which is right for a chat input
   and coarse for a caret mid-document. The pointer used to sit in
   that gap and is gone: an idle mouse dragged the tooltip to
-  wherever it was parked. Since 0.17.7 a caret is used **only when it
+  wherever it was parked. Since 0.17.8 a caret is used **only when it
   can be proved to belong to the focused window** — same process, same
   window size — because one desktop-wide slot holds whichever app
   moved a caret last, and a background chat window's caret composed

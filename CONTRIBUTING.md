@@ -174,6 +174,8 @@ crates/
                                 library is there before it aborts us)
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
   poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
+  poltertype-icon/    library — the brand mark as geometry: RGBA, PNG and
+                                .ico, so no binary asset lives in the repo
 data/                source-of-truth, committed; consumed by build.rs
   layout-mappings/   declarative scancode→char tables (TOML)
   wordlists/         <stem>.txt.gz / -extras.txt / -stop.txt

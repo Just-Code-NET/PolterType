@@ -15,7 +15,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.17.7 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.17.8 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland), **on Windows since
@@ -280,9 +280,12 @@ for words you already know it will get wrong, `word_whitelist` in
 > on macOS. Everything else — and **every app on Windows**, where
 > nothing reports the caret yet — gets it just above the window's
 > bottom edge, the neighbourhood of chat boxes and shell prompts. It
-> is never placed by your mouse pointer. On macOS the caret answer is
-> checked before it is trusted: Chrome and Terminal report one that is
-> nowhere near the text, and those fall back to the focused field.
+> is never placed by your mouse pointer. On both platforms the caret
+> answer is checked before it is trusted: on macOS Chrome and Terminal
+> report one that is nowhere near the text, and on Linux the whole
+> desktop shares one caret stream, so a caret counts only where it can
+> be proved to belong to the window you are typing in. Either check
+> failing costs that window the caret, not the tooltip.
 
 ## Smart commands (text triggers)
 
