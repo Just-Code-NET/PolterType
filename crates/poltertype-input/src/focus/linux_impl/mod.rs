@@ -16,6 +16,7 @@
 
 mod atspi_caret;
 mod atspi_focus;
+mod atspi_owner;
 mod cache;
 mod caret_only;
 mod consts;

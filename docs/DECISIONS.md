@@ -6,6 +6,87 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-22 — A caret sample is worthless without the window it came from
+
+The suggestion tooltip on Linux takes its position from one AT-SPI
+caret slot: a background thread folds every `object:text-caret-moved`
+signal on the a11y bus into a single "freshest sample", and the anchor
+composes those window-relative coordinates with the *focused* window's
+rect. Every application on the desktop writes into that slot, and
+nothing recorded whose caret it was. The consumer's only sanity check
+was whether the composed point landed inside the focused window —
+which, for a maximised window, almost anything does.
+
+That is fine exactly as long as the app being typed into is the one
+that last moved a caret. It usually is not. Terminals and editors that
+draw their own text have no accessibility bridge at all, and Electron
+apps emit caret events in the *background*: measured on this desktop, a
+chat client fired one every ~30 s while another window was focused, its
+caret sitting at (340, 553) of a 1062×606 window. Composed with a
+maximised editor's rect that becomes a point roughly a thousand pixels
+from where the user is actually typing — inside the window, so the
+check passed, and the tooltip appeared there.
+
+**A sample now carries its owner.** The watcher resolves the sending
+connection's PID off the a11y bus (`GetConnectionUnixProcessID`, the
+same trick the focus watcher uses) and walks the object's `Parent`
+chain to the toplevel to read the window size that application reports
+for itself. An event whose PID cannot be resolved is dropped rather
+than stored. The anchor accepts a caret only when both sides that can
+answer agree: same process, and a window size matching the
+compositor's rect. Nine applications were measured across GTK, Qt,
+Chromium, Gecko, native Wayland and XWayland, and every one of them
+reported its window size to the pixel, so that second check is
+precise rather than a tolerance, and it separates two windows of one
+process, which the PID alone cannot. What was *not* measured is an
+application on a fractionally-scaled output, where a toolkit answering
+in device pixels would disagree by the scale factor; the mismatch is
+logged with both sizes and costs that window the caret rung rather
+than misplacing anything, which is the direction to be wrong in.
+
+Cost: the parent walk is deep in web-based apps — a VS Code caret sits
+36 levels below its window — so the toplevel is cached per object, and
+a burst of caret events during typing pays for it once. The first
+attempt capped the walk at 32 hops and silently cost every Electron app
+its window identity.
+
+**Two smaller lies were on the same path.** `is_degenerate` treated
+only a zero-*area* rect as "no glyph here", but Chromium and Electron
+answer `(-1, -1, -1, -1)` for a caret offset of `-1`; that survived as
+a point one pixel outside the window and was rejected only by luck.
+And VS Code returns a zero rect for *every* offset, so its caret was
+never usable at all and the tooltip fell to the window's bottom-centre
+— itself far from a caret at the top of a file. The caret event there
+comes from the invisible one-character input Monaco parks at the caret
+for IME, whose own rectangle is the answer we wanted; it is now the
+last resort, guarded by a shape test so a chat composer's 610-px-wide
+box can never stand in for a caret and put the tooltip at the start of
+the line.
+
+**Placement stopped trusting a second source of truth.** The anchor
+used to carry the name and origin of the output containing it, looked
+up from Hyprland's `monitors` reply, because layer-shell margins are
+output-local. The popup thread is a Wayland client with its own,
+authoritative view of the same outputs — so it now finds the output
+whose logical rectangle contains the anchor point and measures the
+margins from that. A failed monitor lookup used to leave the origin at
+(0, 0) while the coordinates stayed global, which put the tooltip on
+the wrong monitor; that state cannot be reached any more, one IPC
+round-trip per tooltip is gone, and `PopupAnchor` lost three fields.
+The surface also declares `exclusive_zone = -1`: the placement is
+computed against the whole output, and without it the compositor
+measures the margins from whatever a panel's exclusive zone leaves
+over, sliding every tooltip by the height of the user's bar.
+
+Verified live on the four-output Hyprland session the earlier placement
+work used — including the `transform: 3` output (logical 1440×2560) and
+the fractional-scale one (2048×1280 at scale 1.25) — and against the
+real a11y bus: VS Code now yields a caret that tracks the typing
+position, and a chat client's background caret is refused while the
+editor is focused.
+
+---
+
 ## 2026-08-16 — Manifest signatures become mandatory, eight releases late
 
 `REQUIRE_SIGNATURE` was written as a two-stage rollout with an explicit

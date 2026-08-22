@@ -138,22 +138,20 @@ Window 55df4e97c880 -> kitty:
 ";
 
 #[test]
-fn parse_rect_extracts_position_size_and_monitor() {
+fn parse_rect_extracts_position_and_size() {
     let rect = super::hyprland_ipc::parse_active_window_rect(ACTIVE_WINDOW_WITH_GEOMETRY);
-    assert_eq!(rect, Some((2571, 26, 1268, 1388, 1)));
+    assert_eq!(rect, Some((2571, 26, 1268, 1388)));
 }
 
 #[test]
-fn parse_rect_requires_all_three_fields() {
-    // No `monitor:` line → no geometry (a rect on an unknown output
-    // could place the tooltip on the wrong screen).
-    let no_monitor = ACTIVE_WINDOW_WITH_GEOMETRY
+fn parse_rect_requires_both_lines() {
+    let no_size = ACTIVE_WINDOW_WITH_GEOMETRY
         .lines()
-        .filter(|l| !l.trim_start().starts_with("monitor:"))
+        .filter(|l| !l.trim_start().starts_with("size:"))
         .collect::<Vec<_>>()
         .join("\n");
     assert_eq!(
-        super::hyprland_ipc::parse_active_window_rect(&no_monitor),
+        super::hyprland_ipc::parse_active_window_rect(&no_size),
         None
     );
     assert_eq!(
@@ -163,51 +161,51 @@ fn parse_rect_requires_all_three_fields() {
 }
 
 #[test]
-fn parse_monitors_extracts_name_id_and_origin() {
-    let reply = "\
-Monitor eDP-1 (ID 0):
-\t2560x1440@165.00301 at 0x0
-\tdescription: Some Panel
-\tscale: 1.00
-Monitor DP-3 (ID 1):
-\t3840x2160@60.00000 at 2560x0
-\tdescription: Big External
-\tscale: 1.50
-";
-    let monitors = super::hyprland_ipc::parse_monitors(reply);
-    assert_eq!(monitors.len(), 2);
-    assert_eq!(monitors[0].name, "eDP-1");
-    assert_eq!(monitors[0].id, 0);
-    assert_eq!((monitors[0].x, monitors[0].y), (0, 0));
-    assert_eq!(monitors[1].name, "DP-3");
-    assert_eq!(monitors[1].id, 1);
-    assert_eq!((monitors[1].x, monitors[1].y), (2560, 0));
-}
-
-#[test]
-fn parse_monitors_handles_negative_origins() {
-    let reply = "\
-Monitor DP-2 (ID 3):
-\t1920x1080@60.00000 at -1920x-360
-";
-    let monitors = super::hyprland_ipc::parse_monitors(reply);
-    assert_eq!(monitors.len(), 1);
-    assert_eq!((monitors[0].x, monitors[0].y), (-1920, -360));
+fn parse_rect_handles_a_window_on_a_negative_origin_monitor() {
+    let reply = "\tat: -1920,-360\n\tsize: 1920,1080\n";
+    assert_eq!(
+        super::hyprland_ipc::parse_active_window_rect(reply),
+        Some((-1920, -360, 1920, 1080))
+    );
 }
 
 // ─── AT-SPI caret extents fallback (pure logic) ──────────────────────
 
-use super::atspi_caret::{CaretSample, anchor_from_rect, is_degenerate, retry_offset};
+use super::atspi_caret::{
+    CaretSample, anchor_from_rect, is_caret_shaped, is_degenerate, retry_offset,
+};
+use super::atspi_owner::CaretOwner;
 
 #[test]
-fn degenerate_rect_is_zero_area_only() {
+fn degenerate_rect_is_zero_area_or_negative() {
     // Fully collapsed rect = the end-of-text caret answer.
     assert!(is_degenerate((100, 200, 0, 0)));
+    // Chromium and Electron answer this for "no caret here"; taken at
+    // face value it anchors one pixel off the window's top-left.
+    assert!(is_degenerate((-1, -1, -1, -1)));
+    assert!(is_degenerate((100, 200, 8, -1)));
     // Zero width alone is a zero-advance glyph (combining mark) — a
     // real position, not a failure.
     assert!(!is_degenerate((100, 200, 0, 16)));
     assert!(!is_degenerate((100, 200, 8, 0)));
     assert!(!is_degenerate((100, 200, 8, 16)));
+}
+
+#[test]
+fn caret_shaped_accepts_a_glyph_box_and_refuses_a_text_field() {
+    // VS Code's hidden IME input, parked exactly at the caret.
+    assert!(is_caret_shaped((830, 1203, 7, 17)));
+    // A zero-width caret is still a caret.
+    assert!(is_caret_shaped((830, 1203, 0, 17)));
+    // Tall lines allow a proportionally wider box.
+    assert!(is_caret_shaped((0, 0, 30, 40)));
+    // A chat composer and a page section are fields, not carets: their
+    // left edge is the start of the line, not where the typing is.
+    assert!(!is_caret_shaped((340, 551, 610, 25)));
+    assert!(!is_caret_shaped((223, 1131, 255, 36)));
+    // Nothing with no height can stand in for a caret.
+    assert!(!is_caret_shaped((0, 0, 0, 0)));
+    assert!(!is_caret_shaped((0, 0, 4, -1)));
 }
 
 #[test]
@@ -241,15 +239,68 @@ fn anchor_clamps_negative_height_and_saturates_x() {
 }
 
 #[test]
-fn caret_sample_hint_carries_coordinates_and_age() {
+fn caret_sample_hint_carries_coordinates_age_and_owner() {
     let earlier = std::time::Instant::now() - Duration::from_millis(50);
     let sample = CaretSample {
         x: 3,
         y: 4,
         height: 5,
         at: earlier,
+        owner: CaretOwner {
+            pid: 4242,
+            window: Some((800, 600)),
+        },
     };
     let hint = sample.into_hint();
     assert_eq!((hint.x, hint.y, hint.height), (3, 4, 5));
     assert!(hint.age >= Duration::from_millis(50));
+    // Without these the consumer cannot tell this caret apart from one
+    // the app the user is typing in never produced.
+    assert_eq!(hint.pid, Some(4242));
+    assert_eq!(hint.window, Some((800, 600)));
+}
+
+/// Live check of everything the suggestion tooltip anchors on: samples
+/// the tracker once a second and prints the focused window next to the
+/// caret hint, so a wrong tooltip position on a real desktop can be
+/// traced to whichever of the two lied. Type in a few applications
+/// while it runs — including one with no accessibility bridge, which
+/// is where a caret left over from another window used to win.
+///
+/// ```text
+/// cargo test -p poltertype-input -- --ignored --nocapture live_anchor_inputs
+/// ```
+#[test]
+#[ignore = "requires a live desktop, an a11y bus and someone typing"]
+fn live_anchor_inputs_agree_on_the_focused_window() {
+    let tracker = super::create_linux_focus_tracker();
+    println!("backend={}", tracker.backend_name());
+    for _ in 0..60 {
+        let geometry = tracker.focused_window_geometry();
+        let caret = tracker.caret_hint();
+        match (&geometry, &caret) {
+            (Some(g), Some(c)) => {
+                let same_pid = g.pid == c.pid;
+                let same_window = c.window.is_none_or(|wh| wh == (g.width, g.height));
+                println!(
+                    "window pid={:?} at=({}, {}) size=({}, {}) | caret pid={:?} \
+                     window={:?} at=({}, {}) h={} age={}ms | same_pid={same_pid} \
+                     same_window={same_window}",
+                    g.pid,
+                    g.x,
+                    g.y,
+                    g.width,
+                    g.height,
+                    c.pid,
+                    c.window,
+                    c.x,
+                    c.y,
+                    c.height,
+                    c.age.as_millis()
+                );
+            }
+            (g, c) => println!("geometry={g:?} caret={c:?}"),
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
 }

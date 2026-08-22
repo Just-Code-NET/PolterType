@@ -365,7 +365,7 @@ impl X11State {
                 x + (width as i32 - w as i32) / 2,
                 y + height as i32 - BOTTOM_OFFSET - h as i32,
             ),
-            PopupAnchor::ScreenBottom { .. } => (
+            PopupAnchor::ScreenBottom => (
                 (self.screen_w as i32 - w as i32) / 2,
                 self.screen_h as i32 - BOTTOM_OFFSET - h as i32,
             ),
