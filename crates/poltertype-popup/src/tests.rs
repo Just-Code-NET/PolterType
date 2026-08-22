@@ -26,7 +26,7 @@ fn model(entries: Vec<PopupEntry>, accept_hint: Option<&str>) -> PopupModel {
         entries,
         accept_hint: accept_hint.map(str::to_string),
         timeout: Duration::from_secs(4),
-        anchor: PopupAnchor::ScreenBottom { output: None },
+        anchor: PopupAnchor::ScreenBottom,
     }
 }
 

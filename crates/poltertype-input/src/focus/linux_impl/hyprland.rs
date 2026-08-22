@@ -5,10 +5,7 @@ use std::sync::Arc;
 use crate::focus::{CaretHint, FocusTracker, FocusedWindowGeometry};
 
 use super::atspi_caret::{AtspiCaretWatcher, CaretSample};
-use super::hyprland_ipc::{
-    active_window_reply, monitors_reply, parse_active_window, parse_active_window_rect,
-    parse_monitors,
-};
+use super::hyprland_ipc::{active_window_reply, parse_active_window, parse_active_window_rect};
 use super::proc_exe::exe_basename_for_pid;
 
 /// Focus via Hyprland's `activewindow` IPC query. Prefers the window's
@@ -36,26 +33,14 @@ impl FocusTracker for HyprlandFocusTracker {
 
     fn focused_window_geometry(&self) -> Option<FocusedWindowGeometry> {
         let reply = active_window_reply()?;
-        let (x, y, width, height, monitor_id) = parse_active_window_rect(&reply)?;
-        // Resolve the owning monitor for output-local placement.
-        // A miss (hotplug race, parse drift across Hyprland versions)
-        // degrades to "no output info" — the popup then lets the
-        // compositor pick the output, which is still on screen.
-        let monitor = monitors_reply()
-            .map(|r| parse_monitors(&r))
-            .and_then(|ms| ms.into_iter().find(|m| m.id == monitor_id));
-        let (output, output_x, output_y) = match monitor {
-            Some(m) => (Some(m.name), m.x, m.y),
-            None => (None, 0, 0),
-        };
+        let (x, y, width, height) = parse_active_window_rect(&reply)?;
+        let (pid, _) = parse_active_window(&reply);
         Some(FocusedWindowGeometry {
             x,
             y,
             width,
             height,
-            output,
-            output_x,
-            output_y,
+            pid,
         })
     }
 

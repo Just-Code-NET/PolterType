@@ -320,8 +320,11 @@ impl MacosFocusTracker {
             x: rect.origin.x as i32 - window.origin.x as i32,
             y: rect.origin.y as i32 - window.origin.y as i32,
             height: rect.size.height as u32,
-            // A live query, not a cached sample — always fresh.
+            // A live query, not a cached sample — always fresh, and by
+            // construction from the window it will be composed with.
             age: Duration::ZERO,
+            pid: None,
+            window: None,
         }
     }
 }
@@ -350,11 +353,10 @@ impl FocusTracker for MacosFocusTracker {
             y: rect.origin.y as i32,
             width: rect.size.width as u32,
             height: rect.size.height as u32,
-            // Global top-left coordinates are already global on macOS;
-            // the output fields are a Wayland-only concern.
-            output: None,
-            output_x: 0,
-            output_y: 0,
+            // A caret hint here is read live off the frontmost
+            // application's focused window, so it needs no proof of
+            // ownership to be matched against.
+            pid: None,
         })
     }
 

@@ -205,9 +205,7 @@ fn query_focused_geometry(s: &X11FocusConn) -> Result<Option<FocusedWindowGeomet
         y: i32::from(xlate.dst_y),
         width: u32::from(geom.width),
         height: u32::from(geom.height),
-        output: None,
-        output_x: 0,
-        output_y: 0,
+        pid: first_u32_prop(s, window, s.net_wm_pid, AtomEnum::CARDINAL.into())?,
     }))
 }
 
