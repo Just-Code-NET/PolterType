@@ -345,7 +345,7 @@ fn anchor_point(anchor: &PopupAnchor) -> (f64, f64) {
             (x + width as i32 / 2) as f64,
             (y + height as i32 / 2) as f64,
         ),
-        PopupAnchor::ScreenBottom => {
+        PopupAnchor::ScreenBottom { .. } => {
             let (vx, vy, vw, vh) = display_union();
             (vx + vw / 2.0, vy + vh / 2.0)
         }
@@ -414,7 +414,9 @@ fn place(w: f64, h: f64, anchor: &PopupAnchor) -> (f64, f64) {
             x as f64 + (width as f64 - w) / 2.0,
             y as f64 + height as f64 - BOTTOM_OFFSET as f64 - h,
         ),
-        PopupAnchor::ScreenBottom => (vx + (vw - w) / 2.0, vy + vh - BOTTOM_OFFSET as f64 - h),
+        PopupAnchor::ScreenBottom { .. } => {
+            (vx + (vw - w) / 2.0, vy + vh - BOTTOM_OFFSET as f64 - h)
+        }
     };
     (
         px.clamp(vx, (vx + vw - w).max(vx)),

@@ -149,16 +149,6 @@ struct View {
     deadline: Instant,
 }
 
-/// An output the tooltip can be placed on, reduced to what placement
-/// needs: the handle to pin the layer surface to, and its rectangle in
-/// the compositor's global logical space.
-struct TargetOutput {
-    output: wl_output::WlOutput,
-    origin: (i32, i32),
-    size: (i32, i32),
-    scale: i32,
-}
-
 struct WlState {
     registry_state: RegistryState,
     output_state: OutputState,
@@ -260,58 +250,6 @@ fn pump(queue: &mut EventQueue<WlState>, state: &mut WlState) -> Result<(), Disp
     queue.dispatch_pending(state).map(drop)
 }
 
-/// The global point that decides which output the tooltip belongs to:
-/// the caret itself, or — for a window anchor — the spot near the
-/// window's bottom edge the tooltip is about to occupy, which is what
-/// matters for a window straddling two screens.
-fn anchor_point(anchor: &PopupAnchor) -> Option<(i32, i32)> {
-    match *anchor {
-        PopupAnchor::Point { x, y, .. } => Some((x, y)),
-        PopupAnchor::WindowRect {
-            x,
-            y,
-            width,
-            height,
-        } => Some((
-            x + width as i32 / 2,
-            (y + height as i32 - BOTTOM_OFFSET).max(y),
-        )),
-        PopupAnchor::ScreenBottom => None,
-    }
-}
-
-/// Top-left of a `w`×`h` tooltip in `target`-local logical pixels, the
-/// space layer-shell margins are measured in.
-fn place_on_output(
-    anchor: &PopupAnchor,
-    target: &TargetOutput,
-    w: i32,
-    h: i32,
-) -> Option<(i32, i32)> {
-    let (ox, oy) = target.origin;
-    let (bw, bh) = target.size;
-    match *anchor {
-        PopupAnchor::Point { x, y, height } => Some(crate::place::place_near_point(
-            x - ox,
-            y - oy,
-            y - oy + height as i32,
-            w,
-            h,
-            Some(target.size),
-        )),
-        PopupAnchor::WindowRect {
-            x,
-            y,
-            width,
-            height,
-        } => Some((
-            ((x - ox) + (width as i32 - w) / 2).clamp(0, (bw - w).max(0)),
-            ((y - oy) + height as i32 - BOTTOM_OFFSET - h).clamp(0, (bh - h).max(0)),
-        )),
-        PopupAnchor::ScreenBottom => None,
-    }
-}
-
 impl WlState {
     fn new(
         globals: &GlobalList,
@@ -349,18 +287,12 @@ impl WlState {
         // dance, and layer surfaces are cheap.
         self.view = None;
 
-        let target = self.target_output(&model.anchor);
-        let scale = target
-            .as_ref()
-            .map_or_else(|| self.sharpest_scale(), |t| t.scale);
+        let (output, scale) = self.pick_output(&model.anchor);
         let rendered = self.renderer.render(&model, None, scale as f32);
         // The renderer keeps device size an exact multiple of the
         // integer scale, so this division is lossless.
         let logical_w = rendered.pixmap.width() / scale as u32;
         let logical_h = rendered.pixmap.height() / scale as u32;
-        let placement = target
-            .as_ref()
-            .and_then(|t| place_on_output(&model.anchor, t, logical_w as i32, logical_h as i32));
 
         let surface = self.compositor.create_surface(qh);
         let layer = self.layer_shell.create_layer_surface(
@@ -368,22 +300,56 @@ impl WlState {
             surface,
             Layer::Overlay,
             Some("poltertype-suggestions"),
-            // Pinned to the output the placement was computed for, and
-            // to nothing at all otherwise: margins mean nothing on a
-            // screen we did not measure.
-            placement.and(target.as_ref()).map(|t| &t.output),
+            output.as_ref(),
         );
         layer.set_keyboard_interactivity(KeyboardInteractivity::None);
         layer.set_size(logical_w, logical_h);
 
+        // `None` = bottom-centred on the output.
+        let output_size = output
+            .as_ref()
+            .and_then(|o| self.output_state.info(o))
+            .and_then(|info| info.logical_size);
+        let placement: Option<(i32, i32)> = match model.anchor {
+            PopupAnchor::Point {
+                x,
+                y,
+                height,
+                output_x,
+                output_y,
+                ..
+            } => Some(crate::place::place_near_point(
+                x - output_x,
+                y - output_y,
+                y - output_y + height as i32,
+                logical_w as i32,
+                logical_h as i32,
+                output_size,
+            )),
+            PopupAnchor::WindowRect {
+                x,
+                y,
+                width,
+                height,
+                output_x,
+                output_y,
+                ..
+            } => {
+                let mut local_x = (x - output_x) + (width as i32 - logical_w as i32) / 2;
+                let mut local_y = (y - output_y) + height as i32 - BOTTOM_OFFSET - logical_h as i32;
+                if let Some((out_w, out_h)) = output_size {
+                    local_x = local_x.clamp(0, (out_w - logical_w as i32).max(0));
+                    local_y = local_y.clamp(0, (out_h - logical_h as i32).max(0));
+                } else {
+                    local_x = local_x.max(0);
+                    local_y = local_y.max(0);
+                }
+                Some((local_x, local_y))
+            }
+            PopupAnchor::ScreenBottom { .. } => None,
+        };
         match placement {
             Some((local_x, local_y)) => {
-                // The placement is measured against the whole output,
-                // so the margins must be too — left at the default the
-                // compositor measures them from whatever a panel's
-                // exclusive zone leaves over, sliding the tooltip by
-                // the height of the user's bar.
-                layer.set_exclusive_zone(-1);
                 layer.set_anchor(Anchor::TOP | Anchor::LEFT);
                 layer.set_margin(local_y, 0, 0, local_x);
             }
@@ -401,8 +367,8 @@ impl WlState {
             w = rendered.pixmap.width(),
             h = rendered.pixmap.height(),
             scale,
-            output = ?target.as_ref().and_then(|t| self.output_state.info(&t.output)).and_then(|i| i.name),
-            output_rect = ?target.as_ref().map(|t| (t.origin, t.size)),
+            resolved_output = ?output.as_ref().and_then(|o| self.output_state.info(o)).and_then(|i| i.name),
+            ?output_size,
             ?placement,
             "popup surface mapped"
         );
@@ -418,41 +384,38 @@ impl WlState {
         });
     }
 
-    /// The output the anchor points into, when the compositor has said
-    /// where its outputs are.
-    ///
-    /// Resolved from the anchor's own global coordinates rather than
-    /// from a name the caller looked up elsewhere: this list is what
-    /// the margins are measured against, and a second source of truth
-    /// for the same layout can only ever disagree with it.
-    fn target_output(&self, anchor: &PopupAnchor) -> Option<TargetOutput> {
-        let (x, y) = anchor_point(anchor)?;
-        self.output_state.outputs().find_map(|output| {
-            let info = self.output_state.info(&output)?;
-            let origin = info.logical_position?;
-            let size = info.logical_size?;
-            let inside =
-                x >= origin.0 && x < origin.0 + size.0 && y >= origin.1 && y < origin.1 + size.1;
-            inside.then_some(TargetOutput {
-                output,
-                origin,
-                size,
-                scale: info.scale_factor.max(1),
+    /// Output the anchor names, plus its integer scale (1 if unknown).
+    fn pick_output(&self, anchor: &PopupAnchor) -> (Option<wl_output::WlOutput>, i32) {
+        let wanted = match anchor {
+            PopupAnchor::Point { output, .. }
+            | PopupAnchor::WindowRect { output, .. }
+            | PopupAnchor::ScreenBottom { output } => output.as_deref(),
+        };
+        let output = wanted.and_then(|name| {
+            self.output_state.outputs().find(|o| {
+                self.output_state
+                    .info(o)
+                    .and_then(|info| info.name)
+                    .is_some_and(|n| n == name)
             })
-        })
-    }
-
-    /// Scale to render at when the compositor will pick the output:
-    /// the sharpest one, so the tooltip is never blurry wherever it
-    /// lands.
-    fn sharpest_scale(&self) -> i32 {
-        self.output_state
-            .outputs()
-            .filter_map(|o| self.output_state.info(&o))
-            .map(|info| info.scale_factor)
-            .max()
-            .unwrap_or(1)
-            .max(1)
+        });
+        let scale = match &output {
+            Some(o) => self
+                .output_state
+                .info(o)
+                .map(|info| info.scale_factor)
+                .unwrap_or(1),
+            // Compositor picks the output; render for the sharpest one
+            // so we never look blurry there.
+            None => self
+                .output_state
+                .outputs()
+                .filter_map(|o| self.output_state.info(&o))
+                .map(|info| info.scale_factor)
+                .max()
+                .unwrap_or(1),
+        };
+        (output, scale.max(1))
     }
 
     /// Upload the rendered pixmap. Only valid once configured.

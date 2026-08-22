@@ -81,9 +81,11 @@ impl FocusTracker for WindowsFocusTracker {
                 y: rect.top,
                 width,
                 height,
-                // No caret source on Windows, so nothing ever has to be
-                // proved to belong to this window.
-                pid: None,
+                // Virtual-screen coordinates are already global on
+                // Windows; no output mapping needed.
+                output: None,
+                output_x: 0,
+                output_y: 0,
             })
         }
     }

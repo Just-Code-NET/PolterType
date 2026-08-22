@@ -6,26 +6,6 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — 0.17.7
 
-### Fixed — the suggestion tooltip appears where you are typing (Linux)
-
-- **A caret reported by one application can no longer place the tooltip
-  in another.** Every app on the desktop feeds the same accessibility
-  caret stream, and PolterType kept only the freshest position without
-  recording whose it was — so a chat window updating in the background,
-  or the editor you left a moment ago, decided where the tooltip went
-  in the terminal you are typing in now. Anything that landed inside
-  the focused window was accepted. Each caret is now tied to the
-  process and window that reported it, and used only there.
-
-- **VS Code and other web-based editors get a real caret.** They answer
-  no glyph rectangle for any position, so the tooltip used to fall back
-  to the bottom-centre of the window — a long way from a caret near the
-  top of a file. It now follows the caret itself.
-
-- **The tooltip can no longer land on the wrong monitor**, and no longer
-  slides by the height of a panel. Placement is measured against the
-  screen the anchor is actually on, as the compositor reports it.
-
 ### Fixed — typing a path no longer rewrites it
 
 - **A word that *starts* with `:` `/` `\` `@` `=` `#` `&` is left

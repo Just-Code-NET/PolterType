@@ -181,7 +181,7 @@ fn anchor_probe(anchor: &PopupAnchor) -> (i32, i32) {
             height,
             ..
         } => (x + width as i32 / 2, y + height as i32 / 2),
-        PopupAnchor::ScreenBottom => {
+        PopupAnchor::ScreenBottom { .. } => {
             let (vx, vy, vw, vh) = PopupWindow::virtual_screen();
             (vx + vw / 2, vy + vh / 2)
         }
@@ -219,7 +219,7 @@ fn place(w: i32, h: i32, anchor: &PopupAnchor) -> (i32, i32) {
             x + (width as i32 - w) / 2,
             y + height as i32 - BOTTOM_OFFSET - h,
         ),
-        PopupAnchor::ScreenBottom => (vx + (vw - w) / 2, vy + vh - BOTTOM_OFFSET - h),
+        PopupAnchor::ScreenBottom { .. } => (vx + (vw - w) / 2, vy + vh - BOTTOM_OFFSET - h),
     };
     (
         px.clamp(vx, (vx + vw - w).max(vx)),

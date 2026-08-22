@@ -29,7 +29,6 @@ use zbus::blocking::connection::Builder;
 use zbus::blocking::{Connection, MessageIterator};
 use zbus::{MatchRule, Message, message};
 
-use super::atspi_owner::connection_pid;
 use super::proc_exe::exe_basename_for_pid;
 
 /// Per-iterator signal queue. Focus changes are rare next to caret
@@ -185,6 +184,25 @@ fn sample_for_signal(conn: &Connection, msg: &Message) -> Option<FocusSample> {
         exe,
         at: Instant::now(),
     })
+}
+
+/// Ask the a11y bus which process owns a connection.
+///
+/// This is the whole trick: the app talks to the a11y bus itself, so
+/// the bus daemon knows its PID and will say. No compositor, no
+/// extension, no user-installed script.
+fn connection_pid(conn: &Connection, sender: &str) -> Option<u32> {
+    let reply = conn
+        .call_method(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            Some("org.freedesktop.DBus"),
+            "GetConnectionUnixProcessID",
+            &(sender,),
+        )
+        .map_err(|e| debug!(%e, "AT-SPI focus: PID lookup failed"))
+        .ok()?;
+    reply.body().deserialize::<u32>().ok()
 }
 
 #[cfg(test)]

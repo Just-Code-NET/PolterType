@@ -8,12 +8,6 @@
 //! fails [`AtspiCaretWatcher::try_new`] and callers fall back to window
 //! anchoring.
 //!
-//! Every application on the bus emits into that one slot, so a sample
-//! is worth nothing without the identity of the window it came from
-//! attached — see [`super::atspi_owner`]. An event whose owner cannot
-//! be established is dropped rather than stored: the consumer would
-//! otherwise compose one app's coordinates with another app's window.
-//!
 //! PRIVACY: this module must never read or log *text*. Offsets and
 //! glyph rectangles only — no `GetText` / `GetTextAtOffset`, ever.
 
@@ -30,8 +24,14 @@ use zbus::{MatchRule, Message, message};
 
 use crate::focus::CaretHint;
 
-use super::atspi_owner::{CaretOwner, OwnerLookup};
-use super::consts::COORD_TYPE_WINDOW;
+/// `ATSPI_COORD_TYPE_WINDOW` — extents relative to the object's
+/// toplevel window. Chosen over `SCREEN` (0) deliberately: a
+/// native-Wayland toolkit cannot know its global position, so its
+/// SCREEN answers are anchored at the window's *initial* placement
+/// and go stale the moment the compositor re-tiles it (observed live
+/// with kate on Hyprland). Window-relative extents stay correct; the
+/// consumer composes them with the compositor's live window rect.
+const COORD_TYPE_WINDOW: u32 = 1;
 
 /// Per-iterator signal queue. Caret events burst during fast typing
 /// and we only ever serve the newest sample, so a small queue that
@@ -49,7 +49,6 @@ pub(crate) struct CaretSample {
     pub(crate) y: i32,
     pub(crate) height: u32,
     pub(crate) at: Instant,
-    pub(crate) owner: CaretOwner,
 }
 
 impl CaretSample {
@@ -62,8 +61,6 @@ impl CaretSample {
             y: self.y,
             height: self.height,
             age: self.at.elapsed(),
-            pid: Some(self.owner.pid),
-            window: self.owner.window,
         }
     }
 }
@@ -192,7 +189,6 @@ impl AtspiCaretWatcher {
 /// reconnect logic isn't worth its failure modes yet, and the caller
 /// degrades to window anchoring either way.
 fn watch(conn: &Connection, messages: MessageIterator, latest: &Mutex<Option<CaretSample>>) {
-    let mut owners = OwnerLookup::default();
     for msg in messages {
         let msg = match msg {
             Ok(m) => m,
@@ -201,7 +197,7 @@ fn watch(conn: &Connection, messages: MessageIterator, latest: &Mutex<Option<Car
                 return;
             }
         };
-        if let Some(sample) = sample_for_signal(conn, &mut owners, &msg) {
+        if let Some(sample) = sample_for_signal(conn, &msg) {
             *latest.lock() = Some(sample);
         }
     }
@@ -211,24 +207,18 @@ fn watch(conn: &Connection, messages: MessageIterator, latest: &Mutex<Option<Car
 /// One `TextCaretMoved` signal → a caret sample. The sender's unique
 /// bus name plus the signal's object path identify the accessible
 /// object; its `org.a11y.atspi.Text` interface answers the extents
-/// queries and `owners` answers whose window they describe.
-fn sample_for_signal(
-    conn: &Connection,
-    owners: &mut OwnerLookup,
-    msg: &Message,
-) -> Option<CaretSample> {
+/// queries.
+fn sample_for_signal(conn: &Connection, msg: &Message) -> Option<CaretSample> {
     let header = msg.header();
     let sender = header.sender()?;
     let path = header.path()?;
     let offset = caret_offset_from_body(&msg.body())?;
     let (x, y, height) = resolve_caret_point(conn, sender.as_str(), path, offset)?;
-    let owner = owners.resolve(conn, sender.as_str(), path)?;
     Some(CaretSample {
         x,
         y,
         height,
         at: Instant::now(),
-        owner,
     })
 }
 
@@ -273,22 +263,12 @@ fn resolve_caret_point(
             }
         }
     }
-    // Some clients emit the event before their own state settles — ask
-    // the object where it now thinks the caret is and try once more.
-    if let Some(caret) = caret_offset_property(conn, sender, path) {
-        if let Some(rect) = character_extents(conn, sender, path, caret) {
-            if !is_degenerate(rect) {
-                return Some(anchor_from_rect(rect, false));
-            }
-        }
-    }
-    // Web-based editors draw their own text and answer no glyph
-    // rectangle at all; the caret event then comes from the invisible
-    // one-character input they park *at* the caret for IME, whose own
-    // rectangle is the answer we wanted (measured in VS Code, whose
-    // every offset returns a zero rect).
-    let rect = object_extents(conn, sender, path)?;
-    is_caret_shaped(rect).then(|| anchor_from_rect(rect, false))
+    // Last resort: some clients emit the event before their own state
+    // settles — ask the object where it now thinks the caret is and
+    // try once more. Still degenerate → give up on this event.
+    let caret = caret_offset_property(conn, sender, path)?;
+    let rect = character_extents(conn, sender, path, caret)?;
+    (!is_degenerate(rect)).then(|| anchor_from_rect(rect, false))
 }
 
 /// `GetCharacterExtents` on the signal's accessible, in [window
@@ -314,26 +294,6 @@ fn character_extents(
     reply.body().deserialize::<Extents>().ok()
 }
 
-/// The accessible's own rectangle, in the same [window
-/// coordinates](COORD_TYPE_WINDOW) as [`character_extents`].
-pub(super) fn object_extents(
-    conn: &Connection,
-    sender: &str,
-    path: &ObjectPath<'_>,
-) -> Option<Extents> {
-    let reply = conn
-        .call_method(
-            Some(sender),
-            path.clone(),
-            Some("org.a11y.atspi.Component"),
-            "GetExtents",
-            &(COORD_TYPE_WINDOW,),
-        )
-        .map_err(|e| debug!(%e, "AT-SPI caret watcher: GetExtents failed"))
-        .ok()?;
-    reply.body().deserialize::<Extents>().ok()
-}
-
 /// The object's current caret offset, via the `CaretOffset` property.
 /// (libatspi's `atspi_text_get_caret_offset` maps to this property —
 /// there is no `GetCaretOffset` *method* on the wire.)
@@ -354,22 +314,12 @@ fn caret_offset_property(conn: &Connection, sender: &str, path: &ObjectPath<'_>)
     }
 }
 
-/// A rect that names no glyph. Zero-area is the end-of-text caret
-/// position and the answer of objects that cannot measure; the
-/// all-`-1` rect is what Chromium and Electron return for a caret
-/// offset of `-1` ("no caret here"), and it must not be mistaken for
-/// a point one pixel outside the window. (A zero *width* alone is
-/// legitimate — zero-advance combining marks.)
+/// A zero-area rect: no glyph at that offset. Typical for the
+/// end-of-text caret position and for objects that cannot answer.
+/// (A zero *width* alone is legitimate — zero-advance combining
+/// marks — so only the fully collapsed rect counts as degenerate.)
 pub(super) fn is_degenerate((_, _, width, height): Extents) -> bool {
-    width < 0 || height < 0 || (width == 0 && height == 0)
-}
-
-/// Whether a rect is narrow enough to *be* a caret rather than the
-/// field containing one. A text box's left edge would put the tooltip
-/// at the start of the line instead of where the typing is, so only a
-/// box no wider than a character or so may stand in for the caret.
-pub(super) fn is_caret_shaped((_, _, width, height): Extents) -> bool {
-    height > 0 && width >= 0 && width <= 12.max(height.saturating_mul(3) / 2)
+    width == 0 && height == 0
 }
 
 /// The offset to retry with when the event offset has no glyph: the

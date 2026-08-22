@@ -330,15 +330,8 @@ what backs the Windows bullets.
   the focused window's bottom edge, which is right for a chat input
   and coarse for a caret mid-document. The pointer used to sit in
   that gap and is gone: an idle mouse dragged the tooltip to
-  wherever it was parked. Since 0.17.7 a caret is used **only when it
-  can be proved to belong to the focused window** — same process, same
-  window size — because one desktop-wide slot holds whichever app
-  moved a caret last, and a background chat window's caret composed
-  with a maximised editor's rect placed the tooltip a thousand pixels
-  off. The honest reading of that rung is therefore "caret-accurate in
-  apps with a live bridge, window-accurate everywhere else", never
-  "caret-accurate on Linux". See `docs/DECISIONS.md`, 2026-07-24,
-  2026-07-29 and 2026-08-22.
+  wherever it was parked. See `docs/DECISIONS.md`,
+  2026-07-24 and 2026-07-29.
   **Windows has a backend since 0.11.0** — a layered, topmost,
   `WS_EX_NOACTIVATE` window fed by `UpdateLayeredWindow`, sharing the
   renderer and the placement arithmetic the Linux backends already
