@@ -4,7 +4,7 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 0.17.7
+## [0.17.8] — a path is not prose, and a caret has an owner
 
 ### Fixed — the suggestion tooltip appears where you are typing (Linux)
 
