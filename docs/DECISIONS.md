@@ -3062,3 +3062,51 @@ rediscovered by a user.
 word.** That is the same test inverted, and it retires the case the
 gesture exists for: uk-UA `туче` is valid but `weak`, loses to en-US
 `next`, and teaching it is exactly how a user says "no, I meant туче".
+
+## 2026-08-22 — A separator says what a token is from either side
+
+`/tmp ` came back as `/еьз `. Nothing about the token was ambiguous to
+a human: it is a path, and the slash says so.
+
+The engine had the rule already — `is_structural_boundary` vetoes
+auto-switching after `:` `/` `\` `@` `=` `#` `&`, which is what keeps
+`http:` and `just-code.net/` intact. It only ever looked at the key
+that *closed* the word, and a path segment closes with an ordinary
+space. `tmp` therefore reached the detectors bare, where it is exactly
+the shape the word-plausibility scorer is worst at: no vowels at all
+under en-US (0.25), a textbook vowel ratio under uk-UA (`еьз`, 1.00).
+The dictionary detector had no opinion — `tmp` is in no general-purpose
+English word list — so shape decided, and shape was confidently wrong.
+
+**Decision:** the word buffer remembers the separator a word *opened*
+after, and the same structural test runs on it. One rule, both sides:
+`/tmp`, `@nickname`, `C:\Users`, `--flag=value`.
+
+The buffer is the only place that can answer this. By the time
+`decide()` runs, its `boundary_run` has already been reset to the key
+that closed the word, and the engine keeps no other model of what is
+left of the caret. So `lead` travels with the word — cleared when the
+caret moves, restored when a backspace re-opens the previous word,
+because a separator we cannot still see is not evidence of anything.
+
+**Not chosen: reading structural characters out of the rendered token
+instead.** That is a different rule wearing the same clothes, and it
+misfires in both directions. `ґанок` typed under en-US renders `\fyjr`
+— `ґ` sits on the backslash key — so a token-wide test would refuse to
+correct every Ukrainian word containing `ґ`. And whether the slash even
+lands *inside* the token depends on which layouts are loaded: bg-BG
+puts `б` on `0x35`, so with Bulgarian active `/` is a letter and `/tmp`
+is one four-key token, while on an en-US + uk-UA machine it is a
+separator and a word. A rule that changes shape with the user's
+language list is not a rule.
+
+**The other half was data.** A veto only helps where a separator
+exists; `cd tmp` has none. Shell vocabulary is missing wholesale from
+`dwyl/english-words` — `tmp`, `mkdir`, `stderr`, `rustc`, `systemctl`
+— and it is mostly vowel-less, which is precisely what the scorer reads
+as noise. Those entries now ship in `en_us-extras.txt`, each one
+checked against every other bundled dictionary first: an entry whose
+cross-layout twin *is* a real word is a permanent veto on correcting
+that word, which is the same failure as a poisoned overlay arriving by
+a respectable route. `src` (uk-UA `ікс`), `cfg` (`сап`) and `ptr`
+(`зек`) failed that check and were left out.

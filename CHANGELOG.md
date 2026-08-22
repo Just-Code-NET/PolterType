@@ -4,6 +4,30 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.17.7
+
+### Fixed — typing a path no longer rewrites it
+
+- **A word that *starts* with `:` `/` `\` `@` `=` `#` `&` is left
+  alone, the way one that ends with them already was.** `/tmp ` came
+  back as `/еьз `. The guard that keeps PolterType out of URLs, paths
+  and email addresses only ever looked at the character that finished a
+  word — and a path segment finishes with an ordinary space, so `tmp`
+  reached the detectors as if it were a word in a sentence. The same
+  test now runs on the separator the word began after, which covers
+  `/tmp`, `@nickname`, `C:\Users` and `--flag=value` alike. Sentence
+  punctuation (`.`, `,`) is still deliberately not on that list, and
+  the manual switch-last hotkey still ignores every filter.
+
+- **Shell and toolchain vocabulary is in the bundled English
+  dictionary.** `tmp`, `mkdir`, `stderr`, `rustc`, `systemctl`,
+  `localhost` and ~30 more are missing from every general-purpose word
+  list, and most of them have no vowels — the exact shape the engine
+  reads as wrong-layout noise, which is how `mkdir ` became `пнаси `
+  with no slash anywhere in sight. Each entry was checked against every
+  other bundled dictionary first, so none of them costs another
+  language a correction.
+
 ## [0.17.7] — when a correctly typed word came back wrong
 
 ### Fixed — the app could be taught its own gibberish, and then believed it

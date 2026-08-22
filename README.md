@@ -377,10 +377,11 @@ identifiers. Three guards protect you, and they are pure engine logic
   judged one segment at a time and is only as plausible as its worst
   segment, so a hostname reads as plausible exactly when all of its
   parts do.
-- **Structural boundaries** — finishing a word with `:` `/` `\` `@`
-  `=` `#` `&` means you're typing a URL, a path, an email address or
-  an expression, so the engine stays out of it entirely. (Sentence
-  punctuation like `.` and `,` is deliberately *not* on that list.)
+- **Structural boundaries** — a word that starts or ends with `:` `/`
+  `\` `@` `=` `#` `&` is part of a URL, a path, an email address or an
+  expression, so the engine stays out of it entirely: `http:`, `/tmp`,
+  `@nickname`, `C:\Users` alike. (Sentence punctuation like `.` and
+  `,` is deliberately *not* on that list.)
 
 If that isn't enough for a particular app, silence it there
 explicitly:

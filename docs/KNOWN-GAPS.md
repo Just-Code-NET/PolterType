@@ -11,6 +11,36 @@ stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
+**What the [Unreleased] pass has checked so far.** Nothing
+platform-specific, and for the same reason as the release before it:
+what has landed is one engine rule and one list of dictionary entries,
+identical code on every OS. What was run, on this Arch/Hyprland
+machine — re-stamp this heading with the version when the release is
+cut, and add whatever else ships with it:
+
+- **The whole workspace suite**, including two engine tests that fail
+  on 0.17.7's code — one types `cd /tmp ` through the full pipeline and
+  asserts the layout never moves, the other types `/tmp ghbdsn ` and
+  asserts the *second* word is still corrected, so the veto cannot
+  quietly widen to the rest of the line.
+- **The new dictionary entries against the real bundled
+  dictionaries**, both properties at once
+  (`crates/poltertype-core/tests/shell_vocabulary.rs`): every entry
+  survives the shipping detector pair, and none of them renders into a
+  real word of another bundled layout. Entries that failed the second
+  test — `src`, `cfg`, `ptr` — were left out rather than shipped.
+- **The reporter's assumption, from their own machine's log**: the app
+  loads only the layouts the OS reports as active (`layouts=2` here),
+  which is what makes `/` a separator rather than a letter. The engine
+  tests were changed to load the same two layouts for that reason —
+  before, they loaded all fifteen, and bg-BG's `б` on the `/` key made
+  the harness disagree with every real machine.
+
+Not re-run: everything below that is not dated today — every Windows
+and macOS bullet, the tooltip backends, the updater, and the NixOS and
+systemd bullets stamped at 0.17.6. **The fixed build was not driven
+live through uinput**; the tests above are what this stamp rests on.
+
 **What the 0.17.7 pass actually checked.** Nothing platform-specific,
 because nothing platform-specific moved: the release is three changes to
 the detector, the undo-learning rule and the shape one line takes in a
