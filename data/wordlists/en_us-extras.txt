@@ -270,6 +270,53 @@ xss
 webrtc
 psql
 
+# ---- Shell, filesystem and toolchain ----
+# Typed constantly in terminals — and mostly vowel-less, which is
+# exactly what the shape scorer reads as wrong-layout noise: `tmp`
+# came back as `еьз`, `mkdir` as `пнаси`. Every entry below was
+# checked against the other bundled dictionaries first: none renders
+# into a real word under another layout, so none costs a correction.
+# Keep that check when adding more — an entry whose cross-layout twin
+# *is* a word silently destroys that word.
+tmp
+tmpfs
+usr
+sys
+cwd
+pwd
+mkdir
+rmdir
+rsync
+xargs
+wget
+lsof
+dmesg
+htop
+pgrep
+pkill
+sshd
+systemd
+systemctl
+journalctl
+ifconfig
+iptables
+netstat
+nmap
+localhost
+fstab
+bashrc
+zshrc
+vimrc
+gcc
+gdb
+lldb
+rustc
+cmake
+stdin
+stdout
+stderr
+fzf
+
 # ---- Common file extensions / formats users type ----
 exe
 dmg
