@@ -13,7 +13,8 @@ sentence above exists to prevent.
 
 **What the 0.18.0 pass actually checked.** **Windows, on real
 hardware, for the first time since 0.14.3** — a Windows 11 machine
-(2560x1440 at 100% scale, en-US + uk-UA keyboards) rather than the
+(two monitors, 2560x1440 landscape and 1440x2560 portrait at negative
+x, both at 100% scale; en-US + uk-UA keyboards) rather than the
 Arch/Hyprland one every other stamp here was taken on. Nothing on
 Linux or macOS moved, and nothing on either was re-run. What was
 executed, not read:
@@ -49,8 +50,11 @@ Not re-run: everything on Linux and macOS, the Linux and macOS tooltip
 backends, the AppImage and `.app` update paths, and every bullet below
 that is not dated today. Two things this pass could **not** cover on
 one machine: a **scaled display** — the DPI manifest added this release
-is reasoned from the Win32 contract and observed only at 100% — and any
-Windows keyboard other than en-US and uk-UA.
+is reasoned from the Win32 contract, and both panels here report 96 DPI
+— and any Windows keyboard other than en-US and uk-UA. The
+multi-monitor half of the placement arithmetic *was* exercised, with a
+second monitor at negative x, which is the case `place()` shifts the
+virtual desktop's origin for.
 
 **What the 0.17.8 pass actually checked.** Two fixes: an engine rule
 plus a list of dictionary entries, which are the same code on every
