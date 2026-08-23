@@ -53,6 +53,35 @@ fn main() {
     res.set("InternalName", "poltertype");
     res.set("CompanyName", "PolterType contributors");
     res.set("LegalCopyright", "PolterType contributors — MIT licensed");
+    // Without a manifest Windows runs us DPI-*unaware*, which
+    // virtualises every coordinate the OS hands back to 96 DPI and
+    // then has DWM stretch whatever we draw. The suggestion tooltip
+    // sizes itself from `GetDpiForMonitor` and positions itself in
+    // virtual-screen pixels, so the two halves have to be measured in
+    // the same units or it lands wrong on any scaled panel. Per-monitor
+    // v2 makes both physical; `PerMonitor` covers pre-1607.
+    res.set_manifest(MANIFEST);
     res.compile()
         .expect("embed the Windows resources (needs rc.exe from the Windows SDK)");
 }
+
+/// Application manifest. `asInvoker` is the default already, but a
+/// manifest that omits the block is a manifest an auditor has to
+/// second-guess.
+const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2,PerMonitor</dpiAwareness>
+    </windowsSettings>
+  </application>
+</assembly>
+"#;
