@@ -1,4 +1,4 @@
-# Known gaps (as of v0.18.0)
+# Known gaps (as of v0.18.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,29 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.18.1 pass actually checked.** Nothing platform-specific,
+because nothing platform-specific moved: the release is three engine
+rules and one dictionary entry, which are the same code on every OS.
+What was run, on this Arch/Hyprland machine:
+
+- **The whole workspace suite**, including four tests that fail on
+  0.18.0's code — three engine ones typing each reported case through
+  the full pipeline (a Cyrillic word whose Latin twin carries a
+  bracket, a command-line flag, and a word typed after the line before
+  it was rubbed out with Backspace) and one detector unit test.
+- **All three reports, driven live through uinput** into a real editor
+  and read back from the document: `тех` stays `тех` (its en-US twin
+  `nt[` no longer claims it), `command --wsl ` and `command --ghbdsn `
+  stay as typed, and `ghbdsn ` typed after nine backspaces is corrected
+  to `привіт ` — with a plain `ghbdsn ` as the control that the
+  correction path itself still fires. The log names the rule each
+  decision took.
+
+Not re-run: everything below that is not dated today — every Windows
+and macOS bullet, the tooltip backends, the updater, and the NixOS and
+systemd bullets stamped at 0.17.6. The Windows pass one release ago
+still stands as the last word on that platform.
 
 **What the 0.18.0 pass actually checked.** **Windows, on real
 hardware, for the first time since 0.14.3** — a Windows 11 machine

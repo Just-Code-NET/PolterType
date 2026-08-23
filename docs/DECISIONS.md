@@ -6,6 +6,100 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-23 — Deleting text we never saw is a statement about the caret, not about the next word
+
+`WordBuffer` poisoned itself when Backspace ran past everything it
+tracks, and the poison was read at the *next* word's boundary as
+`tainted` — which the engine treats as "do not correct, do not stash,
+do not offer". So rubbing out a line and retyping it in the wrong
+layout produced nothing at all, for as long as it took to type another
+separator.
+
+The flag was in the wrong place. Poison means "a word was in flight and
+we lost its head, so a correction would count backspaces against text
+we cannot see". At that point in the Backspace branch `keys` is empty
+by construction — there is no word in flight, and every keystroke of
+the word typed *next* is observed from the first one. The count a
+correction derives is therefore exact.
+
+What is genuinely lost is the context: the caret may now sit mid-word
+in text we never saw, so the keys we are watching could be the tail of
+a longer word on screen. That is exactly what `context_clean` records,
+and the suggestion tooltip — which would splice a replacement into the
+middle of that word — already stands down on it. Auto-correction does
+not, deliberately: it retypes only the keys it saw, and has been
+allowed to do so after clicks and idle abandons since the flag existed.
+
+**Decision:** the branch clears `context_clean` and drops the stashes,
+and does not poison. A click or an arrow key *mid-word* still poisons —
+there `abandon()` sets it because keys really were in flight.
+
+**Alternative considered:** keep the poison and clear it on the first
+key of a new word. Same effect, one more state transition to get wrong,
+and it would still read as "tainted" to anything that asked in between.
+
+---
+
+## 2026-08-23 — A rendering with punctuation inside it cannot speak for a layout
+
+`тех` typed in Ukrainian came back as `nt[`. The en-US rendering of
+those three scancodes is `nt[`; the dictionary detector strips
+non-letters before lookup, and the skeleton `nt` is in
+`dwyl/english-words`. A 0.95-confidence switch followed, and the
+bracket went into the user's text.
+
+The current-layout side of that detector has refused such hits since
+0.6.3 — `ma;ana`'s skeleton `maana` is in the same bulk list, and
+letting it veto froze the Spanish correction the landing page demos.
+The alt side never got the same rule, and it needs it more: a Keep is a
+missed correction, while an accepted alt is text the user has to
+repair.
+
+**Decision:** a candidate whose raw rendering carries stray punctuation
+(apostrophes and hyphens exempt, as everywhere else) is dropped from
+the alternates before either sweep. Plausibility already penalises
+strays 0.4 apiece, so such a candidate can no longer be chosen by
+either detector.
+
+**Why this costs nothing in the common direction:** every Latin letter
+key is a letter in the Cyrillic layouts too, so an English word typed
+under uk-UA renders as pure Cyrillic and is unaffected. The rule only
+bites where the *alt* is the one holding a bracket — which is the case
+this fixes.
+
+---
+
+## 2026-08-23 — A token that opens with a hyphen is a flag, not prose
+
+`command --wsl ` came back as `command --цід `. `-` is a word character
+in the buffer, and has to be: `well-known` must stay one token, and
+`будь-що` is the reason compound scoring exists at all. The consequence
+is that a command-line flag arrives at the detectors as a single token
+whose leading separators are *inside* it, where the structural-boundary
+filters — which read the character that ends a token, and the one
+before it — cannot see them. The identifier guard misses it too: it
+looks for underscores, digits and camel case.
+
+**Decision:** the pre-decision filters gain one more — a token whose
+rendering opens with `-` is never auto-switched. Unconditional, like
+the other structural filters, and the manual switch-last hotkey
+bypasses it like everything else in that block.
+
+**Alternatives considered:** teaching `looks_like_code_token` about the
+hyphen would have been the natural home, but it is fed a *cleaned*
+rendering that drops cross-layout punctuation, and on a machine with
+de-DE active `-` is one of those (`ß` sits on that key). Making `-` a
+boundary at word start instead would split `-` off cleanly, but every
+consumer of the buffer would then have to reason about a token that
+starts where the user did not start typing.
+
+`wsl` was separately added to the shell vocabulary in
+`data/wordlists/en_us-extras.txt`, so the bare word is safe as well;
+`tests/shell_vocabulary.rs` checks every entry there against the other
+bundled dictionaries.
+
+---
+
 ## 2026-08-23 — `injected` means *ours*, not *synthetic*
 
 The engine drops key events flagged `injected`. It has to: on Windows
