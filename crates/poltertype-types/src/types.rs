@@ -63,8 +63,15 @@ pub struct KeyEvent {
     pub scancode: u32,
     pub direction: KeyDirection,
     pub modifiers: Modifiers,
-    /// True if the event was synthesised — e.g. by `SendInput` from us
-    /// or another app. The engine MUST drop these to avoid feedback.
+    /// True if *we* synthesised the event — a correction's own
+    /// keystrokes coming back through the listener. The engine MUST
+    /// drop these or it corrects its own replay.
+    ///
+    /// Deliberately not "synthetic by anyone": another tool's injected
+    /// keys are the user typing, through a KM switch or an on-screen
+    /// keyboard, and dropping those makes the app silent for them.
+    /// Where a remapper strips the marker, the engine's expected-echo
+    /// queue is the second line of defence.
     pub injected: bool,
     /// Best-effort monotonic timestamp in ms.
     pub timestamp_ms: u64,

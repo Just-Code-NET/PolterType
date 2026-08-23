@@ -25,15 +25,15 @@ impl Default for WindowsGate {
 
 impl WindowsGate {
     /// Build the gate, reading the opt-in once. Off unless
-    /// `POLTERTYPE_HOLD_KEYS=1` — see [`HOLD_KEYS_ENV`] for why that
-    /// default is not negotiable.
+    /// `POLTERTYPE_HOLD_KEYS=1` — see [`HOLD_KEYS_ENV`] for what the
+    /// default costs either way.
     pub(crate) fn new() -> Self {
         let enabled = std::env::var(HOLD_KEYS_ENV).as_deref() == Ok("1");
         if enabled {
             info!(
                 "key gate enabled by {HOLD_KEYS_ENV}=1 — keystrokes are held back during \
-                 corrections. This path has not been validated on real hardware; if typing \
-                 misbehaves, unset the variable and please report it (issue #7)."
+                 corrections, which costs perceptible latency after each one. Unset the \
+                 variable to go back to the detect-and-repair path."
             );
         }
         Self {

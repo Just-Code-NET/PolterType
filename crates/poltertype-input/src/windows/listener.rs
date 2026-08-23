@@ -24,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
-use super::consts::{EMITTER_MARKER, LLKHF_INJECTED_ANY};
+use super::consts::EMITTER_MARKER;
 use super::gate::WindowsGate;
 use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
 
@@ -201,18 +201,22 @@ unsafe extern "system" fn low_level_keyboard_proc(
         };
 
         if let Some(direction) = direction {
-            // Ours, by the marker the emitter stamps into dwExtraInfo.
-            // Distinct from "injected": another automation tool's
-            // synthetic keys are injected too, and the gate holds those
-            // back exactly like the user's.
+            // Ours, by the marker the emitter stamps into dwExtraInfo
+            // — and *only* ours, which is not the same question as
+            // `LLKHF_INJECTED`. A software KM switch, an on-screen
+            // keyboard, voice typing and every remapper that re-injects
+            // all set that flag, and the engine drops whatever it is
+            // told is injected; ORing the two in here is what made
+            // PolterType silent for those users on Windows and nowhere
+            // else. The key gate below still asks about `ours`, which
+            // is the question *it* needs.
             let ours = kb.dwExtraInfo == EMITTER_MARKER;
-            let injected = ours || (kb.flags.0 & LLKHF_INJECTED_ANY) != 0;
             let event = KeyEvent {
                 vk: kb.vkCode,
                 scancode: kb.scanCode,
                 direction,
                 modifiers: read_modifiers(),
-                injected,
+                injected: ours,
                 timestamp_ms: kb.time as u64,
             };
 
