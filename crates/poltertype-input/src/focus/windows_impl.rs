@@ -1,22 +1,32 @@
-//! Windows foreground-process query.
+//! Windows foreground-window queries: which process owns it, where it
+//! is, and where its caret sits.
 //!
 //! `GetForegroundWindow` → `GetWindowThreadProcessId` →
 //! `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` →
 //! `QueryFullProcessImageNameW` → basename. Needs no special
 //! permission and works across elevation levels, which is what
 //! `LIMITED_INFORMATION` exists for.
+//!
+//! The caret comes from `GetGUIThreadInfo` on the **foreground**
+//! thread, so — unlike the desktop-wide AT-SPI slot on Linux — the
+//! sample belongs to the focused window by construction and carries
+//! neither an age nor a pid to prove it with.
 
 use std::path::Path;
+use std::time::Duration;
 
-use tracing::warn;
-use windows::Win32::Foundation::CloseHandle;
+use tracing::{debug, warn};
+use windows::Win32::Foundation::{CloseHandle, POINT, RECT};
+use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GUITHREADINFO, GetForegroundWindow, GetGUIThreadInfo, GetWindowRect, GetWindowThreadProcessId,
+};
 use windows::core::PWSTR;
 
-use super::FocusTracker;
+use super::{CaretHint, FocusTracker};
 
 pub struct WindowsFocusTracker;
 
@@ -68,9 +78,8 @@ impl FocusTracker for WindowsFocusTracker {
             if hwnd.0.is_null() {
                 return None;
             }
-            let mut rect = windows::Win32::Foundation::RECT::default();
-            if let Err(e) = windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut rect)
-            {
+            let mut rect = RECT::default();
+            if let Err(e) = GetWindowRect(hwnd, &mut rect) {
                 warn!(?e, "GetWindowRect failed");
                 return None;
             }
@@ -81,10 +90,57 @@ impl FocusTracker for WindowsFocusTracker {
                 y: rect.top,
                 width,
                 height,
-                // No caret source on Windows, so nothing ever has to be
-                // proved to belong to this window.
+                // The caret below is read off this same foreground
+                // window, so nothing ever has to be proved against it.
                 pid: None,
             })
+        }
+    }
+
+    fn caret_hint(&self) -> Option<CaretHint> {
+        // Safety: every call writes only into stack structures we own.
+        // `GetGUIThreadInfo` fails outright unless `cbSize` is set
+        // first, which is the one ordering constraint here.
+        unsafe {
+            let hwnd = GetForegroundWindow();
+            if hwnd.0.is_null() {
+                return None;
+            }
+            let thread = GetWindowThreadProcessId(hwnd, None);
+            if thread == 0 {
+                return None;
+            }
+            let mut gui = GUITHREADINFO {
+                cbSize: u32::try_from(size_of::<GUITHREADINFO>()).ok()?,
+                ..Default::default()
+            };
+            if let Err(e) = GetGUIThreadInfo(thread, &mut gui) {
+                debug!(
+                    ?e,
+                    "GetGUIThreadInfo failed — anchoring the tooltip to the window"
+                );
+                return None;
+            }
+            if gui.hwndCaret.0.is_null() {
+                debug!("focused window owns no caret — anchoring the tooltip to the window");
+                return None;
+            }
+            // `rcCaret` is client-space in `hwndCaret`, which is often
+            // a child control rather than the toplevel we measure.
+            let mut origin = POINT {
+                x: gui.rcCaret.left,
+                y: gui.rcCaret.top,
+            };
+            if !ClientToScreen(gui.hwndCaret, &mut origin).as_bool() {
+                debug!("ClientToScreen failed — anchoring the tooltip to the window");
+                return None;
+            }
+            let mut window = RECT::default();
+            if let Err(e) = GetWindowRect(hwnd, &mut window) {
+                warn!(?e, "GetWindowRect failed");
+                return None;
+            }
+            caret_hint_from(origin, gui.rcCaret, window)
         }
     }
 
@@ -92,3 +148,31 @@ impl FocusTracker for WindowsFocusTracker {
         "windows-foreground-process"
     }
 }
+
+/// The window-relative hint for a caret already resolved to the screen
+/// point `origin`, whose client-space rectangle is `caret`, inside the
+/// foreground window `window`.
+///
+/// `None` for a caret of no height: a control that owns a caret it
+/// never shows leaves a collapsed rectangle at the client origin
+/// behind, and anchoring to that puts the tooltip in the window's
+/// top-left corner rather than where anyone is typing.
+fn caret_hint_from(origin: POINT, caret: RECT, window: RECT) -> Option<CaretHint> {
+    let height = u32::try_from(caret.bottom.saturating_sub(caret.top)).ok()?;
+    if height == 0 {
+        return None;
+    }
+    Some(CaretHint {
+        x: origin.x.saturating_sub(window.left),
+        y: origin.y.saturating_sub(window.top),
+        height,
+        // Queried live from the foreground thread, so there is no
+        // sample to go stale and no other window it could belong to.
+        age: Duration::ZERO,
+        pid: None,
+        window: None,
+    })
+}
+
+#[cfg(test)]
+mod tests;
