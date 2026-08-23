@@ -267,6 +267,27 @@ impl SwitcherEngine {
             return;
         }
 
+        // Filter 0b-ter: a hyphen *opens* the token. `-` is a word
+        // character — that is what keeps `well-known` whole — so a
+        // command-line flag arrives as one token with no separator for
+        // the two filters above to read, and the code-token guard below
+        // looks for underscores, digits and camel case, none of which a
+        // bare `--wsl` has. No prose word opens with a hyphen; `--wsl `
+        // came back as `--цід `.
+        if current_text.starts_with('-') {
+            debug!(
+                token = %logsafe::redact_word(&current_text),
+                "skipping auto-switch: token opens with a hyphen (command-line flag)"
+            );
+            let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
+                reason: format!(
+                    "{} opens with a hyphen — likely a command-line flag",
+                    logsafe::redact_word(&current_text)
+                ),
+            });
+            return;
+        }
+
         // Filter 0c: ALL-CAPS is deliberate spelling-out, not a wrong
         // layout — and it renders as letter-like bait for the detector.
         // Held Shift catches it everywhere; Caps Lock only on

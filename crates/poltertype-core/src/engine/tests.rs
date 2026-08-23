@@ -590,6 +590,96 @@ mod engine_integration_tests {
         );
     }
 
+    /// Regression: `тех` typed in uk-UA came back as `nt[`. Its en-US
+    /// render carries a bracket, and the skeleton left after stripping
+    /// it — `nt` — is in `dwyl/english-words`, so the dictionary
+    /// detector claimed the word at confidence 0.95.
+    #[test]
+    fn cyrillic_word_whose_latin_render_is_punctuated_is_left_alone() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        *h.switcher.current.lock() = LayoutId::from("uk-UA");
+        // The physical keys of `тех` are en-US `n`, `t`, `[`.
+        type_en_us(&h, "nt[ ");
+        h.settle();
+        let switches = h.switcher.switches.lock().clone();
+        assert!(
+            switches.is_empty(),
+            "a Cyrillic word whose alt render is punctuated must stay, got {switches:?}"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing should have been rewritten: {ops:?}"
+        );
+    }
+
+    /// Regression: `command --wsl ` came back as `command --цід `. The
+    /// hyphen is a word character, so a flag reaches the detectors as
+    /// one token with no separator any earlier filter can see. `wsl`
+    /// is in the shell vocabulary now, which covers that flag twice
+    /// over — so the flag here is one the dictionary *would* claim,
+    /// which is what the guard itself has to answer for.
+    #[test]
+    fn command_line_flag_is_not_corrected() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us(&h, "command --ghbdsn ");
+        h.settle();
+        let switches = h.switcher.switches.lock().clone();
+        assert!(
+            switches.is_empty(),
+            "a command-line flag must not switch anything, got {switches:?}"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing should have been rewritten: {ops:?}"
+        );
+    }
+
+    /// Regression: rubbing a line out with Backspace left the engine
+    /// mute — every word retyped afterwards was reported "tainted" and
+    /// never corrected. Deleting past what the buffer tracks says the
+    /// *context* is unknown, not the word typed next.
+    #[test]
+    fn word_typed_after_a_rubbed_out_line_is_still_corrected() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us(&h, "hello ");
+        h.settle();
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "`hello` is English — nothing to correct"
+        );
+        // Past the space, past the word, past everything ever tracked.
+        for _ in 0..9 {
+            h.tap(BACKSPACE);
+        }
+        type_en_us(&h, "ghbdsn ");
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "`ghbdsn` is `привіт` mistyped, deletions before it or not"
+        );
+    }
+
     /// Baseline ordering: switch first, then word-length+boundary
     /// backspaces, then the scancode replay ending in the boundary.
     #[test]

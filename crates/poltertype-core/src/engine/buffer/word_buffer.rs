@@ -241,7 +241,12 @@ impl WordBuffer {
                 // Deleting text the buffer never saw: everything left of
                 // the caret is unknown from here on, so the engine must
                 // drop caret-dependent state too — hence `Abandoned`.
-                self.poisoned = true;
+                //
+                // Deliberately no poison: `keys` is empty here by
+                // construction, so there is no half-seen word to protect
+                // and the flag could only reach the *next* word — which
+                // is watched from its first key. Poisoning it left every
+                // word typed after a rubbed-out line uncorrectable.
                 self.context_clean = false;
                 self.lead = None;
                 WordBoundary::Abandoned

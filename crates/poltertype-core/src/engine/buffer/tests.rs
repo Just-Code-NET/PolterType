@@ -157,31 +157,40 @@ fn boundary_run_tracks_multiple_separators() {
     assert!(!b.poisoned());
 }
 
-/// Backspacing past the start of everything we track poisons the
-/// buffer: the engine must not correct a word it can't fully see.
+/// Backspacing past the start of everything we track loses the
+/// *context*, not the next word: what sits left of the caret is
+/// unknown, so no suggestion — but a word typed afterwards is observed
+/// from its first key and stays correctable. Regression: a line rubbed
+/// out with Backspace left the engine mute for everything retyped.
 #[test]
-fn backspace_into_unknown_text_poisons() {
+fn backspace_into_unknown_text_keeps_the_next_word_correctable() {
     let mut b = WordBuffer::new();
     backspace(&mut b); // nothing tracked at all
-    assert!(b.poisoned());
-    // The next completed "word" is reported tainted…
+    assert!(!b.poisoned());
     word_key(&mut b, 0x23, 'h');
-    let WordBoundary::WordCompleted { tainted, .. } = space(&mut b) else {
+    let WordBoundary::WordCompleted {
+        tainted,
+        started_clean,
+        ..
+    } = space(&mut b)
+    else {
         panic!("expected WordCompleted");
     };
-    assert!(tainted);
-    // …and afterwards tracking is trusted again.
+    assert!(!tainted, "the word itself was fully observed");
+    assert!(!started_clean, "what precedes it was not");
+    // The boundary re-syncs everything: the word after it is clean.
     word_key(&mut b, 0x12, 'e');
-    let WordBoundary::WordCompleted { tainted, .. } = space(&mut b) else {
+    let WordBoundary::WordCompleted { started_clean, .. } = space(&mut b) else {
         panic!("expected WordCompleted");
     };
-    assert!(!tainted);
+    assert!(started_clean);
 }
 
 /// Deleting the re-opened word completely and then continuing to
-/// backspace walks into unknown text → poison.
+/// backspace walks into unknown text: tracking restarts and the caller
+/// is told, but nothing was in flight to lose.
 #[test]
-fn deleting_past_reopened_word_poisons() {
+fn deleting_past_reopened_word_abandons() {
     let mut b = WordBuffer::new();
     word_key(&mut b, 0x23, 'h');
     space(&mut b);
@@ -190,8 +199,8 @@ fn deleting_past_reopened_word_poisons() {
     backspace(&mut b); // delete "h"
     assert_eq!(b.keys().len(), 0);
     assert!(!b.poisoned(), "still exactly at tracked ground zero");
-    backspace(&mut b); // now we're in text we never saw
-    assert!(b.poisoned());
+    assert_eq!(backspace(&mut b), WordBoundary::Abandoned);
+    assert!(!b.poisoned());
 }
 
 /// A tainted completion must not leave the word re-openable — the
@@ -205,10 +214,8 @@ fn tainted_completion_is_not_reopenable() {
         panic!("expected WordCompleted");
     };
     assert!(tainted);
-    backspace(&mut b); // over the space
-    backspace(&mut b); // would re-open if stashed — must not
-    assert_eq!(b.keys().len(), 0);
-    assert!(b.poisoned(), "walked into untracked text instead");
+    assert_eq!(backspace(&mut b), WordBoundary::Abandoned); // over the space
+    assert_eq!(b.keys().len(), 0, "would re-open if stashed — must not");
 }
 
 /// Arrow keys (evdev codes) abandon the word and taint the next

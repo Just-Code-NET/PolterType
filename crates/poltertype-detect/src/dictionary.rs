@@ -384,10 +384,17 @@ impl Detector for DictionaryDetector {
 
         // The alt rendering is stripped too, for the rare scancode that
         // is a letter in the current layout and punctuation in the alt.
+        //
+        // A stray-carrying alt is dropped outright — the mirror of
+        // `current_has_stray`, and for the same reason: nobody means to
+        // type punctuation inside a word, so its skeleton hitting the
+        // over-inclusive FST is coincidence. uk-UA `тех` renders `nt[`
+        // under en-US, whose skeleton `nt` the en-US dictionary holds,
+        // and the word was destroyed at confidence 0.95.
         let alts: Vec<(&LayoutId, String)> = ctx
             .candidates
             .iter()
-            .filter(|(l, _)| l != ctx.current_layout)
+            .filter(|(l, t)| l != ctx.current_layout && non_word_char_count(t) == 0)
             .map(|(l, t)| (l, letters_only_lower(t)))
             .filter(|(_, t)| !t.is_empty())
             .collect();

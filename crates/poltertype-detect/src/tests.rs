@@ -965,6 +965,36 @@ fn dict_stray_punct_skeleton_hit_defers_to_alt() {
     assert_switches_to(&d, &ctx(&en, &cands), &es);
 }
 
+/// Regression: uk-UA `тех` renders `nt[` under en-US — and `nt` is in
+/// `dwyl/english-words`, so the skeleton hit switched the layout and
+/// left `nt[` on screen. A stray in the *alt* render disqualifies it
+/// exactly as one in the current render does.
+#[test]
+fn dict_alt_with_stray_punct_cannot_claim_the_word() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let mut m = HashMap::new();
+    m.insert(en.clone(), dict_with_embedded(&["nt"], HashSet::new()));
+    m.insert(uk.clone(), dict_with_embedded(&["слово"], HashSet::new()));
+    let d = DictionaryDetector::new(m);
+    let cands = vec![(en.clone(), "nt[".into()), (uk.clone(), "тех".into())];
+    assert_no_opinion(&d, &ctx(&uk, &cands));
+}
+
+/// The control: the same skeleton with nothing stray in it is still a
+/// switch — the guard must not disarm the detector wholesale.
+#[test]
+fn dict_clean_alt_still_switches() {
+    let en = LayoutId::from("en-US");
+    let uk = LayoutId::from("uk-UA");
+    let mut m = HashMap::new();
+    m.insert(en.clone(), dict_with_embedded(&["next"], HashSet::new()));
+    m.insert(uk.clone(), dict_with_embedded(&["слово"], HashSet::new()));
+    let d = DictionaryDetector::new(m);
+    let cands = vec![(en.clone(), "next".into()), (uk.clone(), "туче".into())];
+    assert_switches_to(&d, &ctx(&uk, &cands), &en);
+}
+
 #[test]
 fn dict_clean_skeleton_still_keeps() {
     // Control: the same embedded entry typed WITHOUT stray

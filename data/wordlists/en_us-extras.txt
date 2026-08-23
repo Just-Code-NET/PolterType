@@ -316,6 +316,7 @@ stdin
 stdout
 stderr
 fzf
+wsl
 
 # ---- Common file extensions / formats users type ----
 exe
