@@ -4,6 +4,47 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.18.1] — a bracket is not a word, and a rubbed-out line is not amnesia
+
+Three reports from one afternoon of ordinary typing, all of them the
+same shape: a word PolterType had no business touching, or one it
+would not touch at all.
+
+### Fixed — a word whose other-layout twin is half punctuation is left alone
+
+- **`тех` came back as `nt[`.** On a US keyboard those three Ukrainian
+  keys spell `nt` and an opening bracket — and `nt` is an entry in the
+  bulk English wordlist PolterType ships, so the dictionary claimed the
+  word with near-certainty and the bracket landed in the text. A
+  rendering carrying punctuation in the middle of a word is not
+  something anybody meant to type, so it can no longer speak for a
+  layout. The rule is exactly the one a word's *own* layout has had
+  since 0.6.3 (`ma;ana` never vetoed `mañana`); it just never applied
+  to the other side.
+
+### Fixed — command-line flags stay as typed
+
+- **`command --wsl ` came back as `command --цід `.** A hyphen belongs
+  inside a word — `well-known` has to survive as one token — so a flag
+  reaches the engine with no separator to give it away, and the
+  identifier guard looks for underscores, digits and camel case, none
+  of which `--wsl` has. Nothing that opens with a hyphen is prose, and
+  PolterType now leaves it alone. `wsl` also joins the terminal
+  vocabulary that is never auto-switched, so it is safe on its own too.
+
+### Fixed — rubbing a line out no longer switches the engine off
+
+- **Delete a line with Backspace, retype it wrong-layout, and nothing
+  happened.** Once the deletions ran past everything typed since the
+  last space, PolterType marked what came next as unreadable and
+  declined to correct any of it until a fresh separator appeared —
+  which, on a line being retyped from its start, could be several
+  words later. Deleting text PolterType never saw means it cannot
+  vouch for what sits to the left of the caret; it says nothing about
+  the word typed afterwards, which is watched from its first keystroke.
+  The suggestion tooltip, which is the part that genuinely needs that
+  context, still stands down.
+
 ## [0.18.0] — everything Windows was never asked to prove
 
 The first release cut on a Windows machine. Most of what follows was
