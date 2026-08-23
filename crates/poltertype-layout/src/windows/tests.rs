@@ -92,7 +92,11 @@ fn installed_keyboards_describe_a_full_character_block() {
 /// prints each table so the numbers in #20 can be re-derived.
 ///
 /// Ignored by default: it loads keymap DLLs into the process and needs
-/// those three keyboards installed.
+/// those three keyboards installed. `LoadKeyboardLayoutW` also adds
+/// them to the **session's** layout list until you log out — so a
+/// PolterType started afterwards sees three Bulgarian keyboards the
+/// user never chose. That is this test's footprint, not a bug; the
+/// persistent list under `HKCU\Keyboard Layout\Preload` is untouched.
 ///
 /// ```text
 /// cargo test -p poltertype-layout -- --ignored --nocapture bulgarian

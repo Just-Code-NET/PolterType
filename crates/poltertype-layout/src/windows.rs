@@ -89,7 +89,20 @@ impl LayoutSwitcher for WindowsLayoutSwitcher {
         // Safety: buffer length matches the count we just queried.
         let filled = unsafe { GetKeyboardLayoutList(Some(buf.as_mut_slice())) } as usize;
         buf.truncate(filled);
-        Ok(buf.into_iter().map(hkl_to_layout_id).collect())
+        // Deduplicated, first one wins. Windows lists *keyboards* and
+        // an id names a *language*, so two Bulgarian keyboards arrive
+        // as `bg-BG` twice — and everything downstream can only hold
+        // one table per id (`docs/KNOWN-GAPS.md`). Left in, the extra
+        // entries became rows in the Languages pane that look
+        // identical and do nothing, and `switch_to` would have picked
+        // whichever the map kept anyway.
+        let mut out: Vec<LayoutId> = Vec::with_capacity(buf.len());
+        for id in buf.into_iter().map(hkl_to_layout_id) {
+            if !out.contains(&id) {
+                out.push(id);
+            }
+        }
+        Ok(out)
     }
 
     fn switch_to(&self, id: &LayoutId) -> Result<(), LayoutError> {
