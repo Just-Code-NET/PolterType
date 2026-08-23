@@ -4,6 +4,56 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] — everything Windows was never asked to prove
+
+The first release cut on a Windows machine. Most of what follows was
+found by running the app rather than reading it, and one of the fixes
+is the reason nobody had been able to run it that way before.
+
+### Fixed — PolterType sees what you type, however you type it (Windows)
+
+- **Keystrokes that arrive from another program are no longer thrown
+  away.** Typing through a software KM switch from another machine
+  (Deskflow, Synergy, Barrier), the on-screen keyboard, voice typing,
+  or any remapper that re-injects made PolterType go completely quiet
+  — on Windows, and nowhere else, with nothing in the log to say so.
+  The engine drops keystrokes it synthesised itself, which it must;
+  the Windows listener was marking *everything* synthetic as ours.
+  Only our own corrections are marked now, which is what macOS has
+  always done. See `docs/DECISIONS.md`, 2026-08-23.
+
+### Added — the suggestion tooltip follows the caret on Windows
+
+- **The tooltip appears at the text caret** in applications that keep
+  a real one, instead of always hanging above the bottom edge of the
+  window. Applications that draw their own caret — most browsers, most
+  terminals — still get the window position, the same way an app
+  without an accessibility bridge does on Linux.
+
+- **The window is sized and placed in the same pixels.** PolterType
+  had never told Windows it understood display scaling, so the tooltip
+  measured its size against the monitor's real DPI and its position
+  against coordinates Windows had scaled down to match a 96-DPI
+  screen. The two only agree at 100% scale. They agree everywhere now.
+
+### Fixed — an update no longer vanishes because something else was installing
+
+- **A busy Windows Installer is waited for, not treated as a failure.**
+  Windows allows one MSI transaction at a time, so a vendor's support
+  agent or Windows Update running at the wrong moment made "Restart to
+  update" quit the app, install nothing, and come back on the old
+  version with no explanation anywhere. PolterType now comes back for
+  the installer for five minutes, and if it still cannot have it,
+  writes the exit code where the update was staged.
+
+### Fixed — one row per language in the Languages pane (Windows)
+
+- **A language with several keyboards installed is listed once.**
+  Windows has three different Bulgarian keyboards under one language
+  id; all three appeared as identical `bg-BG` rows, two of which the
+  engine was already ignoring. The list now matches what the engine
+  actually loads.
+
 ## [0.17.8] — a path is not prose, and a caret has an owner
 
 ### Fixed — the suggestion tooltip appears where you are typing (Linux)
