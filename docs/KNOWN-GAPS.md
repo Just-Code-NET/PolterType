@@ -1,4 +1,4 @@
-# Known gaps (as of v0.17.8)
+# Known gaps (as of v0.18.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,47 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.18.0 pass actually checked.** **Windows, on real
+hardware, for the first time since 0.14.3** — a Windows 11 machine
+(2560x1440 at 100% scale, en-US + uk-UA keyboards) rather than the
+Arch/Hyprland one every other stamp here was taken on. Nothing on
+Linux or macOS moved, and nothing on either was re-run. What was
+executed, not read:
+
+- **The whole workspace suite on Windows**: 673 tests, none failing,
+  plus the `#[ignore]`d Bulgarian-keyboard test run by hand against
+  three real keymaps.
+- **A correction, end to end, in a real editor.** Keystrokes injected
+  at scancode level into Notepad: `en-US` → `uk-UA` and back, the
+  layout switching with the word both ways, confirmed in the app's own
+  log and on screen. **This is the first time the Windows runtime has
+  been driven by anything but a person**, and it did not work until
+  this release — see the `injected` bullet below.
+- **The suggestion tooltip, looked at.** The thing "only a person can
+  say" about the Windows backend since 0.11.0: it renders correctly —
+  struck-through word, five numbered suggestions, the accept hint —
+  and it now hangs at the caret. Two independent readings of the same
+  caret agreed to the pixel: the app's `anchor resolved
+  anchor=Point { x: 338, y: 247, height: 18 }` and a separate probe's
+  `GetGUIThreadInfo` sample at (338, 247).
+- **The MSI self-update, watched.** The one step this file said nobody
+  had seen: the script the updater writes, run against the *published*
+  v0.17.8 MSI over a v0.17.2 install. Windows Installer logged the
+  major upgrade (event 1033) and the installed binary reports 0.17.8.
+  The first attempt returned **1618**, which is what closed the gap
+  described in the updater bullet below.
+- **The Setup pane and the Settings window**, opened on this machine:
+  the pane probes and reports "Nothing to set up on Windows" with
+  `windows-ll-hook` named as the live backend, and the window renders
+  its ten panes without a visual fault.
+
+Not re-run: everything on Linux and macOS, the Linux and macOS tooltip
+backends, the AppImage and `.app` update paths, and every bullet below
+that is not dated today. Two things this pass could **not** cover on
+one machine: a **scaled display** — the DPI manifest added this release
+is reasoned from the Win32 contract and observed only at 100% — and any
+Windows keyboard other than en-US and uk-UA.
 
 **What the 0.17.8 pass actually checked.** Two fixes: an engine rule
 plus a list of dictionary entries, which are the same code on every
@@ -235,6 +276,12 @@ what backs the Windows bullets.
   poltertype/layouts/*.toml` is the answer, because it outranks the
   OS. Fixing it properly means putting the variant into `LayoutId`,
   which reaches config, UI, dictionary stems and `switch_to`.
+  What 0.18.0 did fix is the half a user could see: `list_active` was
+  handing the same id back once per *keyboard*, so three Bulgarian
+  keyboards became three identical `bg-BG` rows in the Languages pane
+  — two of them rows the engine had already logged it was ignoring.
+  It deduplicates now, first one wins, which is the choice everything
+  downstream was making anyway.
   So a "corrections are garbage on Windows" report is no longer
   answered by asking which variant they use — ask for the log instead:
   `adopted the OS keymap` says which keyboard was read, and at debug
@@ -294,6 +341,23 @@ what backs the Windows bullets.
   lets go and that one keypress never reaches the application. Narrow
   (the window is the length of one burst) but real.
 
+- **Until 0.18.0, Windows ignored every keystroke that arrived from
+  another program.** The engine drops events flagged `injected` — it
+  has to, or it corrects its own replay — and macOS flags only the
+  events *we* stamped. The Windows listener computed `ours` the same
+  way and then OR-ed in `LLKHF_INJECTED`, which Windows sets for
+  anything synthetic. So a software KM switch (Deskflow, Synergy,
+  Barrier), the on-screen keyboard, voice typing and every remapper
+  that re-injects made PolterType go quiet — on Windows and nowhere
+  else, with no log line and nothing in this file. Its own listener
+  comment said those keys should be treated "exactly like the user's".
+  Now they are.
+  Two things follow. The safety net for a remapper that strips our
+  marker is the engine's expected-echo queue, the same one keyd made
+  necessary on Linux — it has never been exercised on Windows, because
+  nothing on Windows was stripping anything. And this is *why* no
+  Windows runtime test had ever run: injection is the only way to
+  drive the app without a person, and the app was built to ignore it.
 - **Focus tracking is complete on Windows, Hyprland and X11, partial
   on other Wayland, and absent on macOS.** `focused_exe()` still
   returns `None` on macOS. On non-Hyprland Wayland it is no longer
@@ -349,16 +413,28 @@ what backs the Windows bullets.
   apps with a live bridge, window-accurate everywhere else", never
   "caret-accurate on Linux". See `docs/DECISIONS.md`, 2026-07-24,
   2026-07-29 and 2026-08-22.
-  **Windows has a backend since 0.11.0** — a layered, topmost,
-  `WS_EX_NOACTIVATE` window fed by `UpdateLayeredWindow`, sharing the
-  renderer and the placement arithmetic the Linux backends already
-  used. Its tests create a real window and hand real surfaces to
-  Win32, so the plumbing is exercised rather than mocked; what nobody
-  has signed off is whether the result *looks* right, which only a
-  person can say. It is **window-accurate only**: `caret_hint()` has no
-  Windows implementation, so the anchor chain starts one rung down.
-  `GetGUIThreadInfo`'s `rcCaret` is the obvious source and is not
-  wired up. macOS remains noop.
+  **Windows has a backend since 0.11.0, and a caret since 0.18.0.**
+  A layered, topmost, `WS_EX_NOACTIVATE` window fed by
+  `UpdateLayeredWindow`, sharing the renderer and the placement
+  arithmetic the Linux backends already used — and now the same anchor
+  chain, because `caret_hint()` reads `GetGUIThreadInfo`'s `rcCaret`
+  off the **foreground thread**. That makes the sample this window's by
+  construction, so unlike Linux it carries no age and nothing to prove:
+  there is no desktop-wide slot to be confused by. Looked at on real
+  hardware for the first time this release (see the 0.18.0 stamp).
+  **Read the same caveat as everywhere else:** only apps that keep a
+  real Win32 caret are ever seen. Notepad-shaped controls do; a program
+  that draws its own — most browsers, most terminals, most Electron —
+  reports `hwndCaret` as null and gets the window rung, exactly as
+  before. Measured here: Notepad yes, Firefox no, our own iced Settings
+  window no.
+  The tooltip's own arithmetic also needed the process to stop being
+  DPI-*unaware*, which every build up to and including 0.17.8 was: it
+  sized itself from the monitor's real DPI and positioned itself in
+  coordinates Windows had virtualised to 96, and the two only agree at
+  100% scale. 0.18.0 ships a per-monitor-v2 manifest. **That fix is
+  unobserved at any other scale** — this machine has one 100% panel.
+  macOS remains noop.
 - **The AI subsystem is an interface with no backend, on purpose.**
   Since 0.10.0 the stubs are gone: one `LlmDetector` speaks three HTTP
   shapes and calls whatever endpoint the **user** configured — their
@@ -395,23 +471,37 @@ what backs the Windows bullets.
   on macOS.** The tray alert opens the Settings window on its **Setup**
   pane (`poltertype --setup`), which probes the live machine via
   `poltertype_input::setup::probe_setup` and renders the result — plus
-  a banner when no layout switcher exists. Verified on Wayland/evdev
-  here; the macOS half (`AXIsProcessTrustedWithOptions`,
+  a banner when no layout switcher exists. Verified on Wayland/evdev,
+  and on Windows since 0.18.0, where the pane has nothing to ask for
+  and says so ("Nothing to set up on Windows") while naming the live
+  backend; the macOS half (`AXIsProcessTrustedWithOptions`,
   `IOHIDCheckAccess`, the `x-apple.systempreferences:` deep links) is
   compiled by CI and executed by nobody. Two things it deliberately
   does NOT do: run anything with `sudo` (the Linux button copies the
   command instead), and imitate a system permission dialog (macOS shows
   its own). What is still missing from issue #10's wish list is the
   screenshots/GIFs of the macOS toggles.
-- **Self-update is proven on Linux, assumed on Windows, unwritten-off
-  on macOS.** The AppImage path is exercised. The **MSI path has been
-  read but never watched**: verifying it needs two published releases,
-  so it cannot be done before the release that would provide the
-  second one. 0.11.0's installer was built, installed, run and
-  uninstalled by hand — the *update* step is the one thing in that
-  sequence nobody has seen work on Windows, and the first person to
-  find out will be a 0.10.0 user taking 0.11.0. Do not describe it as
-  tested. The `.app`-bundle swap in
+- **Self-update is proven on Linux and, since 0.18.0, on Windows;
+  unwritten-off on macOS.** The AppImage path is exercised. The MSI
+  path was "read but never watched" for seven releases — verifying it
+  needs two published releases, and this is the first pass that had
+  them. It has now been watched: the script the updater writes, run
+  against the published v0.17.8 MSI over a v0.17.2 install, produced a
+  Windows Installer major upgrade (event 1033) and a binary reporting
+  the new version.
+  **What that run found is the gap worth carrying forward.** The first
+  attempt returned **1618**, `ERROR_INSTALL_ALREADY_RUNNING` — Windows
+  serialises MSI transactions machine-wide, and a vendor support agent
+  had one open. The old script treated any non-zero code as a failed
+  package: the app quit, nothing installed, it relaunched at the old
+  version, and *no trace was left anywhere on the machine* — which is
+  exactly what happened to this maintainer's own install, unnoticed,
+  hours before the pass. 0.18.0 retries a busy installer for five
+  minutes and writes the exit code into the staging directory when it
+  finally gives up. Still open: five minutes is a guess, nothing
+  reads `install-failed.txt` back to the user, and a machine whose
+  installer is busy for longer still loses the update silently until
+  the next quit. The `.app`-bundle swap in
   `poltertype-update/src/apply/macos.rs` is written from Apple's docs.
   It also strips `com.apple.quarantine` from the installed bundle —
   defensible only while the app is unsigned, and it must come out the

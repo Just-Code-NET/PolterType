@@ -6,6 +6,80 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-23 — `injected` means *ours*, not *synthetic*
+
+The engine drops key events flagged `injected`. It has to: on Windows
+and macOS our own corrections come back through the same listener, and
+an engine that reads its own replay corrects it again.
+
+The two platforms disagreed about what the flag meant. macOS sets it
+from `kCGEventSourceUserData` — the marker our emitter stamps, and
+nothing else. Windows computed the same `ours` from `dwExtraInfo` and
+then OR-ed in `LLKHF_INJECTED`, which the OS sets for anything
+synthetic from anyone. The listener's own comment said the opposite of
+what the line did: "another automation tool's synthetic keys are
+injected too, and the gate holds those back exactly like the user's".
+
+What that cost is a whole class of user, on one platform, silently. A
+software KM switch typing from another machine, the on-screen
+keyboard, voice typing, a remapper that re-injects — all of it reached
+the hook, was tagged, and was thrown away. No log line, no setting, no
+entry in `KNOWN-GAPS.md`; PolterType simply did nothing while the same
+setup worked on macOS.
+
+**Decision:** Windows sets `injected` from the marker alone, as macOS
+does. The key gate is unaffected — it already asked `swallow(ours)`,
+which is the question it needs.
+
+**The risk that argues the other way** is a remapper that proxies our
+own keystrokes through its virtual keyboard, stripping the marker, so
+the engine reads its own correction as user input and spirals. That is
+not hypothetical — it is what keyd does on Linux — and the answer
+already exists everywhere: the expected-echo queue
+(`engine/switcher/echo.rs`), which match-and-consumes the scancodes
+the emitter put on the wire. It has never fired on Windows, because
+nothing on Windows was stripping anything.
+
+**A second thing this bought, and the reason it went unnoticed for so
+long.** Injection is the only way to drive the app without a person at
+the keyboard. The Windows build was constructed to ignore exactly
+that, so no automated end-to-end test of the Windows runtime was
+possible — which is why every Windows bullet in `KNOWN-GAPS.md` rested
+on a human at a keyboard, and why several of them had gone three
+releases without anyone looking.
+
+---
+
+## 2026-08-23 — The tooltip needs the whole process to agree about pixels
+
+`poltertype.exe` shipped with no application manifest, so Windows ran
+it **DPI-unaware**. Two consequences, and they point in opposite
+directions: every coordinate the OS hands such a process is virtualised
+to 96 DPI, while `GetDpiForMonitor` keeps answering the monitor's real
+DPI.
+
+The Windows tooltip uses both. It renders at the anchor monitor's scale
+and then places the result in virtual-screen coordinates
+(`popup/windows/popup.rs`), so the size and the position were measured
+in different units on any panel not at 100% — which is most Windows
+laptops. DWM then stretched the layered surface on top of that.
+
+**Decision:** the resource script `poltertype-app/build.rs` already
+generates now also carries a manifest declaring `PerMonitorV2`
+(`PerMonitor` for pre-1607). Both halves become physical pixels, which
+is what the placement arithmetic always assumed.
+
+**Not chosen: `SetProcessDpiAwarenessContext` at startup.** It would
+have to be platform code in a crate that is allowed to hold it, run
+before any window exists, and race the iced Settings window's own
+winit call. A manifest is read before the process starts and cannot
+lose that race. It also covers `poltertype --settings`, which is a
+separate process out of the same binary.
+
+**Unverified, deliberately stated:** this was reasoned from the Win32
+contract and observed only at 100% scale, the only panel the machine
+that made the change has.
+
 ## 2026-08-22 — A caret sample is worthless without the window it came from
 
 The suggestion tooltip on Linux takes its position from one AT-SPI

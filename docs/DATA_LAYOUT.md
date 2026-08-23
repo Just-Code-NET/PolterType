@@ -152,6 +152,15 @@ user's disk — so it belongs in this document.
     poltertype-0.4.3-x86_64.AppImage  the downloaded installer
                                       (55–65 MB since 0.9.0 bundled
                                       fifteen languages; one at a time)
+    install.sh / install.ps1          the script that runs the
+                                      installer after we exit; written
+                                      here so it deletes itself with
+                                      the directory on success
+    install-failed.txt                only when the install was
+                                      refused: the installer's exit
+                                      code, so a restart that changed
+                                      nothing leaves a reason behind
+                                      (Windows, since 0.18.0)
 ```
 
 `data_local_dir` is the same `ProjectDirs::from("dev", "opensource",

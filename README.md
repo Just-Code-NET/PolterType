@@ -15,13 +15,13 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.17.8 — out of beta since v0.1.0. Works end-to-end on
+> **Status:** v0.18.0 — out of beta since v0.1.0. Works end-to-end on
 > Windows and on Linux (both Wayland and X11); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland), **on Windows since
-> 0.11.0**, where it appears above the focused window rather than at
-> the caret, and **on macOS since 0.15.0**, where it follows the
-> caret in applications that report one. On Linux/Wayland a
+> 0.11.0** — following the caret there too since 0.18.0, in
+> applications that keep a real one — and **on macOS since 0.15.0**,
+> where it follows the caret in applications that report one. On Linux/Wayland a
 > correction holds your keystrokes back while it types and replays
 > them behind itself, so carrying straight on with the next word no
 > longer scrambles the result — except behind an input remapper such
@@ -274,18 +274,22 @@ for words you already know it will get wrong, `word_whitelist` in
 > since 0.15.0 — a non-activating panel that cannot take the keyboard
 > away from what you are typing in.
 >
-> Where it lands depends on what the focused app will tell us. On
-> Linux and macOS, apps that expose the caret get the tooltip directly
-> above it — the accessibility bridge on Linux, the Accessibility API
-> on macOS. Everything else — and **every app on Windows**, where
-> nothing reports the caret yet — gets it just above the window's
-> bottom edge, the neighbourhood of chat boxes and shell prompts. It
-> is never placed by your mouse pointer. On both platforms the caret
-> answer is checked before it is trusted: on macOS Chrome and Terminal
-> report one that is nowhere near the text, and on Linux the whole
-> desktop shares one caret stream, so a caret counts only where it can
-> be proved to belong to the window you are typing in. Either check
-> failing costs that window the caret, not the tooltip.
+> Where it lands depends on what the focused app will tell us. Apps
+> that expose the caret get the tooltip directly above it — the
+> accessibility bridge on Linux, the Accessibility API on macOS, and
+> since 0.18.0 the caret Windows itself keeps for the foreground
+> window. Everything else gets it just above the window's bottom
+> edge, the neighbourhood of chat boxes and shell prompts. It is
+> never placed by your mouse pointer. Which apps land in which half
+> is not something we can promise: on Windows a program that draws
+> its own caret — most browsers, most terminals — has none for the OS
+> to report, and on Linux only apps with a live accessibility bridge
+> do. The caret answer is also checked before it is trusted: on macOS
+> Chrome and Terminal report one that is nowhere near the text, and
+> on Linux the whole desktop shares one caret stream, so a caret
+> counts only where it can be proved to belong to the window you are
+> typing in. Either check failing costs that window the caret, not
+> the tooltip.
 
 ## Smart commands (text triggers)
 
