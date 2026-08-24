@@ -6,6 +6,50 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-25 — Ask the thing itself, never a proxy for it
+
+One afternoon on a seventeen-session desktop matrix produced eight
+bugs. Every one of them was the same mistake wearing a different hat:
+the app decided something about the *world* by reading a signal that
+merely correlates with it.
+
+| It asked | It should have asked | What went wrong |
+|---|---|---|
+| is fcitx5 running? | is fcitx5 this session's input method? | Ubuntu autostarts it; it took the keyboard on eleven desktops and owned nothing |
+| what does `XDG_SESSION_TYPE` say? | which display socket exists? | GDM registers X11 sessions while its greeter is still Wayland, so every X11 session claimed to be Wayland |
+| is the `input-sources` schema populated? | does this desktop read it? | GTK ships the schema; Cinnamon, MATE and the wlroots compositors all ignore it |
+| did the write succeed? | did the layout move? | GNOME 49 accepts `current` and acts on neither it nor `mru-sources` |
+| did the layout move? | did it *stay* moved? | MATE lets the lock land and restores its own group a moment later |
+| how many times was Caps Lock pressed? | what does the kernel LED say? | `caps:escape` and `grp:caps_toggle` press the key and latch nothing |
+
+**Decision:** a backend may act only where it can check the result
+against something that is able to disagree with it. Concretely:
+`LayoutSwitcher::verify_switched` returns `Option<bool>`, where `None`
+means "I can only read my own write" and is not treated as success;
+where an independent reading exists it is used, and used *repeatedly*,
+because a settings daemon that will overrule us does not do it
+instantly. A desktop that offers no such reading gets no backend, and
+the log says which one stood down and why.
+
+The cost is real: MATE and three wlroots sessions now correct nothing.
+That is the honest state, and it is strictly better than the previous
+one, where those sessions deleted the user's word and retyped it
+unchanged — a flicker, a lost word, and nothing in the log to explain
+it.
+
+**Alternative considered:** keep acting and let the user notice. That
+is what shipped before, and it is how all eight bugs stayed invisible:
+each failure looked exactly like "PolterType didn't fire on that one".
+
+**Alternative considered:** name-list the broken desktops rather than
+check. Two of the eight were found *because* the name list was already
+wrong — Budgie's Wayland session is labwc underneath and calls itself
+Budgie. Names are a last resort, used only where there is genuinely
+nothing to measure, and each one carries the measurement that put it
+there.
+
+---
+
 ## 2026-08-24 — Caps Lock is a lock the OS owns, and it is not a Shift key
 
 Two things were wrong with one flag. Both listeners on Linux, and the

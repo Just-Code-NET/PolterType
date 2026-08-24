@@ -4,7 +4,38 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — Caps Lock is a lock, not a Shift key
+## [Unreleased] — the Linux desktops, measured one by one
+
+Everything below was found by running PolterType on seventeen desktop
+sessions in a virtual machine, rather than by reading code. Nine of them
+now correct a word end to end; the four that cannot are told apart from
+the ones that can, and say so, instead of quietly eating the word.
+
+### Added — GNOME and sway
+
+- **GNOME works again.** On GNOME 49 every settings key PolterType could
+  write had stopped doing anything: the layout never moved, so each
+  correction deleted the word and retyped it exactly as it was. It now
+  reads which source the shell is actually on, and switches with the
+  shortcut the desktop itself uses. Nothing is sent when the ordinary
+  route works.
+
+- **sway is supported.** It keeps its keyboard configuration to itself,
+  so until now there was no way to switch a layout there at all.
+  PolterType now talks to sway's own IPC — the same arrangement Hyprland
+  has had.
+
+### Fixed — PolterType stops when it cannot do the job properly
+
+- **A word is never deleted and retyped unchanged.** If the layout did
+  not really move — because the desktop put it back, or ignored the
+  request — the correction is abandoned before a single keystroke, and
+  the log says which desktop and why. Previously the user saw their word
+  vanish and return identical, with nothing to explain it.
+
+- **MATE, labwc, Budgie's and Xfce's Wayland sessions** are now honest
+  about being unsupported rather than appearing to work. See
+  `docs/KNOWN-GAPS.md` for what each of them lacks.
 
 ### Fixed — corrections keep their capitals, and their digits
 

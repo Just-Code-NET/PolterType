@@ -11,35 +11,66 @@ stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
-**What the unreleased pass has checked so far (2026-08-24).** Linux
+**What the unreleased pass actually checked (2026-08-24/25).** Linux
 only, and for the first time on desktops nobody here runs: a VirtualBox
-guest (Ubuntu 26.04) with seventeen sessions installed, driven headless
-over SSH. Every line below was run, not read:
+guest (Ubuntu 26.04) carrying seventeen sessions, driven headless over
+SSH. Every session below was measured the same way — a wrong-layout word
+typed through a virtual keyboard into a terminal, and the bytes that
+reached it read back. Nothing here rests on what a desktop reported
+about itself.
 
-- **The KDE layout backend *switches*, on a live Plasma 6 Wayland
-  session.** The half this file has carried as "only reasoned" since
-  0.17.3. `setLayout(1)` answered `true`, `getLayout` came back `1`,
-  and — the part that matters, because reading our own write back is
-  what #26 was — **Plasma's own tray indicator changed to `ru`**. Then
-  the whole path through the app: `linux-kde-qdbus` selected,
-  `active=[en-US, ru-RU]`, `ghbdtn ` typed into a terminal and
-  `привет ` read back out of it.
-- **Caps Lock, on this Arch/Hyprland machine.** A word typed under a
-  latched lock comes back in the right case, and a digit inside a word
-  stays a digit — both injected through uinput and read back as bytes.
-  The latch is now read from the kernel LED, which was confirmed live
-  (`caps_led=Some(true)` while latched) and on a virtual keyboard that
-  has no LED at all.
-- **The layout-backend probe, against eleven desktops at once** — which
-  is what found the fcitx5 bullet below.
+Corrects a word end to end:
 
-Not measured here, and not to be inferred from it: the **key gate**
-never engages under VirtualBox (`hold not taken within the handshake
-window`), so nothing about held keystrokes was tested; the **X11 input
-listener** still has not been exercised, because the first sweep leaked
-a stale `XDG_SESSION_TYPE=wayland` into every X11 session and the app
-believed it; and every Windows and macOS bullet stands on its own
-earlier date.
+| Session | Display | Layout backend |
+|---|---|---|
+| KDE Plasma 6 | Wayland | `linux-kde-qdbus` |
+| GNOME 49 | Wayland | `linux-gsettings` + the shell's own shortcut |
+| sway 1.11 | Wayland | `linux-sway-swaymsg` |
+| Xfce 4.20 | X11 | `linux-x11-xkb` |
+| LXQt | X11 | `linux-x11-xkb` |
+| Cinnamon | X11 | `linux-cinnamon-xkb` |
+| icewm | X11 | `linux-x11-xkb` |
+| openbox | X11 | `linux-x11-xkb` |
+| fluxbox | X11 | `linux-x11-xkb` |
+
+Declines, deliberately and with the reason in the log — **the word is
+left untouched**:
+
+| Session | Why |
+|---|---|
+| MATE | its group state tracks neither our write nor its own switch |
+| labwc, Budgie (Wayland), Xfce (Wayland) | wlroots: no layout API at all |
+
+Also measured here, and new since 0.18.1:
+
+- **The X11 input stack ran for the first time.** `linux-x11-xinput2`,
+  `linux-x11-xtest`, `linux-x11-ewmh` and
+  `linux-x11-override-redirect`, all on a real X session — this laptop
+  runs Hyprland and had never executed any of them.
+- **Caps Lock**, on this Arch/Hyprland machine: a word typed under a
+  latched lock comes back in the right case, a digit inside a word
+  stays a digit, and the latch is read from the kernel LED
+  (`caps_led=Some(true)` while latched) including on a virtual keyboard
+  that has no LED.
+- **A layout switch is now checked rather than assumed** — three
+  readings across ~80 ms, from a source that can contradict us where
+  one exists.
+
+**Not** measured, and not to be inferred:
+
+- the **key gate** never engages under VirtualBox (`hold not taken
+  within the handshake window`), so nothing about held keystrokes was
+  tested anywhere but this laptop;
+- **niri** and **river** have the same kind of CLI sway does and no
+  backend, because neither is packaged for Ubuntu 26.04 and a backend
+  that cannot be run once before shipping is what this file exists to
+  prevent;
+- **Cinnamon on Wayland** is experimental in 6.4 and produced no
+  terminal to type into — unmeasured, not passing;
+- **i3** was not measured either: it starts its first-run wizard on a
+  session with no config, which takes the screen;
+- every **Windows** and **macOS** bullet stands on its own earlier
+  date. Nothing on either was re-run.
 
 **What the 0.18.1 pass actually checked.** Nothing platform-specific,
 because nothing platform-specific moved: the release is three engine
@@ -277,10 +308,34 @@ what backs the Windows bullets.
   LXQt, Budgie, sway, labwc, i3, openbox, fluxbox and icewm the app
   came up on `linux-fcitx5-remote`, reported `count=1` of an empty
   layout id, loaded **zero** layouts — and logged `layout switcher
-  ready` while being unable to correct anything at all. Fixed by
-  requiring every backend to name a layout before it is selected. The
-  same shape is possible in `ibus`, which is why the guard sits in the
-  probe rather than in one backend.
+  ready` while being unable to correct anything at all. Fixed twice
+  over: a backend must now name a layout before it is selected, and an
+  input method must be the one *this session uses* —
+  `XMODIFIERS=@im=fcitx` — rather than merely a running process. IBus
+  gets the same guard; its own doc comment had warned about exactly
+  this for releases.
+
+- **MATE has no layout backend, and cannot have one yet.** Measured
+  2026-08-24: the X11 group lock returns success, `XkbGetState` keeps
+  reporting the new group 80 ms later, and the keystrokes still come
+  out in the old layout — while the session's own `Alt+Shift` moves the
+  keyboard for real and the same `XkbGetState` fails to notice *that*
+  either. Its group state tracks neither direction, so there is nothing
+  to verify a correction against, and a correction that goes ahead
+  regardless deletes a word and retypes it unchanged. PolterType stands
+  down and says so. Making MATE work needs a reading that follows what
+  the keys actually produce; `mate-settings-daemon` publishes none we
+  have found.
+
+- **The wlroots compositors have no layout API to drive.** labwc, and
+  therefore Budgie's and Xfce's Wayland sessions, keep their xkb
+  configuration in their own config files with no runtime interface.
+  Where a GNOME schema happens to be populated the app used to write to
+  it and believe the switch — the #26 shape again — and now stands
+  down instead. sway is the exception and is supported, because it has
+  an IPC that answers honestly. niri and river expose the same kind of
+  CLI; neither is packaged for the distro the desktop matrix runs, so
+  neither has a backend.
 
 - **Nine of the fifteen bundled layouts have never been typed on.**
   0.9.0 added pl, cs, el, he, tr, bg, it, pt-PT and pt-BR. The
