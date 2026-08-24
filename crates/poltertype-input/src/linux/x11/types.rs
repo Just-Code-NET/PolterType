@@ -25,7 +25,15 @@ pub(crate) struct ModState {
     control: bool,
     alt: bool,
     meta: bool,
+    /// Caps Lock **latched**, as the server reports it — never a count
+    /// of how often the key was pressed. `caps:escape`,
+    /// `grp:caps_toggle` and friends give the key another job
+    /// entirely, and then it latches nothing; counting edges left the
+    /// engine convinced Caps Lock was on for the rest of the session.
     caps: bool,
+    /// A Caps Lock edge went by and the latch has not been re-read
+    /// from the server since.
+    caps_stale: bool,
 }
 
 impl ModState {
@@ -35,8 +43,9 @@ impl ModState {
             EV_LEFTCTRL | EV_RIGHTCTRL => self.control = true,
             EV_LEFTALT | EV_RIGHTALT => self.alt = true,
             EV_LEFTMETA | EV_RIGHTMETA => self.meta = true,
-            // Caps Lock toggles on the press edge, not the release.
-            EV_CAPSLOCK => self.caps = !self.caps,
+            // Whether this press latched anything is the server's to
+            // answer — see `caps` and `events::resync_caps`.
+            EV_CAPSLOCK => self.caps_stale = true,
             _ => {}
         }
     }
@@ -52,10 +61,21 @@ impl ModState {
     }
 
     /// Do we currently believe any *held* modifier is down? Caps Lock
-    /// is excluded: it is a latch we toggle on the press edge, not a
-    /// key whose held-ness the server could contradict.
+    /// is excluded: it is a latch, not a key whose held-ness
+    /// `XQueryKeymap` could contradict.
     pub(crate) fn any_held(&self) -> bool {
         self.shift || self.control || self.alt || self.meta
+    }
+
+    /// Has a Caps Lock edge gone by since the latch was last read?
+    /// Clears the flag — the caller is expected to ask the server.
+    pub(crate) fn take_caps_stale(&mut self) -> bool {
+        std::mem::take(&mut self.caps_stale)
+    }
+
+    /// Record the latch as the server reports it.
+    pub(crate) fn set_caps(&mut self, caps: bool) {
+        self.caps = caps;
     }
 
     /// Reconcile the latched flags against the server's own view of
@@ -82,16 +102,16 @@ impl ModState {
         before != (self.shift, self.control, self.alt, self.meta)
     }
 
-    /// The modifier set as the engine wants it: `shift` already folded
-    /// together with Caps Lock, because downstream all that matters is
-    /// whether the keystroke produced an uppercase glyph (`Lfdfq` →
-    /// `Давай`, not `давай`).
+    /// The modifier set as the engine wants it. `shift` is the
+    /// physical key and nothing else: it is what a replay presses, and
+    /// xkb applies the lock on top of it a second time.
     pub(crate) fn snapshot(&self) -> Modifiers {
         Modifiers {
-            shift: self.shift ^ self.caps,
+            shift: self.shift,
             control: self.control,
             alt: self.alt,
             meta: self.meta,
+            caps: self.caps,
         }
     }
 }

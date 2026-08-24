@@ -198,7 +198,7 @@ impl SwitcherEngine {
         // cross-layout hint settles letters, and releases never reach
         // the classifier.
         let produced = if ev.direction == KeyDirection::Press && !letter_in_any_layout {
-            self.translate_via_current_layout(ev.scancode, ev.modifiers.shift)
+            self.translate_via_current_layout(ev.scancode, ev.modifiers.shift, ev.modifiers.caps)
         } else {
             None
         };

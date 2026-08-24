@@ -4,6 +4,38 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — Caps Lock is a lock, not a Shift key
+
+### Fixed — corrections keep their capitals, and their digits
+
+- **A correction no longer comes back in the wrong case.** With Caps
+  Lock on, PolterType retyped the word pressing Shift for every capital
+  the lock had produced — and the lock is still on when it does, so the
+  letters came back lower-case and every digit or punctuation mark came
+  back as its shifted symbol (`1` as `!`). The replay now reproduces the
+  Shift the fingers actually pressed and leaves the lock to the system,
+  which is what types the capitals.
+  ([#33](https://github.com/Just-Code-NET/PolterType/issues/33))
+
+- **…and it no longer thinks the lock is on when it is not.** On Linux
+  PolterType counted presses of the Caps Lock *key*. Give that key
+  another job — `caps:escape`, `caps:ctrl_modifier`, or the popular
+  "Caps Lock switches layout" (`grp:caps_toggle`) — and it latches
+  nothing at all, while every press still flipped an internal flag that
+  then stayed wrong for the rest of the session. The lock is now read
+  from the keyboard itself (the Caps Lock LED the kernel keeps), so a
+  key that locks nothing changes nothing. Windows and macOS read it from
+  the OS the same way.
+
+- **A hotkey works with Caps Lock on.** The same conflated flag told the
+  chord matcher that Shift was held whenever the lock was, so a shortcut
+  without Shift stopped matching and one with Shift matched without it.
+  Corrections also stopped waiting out an absorb window that could never
+  come quiet, and no longer release a Shift the user was not holding.
+
+- **A digit no longer ends a word early under Caps Lock.** `abc1` read
+  as `ABC!`, and `!` is a separator.
+
 ## [0.18.1] — a bracket is not a word, and a rubbed-out line is not amnesia
 
 Three reports from one afternoon of ordinary typing, all of them the

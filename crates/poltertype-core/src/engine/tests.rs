@@ -736,6 +736,45 @@ mod engine_integration_tests {
         );
     }
 
+    /// A word typed under a latched Caps Lock has to go back out on the
+    /// Shift states the user's fingers actually had.
+    ///
+    /// xkb applies the lock a second time to whatever we emit: press
+    /// Shift for a capital the lock produced and the letter comes back
+    /// lower-case, while a digit or a punctuation mark — which the lock
+    /// never touched — comes back as its shifted symbol. Reported as
+    /// "capital letters are incorrect and sometimes random symbols
+    /// incorrectly changed"
+    /// ([#33](https://github.com/Just-Code-NET/PolterType/issues/33)).
+    /// Driven through the manual switch-last hotkey because that is the
+    /// path a locked keyboard actually reaches: rendered under the lock
+    /// the word reads ALL CAPS, and the automatic path hands those to
+    /// the abbreviation guard.
+    #[test]
+    fn a_word_typed_under_caps_lock_replays_without_shift() {
+        let h = Harness::start(60_000);
+        let caps = poltertype_types::Modifiers {
+            caps: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        for &sc in GHBDSN.iter().chain(std::iter::once(&SPACE)) {
+            h.key_mods(sc, KeyDirection::Press, caps);
+            h.key_mods(sc, KeyDirection::Release, caps);
+        }
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        let replays = h.emitter.replays.lock().clone();
+        let last = replays.last().expect("a replay burst").clone();
+        assert!(
+            last.iter().all(|&(_, shift)| !shift),
+            "the user pressed no Shift, so the replay must press none — \
+             the lock capitalises the letters on its own: {last:?}"
+        );
+    }
+
     /// Switching the layout by hand between a word and the key that
     /// closes it must not make the engine "correct" text that is already
     /// right. Reported as: type `Photos` in en-US, switch to uk-UA,
@@ -2048,6 +2087,7 @@ mod code_check_render_tests {
         WordKey {
             scancode,
             shift,
+            caps: false,
             timestamp_ms: 0,
         }
     }

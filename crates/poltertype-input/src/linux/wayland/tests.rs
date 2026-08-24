@@ -8,6 +8,7 @@
 
 use super::*;
 
+use evdev::{EventType, InputEvent, KeyCode};
 use std::collections::HashSet;
 use std::io;
 use std::path::PathBuf;
@@ -329,6 +330,68 @@ fn a_device_replugged_onto_the_same_node_is_seen_again() {
         vec![PathBuf::from("/dev/input/event5")],
         "the node is reused, so the device behind it has to be judged afresh"
     );
+}
+
+/// The Caps Lock key is not a Caps Lock *state*. `caps:escape`,
+/// `grp:caps_toggle` and `caps:ctrl_modifier` all leave these very
+/// events arriving while the lock never moves — counting the edges left
+/// the engine convinced the lock was on, and every later correction
+/// came back in the wrong case.
+#[test]
+fn the_caps_lock_key_only_marks_the_latch_stale() {
+    #[derive(Default)]
+    struct Flags {
+        shift: bool,
+        ctrl: bool,
+        alt: bool,
+        meta: bool,
+        caps_stale: bool,
+    }
+    fn feed(f: &mut Flags, code: KeyCode, value: i32) {
+        update_modifiers(
+            &InputEvent::new(EventType::KEY.0, code.0, value),
+            &mut f.shift,
+            &mut f.ctrl,
+            &mut f.alt,
+            &mut f.meta,
+            &mut f.caps_stale,
+        );
+    }
+
+    let mut f = Flags::default();
+    feed(&mut f, KeyCode::KEY_CAPSLOCK, 1);
+    feed(&mut f, KeyCode::KEY_CAPSLOCK, 0);
+    assert!(!f.shift, "the Caps Lock key must never stand in for Shift");
+    assert!(f.caps_stale, "its edges make the latch worth re-reading");
+
+    f.caps_stale = false;
+    feed(&mut f, KeyCode::KEY_LEFTSHIFT, 1);
+    feed(&mut f, KeyCode::KEY_A, 1);
+    assert!(f.shift);
+    assert!(
+        !f.caps_stale,
+        "an ordinary key says nothing about the latch"
+    );
+    feed(&mut f, KeyCode::KEY_LEFTSHIFT, 0);
+    assert!(!f.shift);
+}
+
+/// Which keyboards can answer for the Caps Lock latch on this machine,
+/// and what they say right now. The one command to run against a
+/// "my corrections come back in the wrong case" report:
+/// `cargo test -p poltertype-input -- --ignored --nocapture caps_lock_led`
+#[test]
+#[ignore = "reports this machine's real Caps Lock LEDs; nothing to assert"]
+fn caps_lock_led_of_this_machine() {
+    let (devices, _) = open_keyboard_devices();
+    for d in &devices {
+        println!(
+            "{:?} {:?} caps_led={:?}",
+            d.path,
+            d.dev.name().unwrap_or("?"),
+            caps_led(&d.dev)
+        );
+    }
 }
 
 /// Prints what this machine's `/dev/input` actually yields, plus the

@@ -177,6 +177,7 @@ impl WordBuffer {
                 self.keys.push(WordKey {
                     scancode: ev.scancode,
                     shift: ev.modifiers.shift,
+                    caps: ev.modifiers.caps,
                     timestamp_ms: ev.timestamp_ms,
                 });
                 WordBoundary::InProgress

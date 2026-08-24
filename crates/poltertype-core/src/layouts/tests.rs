@@ -138,6 +138,7 @@ fn new_languages_translate_distinctive_keys() {
         let got = mapping.translate_key(WordKey {
             scancode: sc,
             shift,
+            caps: false,
             timestamp_ms: 0,
         });
         assert_eq!(
@@ -146,6 +147,55 @@ fn new_languages_translate_distinctive_keys() {
             "layout {id} sc=0x{sc:X} shift={shift}: expected `{expected}` got {got:?}"
         );
     }
+}
+
+/// Caps Lock is not a second Shift, and xkb is where the difference is
+/// written down: `ALPHABETIC` keys list `Shift` and `Lock` as separate
+/// routes to level 2 and leave the *combination* on level 1, while
+/// `TWO_LEVEL` keys — every digit and every punctuation mark — do not
+/// list `Lock` at all.
+#[test]
+fn caps_lock_reaches_letters_only_and_shift_cancels_it() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let key = |scancode: u32, shift: bool, caps: bool| {
+        en.translate_key(WordKey {
+            scancode,
+            shift,
+            caps,
+            timestamp_ms: 0,
+        })
+    };
+
+    // `A` — the letter row.
+    assert_eq!(key(0x1E, false, false), Some('a'));
+    assert_eq!(key(0x1E, false, true), Some('A'), "the lock capitalises");
+    assert_eq!(key(0x1E, true, true), Some('a'), "Shift cancels the lock");
+
+    // `1` / `!` — the number row, where the lock does nothing.
+    assert_eq!(key(0x02, false, true), Some('1'), "a locked `1` is not `!`");
+    assert_eq!(key(0x02, true, true), Some('!'));
+}
+
+/// The same rule read backwards: which Shift state to *press* to get a
+/// character out while the lock is on. Pressing the level the character
+/// sits on would type its opposite — the lock is applied again on the
+/// way out.
+#[test]
+fn press_for_char_subtracts_a_latched_caps_lock() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+
+    assert_eq!(en.press_for_char('A', false), Some((0x1E, true)));
+    assert_eq!(
+        en.press_for_char('A', true),
+        Some((0x1E, false)),
+        "with the lock on, the bare key already types a capital"
+    );
+    assert_eq!(en.press_for_char('a', true), Some((0x1E, true)));
+    // Punctuation is out of the lock's reach in either state.
+    assert_eq!(en.press_for_char('!', true), Some((0x02, true)));
+    assert_eq!(en.press_for_char('1', true), Some((0x02, false)));
 }
 
 #[test]
@@ -220,26 +270,31 @@ fn round_trip_hello_through_uk() {
         WordKey {
             scancode: 0x23,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x12,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x26,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x26,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x18,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
     ];
@@ -256,31 +311,37 @@ fn round_trip_pryvit_through_en() {
         WordKey {
             scancode: 0x22,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x23,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x30,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x20,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x1F,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
         WordKey {
             scancode: 0x31,
             shift: false,
+            caps: false,
             timestamp_ms: 0,
         },
     ];
@@ -296,6 +357,7 @@ fn shift_picks_uppercase() {
     let buf = vec![WordKey {
         scancode: 0x23,
         shift: true,
+        caps: false,
         timestamp_ms: 0,
     }];
     assert_eq!(en.translate_buffer(&buf), "H");
@@ -815,6 +877,7 @@ fn plain(scancode: u32) -> WordKey {
     WordKey {
         scancode,
         shift: false,
+        caps: false,
         timestamp_ms: 0,
     }
 }

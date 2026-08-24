@@ -161,9 +161,12 @@ pub fn boundary_key_for(
     let Some(mapping) = layouts.get(target) else {
         return (scancode, shift);
     };
+    // Separators are never alphabetic, so the Caps Lock latch cannot
+    // change what this key produces either way.
     let as_typed = mapping.translate_key(poltertype_types::WordKey {
         scancode,
         shift,
+        caps: false,
         timestamp_ms: 0,
     });
     if as_typed == Some(ch) {

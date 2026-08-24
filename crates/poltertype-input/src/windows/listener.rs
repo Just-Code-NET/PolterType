@@ -16,7 +16,8 @@ use crossbeam_channel::Sender;
 use tracing::{debug, error, info, warn};
 use windows::Win32::Foundation::{HMODULE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_CONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RMENU, VK_RWIN, VK_SHIFT,
+    GetAsyncKeyState, GetKeyState, VK_CAPITAL, VK_CONTROL, VK_LMENU, VK_LWIN, VK_MENU, VK_RMENU,
+    VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG,
@@ -256,10 +257,15 @@ fn read_modifiers() -> Modifiers {
         // Safety: GetAsyncKeyState is a trivial Win32 call.
         unsafe { (GetAsyncKeyState(vk as i32) as u16) & 0x8000 != 0 }
     }
+    // The low bit of `GetKeyState` is the toggle, not the held-ness —
+    // the only thing that answers "is Caps Lock on" without guessing.
+    // Safety: GetKeyState is a trivial Win32 call.
+    let caps = unsafe { GetKeyState(VK_CAPITAL.0 as i32) } & 1 != 0;
     Modifiers {
         shift: down(VK_SHIFT.0),
         control: down(VK_CONTROL.0),
         alt: down(VK_MENU.0) || down(VK_LMENU.0) || down(VK_RMENU.0),
         meta: down(VK_LWIN.0) || down(VK_RWIN.0),
+        caps,
     }
 }

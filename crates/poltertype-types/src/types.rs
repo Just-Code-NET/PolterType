@@ -79,10 +79,21 @@ pub struct KeyEvent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Modifiers {
+    /// A Shift key physically down — never Caps Lock. The two are not
+    /// interchangeable: xkb gives Shift+Lock on a letter the *base*
+    /// level (`Caps` + `Shift` types lowercase) and ignores Lock
+    /// entirely on digits and punctuation, so a replay that presses
+    /// Shift for a character Caps Lock alone produced comes out
+    /// lower-case, or as the shifted symbol. See `caps`.
     pub shift: bool,
     pub control: bool,
     pub alt: bool,
     pub meta: bool,
+    /// Caps Lock **latched** at the time of the event — the OS lock
+    /// state, not a count of how often the key was pressed. The key
+    /// is routinely repurposed (`caps:escape`, `grp:caps_toggle`,
+    /// `caps:ctrl_modifier`), and then it never latches anything.
+    pub caps: bool,
 }
 
 impl Modifiers {
@@ -91,8 +102,12 @@ impl Modifiers {
         control: false,
         alt: false,
         meta: false,
+        caps: false,
     };
 
+    /// No modifier *held*. Caps Lock is a latch, not a held key, and
+    /// chords are never written against it — so it is deliberately
+    /// not counted here or in [`Self::is_command`].
     pub fn is_empty(&self) -> bool {
         !(self.shift || self.control || self.alt || self.meta)
     }
@@ -111,7 +126,14 @@ impl Modifiers {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WordKey {
     pub scancode: u32,
+    /// Shift physically held for this keystroke — the modifier a
+    /// replay has to reproduce, and nothing else.
     pub shift: bool,
+    /// Caps Lock latched for this keystroke. Only the *rendering*
+    /// reads it (a letter typed under Caps Lock appears upper-case);
+    /// the replay must not, because the lock is still on when the
+    /// keystroke goes back out.
+    pub caps: bool,
     pub timestamp_ms: u64,
 }
 

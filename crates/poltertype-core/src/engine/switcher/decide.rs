@@ -23,12 +23,18 @@ impl SwitcherEngine {
     /// Best-effort current-layout translate. `None` when the OS
     /// cannot be queried or the scancode is not in the mapping table —
     /// both normal for control / OEM keys.
-    pub(super) fn translate_via_current_layout(&self, scancode: u32, shift: bool) -> Option<char> {
+    pub(super) fn translate_via_current_layout(
+        &self,
+        scancode: u32,
+        shift: bool,
+        caps: bool,
+    ) -> Option<char> {
         let current = self.layout_switcher.current().ok()?;
         let mapping = self.layouts.get(&current)?;
         mapping.translate_key(poltertype_types::WordKey {
             scancode,
             shift,
+            caps,
             timestamp_ms: 0,
         })
     }
@@ -99,11 +105,14 @@ impl SwitcherEngine {
             .map(|m| m.translate_buffer(&keys))
             .unwrap_or_default();
 
+        // Only ever called for separators, which no lock state can
+        // change the level of.
         let render_key = |scancode: u32, shift: bool| {
             self.layouts.get(&current_layout).and_then(|m| {
                 m.translate_key(poltertype_types::WordKey {
                     scancode,
                     shift,
+                    caps: false,
                     timestamp_ms: 0,
                 })
             })

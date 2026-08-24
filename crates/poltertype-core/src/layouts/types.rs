@@ -102,9 +102,16 @@ impl LayoutMapping {
 
     /// Translate a single keystroke to the character produced under
     /// this layout, if known.
+    ///
+    /// Caps Lock is applied the way xkb applies it, which is not
+    /// "another Shift": on a letter it selects the shifted level and
+    /// a held Shift then cancels it back to the base one; on digits
+    /// and punctuation it does nothing at all. Folding it into
+    /// `shift` at the listener made `1` under Caps Lock read as `!`.
     pub fn translate_key(&self, key: WordKey) -> Option<char> {
         let (plain, shifted) = self.keys.get(&key.scancode)?;
-        if key.shift {
+        let caps_applies = key.caps && plain.is_alphabetic();
+        if key.shift ^ caps_applies {
             Some(shifted.unwrap_or(*plain))
         } else {
             Some(*plain)
@@ -133,6 +140,23 @@ impl LayoutMapping {
         plain_hit
             .map(|sc| (sc, false))
             .or(shifted_hit.map(|sc| (sc, true)))
+    }
+
+    /// Which physical key and **Shift state** to press to make `ch`
+    /// appear, given whether Caps Lock is latched right now.
+    ///
+    /// [`Self::key_for_char`] answers in rendering terms — the level
+    /// the character sits on. Pressing that as a modifier while the
+    /// lock is on types the opposite case, because xkb applies the
+    /// lock a second time on the way out.
+    pub fn press_for_char(&self, ch: char, caps_on: bool) -> Option<(u32, bool)> {
+        let (scancode, level_shift) = self.key_for_char(ch)?;
+        let caps_applies = caps_on
+            && self
+                .keys
+                .get(&scancode)
+                .is_some_and(|(plain, _)| plain.is_alphabetic());
+        Some((scancode, level_shift ^ caps_applies))
     }
 
     /// Translate an entire word buffer into a string under this layout.

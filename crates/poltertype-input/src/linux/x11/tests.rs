@@ -59,28 +59,44 @@ fn latin1_maps_to_itself_and_the_rest_gets_bit_24() {
     assert_eq!(unicode_to_keysym('€'), 0x0100_20AC);
 }
 
+/// `shift` is the physical key and only ever that: a replay presses it
+/// again, and xkb applies the lock on top a second time.
 #[test]
-fn caps_lock_folds_into_shift() {
+fn caps_lock_never_reads_as_shift() {
     let mut m = ModState::default();
     assert!(!m.snapshot().shift);
+    assert!(!m.snapshot().caps);
 
     m.press(EV_LEFTSHIFT);
     assert!(m.snapshot().shift);
     m.release(EV_LEFTSHIFT);
     assert!(!m.snapshot().shift);
 
-    // Caps toggles on press and stays on after release.
+    // The key moving says nothing about the latch — `caps:escape` and
+    // `grp:caps_toggle` give it another job entirely — so all a press
+    // does here is mark the latch as needing a re-read.
     m.press(EV_CAPSLOCK);
     m.release(EV_CAPSLOCK);
-    assert!(m.snapshot().shift, "caps lock alone produces uppercase");
+    assert!(!m.snapshot().shift, "the Caps Lock key is not a Shift key");
+    assert!(
+        !m.snapshot().caps,
+        "the latch may only be set from the server's answer"
+    );
 
-    // Shift while Caps is on cancels back to lowercase.
-    m.press(EV_LEFTSHIFT);
-    assert!(!m.snapshot().shift, "shift+caps is lowercase");
+    m.set_caps(true);
+    assert!(m.snapshot().caps);
+    assert!(!m.snapshot().shift, "a latched lock is still not Shift");
+}
 
-    m.release(EV_LEFTSHIFT);
+/// Two edges, one question to ask: whichever edge is seen, the latch is
+/// stale until the server answers.
+#[test]
+fn a_caps_lock_edge_marks_the_latch_stale_once() {
+    let mut m = ModState::default();
+    assert!(!m.take_caps_stale());
     m.press(EV_CAPSLOCK);
-    assert!(!m.snapshot().shift, "caps toggled back off");
+    assert!(m.take_caps_stale());
+    assert!(!m.take_caps_stale(), "taking the flag clears it");
 }
 
 #[test]
@@ -202,15 +218,14 @@ fn either_side_of_a_modifier_pair_counts_as_held() {
 
 #[test]
 fn caps_lock_is_a_latch_and_resync_must_not_touch_it() {
-    // Caps is toggled on the press edge and stays on with the key up.
-    // XQueryKeymap reports the physical key, so folding it in here
-    // would clear the latch the moment the user let go.
+    // The latch stays on with the key up, and `XQueryKeymap` reports
+    // physical keys — so folding its answer in would clear the latch
+    // the moment the user let go.
     let mut m = ModState::default();
-    m.press(EV_CAPSLOCK);
-    assert!(m.snapshot().shift, "caps folds into shift for the engine");
+    m.set_caps(true);
     m.resync(&keymap_with(&[]));
     assert!(
-        m.snapshot().shift,
+        m.snapshot().caps,
         "caps must survive a resync with no keys down"
     );
 }

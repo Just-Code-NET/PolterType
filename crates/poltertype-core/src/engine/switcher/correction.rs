@@ -48,6 +48,7 @@ impl SwitcherEngine {
         }
 
         let mapping = self.layouts.get(to);
+        let caps_on = self.caps_on();
         let mut text = String::new();
         let mut dropped = 0usize;
 
@@ -73,6 +74,10 @@ impl SwitcherEngine {
                     m.translate_key(poltertype_types::WordKey {
                         scancode: k.scancode,
                         shift: k.shift,
+                        // `send_text` types the codepoint itself, so
+                        // the lock has to be folded in here — nothing
+                        // downstream will apply it.
+                        caps: caps_on,
                         timestamp_ms: 0,
                     })
                 })
@@ -133,6 +138,10 @@ impl SwitcherEngine {
             original = %logsafe::redact_word(original),
             corrected = %logsafe::redact_word(corrected),
             %reason,
+            // The word is redacted, so a wrong-case report has nothing
+            // else to go on: this is the one bit that says whether the
+            // lock was in play.
+            caps = self.caps_on(),
             "applying correction"
         );
 
@@ -359,6 +368,10 @@ impl SwitcherEngine {
                         if let Some(c) = mapping.translate_key(poltertype_types::WordKey {
                             scancode: k.scancode,
                             shift: k.shift,
+                            // Same as `emit_held_keys`: this branch
+                            // types codepoints, so the lock is ours
+                            // to apply.
+                            caps: self.caps_on(),
                             timestamp_ms: 0,
                         }) {
                             text.push(c);
@@ -669,7 +682,11 @@ impl SwitcherEngine {
             let produced = if letter {
                 None
             } else {
-                self.translate_via_current_layout(ev.scancode, ev.modifiers.shift)
+                self.translate_via_current_layout(
+                    ev.scancode,
+                    ev.modifiers.shift,
+                    ev.modifiers.caps,
+                )
             };
             match classify(ev.scancode, produced, letter) {
                 KeyKind::Word => out.word_keys.push(ev),

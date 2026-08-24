@@ -147,21 +147,19 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
         _ => return None,
     };
 
-    // Fold Caps Lock into the shift bit the way the X11 backend does:
-    // caps-on + no Shift = uppercase, caps-on + held Shift = lowercase.
-    // The engine's all-caps and replay logic rely on this combined bit.
-    let shift = flags.contains(CGEventFlags::CGEventFlagShift)
-        ^ flags.contains(CGEventFlags::CGEventFlagAlphaShift);
-
+    // Kept apart, not folded together: `shift` is what a replay has to
+    // press again, and the lock is still on when it does. macOS reports
+    // both as live flags, so neither is ever a guess here.
     Some(KeyEvent {
         vk,
         scancode: mac_keycode_to_sc1(vk as u16),
         direction,
         modifiers: Modifiers {
-            shift,
+            shift: flags.contains(CGEventFlags::CGEventFlagShift),
             control: flags.contains(CGEventFlags::CGEventFlagControl),
             alt: flags.contains(CGEventFlags::CGEventFlagAlternate),
             meta: flags.contains(CGEventFlags::CGEventFlagCommand),
+            caps: flags.contains(CGEventFlags::CGEventFlagAlphaShift),
         },
         injected: event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA) != 0,
         timestamp_ms: 0,

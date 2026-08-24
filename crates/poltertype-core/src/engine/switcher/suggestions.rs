@@ -346,6 +346,10 @@ impl SwitcherEngine {
             return None;
         };
 
+        // Read once: this plan turns *characters* back into keystrokes,
+        // and Caps Lock decides which Shift state produces each one.
+        let caps_on = self.caps_on();
+
         // Screen model left of the caret:
         // `<word><boundary_run><in-progress keys>[<chord digit>][caret]`
         // — delete all of it, retype with the word replaced.
@@ -379,7 +383,7 @@ impl SwitcherEngine {
                 .chars()
                 .map(|c| {
                     target_mapping
-                        .key_for_char(c)
+                        .press_for_char(c, caps_on)
                         .map(|(scancode, shift)| ReplayKey { scancode, shift })
                 })
                 .collect()
@@ -418,6 +422,9 @@ impl SwitcherEngine {
                 .translate_key(WordKey {
                     scancode: rk.scancode,
                     shift: rk.shift,
+                    // Separator run — nothing here is alphabetic, so
+                    // the lock cannot change the level.
+                    caps: false,
                     timestamp_ms: 0,
                 })
                 .or(match rk.scancode {
@@ -445,10 +452,11 @@ impl SwitcherEngine {
             let keys: Vec<WordKey> = entry
                 .text
                 .chars()
-                .filter_map(|c| target_mapping.key_for_char(c))
+                .filter_map(|c| target_mapping.press_for_char(c, caps_on))
                 .map(|(scancode, shift)| WordKey {
                     scancode,
                     shift,
+                    caps: caps_on,
                     timestamp_ms: 0,
                 })
                 .collect();

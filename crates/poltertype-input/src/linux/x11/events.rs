@@ -14,7 +14,7 @@ use tracing::{debug, info, trace, warn};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xinput::{self, ConnectionExt as _};
-use x11rb::protocol::xproto::ConnectionExt as _;
+use x11rb::protocol::xproto::{self, ConnectionExt as _};
 use x11rb::rust_connection::RustConnection;
 
 /// XInput2's "all master devices" pseudo-device. Selecting on masters
@@ -76,6 +76,9 @@ pub(crate) fn connect_and_select() -> Result<RustConnection, InputError> {
 pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
     let mut mods = ModState::default();
     let mut last_resync = Instant::now();
+    // Seed the latch: the session may well have started with Caps Lock
+    // already on, and nothing else would ever tell us.
+    resync_caps(&conn, &mut mods, true);
     while !stop.load(Ordering::SeqCst) {
         match conn.poll_for_event() {
             Ok(Some(ev)) => {
@@ -87,6 +90,7 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
                 }
             }
             Ok(None) => {
+                resync_caps(&conn, &mut mods, false);
                 resync_modifiers(&conn, &mut mods, &mut last_resync);
                 thread::sleep(POLL_IDLE);
             }
@@ -140,14 +144,35 @@ fn resync_modifiers(conn: &RustConnection, mods: &mut ModState, last: &mut Insta
     }
 }
 
+/// Re-read the Caps Lock latch from the server after a Caps Lock edge
+/// (or once at startup, with `force`).
+///
+/// `QueryPointer` answers with the effective modifier mask, `Lock`
+/// included — the state xkb will apply to our replayed keystrokes.
+/// Asking is the only way to know: the key is often bound to Escape,
+/// Ctrl or the layout switch, where pressing it latches nothing.
+fn resync_caps(conn: &RustConnection, mods: &mut ModState, force: bool) {
+    if !mods.take_caps_stale() && !force {
+        return;
+    }
+    let Some(root) = conn.setup().roots.first().map(|s| s.root) else {
+        return;
+    };
+    let Ok(Ok(reply)) = conn.query_pointer(root).map(|cookie| cookie.reply()) else {
+        return;
+    };
+    let caps = reply.mask.contains(xproto::KeyButMask::LOCK);
+    mods.set_caps(caps);
+    debug!(caps, "Caps Lock latch read from the server");
+}
+
 pub(crate) fn translate(ev: &Event, mods: &mut ModState) -> Option<KeyEvent> {
     match ev {
         Event::XinputRawKeyPress(e) => {
             let evdev = x11_to_evdev(e.detail)?;
             // Auto-repeat is a real press as far as the engine is
-            // concerned, but it must not re-toggle Caps Lock — holding
-            // Caps down would otherwise flap the flag many times a
-            // second.
+            // concerned, but holding Caps Lock down must not ask the
+            // server for the latch hundreds of times a second.
             if !e.flags.contains(xinput::KeyEventFlags::KEY_REPEAT) {
                 mods.press(evdev);
             }

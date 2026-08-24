@@ -194,13 +194,24 @@ pub(crate) fn drain_devices(
     //
     // Modifier state is tracked in-loop because evdev gives raw
     // press/release pairs and the engine needs to know whether `K` was
-    // typed shifted (`Lfdfq` → `Давай`, not `давай`). Caps Lock inverts
-    // the same flag.
+    // typed shifted (`Lfdfq` → `Давай`, not `давай`).
     let mut shift_down = false;
     let mut ctrl_down = false;
     let mut alt_down = false;
     let mut super_down = false;
-    let mut caps_on = false;
+    // Caps Lock is read off the kernel LED, never counted from key
+    // presses: `caps:escape`, `grp:caps_toggle` and `caps:ctrl_modifier`
+    // all leave `KEY_CAPSLOCK` arriving here while the latch never
+    // moves, and a counter is then wrong for the rest of the session.
+    let caps_at_start = devices.iter().find_map(|od| caps_led(&od.dev));
+    if caps_at_start.is_none() {
+        // Worth its own line: with nothing to ask, "off" is a standing
+        // guess, and a locked keyboard would then get every correction
+        // back in the wrong case.
+        warn!("no keyboard reports a Caps Lock LED — the lock is assumed off");
+    }
+    info!(caps = ?caps_at_start, "Caps Lock latch at startup");
+    let mut caps_on = caps_at_start.unwrap_or(false);
     // Cheap enough at 2 s, and well below the time a human takes to
     // reconnect a device and start typing.
     let rescan_every = Duration::from_secs(2);
@@ -208,28 +219,48 @@ pub(crate) fn drain_devices(
     // Every `/dev/input/event*` path already judged, so the rescan only
     // ever opens something genuinely new.
     let mut known_paths: HashSet<PathBuf> = devices.iter().map(|od| od.path.clone()).collect();
+    let mut batch: Vec<InputEvent> = Vec::new();
     while !stop.load(Ordering::SeqCst) {
         let mut got_any = false;
         let mut dead = Vec::new();
         for (idx, od) in devices.iter_mut().enumerate() {
-            match od.dev.fetch_events() {
-                Ok(events) => {
-                    for ev in events {
+            // Drained into a buffer first: reading the Caps Lock LED
+            // back off the device needs the borrow `fetch_events` holds
+            // for as long as its iterator lives, and the latch has to
+            // be re-read between the Caps keystroke and the next word
+            // key, not one poll round later.
+            match od.dev.fetch_events().map(|evs| {
+                batch.clear();
+                batch.extend(evs);
+            }) {
+                Ok(()) => {
+                    for ev in &batch {
+                        let mut caps_stale = false;
                         update_modifiers(
-                            &ev,
+                            ev,
                             &mut shift_down,
                             &mut ctrl_down,
                             &mut alt_down,
                             &mut super_down,
-                            &mut caps_on,
+                            &mut caps_stale,
                         );
+                        // The compositor sets the LED while processing
+                        // the press, so the answer is ready by the time
+                        // this round reads it back.
+                        if caps_stale && let Some(latched) = caps_led(&od.dev) {
+                            if latched != caps_on {
+                                debug!(caps = latched, "Caps Lock latch changed");
+                            }
+                            caps_on = latched;
+                        }
                         let modifiers = Modifiers {
-                            shift: shift_down ^ caps_on,
+                            shift: shift_down,
                             control: ctrl_down,
                             alt: alt_down,
                             meta: super_down,
+                            caps: caps_on,
                         };
-                        if let Some(out_ev) = translate(&ev, modifiers, od.gate.is_ours) {
+                        if let Some(out_ev) = translate(ev, modifiers, od.gate.is_ours) {
                             got_any = true;
                             od.gate.last_event = Some(Instant::now());
                             trace!(vk = out_ev.vk, dir = ?out_ev.direction, "evdev event");
@@ -287,13 +318,16 @@ pub(crate) fn drain_devices(
     info!("evdev listener thread exiting");
 }
 
+/// Fold one event into the held-modifier flags. `caps_stale` is raised
+/// — never toggled — when the Caps Lock key moves: whether that press
+/// latched anything is the kernel's to answer, via [`caps_led`].
 pub(crate) fn update_modifiers(
     ev: &InputEvent,
     shift: &mut bool,
     ctrl: &mut bool,
     alt: &mut bool,
     super_: &mut bool,
-    caps: &mut bool,
+    caps_stale: &mut bool,
 ) {
     if ev.event_type() != EventType::KEY {
         return;
@@ -329,10 +363,25 @@ pub(crate) fn update_modifiers(
                 *super_ = false;
             }
         }
-        // Caps Lock toggles on press, not on release.
-        KeyCode::KEY_CAPSLOCK if pressed => *caps = !*caps,
+        // Both edges: a key bound to `Caps_Lock` latches on the press,
+        // one bound to anything else never latches at all, and the
+        // difference is not visible from here.
+        KeyCode::KEY_CAPSLOCK if pressed || released => *caps_stale = true,
         _ => {}
     }
+}
+
+/// Caps Lock as the kernel reports it for this device, or `None` when
+/// the device carries no such LED — our own virtual keyboard, pointers,
+/// power buttons. The compositor mirrors the latch onto every real
+/// keyboard, so any one of them answers for the session.
+pub(crate) fn caps_led(dev: &Device) -> Option<bool> {
+    if !dev.supported_leds()?.contains(evdev::LedCode::LED_CAPSL) {
+        return None;
+    }
+    dev.get_led_state()
+        .ok()
+        .map(|state| state.contains(evdev::LedCode::LED_CAPSL))
 }
 
 /// `from_us` marks events read back off our own uinput device. Behind a

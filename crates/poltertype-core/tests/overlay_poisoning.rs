@@ -40,6 +40,7 @@ fn keys_for(db: &LayoutDb, layout: &LayoutId, text: &str) -> Option<Vec<WordKey>
             m.key_for_char(c).map(|(scancode, shift)| WordKey {
                 scancode,
                 shift,
+                caps: false,
                 timestamp_ms: 0,
             })
         })

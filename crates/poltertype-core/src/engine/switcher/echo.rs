@@ -84,6 +84,13 @@ impl SwitcherEngine {
         m.control || m.shift || m.alt || m.meta
     }
 
+    /// Is Caps Lock latched right now? Only the paths that turn
+    /// *characters* into keystrokes need it — a scancode replay carries
+    /// its own Shift state and the lock applies itself.
+    pub(super) fn caps_on(&self) -> bool {
+        self.held_modifiers.read().caps
+    }
+
     pub(super) fn echo_pending(&self) -> bool {
         !self.expected_echo.lock().is_empty()
     }

@@ -6,6 +6,55 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-24 — Caps Lock is a lock the OS owns, and it is not a Shift key
+
+Two things were wrong with one flag. Both listeners on Linux, and the
+macOS one, reported `Modifiers.shift` as *shift XOR caps* — the level
+the character came out on — and the correction replay pressed that
+straight back out as a physical modifier. xkb then applies the lock a
+second time: `ALPHABETIC` keys route `Shift` and `Lock` to level 2
+separately and leave the *combination* on level 1, so a capital the
+lock produced comes back lower-case; `TWO_LEVEL` keys — every digit and
+punctuation mark — do not list `Lock` at all, so a `1` typed under the
+lock comes back as `!`. The same folded bit also stood in for "Shift is
+held" in chord matching and in the pre-replay modifier release.
+
+The second half is worse, because it needs no Caps Lock at all. The
+evdev and X11 backends *counted* `KEY_CAPSLOCK` presses. The key is
+routinely given another job — `caps:escape`, `caps:ctrl_modifier`,
+`grp:caps_toggle` (Caps Lock switches layout, which is how the reporter
+of
+[#33](https://github.com/Just-Code-NET/PolterType/issues/33) switches
+his) — and then it latches nothing whatsoever: `xkbcli compile-keymap
+--options caps:escape` gives `key <CAPS> { type="ONE_LEVEL", symbols[1]
+= [ Escape ] }`, with no `Caps_Lock` symbol anywhere. Every press still
+arrives at evdev, below xkb, and flipped a counter that then stayed
+wrong for the rest of the session.
+
+**Decision:** `Modifiers.shift` is the physical key and only that, and
+`Modifiers.caps` carries the lock, read from the OS in all four
+backends — the kernel `LED_CAPSL` on evdev, `QueryPointer`'s `Lock` bit
+on X11, `CGEventFlagAlphaShift` on macOS, `GetKeyState(VK_CAPITAL) & 1`
+on Windows. `WordKey` carries both, `LayoutMapping::translate_key`
+applies the lock the way xkb does (letters only, Shift cancels it), and
+the replay presses the physical state. Turning *characters* back into
+keystrokes — the suggestion accept and the `send_text` fallback — goes
+through `press_for_char`, which subtracts a live lock.
+
+**Alternative considered:** keep the folded bit and subtract the lock at
+the emit sites only. Fewer lines, but it leaves `Modifiers.shift`
+lying to chord matching and to `modifiers_held()` — with the lock on,
+every correction then waits out the full absorb deadline and emits a
+Shift release nobody asked for.
+
+**Alternative considered:** drop the lock from the rendering entirely,
+as the Windows listener already did. The replay comes out right for
+free, but the buffer then reads `hello` where the screen says `HELLO`,
+which is exactly the input the ALL-CAPS abbreviation guard and the
+suggestion's capitalisation are reading.
+
+---
+
 ## 2026-08-23 — Deleting text we never saw is a statement about the caret, not about the next word
 
 `WordBuffer` poisoned itself when Backspace ran past everything it
