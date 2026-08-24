@@ -11,6 +11,36 @@ stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
+**What the unreleased pass has checked so far (2026-08-24).** Linux
+only, and for the first time on desktops nobody here runs: a VirtualBox
+guest (Ubuntu 26.04) with seventeen sessions installed, driven headless
+over SSH. Every line below was run, not read:
+
+- **The KDE layout backend *switches*, on a live Plasma 6 Wayland
+  session.** The half this file has carried as "only reasoned" since
+  0.17.3. `setLayout(1)` answered `true`, `getLayout` came back `1`,
+  and — the part that matters, because reading our own write back is
+  what #26 was — **Plasma's own tray indicator changed to `ru`**. Then
+  the whole path through the app: `linux-kde-qdbus` selected,
+  `active=[en-US, ru-RU]`, `ghbdtn ` typed into a terminal and
+  `привет ` read back out of it.
+- **Caps Lock, on this Arch/Hyprland machine.** A word typed under a
+  latched lock comes back in the right case, and a digit inside a word
+  stays a digit — both injected through uinput and read back as bytes.
+  The latch is now read from the kernel LED, which was confirmed live
+  (`caps_led=Some(true)` while latched) and on a virtual keyboard that
+  has no LED at all.
+- **The layout-backend probe, against eleven desktops at once** — which
+  is what found the fcitx5 bullet below.
+
+Not measured here, and not to be inferred from it: the **key gate**
+never engages under VirtualBox (`hold not taken within the handshake
+window`), so nothing about held keystrokes was tested; the **X11 input
+listener** still has not been exercised, because the first sweep leaked
+a stale `XDG_SESSION_TYPE=wayland` into every X11 session and the app
+believed it; and every Windows and macOS bullet stands on its own
+earlier date.
+
 **What the 0.18.1 pass actually checked.** Nothing platform-specific,
 because nothing platform-specific moved: the release is three engine
 rules and one dictionary entry, which are the same code on every OS.
@@ -224,21 +254,33 @@ tooltip backends, the macOS runtime paths — stands on its own earlier
 dated evidence and was **not** re-run here. The 0.14.3 pass is still
 what backs the Windows bullets.
 
-- **The KDE layout backend still has not *switched* a layout on a KDE
-  machine.** 0.17.3 rewrote it — Plasma has addressed layouts by index
-  since 5.23 (2021) and we were passing xkb names, and the layout *list*
-  was being read out of a `qdbus` error sentence that arrives on stdout
-  with a success exit code, which is how a user's Plasma 6 session came
-  up with zero usable layouts (issue #31). Reading is now **observed**:
-  that reporter's v0.17.3 log resolves `en-US` and `ru-RU` off a live
-  Plasma 6 and loads both. The write half — `setLayout` by index, and
-  the pre-5.23 name fallback — is still only reasoned, from KWin's own
-  `src/keyboard_layout.h` and Qt's `argumentToString`, and unit-tested
-  against the exact strings both produce; **nobody on this side has a
-  Plasma session**. The backend refuses to activate unless Plasma
-  answers with a list it can parse, so if the write half is still wrong
-  the failure is "the layout does not change", not "PolterType switches
-  to the wrong one".
+- **The KDE layout backend is now observed end to end** — but only on
+  Plasma **6**, and only on Wayland. 0.17.3 rewrote it (Plasma has
+  addressed layouts by index since 5.23, and we were passing xkb names;
+  the layout *list* was being read out of a `qdbus` error sentence that
+  arrives on stdout with a success exit code, which is how a user's
+  Plasma 6 session came up with zero usable layouts — issue #31).
+  Reading was confirmed from that reporter's log in 0.17.4. The write
+  half — `setLayout` by index — was measured on 2026-08-24 in the
+  desktop-matrix guest: the call returns `true`, `getLayout` agrees,
+  Plasma's own tray indicator moves, and a wrong-layout word typed into
+  a terminal comes back corrected. What is **still** only reasoned is
+  the **pre-5.23 name fallback**, which no Plasma 5 session here has
+  ever exercised, and **Plasma on X11**, which Ubuntu 26.04 no longer
+  packages a session for.
+
+- **A backend that is merely installed used to take the session.**
+  Ubuntu autostarts fcitx5 with language support; `fcitx5-remote -t 1`
+  exits 0 on a desktop where fcitx owns no input method, and
+  `fcitx5-remote -n` then answers with an empty line. Measured across
+  the seventeen-session sweep on 2026-08-24: on GNOME, Xfce, MATE,
+  LXQt, Budgie, sway, labwc, i3, openbox, fluxbox and icewm the app
+  came up on `linux-fcitx5-remote`, reported `count=1` of an empty
+  layout id, loaded **zero** layouts — and logged `layout switcher
+  ready` while being unable to correct anything at all. Fixed by
+  requiring every backend to name a layout before it is selected. The
+  same shape is possible in `ibus`, which is why the guard sits in the
+  probe rather than in one backend.
 
 - **Nine of the fifteen bundled layouts have never been typed on.**
   0.9.0 added pl, cs, el, he, tr, bg, it, pt-PT and pt-BR. The

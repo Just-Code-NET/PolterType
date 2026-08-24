@@ -36,6 +36,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - **A digit no longer ends a word early under Caps Lock.** `abc1` read
   as `ABC!`, and `!` is a separator.
 
+### Fixed — PolterType no longer starts with no layouts at all
+
+- **On most Linux desktops, an input method that was merely installed
+  took over the keyboard layout — and then owned none.** Ubuntu
+  installs fcitx5 alongside language support and starts it at login, so
+  it answers "yes, I am running" while managing nothing. PolterType
+  believed it, loaded **zero** keyboard layouts, and went quiet: no
+  corrections, and a log line saying the layout switcher was ready.
+  Measured on GNOME, Xfce, MATE, LXQt, Budgie, sway, labwc, i3, openbox,
+  fluxbox and icewm — everything except KDE and Cinnamon, which are
+  asked first. A backend now has to name at least one layout before
+  PolterType will use it, and the log says which one stood down and why.
+
 ### Fixed — `log_level` in `config.toml` does what it says
 
 - **Setting `[general].log_level = "debug"` now actually raises the
