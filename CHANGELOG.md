@@ -7,7 +7,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased] — the Linux desktops, measured one by one
 
 Found by running PolterType on seventeen desktop sessions in a virtual
-machine. Nine correct a word end to end; the four that cannot now say
+machine. Ten correct a word end to end; the four that cannot now say
 so instead of eating the word.
 
 ### Added — GNOME and sway

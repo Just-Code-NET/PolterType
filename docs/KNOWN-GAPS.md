@@ -28,7 +28,8 @@ guest:
 | sway 1.11 | Wayland | `linux-sway-swaymsg` |
 | Xfce 4.20 | X11 | `linux-x11-xkb` |
 | LXQt | X11 | `linux-x11-xkb` |
-| Cinnamon | X11 | `linux-cinnamon-xkb` |
+| Cinnamon 6.4 | X11 | `linux-cinnamon-xkb` |
+| i3 | X11 | `linux-x11-xkb` |
 | icewm | X11 | `linux-x11-xkb` |
 | openbox | X11 | `linux-x11-xkb` |
 | fluxbox | X11 | `linux-x11-xkb` |
@@ -58,8 +59,7 @@ Also new since 0.18.1:
 - **niri** and **river** have no backend: neither is packaged for
   Ubuntu 26.04, so neither could be run before shipping;
 - **Cinnamon on Wayland** (experimental in 6.4) produced no terminal to
-  type into, and **i3** opens its first-run wizard without a config —
-  both unmeasured, neither passing;
+  type into — unmeasured, not passing;
 - every **Windows** and **macOS** bullet stands on its earlier date.
 
 **What the 0.18.1 pass actually checked.** Nothing platform-specific,
