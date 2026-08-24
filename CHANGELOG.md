@@ -6,36 +6,31 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased] — the Linux desktops, measured one by one
 
-Everything below was found by running PolterType on seventeen desktop
-sessions in a virtual machine, rather than by reading code. Nine of them
-now correct a word end to end; the four that cannot are told apart from
-the ones that can, and say so, instead of quietly eating the word.
+Found by running PolterType on seventeen desktop sessions in a virtual
+machine. Nine correct a word end to end; the four that cannot now say
+so instead of eating the word.
 
 ### Added — GNOME and sway
 
 - **GNOME works again.** On GNOME 49 every settings key PolterType could
-  write had stopped doing anything: the layout never moved, so each
-  correction deleted the word and retyped it exactly as it was. It now
-  reads which source the shell is actually on, and switches with the
-  shortcut the desktop itself uses. Nothing is sent when the ordinary
-  route works.
+  write had stopped doing anything, so each correction deleted the word
+  and retyped it unchanged. It now reads which source the shell is on,
+  and switches with the desktop's own shortcut — sent only when the
+  ordinary route fails.
 
-- **sway is supported.** It keeps its keyboard configuration to itself,
-  so until now there was no way to switch a layout there at all.
-  PolterType now talks to sway's own IPC — the same arrangement Hyprland
-  has had.
+- **sway is supported**, through its own IPC. It keeps its keyboard
+  configuration to itself, so there was previously no way to switch a
+  layout there at all.
 
-### Fixed — PolterType stops when it cannot do the job properly
+### Fixed — PolterType stops rather than mangle a word
 
 - **A word is never deleted and retyped unchanged.** If the layout did
-  not really move — because the desktop put it back, or ignored the
-  request — the correction is abandoned before a single keystroke, and
-  the log says which desktop and why. Previously the user saw their word
-  vanish and return identical, with nothing to explain it.
+  not really move, the correction is abandoned before a keystroke and
+  the log says which desktop and why.
 
-- **MATE, labwc, Budgie's and Xfce's Wayland sessions** are now honest
-  about being unsupported rather than appearing to work. See
-  `docs/KNOWN-GAPS.md` for what each of them lacks.
+- **MATE, labwc, Budgie's and Xfce's Wayland sessions** report that they
+  are unsupported instead of appearing to work. `docs/KNOWN-GAPS.md`
+  has what each lacks.
 
 ### Fixed — corrections keep their capitals, and their digits
 

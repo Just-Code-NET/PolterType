@@ -12,19 +12,19 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 **What the unreleased pass actually checked (2026-08-24/25).** Linux
-only, and for the first time on desktops nobody here runs: a VirtualBox
-guest (Ubuntu 26.04) carrying seventeen sessions, driven headless over
-SSH. Every session below was measured the same way — a wrong-layout word
-typed through a virtual keyboard into a terminal, and the bytes that
-reached it read back. Nothing here rests on what a desktop reported
-about itself.
+only, in a VirtualBox guest (Ubuntu 26.04) carrying seventeen sessions.
+Each was measured the same way: a wrong-layout word injected through a
+virtual keyboard, and the bytes that reached the terminal read back —
+never what the desktop said about itself.
 
-Corrects a word end to end:
+Corrects a word end to end — Hyprland on this machine, the rest in the
+guest:
 
 | Session | Display | Layout backend |
 |---|---|---|
+| Hyprland | Wayland | `linux-hyprland-hyprctl` |
 | KDE Plasma 6 | Wayland | `linux-kde-qdbus` |
-| GNOME 49 | Wayland | `linux-gsettings` + the shell's own shortcut |
+| GNOME 49 | Wayland | `linux-gsettings` + the shell's shortcut |
 | sway 1.11 | Wayland | `linux-sway-swaymsg` |
 | Xfce 4.20 | X11 | `linux-x11-xkb` |
 | LXQt | X11 | `linux-x11-xkb` |
@@ -33,44 +33,34 @@ Corrects a word end to end:
 | openbox | X11 | `linux-x11-xkb` |
 | fluxbox | X11 | `linux-x11-xkb` |
 
-Declines, deliberately and with the reason in the log — **the word is
-left untouched**:
+Declines with the reason in the log; **the word is left untouched**:
 
 | Session | Why |
 |---|---|
 | MATE | its group state tracks neither our write nor its own switch |
-| labwc, Budgie (Wayland), Xfce (Wayland) | wlroots: no layout API at all |
+| labwc, Budgie (Wayland), Xfce (Wayland) | wlroots: no layout API |
 
-Also measured here, and new since 0.18.1:
+Also new since 0.18.1:
 
-- **The X11 input stack ran for the first time.** `linux-x11-xinput2`,
-  `linux-x11-xtest`, `linux-x11-ewmh` and
-  `linux-x11-override-redirect`, all on a real X session — this laptop
-  runs Hyprland and had never executed any of them.
-- **Caps Lock**, on this Arch/Hyprland machine: a word typed under a
-  latched lock comes back in the right case, a digit inside a word
-  stays a digit, and the latch is read from the kernel LED
-  (`caps_led=Some(true)` while latched) including on a virtual keyboard
-  that has no LED.
-- **A layout switch is now checked rather than assumed** — three
-  readings across ~80 ms, from a source that can contradict us where
-  one exists.
+- **The X11 input stack ran for the first time** — `linux-x11-xinput2`,
+  `linux-x11-xtest`, `linux-x11-ewmh`, `linux-x11-override-redirect`.
+  This laptop runs Hyprland and had never executed any of them.
+- **Caps Lock**, on this machine: a word typed under a latched lock
+  comes back in the right case, a digit stays a digit, and the latch is
+  read from the kernel LED.
+- **A layout switch is checked, not assumed** — three readings across
+  ~80 ms, where a source that can contradict us exists.
 
-**Not** measured, and not to be inferred:
+**Not** measured:
 
-- the **key gate** never engages under VirtualBox (`hold not taken
-  within the handshake window`), so nothing about held keystrokes was
-  tested anywhere but this laptop;
-- **niri** and **river** have the same kind of CLI sway does and no
-  backend, because neither is packaged for Ubuntu 26.04 and a backend
-  that cannot be run once before shipping is what this file exists to
-  prevent;
-- **Cinnamon on Wayland** is experimental in 6.4 and produced no
-  terminal to type into — unmeasured, not passing;
-- **i3** was not measured either: it starts its first-run wizard on a
-  session with no config, which takes the screen;
-- every **Windows** and **macOS** bullet stands on its own earlier
-  date. Nothing on either was re-run.
+- the **key gate** never engages under VirtualBox, so held keystrokes
+  were tested only on this laptop;
+- **niri** and **river** have no backend: neither is packaged for
+  Ubuntu 26.04, so neither could be run before shipping;
+- **Cinnamon on Wayland** (experimental in 6.4) produced no terminal to
+  type into, and **i3** opens its first-run wizard without a config —
+  both unmeasured, neither passing;
+- every **Windows** and **macOS** bullet stands on its earlier date.
 
 **What the 0.18.1 pass actually checked.** Nothing platform-specific,
 because nothing platform-specific moved: the release is three engine

@@ -8,10 +8,9 @@ and any **alternatives** considered.
 
 ## 2026-08-25 — Ask the thing itself, never a proxy for it
 
-One afternoon on a seventeen-session desktop matrix produced eight
-bugs. Every one of them was the same mistake wearing a different hat:
-the app decided something about the *world* by reading a signal that
-merely correlates with it.
+Eight bugs came out of one desktop-matrix sweep, all the same mistake:
+deciding something about the world from a signal that merely correlates
+with it.
 
 | It asked | It should have asked | What went wrong |
 |---|---|---|
@@ -22,31 +21,24 @@ merely correlates with it.
 | did the layout move? | did it *stay* moved? | MATE lets the lock land and restores its own group a moment later |
 | how many times was Caps Lock pressed? | what does the kernel LED say? | `caps:escape` and `grp:caps_toggle` press the key and latch nothing |
 
-**Decision:** a backend may act only where it can check the result
-against something that is able to disagree with it. Concretely:
-`LayoutSwitcher::verify_switched` returns `Option<bool>`, where `None`
-means "I can only read my own write" and is not treated as success;
-where an independent reading exists it is used, and used *repeatedly*,
-because a settings daemon that will overrule us does not do it
-instantly. A desktop that offers no such reading gets no backend, and
-the log says which one stood down and why.
+**Decision:** act only where the result can be checked against
+something able to disagree. `LayoutSwitcher::verify_switched` returns
+`Option<bool>`; `None` means "I can only read my own write" and is not
+success. Where an independent reading exists it is sampled repeatedly —
+a settings daemon that overrules us does not do it instantly. A desktop
+with no such reading gets no backend, and the log names it.
 
-The cost is real: MATE and three wlroots sessions now correct nothing.
-That is the honest state, and it is strictly better than the previous
-one, where those sessions deleted the user's word and retyped it
-unchanged — a flicker, a lost word, and nothing in the log to explain
-it.
+Cost: MATE and three wlroots sessions now correct nothing. Better than
+before, where they deleted the word and retyped it unchanged.
 
 **Alternative considered:** keep acting and let the user notice. That
-is what shipped before, and it is how all eight bugs stayed invisible:
-each failure looked exactly like "PolterType didn't fire on that one".
+is what shipped, and why all eight stayed invisible — each looked like
+"PolterType just didn't fire".
 
-**Alternative considered:** name-list the broken desktops rather than
-check. Two of the eight were found *because* the name list was already
-wrong — Budgie's Wayland session is labwc underneath and calls itself
-Budgie. Names are a last resort, used only where there is genuinely
-nothing to measure, and each one carries the measurement that put it
-there.
+**Alternative considered:** name-list the broken desktops instead of
+checking. Two bugs were found *because* the name list was wrong:
+Budgie's Wayland session is labwc and calls itself Budgie. Names are a
+last resort, and each carries the measurement that put it there.
 
 ---
 
