@@ -69,8 +69,18 @@ fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
 }
 
 impl LayoutSwitcher for GnomeSwitcher {
+    /// The shell's own most-recently-used head first, because `current`
+    /// is only ever as true as the last thing that wrote it — and on
+    /// GNOME 49 that is us, writing a key the shell ignores. Reading it
+    /// there told the engine the user was typing in a layout they were
+    /// not, which is wrong before any correction is even considered.
     fn current(&self) -> Result<LayoutId, LayoutError> {
         let sources = read_sources()?;
+        if let Some(live) = read_live_source()
+            && sources.contains(&live)
+        {
+            return Ok(live);
+        }
         let idx = read_current_index()?;
         sources
             .get(idx as usize)
@@ -96,6 +106,14 @@ impl LayoutSwitcher for GnomeSwitcher {
         }
         debug!(layout = %id, idx, "GNOME layout switched");
         Ok(())
+    }
+
+    /// `mru-sources` is maintained by the shell, so it can disagree
+    /// with the `current` we just wrote — and on GNOME 49 it does, every
+    /// time. `None` when the key is unavailable, which keeps every
+    /// older GNOME behaving exactly as before.
+    fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
+        read_live_source().map(|live| live == *target)
     }
 
     fn backend_name(&self) -> &'static str {

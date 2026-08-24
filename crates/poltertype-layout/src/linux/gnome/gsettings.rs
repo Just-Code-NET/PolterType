@@ -21,6 +21,32 @@ pub(crate) fn read_sources() -> Result<Vec<LayoutId>, LayoutError> {
     Ok(parse_sources(&s))
 }
 
+/// The input source GNOME is **actually on**, as opposed to the one we
+/// asked for.
+///
+/// `mru-sources` is most-recently-used order, so its head is the live
+/// source — and unlike `current` it is maintained by the shell itself.
+/// Measured on GNOME 49 (Ubuntu 26.04), 2026-08-24: switching with the
+/// desktop's own shortcut moves this list and leaves `current`
+/// untouched, while writing `current` moves neither the list nor the
+/// keyboard.
+///
+/// Never written by us. A write would put a value here that the shell
+/// did not choose, and this is the only reading that can contradict our
+/// own write — spending it would leave nothing to check against.
+pub(crate) fn read_live_source() -> Option<LayoutId> {
+    let out = Command::new("gsettings")
+        .args(["get", SCHEMA, "mru-sources"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_sources(&String::from_utf8_lossy(&out.stdout))
+        .into_iter()
+        .next()
+}
+
 pub(crate) fn read_current_index() -> Result<u32, LayoutError> {
     let out = Command::new("gsettings")
         .args(["get", SCHEMA, "current"])
