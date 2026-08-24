@@ -29,6 +29,13 @@ pub fn daemon_is_running() -> bool {
 }
 
 pub fn try_init() -> Option<IBusSwitcher> {
+    // Same rule as fcitx, and for the same reason: a daemon running for
+    // CJK input on a desktop that switches layouts elsewhere must not
+    // take the session off the backend that can.
+    if !crate::linux::shared::session_uses_input_method("ibus") {
+        debug!("IBus is not this session's input method; standing down");
+        return None;
+    }
     if !daemon_is_running() {
         return None;
     }

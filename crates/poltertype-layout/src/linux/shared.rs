@@ -104,3 +104,58 @@ pub fn bcp47_to_xkb(bcp: &str) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+/// Every variable a session announces its input method in. `XMODIFIERS`
+/// is the X11-era one every toolkit still reads; the other two are how
+/// GTK and Qt are told directly.
+const IM_VARS: [&str; 3] = ["XMODIFIERS", "GTK_IM_MODULE", "QT_IM_MODULE"];
+
+/// Is `name` the input method **this session actually uses**?
+///
+/// Running is not the same as chosen. Ubuntu installs fcitx5 with
+/// language support and starts it at login, so `fcitx5-remote -t 1`
+/// exits 0 on a desktop where fcitx owns nothing — and the backend then
+/// reports whatever single keyboard engine it happens to hold, which is
+/// enough to win the probe ahead of the X11 backend that would have
+/// worked. Measured across the desktop matrix, 2026-08-24: eleven
+/// sessions with every one of these variables empty and fcitx5 running.
+///
+/// A session that has genuinely adopted one says so: `XMODIFIERS=@im=fcitx`.
+pub(crate) fn session_uses_input_method(name: &str) -> bool {
+    IM_VARS
+        .iter()
+        .filter_map(|var| std::env::var(var).ok())
+        .any(|value| value_names_im(&value, name))
+}
+
+/// `@im=fcitx`, or a bare `fcitx` in `GTK_IM_MODULE`. Matched whole so
+/// `fcitx` and `ibus` can never claim each other, and the `5` suffix is
+/// accepted because both spellings are in the wild.
+fn value_names_im(value: &str, name: &str) -> bool {
+    let token = value.rsplit("@im=").next().unwrap_or_default().trim();
+    let matches = |candidate: &str| {
+        candidate.eq_ignore_ascii_case(name) || candidate.eq_ignore_ascii_case(&format!("{name}5"))
+    };
+    matches(token) || matches(value.trim())
+}
+
+#[cfg(test)]
+mod im_tests {
+    use super::*;
+
+    #[test]
+    fn an_input_method_is_named_by_the_session_or_not_at_all() {
+        assert!(value_names_im("@im=fcitx", "fcitx"));
+        assert!(value_names_im("@im=fcitx5", "fcitx"));
+        assert!(value_names_im("fcitx", "fcitx"));
+        assert!(value_names_im("@im=ibus", "ibus"));
+        assert!(value_names_im("ibus", "ibus"));
+
+        assert!(!value_names_im("@im=ibus", "fcitx"));
+        assert!(!value_names_im("@im=fcitx", "ibus"));
+        // The measured case: fcitx5 running, nothing pointing at it.
+        assert!(!value_names_im("", "fcitx"));
+        assert!(!value_names_im("@im=none", "fcitx"));
+        assert!(!value_names_im("gtk-im-context-simple", "ibus"));
+    }
+}

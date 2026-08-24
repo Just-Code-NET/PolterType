@@ -9,6 +9,15 @@ use tracing::{debug, warn};
 pub struct FcitxSwitcher;
 
 pub fn try_init() -> Option<FcitxSwitcher> {
+    // Chosen, not merely running. Ubuntu starts fcitx5 with language
+    // support on desktops that route input nowhere near it, and this
+    // backend sits ahead of the X11 one in the probe — so "is it up"
+    // handed eleven sessions to a switcher that owned nothing. See
+    // `shared::session_uses_input_method`.
+    if !crate::linux::shared::session_uses_input_method("fcitx") {
+        debug!("fcitx5 is not this session's input method; standing down");
+        return None;
+    }
     // -t 1 = check whether fcitx is running; exits 0 if yes.
     let ok = Command::new("fcitx5-remote")
         .arg("-t")
