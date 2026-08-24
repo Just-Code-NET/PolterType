@@ -220,22 +220,20 @@ pub(crate) fn drain_devices(
     // ever opens something genuinely new.
     let mut known_paths: HashSet<PathBuf> = devices.iter().map(|od| od.path.clone()).collect();
     let mut batch: Vec<InputEvent> = Vec::new();
+    let mut caps_stale = false;
     while !stop.load(Ordering::SeqCst) {
         let mut got_any = false;
         let mut dead = Vec::new();
         for (idx, od) in devices.iter_mut().enumerate() {
-            // Drained into a buffer first: reading the Caps Lock LED
-            // back off the device needs the borrow `fetch_events` holds
-            // for as long as its iterator lives, and the latch has to
-            // be re-read between the Caps keystroke and the next word
-            // key, not one poll round later.
+            // Drained into a buffer first, so the borrow `fetch_events`
+            // holds for the life of its iterator does not outlive the
+            // events themselves.
             match od.dev.fetch_events().map(|evs| {
                 batch.clear();
                 batch.extend(evs);
             }) {
                 Ok(()) => {
                     for ev in &batch {
-                        let mut caps_stale = false;
                         update_modifiers(
                             ev,
                             &mut shift_down,
@@ -244,15 +242,6 @@ pub(crate) fn drain_devices(
                             &mut super_down,
                             &mut caps_stale,
                         );
-                        // The compositor sets the LED while processing
-                        // the press, so the answer is ready by the time
-                        // this round reads it back.
-                        if caps_stale && let Some(latched) = caps_led(&od.dev) {
-                            if latched != caps_on {
-                                debug!(caps = latched, "Caps Lock latch changed");
-                            }
-                            caps_on = latched;
-                        }
                         let modifiers = Modifiers {
                             shift: shift_down,
                             control: ctrl_down,
@@ -280,6 +269,23 @@ pub(crate) fn drain_devices(
                     dead.push(idx);
                 }
                 Err(e) => warn!(?e, "evdev fetch_events"),
+            }
+        }
+        // A Caps Lock edge went by: ask again, and ask *any* keyboard
+        // that has the LED rather than the one the key came from. The
+        // key routinely arrives from a device with no LED at all — a
+        // remapper's virtual keyboard, an on-screen keyboard, a KM
+        // switch — and the compositor mirrors the latch onto every real
+        // keyboard anyway. Read here, after the borrow above is gone,
+        // which costs one poll round: still microseconds ahead of the
+        // next word key.
+        if caps_stale {
+            caps_stale = false;
+            if let Some(latched) = devices.iter().find_map(|od| caps_led(&od.dev))
+                && latched != caps_on
+            {
+                debug!(caps = latched, "Caps Lock latch changed");
+                caps_on = latched;
             }
         }
         // Remove dead devices high-index-first so earlier indices stay
