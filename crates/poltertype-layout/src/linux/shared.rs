@@ -8,6 +8,7 @@
 
 #![allow(dead_code)] // each backend uses a subset of these.
 
+use crate::LayoutId;
 use std::path::PathBuf;
 
 /// Pure-PATH lookup for a binary. We avoid the "run `foo --version`
@@ -103,6 +104,39 @@ pub fn bcp47_to_xkb(bcp: &str) -> Option<&'static str> {
         "ko-KR" => "kr",
         _ => return None,
     })
+}
+
+/// A compositor's pretty keymap description (`"English (US)"`,
+/// `"Ukrainian"`) as a BCP-47 [`LayoutId`].
+///
+/// Hyprland's `active keymap` and sway's `xkb_layout_names` both speak
+/// this dialect rather than xkb short codes, so the mapping lives here
+/// rather than in either of them.
+pub(crate) fn keymap_to_layout(name: &str) -> LayoutId {
+    let xkb = name_to_xkb_code(name);
+    let bcp = xkb_to_bcp47(&xkb).map(str::to_owned).unwrap_or(xkb);
+    LayoutId::new(bcp)
+}
+
+/// `"English (US)" → "us"`. There is no full table to consult, so this
+/// is a best-effort guess over the descriptions we have seen.
+pub(crate) fn name_to_xkb_code(name: &str) -> String {
+    let lower = name.to_lowercase();
+    match lower.as_str() {
+        s if s.contains("ukrain") => "ua".into(),
+        // `us` must be an exact match, not a substring — "Russian"
+        // and "Belarusian" both contain the letters "us", and the
+        // broad check made every Russian keymap resolve to en-US.
+        s if s.contains("english") || s == "us" => "us".into(),
+        s if s.contains("russian") => "ru".into(),
+        s if s.contains("german") => "de".into(),
+        s if s.contains("french") => "fr".into(),
+        // Every language we bundle a wordlist for must resolve here, or
+        // the moment the user switches to it the engine sees an unknown
+        // current layout: empty renders, phantom re-corrections.
+        s if s.contains("spanish") => "es".into(),
+        _ => name.to_owned(),
+    }
 }
 
 /// Every variable a session announces its input method in. `XMODIFIERS`

@@ -1,5 +1,6 @@
 use super::*;
 use crate::LayoutId;
+use crate::linux::shared::keymap_to_layout;
 
 /// Trimmed real `hyprctl devices` output from a Hyprland + keyd
 /// machine in the desynced state that broke en→uk corrections: the

@@ -45,6 +45,7 @@ pub mod hyprland;
 pub mod ibus;
 pub mod kde;
 pub mod shared;
+pub mod sway;
 pub mod x11;
 
 /// Pins one backend instead of probing: `cinnamon`, `ibus`, `gnome`,
@@ -82,6 +83,7 @@ pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
     probe!("kde", kde::try_init().map(boxed));
     // Before gsettings, not after: Cinnamon would pass the gsettings
     // probe and then fail to switch anything (#26).
+    probe!("sway", sway::try_init().map(boxed));
     probe!("cinnamon", cinnamon::try_init());
     probe!("gnome", gnome::try_init().map(boxed));
     probe!("ibus", ibus::try_init().map(boxed));
@@ -156,11 +158,12 @@ fn create_pinned_switcher(name: &str) -> Result<Box<dyn LayoutSwitcher>, LayoutE
         "gnome" | "gsettings" => boxed(gnome::init_without_desktop_check()),
         "ibus" => boxed(ibus::try_init()),
         "fcitx" | "fcitx5" => boxed(fcitx::try_init()),
+        "sway" => boxed(sway::try_init()),
         "x11" | "xkb" => boxed(x11::try_init()),
         other => {
             return Err(LayoutError::Unsupported(format!(
                 "{BACKEND_ENV}={other:?} names no backend; expected auto, hyprland, kde, \
-                 cinnamon, gnome, ibus, fcitx or x11"
+                 cinnamon, sway, gnome, ibus, fcitx or x11"
             )));
         }
     };

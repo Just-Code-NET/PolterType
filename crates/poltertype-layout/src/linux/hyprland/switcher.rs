@@ -1,7 +1,7 @@
 //! `HyprlandSwitcher` — layout control via hyprctl.
 
 use super::*;
-use crate::linux::shared::{cmd_exists, xkb_to_bcp47};
+use crate::linux::shared::{cmd_exists, keymap_to_layout, xkb_to_bcp47};
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;

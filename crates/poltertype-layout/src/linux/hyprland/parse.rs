@@ -10,14 +10,6 @@ use std::process::Command;
 use std::time::Duration;
 use tracing::{debug, warn};
 
-/// Map a Hyprland `active keymap` description (e.g. `"Ukrainian"`,
-/// `"English (US)"`) to a BCP-47 `LayoutId`.
-pub(crate) fn keymap_to_layout(name: &str) -> LayoutId {
-    let xkb = name_to_xkb_code(name);
-    let bcp = xkb_to_bcp47(&xkb).map(str::to_owned).unwrap_or(xkb);
-    LayoutId::new(bcp)
-}
-
 /// Hyprland prints device names normalised: lowercase, spaces and
 /// other separators collapsed to dashes (`poltertype virtual
 /// keyboard` → `poltertype-virtual-keyboard`). Apply the same shape
@@ -95,26 +87,4 @@ pub(crate) fn parse_csv(s: &str) -> Vec<LayoutId> {
         .filter(|p| !p.is_empty())
         .map(|code| LayoutId::new(xkb_to_bcp47(code).unwrap_or(code).to_owned()))
         .collect()
-}
-
-/// `"English (US)" → "us"` — Hyprland's `active keymap` uses the
-/// pretty XKB description; we don't have a full table, so we take a
-/// best-effort guess.
-pub(crate) fn name_to_xkb_code(name: &str) -> String {
-    let lower = name.to_lowercase();
-    match lower.as_str() {
-        s if s.contains("ukrain") => "ua".into(),
-        // `us` must be an exact match, not a substring — "Russian"
-        // and "Belarusian" both contain the letters "us", and the
-        // broad check made every Russian keymap resolve to en-US.
-        s if s.contains("english") || s == "us" => "us".into(),
-        s if s.contains("russian") => "ru".into(),
-        s if s.contains("german") => "de".into(),
-        s if s.contains("french") => "fr".into(),
-        // Every language we bundle a wordlist for must resolve here, or
-        // the moment the user switches to it the engine sees an unknown
-        // current layout: empty renders, phantom re-corrections.
-        s if s.contains("spanish") => "es".into(),
-        _ => name.to_owned(),
-    }
 }
