@@ -1,4 +1,4 @@
-# Known gaps (as of v0.18.1)
+# Known gaps (as of v0.19.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -11,7 +11,7 @@ stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
-**What the unreleased pass actually checked (2026-08-24/25).** Linux
+**What the 0.19.0 pass actually checked (2026-08-24/25).** Linux
 only, in a VirtualBox guest (Ubuntu 26.04) carrying seventeen sessions.
 Each was measured the same way: a wrong-layout word injected through a
 virtual keyboard, and the bytes that reached the terminal read back —

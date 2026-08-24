@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-23 (v0.18.1).
+> Created: 2026-05-02. Last updated: 2026-08-25 (v0.19.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -230,7 +230,7 @@ Implementations:
 |---|---|
 | Windows | `LoadKeyboardLayoutW` + `PostMessageW(HWND_BROADCAST, WM_INPUTLANGCHANGEREQUEST, ...)` or `ActivateKeyboardLayout`. |
 | macOS | `TISCreateInputSourceList` → `TISSelectInputSource`. |
-| Linux Wayland | Probe in order: Hyprland (`hyprctl`), KDE (`qdbus`), Cinnamon (`gdbus` → `org.Cinnamon`, or XKB groups on 6.4 and older), GSettings (`gsettings org.gnome.desktop.input-sources` — GNOME/Unity/Budgie/Pantheon), IBus (`ibus engine`), Fcitx5 (`fcitx5-remote`). Every probe is a real CLI/schema check, not just an env guess — and where a desktop can be asked something only the owner of the layout could answer, it is asked that. |
+| Linux Wayland | Probe in order: Hyprland (`hyprctl`), KDE (`qdbus`), sway (`swaymsg`), Cinnamon (`gdbus` → `org.Cinnamon`, or XKB groups on 6.4 and older), GSettings (`gsettings org.gnome.desktop.input-sources` — GNOME), IBus (`ibus engine`), Fcitx5 (`fcitx5-remote`). Every probe is a real CLI/schema check, not just an env guess — and where a desktop can be asked something only the owner of the layout could answer, it is asked that. A backend that names no layout, or whose write the session ignores, stands down for the next one rather than reporting success. |
 | Linux X11 | `XkbLockGroup` via `x11rb` (fast) or a `setxkbmap -layout ...` fallback. |
 
 ### 3.3 SwitcherEngine (logic)
@@ -908,8 +908,8 @@ separate `poltertype --settings` process.
 - [x] **Wayland evdev listener** via `evdev`; `setup-linux.sh` adds
       the user to the `input` group + udev rules (`/dev/input/event*`
       and `/dev/uinput`).
-- [x] Layout switcher: Hyprland → KDE → Cinnamon → GSettings (GNOME
-      family) → IBus → Fcitx5 → X11 XKB, each as a separate backend
+- [x] Layout switcher: Hyprland → KDE → sway → Cinnamon → GSettings
+      (GNOME) → IBus → Fcitx5 → X11 XKB, each as a separate backend
       behind the `Trait`.
 - [x] Send-keys via `uinput` (paired with evdev).
 - [x] X11: XInput2 listener + XTest emitter + XKB switcher

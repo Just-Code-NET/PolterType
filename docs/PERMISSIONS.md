@@ -367,7 +367,10 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
 1. **Hyprland** (`hyprctl switchxkblayout`) — when
    `HYPRLAND_INSTANCE_SIGNATURE` is set.
 2. **KDE Plasma** (`qdbus6`/`qdbus` → `org.kde.keyboard /Layouts`).
-3. **Cinnamon** — two routes, and the probe picks by asking rather
+3. **sway** (`swaymsg input type:keyboard xkb_switch_layout`) — sway
+   keeps its keyboard configuration to itself, so nothing else in this
+   list can reach it.
+4. **Cinnamon** — two routes, and the probe picks by asking rather
    than by version:
    - **6.6 and newer**: `gdbus` → `org.Cinnamon.GetInputSources` and
      `org.Cinnamon.ActivateInputSourceIndex`, the entry point
@@ -376,36 +379,52 @@ the canonical CLI tool of its ecosystem. Backends, in priority order:
    - **6.4 and older** (Linux Mint 22.x): no such API. There layouts
      are ordinary XKB groups — the applet drives
      `XAppKbdLayoutController` → libgnomekbd → `XkbLockGroup`, and it
-     listens for group changes — so this routes to backend 7 on
+     listens for group changes — so this routes to backend 8 on
      purpose, logged as `linux-cinnamon-xkb` rather than
      `linux-x11-xkb` so a bug report can tell a deliberate choice
      from a fallback.
-4. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
-   covers **GNOME**, **Ubuntu Unity 7+**, **Budgie**, **Pantheon**
-   (elementary OS). The probe requires the schema to be installed
-   *and* to list at least one input source: the schema ships with GTK,
-   so it is present on plenty of machines running no GNOME-family
-   desktop at all, where it reads back empty. It also stands down on
-   Cinnamon, which populates the schema and reads a different one
-   ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)).
-5. **IBus** (`ibus engine`) — a DE that lets IBus own the layout.
+5. **GSettings** (`gsettings org.gnome.desktop.input-sources`) —
+   **GNOME**, and the desktops that genuinely read that schema. The
+   probe requires the schema to be installed *and* to list at least
+   one input source: the schema ships with GTK, so it is present on
+   plenty of machines running no GNOME-family desktop at all, where it
+   reads back empty. Populating it is not enough either — Cinnamon
+   populates it and reads a different one
+   ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)),
+   MATE keeps its layouts in `org.mate.peripherals-keyboard-xkb`, and
+   a wlroots compositor (labwc, and with it Budgie's and Xfce's
+   Wayland sessions) reads no schema at all, so the backend stands
+   down for each rather than writing a key nobody reads.
+
+   On GNOME the written key is also not the whole story. Since GNOME
+   45 the shell keeps the live source in `mru-sources`, which is what
+   PolterType reads back, and on 49 no writable key moves the keyboard
+   at all — so when the write does not take, the switch is sent as the
+   desktop's own `switch-input-source` shortcut.
+6. **IBus** (`ibus engine`) — a DE that lets IBus own the layout.
    Note that running an IBus daemon is not that: most desktops run one
-   for CJK input while switching layouts by another route entirely.
-6. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx.
-7. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — locks the XKB
+   for CJK input while switching layouts by another route entirely,
+   so this backend now requires the session to *name* an input method
+   (`XMODIFIERS`, `GTK_IM_MODULE`, `QT_IM_MODULE`).
+7. **Fcitx5** (`fcitx5-remote -s …`) — any DE hosting Fcitx, under the
+   same rule: Ubuntu starts fcitx5 with language support, where it
+   owns nothing.
+8. **X11 XKB** (`XkbLatchLockState` via `x11rb`) — locks the XKB
    group, which is what the layouts in `setxkbmap -layout us,ua`
    actually are. This is the bare-WM fallback (i3, openbox, plain
    `.xinitrc`), where no desktop environment owns the layout. Probed
    last on purpose: where a DE *is* present it usually keeps a tray
    indicator in sync with the layout, and locking the group underneath
    it would switch the keyboard while leaving that indicator lying.
-   (Cinnamon 6.4 is the exception, which is why backend 3 routes here
+   (Cinnamon 6.4 is the exception, which is why backend 4 routes here
    knowingly.) Stands down entirely under XWayland, where the
-   compositor owns layout.
+   compositor owns layout, and on MATE, whose group state tracks
+   neither our write nor the session's own switch.
 
 **Pinning a backend.** `POLTERTYPE_LAYOUT_BACKEND` skips the probe and
-uses exactly the backend you name — `hyprland`, `kde`, `cinnamon`,
-`gnome`, `ibus`, `fcitx`, `x11`, or `auto` for the default probe:
+uses exactly the backend you name — `hyprland`, `kde`, `sway`,
+`cinnamon`, `gnome`, `ibus`, `fcitx`, `x11`, or `auto` for the default
+probe:
 
 ```bash
 POLTERTYPE_LAYOUT_BACKEND=ibus poltertype

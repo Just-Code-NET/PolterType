@@ -15,8 +15,9 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.18.1 — out of beta since v0.1.0. Works end-to-end on
-> Windows and on Linux (both Wayland and X11); the spelling-
+> **Status:** v0.19.0 — out of beta since v0.1.0. Works end-to-end on
+> Windows and on Linux (Wayland and X11, on the desktops named in the
+> table below); the spelling-
 > suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
 > (GNOME Wayland gets it through XWayland), **on Windows since
 > 0.11.0** — following the caret there too since 0.18.0, in
