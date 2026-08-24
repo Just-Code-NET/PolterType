@@ -23,6 +23,11 @@
 //! can be asked something only the real owner of the layout could
 //! answer, ask that instead.
 //! ([#26](https://github.com/Just-Code-NET/PolterType/issues/26).)
+//!
+//! The floor under that rule is [`names_a_layout`]: whatever a backend
+//! answered to "are you running", it is only selected if it can name a
+//! layout. Fcitx5 is why — installed and autostarted by Ubuntu's
+//! language support, it says yes to both and owns nothing.
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
@@ -58,47 +63,77 @@ pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
     }
 
     let mut tried: Vec<&'static str> = Vec::new();
+    let mut mute: Vec<&'static str> = Vec::new();
 
-    if let Some(s) = hyprland::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
+    macro_rules! probe {
+        ($name:literal, $init:expr) => {{
+            let built: Option<Box<dyn LayoutSwitcher>> = $init;
+            if let Some(s) = built {
+                if names_a_layout(s.as_ref()) {
+                    return Ok(Box::new(CachedSwitcher::new(s)));
+                }
+                mute.push($name);
+            }
+            tried.push($name);
+        }};
     }
-    tried.push("hyprland");
 
-    if let Some(s) = kde::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
-    }
-    tried.push("kde");
-
+    probe!("hyprland", hyprland::try_init().map(boxed));
+    probe!("kde", kde::try_init().map(boxed));
     // Before gsettings, not after: Cinnamon would pass the gsettings
     // probe and then fail to switch anything (#26).
-    if let Some(s) = cinnamon::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(s)));
-    }
-    tried.push("cinnamon");
-
-    if let Some(s) = gnome::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
-    }
-    tried.push("gnome");
-
-    if let Some(s) = ibus::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
-    }
-    tried.push("ibus");
-
-    if let Some(s) = fcitx::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
-    }
-    tried.push("fcitx");
-
-    if let Some(s) = x11::try_init() {
-        return Ok(Box::new(CachedSwitcher::new(Box::new(s))));
-    }
-    tried.push("x11");
+    probe!("cinnamon", cinnamon::try_init());
+    probe!("gnome", gnome::try_init().map(boxed));
+    probe!("ibus", ibus::try_init().map(boxed));
+    probe!("fcitx", fcitx::try_init().map(boxed));
+    probe!("x11", x11::try_init().map(boxed));
 
     Err(LayoutError::Unsupported(format!(
-        "no Linux layout-switching backend available; probed: {tried:?}"
+        "no Linux layout-switching backend available; probed: {tried:?}, \
+         initialised but naming no layout: {mute:?}"
     )))
+}
+
+fn boxed<S: LayoutSwitcher + 'static>(s: S) -> Box<dyn LayoutSwitcher> {
+    Box::new(s)
+}
+
+/// Can this backend name a single layout? If not, it is not the thing
+/// driving this session, whatever it answered to "are you running".
+///
+/// Fcitx5 is the case that named the rule. Ubuntu installs it with
+/// language support and autostarts it, so `fcitx5-remote -t 1` exits 0
+/// on a desktop where fcitx owns no input method at all — and
+/// `fcitx5-remote -n` then answers with an empty line. The backend
+/// activated on GNOME, Xfce, MATE, LXQt, Budgie, sway, labwc and every
+/// bare WM, reported `active=[LayoutId("")] count=1`, and the layout DB
+/// came up with **zero** layouts loaded: a log that reads
+/// `layout switcher ready` on an app that can no longer correct
+/// anything. Measured across a 17-session sweep, 2026-08-24.
+///
+/// This is the same rule the KDE backend already applies to itself and
+/// the same lesson as [#26](https://github.com/Just-Code-NET/PolterType/issues/26):
+/// probe by what a desktop *does*, not by what it ships.
+fn names_a_layout(s: &dyn LayoutSwitcher) -> bool {
+    match s.list_active() {
+        Ok(list) if list.iter().any(|id| !id.as_str().trim().is_empty()) => true,
+        Ok(list) => {
+            info!(
+                backend = s.backend_name(),
+                ?list,
+                "backend initialised but names no layout — standing down for the next one"
+            );
+            false
+        }
+        Err(e) => {
+            info!(
+                backend = s.backend_name(),
+                %e,
+                "backend initialised but could not list layouts — standing down for the next one"
+            );
+            false
+        }
+    }
 }
 
 /// The backend name [`BACKEND_ENV`] asks for, normalised — `None` when
@@ -207,5 +242,60 @@ impl LayoutSwitcher for CachedSwitcher {
 
     fn backend_name(&self) -> &'static str {
         self.inner.backend_name()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A backend that answers whatever the test wants it to.
+    struct Fake(Result<Vec<LayoutId>, LayoutError>);
+
+    impl LayoutSwitcher for Fake {
+        fn current(&self) -> Result<LayoutId, LayoutError> {
+            Ok(LayoutId::new("en-US"))
+        }
+        fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
+            match &self.0 {
+                Ok(v) => Ok(v.clone()),
+                Err(e) => Err(LayoutError::Unsupported(e.to_string())),
+            }
+        }
+        fn switch_to(&self, _: &LayoutId) -> Result<(), LayoutError> {
+            Ok(())
+        }
+        fn backend_name(&self) -> &'static str {
+            "fake"
+        }
+    }
+
+    fn fake(ids: &[&str]) -> Fake {
+        Fake(Ok(ids.iter().map(|s| LayoutId::new(*s)).collect()))
+    }
+
+    /// The fcitx5 case: running, answering, and owning nothing. Ubuntu
+    /// autostarts it with language support, so this is the default
+    /// state on a machine that never configured an input method — and
+    /// before this guard it took the layout DB down to zero layouts on
+    /// every desktop but KDE and Cinnamon.
+    #[test]
+    fn a_backend_naming_no_layout_is_not_the_one_driving_the_session() {
+        assert!(!names_a_layout(&fake(&[""])), "an empty id names nothing");
+        assert!(!names_a_layout(&fake(&[])), "an empty list names nothing");
+        assert!(!names_a_layout(&fake(&["  "])), "whitespace names nothing");
+        assert!(
+            !names_a_layout(&Fake(Err(LayoutError::Unsupported("no".into())))),
+            "a backend that cannot be asked cannot be trusted to switch"
+        );
+    }
+
+    #[test]
+    fn a_backend_that_names_one_is_accepted() {
+        assert!(names_a_layout(&fake(&["en-US"])));
+        assert!(
+            names_a_layout(&fake(&["", "ru-RU"])),
+            "one real layout among blanks is still a working backend"
+        );
     }
 }
