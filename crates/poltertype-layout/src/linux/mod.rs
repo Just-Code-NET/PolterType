@@ -243,6 +243,13 @@ impl LayoutSwitcher for CachedSwitcher {
     fn backend_name(&self) -> &'static str {
         self.inner.backend_name()
     }
+
+    /// Straight through, never from the cache: `switch_to` writes the
+    /// cache itself, so a cached answer here would confirm our own
+    /// write — which is the exact mistake this call exists to catch.
+    fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
+        self.inner.verify_switched(target)
+    }
 }
 
 #[cfg(test)]

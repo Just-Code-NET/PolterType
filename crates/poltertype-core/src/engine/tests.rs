@@ -138,6 +138,10 @@ mod engine_integration_tests {
         active: Vec<LayoutId>,
         switches: Mutex<Vec<LayoutId>>,
         fail_switch: bool,
+        /// Simulates a desktop whose settings daemon puts the layout
+        /// back before a key can go out — MATE, measured 2026-08-24.
+        /// The switch is recorded, `current` is not moved.
+        revert: Mutex<bool>,
     }
 
     impl MockSwitcher {
@@ -146,6 +150,7 @@ mod engine_integration_tests {
                 current: Mutex::new(LayoutId::from(current)),
                 active: active.iter().map(|s| LayoutId::from(*s)).collect(),
                 switches: Mutex::new(Vec::new()),
+                revert: Mutex::new(false),
                 fail_switch: false,
             }
         }
@@ -163,8 +168,13 @@ mod engine_integration_tests {
                 return Err(LayoutError::Os("test-forced failure".into()));
             }
             self.switches.lock().push(id.clone());
-            *self.current.lock() = id.clone();
+            if !*self.revert.lock() {
+                *self.current.lock() = id.clone();
+            }
             Ok(())
+        }
+        fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
+            Some(*self.current.lock() == *target)
         }
         fn backend_name(&self) -> &'static str {
             "mock"
@@ -772,6 +782,33 @@ mod engine_integration_tests {
             last.iter().all(|&(_, shift)| !shift),
             "the user pressed no Shift, so the replay must press none — \
              the lock capitalises the letters on its own: {last:?}"
+        );
+    }
+
+    /// A switch that reports success and is then put back must not cost
+    /// the user their word.
+    ///
+    /// Measured on MATE, 2026-08-24: `XkbLatchLockState` returns fine,
+    /// `mate-settings-daemon` restores its own group within
+    /// milliseconds, and the correction went ahead regardless —
+    /// deleting five keystrokes and retyping the same five. Doing
+    /// nothing is strictly better than that.
+    #[test]
+    fn a_layout_switch_that_gets_put_back_leaves_the_word_alone() {
+        let h = Harness::start(60_000);
+        *h.switcher.revert.lock() = true;
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "the switch is still attempted — it is the retype that must not follow"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing may be deleted or retyped once the layout went back: {ops:?}"
         );
     }
 

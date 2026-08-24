@@ -259,6 +259,22 @@ impl SwitcherEngine {
             if since < LAYOUT_SETTLE {
                 std::thread::sleep(LAYOUT_SETTLE - since);
             }
+            // The switch reported success — but on a desktop whose
+            // settings daemon owns the group, it can be put back before
+            // a single key goes out. Going ahead then is worse than
+            // doing nothing: the word is deleted and retyped
+            // identically, so the user loses it and gets it back
+            // unchanged. Backends that can only read their own write
+            // answer `None` and this is skipped.
+            if self.layout_switcher.verify_switched(to) == Some(false) {
+                warn!(
+                    target = %to,
+                    backend = self.layout_switcher.backend_name(),
+                    "the desktop put the layout back before we could type; \
+                     leaving the word alone"
+                );
+                return false;
+            }
         }
 
         // ── Emit: delete → replay ───────────────────────────────────

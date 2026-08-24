@@ -16,6 +16,24 @@ pub trait LayoutSwitcher: Send + Sync {
 
     fn backend_name(&self) -> &'static str;
 
+    /// Did the layout **really** move to `target`?
+    ///
+    /// `None` means this backend has no reading independent of its own
+    /// write, so the question cannot be answered — which is the honest
+    /// answer for every backend that switches by setting a key and then
+    /// reads that same key back.
+    ///
+    /// It matters because a switch that silently does not happen is
+    /// worse than one that fails: the correction goes ahead, deletes
+    /// the user's word and retypes it *identically*. Measured on MATE,
+    /// 2026-08-24 — `mate-settings-daemon` restores its own group
+    /// within milliseconds of an `XkbLatchLockState`, and the same five
+    /// keystrokes came back unchanged.
+    fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
+        let _ = target;
+        None
+    }
+
     /// Ask the OS what the user's keyboards actually produce, key by
     /// key — one [`OsKeymap`] per installed keyboard.
     ///

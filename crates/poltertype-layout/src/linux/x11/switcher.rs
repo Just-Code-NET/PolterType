@@ -56,6 +56,12 @@ impl LayoutSwitcher for X11Switcher {
         })
     }
 
+    /// The X server's own locked group, read fresh — the one backend
+    /// here that can contradict its own write.
+    fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
+        Some(self.current().is_ok_and(|now| now == *target))
+    }
+
     fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
         read_layouts(&self.conn, self.root)
     }
