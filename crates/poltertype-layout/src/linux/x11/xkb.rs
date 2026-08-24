@@ -43,6 +43,33 @@ pub(crate) fn read_layouts(
     Ok(parse_rules_names(&prop.value))
 }
 
+/// One field of `_XKB_RULES_NAMES` as a string — the property is
+/// NUL-separated `rules\0model\0layout\0variant\0options`.
+pub(crate) fn read_rules_field(
+    conn: &RustConnection,
+    root: Window,
+    field: usize,
+) -> Option<String> {
+    let atom = conn
+        .intern_atom(true, RULES_NAMES_PROPERTY.as_bytes())
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    if atom == x11rb::NONE {
+        return None;
+    }
+    let prop = conn
+        .get_property(false, root, atom, AtomEnum::STRING, 0, PROPERTY_LEN)
+        .ok()?
+        .reply()
+        .ok()?;
+    String::from_utf8_lossy(&prop.value)
+        .split('\0')
+        .nth(field)
+        .map(str::to_owned)
+}
+
 /// Pull the layout list out of a raw `_XKB_RULES_NAMES` value:
 /// NUL-separated Latin-1, of which only the `layout` field interests us
 /// (`us,ua` → `[en-US, uk-UA]`).

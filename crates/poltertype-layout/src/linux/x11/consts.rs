@@ -11,6 +11,10 @@ pub(crate) const RULES_NAMES_PROPERTY: &str = "_XKB_RULES_NAMES";
 /// Index of the `layout` field inside `_XKB_RULES_NAMES`.
 pub(crate) const LAYOUT_FIELD: usize = 2;
 
+/// …and the `options` one after the variants, where the `grp:` toggle
+/// that switches layouts on this session is written.
+pub(crate) const OPTIONS_FIELD: usize = 4;
+
 /// Bytes to request from the property. The layout list is a handful of
 /// two-letter codes; 1 KiB is generous even for a keymap with every
 /// group filled and a long options string.

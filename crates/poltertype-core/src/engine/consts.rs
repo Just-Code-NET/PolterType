@@ -37,6 +37,29 @@ pub const POST_EMIT_LAG: Duration = Duration::from_millis(25);
 /// key stream and our first emitted key.
 pub const LAYOUT_SETTLE: Duration = Duration::from_millis(30);
 
+/// How long to give a desktop to act on its **own** switch shortcut
+/// before asking whether the layout moved.
+///
+/// Longer than [`LAYOUT_SETTLE`] on purpose: that one waits for xkb
+/// state to propagate after a switch we performed, while this waits for
+/// a shell to notice a keystroke, run its handler and change the layout
+/// — an event-loop round trip in another process. Measured on GNOME 49
+/// and MATE, where the switch lands well inside this, 2026-08-24.
+pub const CHORD_SETTLE: Duration = Duration::from_millis(180);
+
+/// How many times a completed switch is re-read before the deletion,
+/// and how long between them.
+///
+/// A settings daemon that disagrees with us does not disagree
+/// instantly: MATE lets the group lock land and restores its own a
+/// moment later, so the single reading taken 30 ms after the switch
+/// said yes while the keystrokes 60 ms later still came out in the old
+/// layout. Three readings across ~80 ms cover the window the deletion
+/// would otherwise occupy — and cost nothing where the backend cannot
+/// answer at all, which is most of them.
+pub const SWITCH_HOLD_PROBES: usize = 3;
+pub const SWITCH_HOLD_STEP: Duration = Duration::from_millis(40);
+
 /// How many times a correction re-emits itself after a user keystroke
 /// physically landed inside its own replay burst. Past this we stop
 /// touching their text at all.

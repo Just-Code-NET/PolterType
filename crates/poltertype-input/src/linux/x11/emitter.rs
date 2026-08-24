@@ -4,7 +4,7 @@ use super::codes::*;
 use super::consts::*;
 use super::emit::*;
 use super::types::*;
-use crate::{EmittedKey, InputError, KeyEmitter, Modifiers, ReplayKey};
+use crate::{EmittedKey, InputError, KeyEmitter, Modifiers, ReplayKey, SwitchChord};
 use std::thread;
 use tracing::{debug, warn};
 
@@ -106,6 +106,45 @@ impl KeyEmitter for X11Emitter {
                 release(c, &self.emitted, EV_LEFTSHIFT)?;
                 thread::sleep(KEY_STEP);
             }
+        }
+        Ok(())
+    }
+
+    /// Modifiers down, key tapped, modifiers up in reverse — see the
+    /// uinput emitter for why the releases are not optional.
+    fn send_chord(&self, chord: SwitchChord) -> Result<(), InputError> {
+        let mut mods: Vec<u32> = Vec::new();
+        if chord.ctrl {
+            mods.push(EV_LEFTCTRL);
+        }
+        if chord.shift {
+            mods.push(EV_LEFTSHIFT);
+        }
+        if chord.alt {
+            mods.push(EV_LEFTALT);
+        }
+        if chord.meta {
+            mods.push(EV_LEFTMETA);
+        }
+        self.ensure_conn()?;
+        let g = self.conn.lock();
+        let c = g
+            .as_ref()
+            .ok_or_else(|| InputError::Os("x11 connection not initialised".into()))?;
+        for code in &mods {
+            press(c, &self.emitted, *code)?;
+            thread::sleep(KEY_STEP);
+        }
+        // A bare-modifier chord (`Alt+Shift`) carries no key of its own.
+        if chord.scancode != 0 {
+            press(c, &self.emitted, chord.scancode)?;
+            thread::sleep(KEY_STEP);
+            release(c, &self.emitted, chord.scancode)?;
+            thread::sleep(KEY_STEP);
+        }
+        for code in mods.iter().rev() {
+            release(c, &self.emitted, *code)?;
+            thread::sleep(KEY_STEP);
         }
         Ok(())
     }

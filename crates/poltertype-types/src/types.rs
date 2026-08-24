@@ -119,6 +119,27 @@ impl Modifiers {
     }
 }
 
+/// The key combination a desktop binds to "switch to the next keyboard
+/// layout" — the only mechanism some of them will accept.
+///
+/// GNOME 49 ignores every settings key we can write and moves only for
+/// `<Super>space`; MATE restores its own xkb group within milliseconds
+/// of a direct lock but honours `Alt+Shift`. Both were measured in the
+/// desktop matrix on 2026-08-24, by reading the character the keyboard
+/// then produced.
+///
+/// It cycles rather than selects, so reaching a particular layout means
+/// pressing it and checking, not computing an index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SwitchChord {
+    /// Win SC Set-1, as everywhere else in the engine.
+    pub scancode: u32,
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
+    pub meta: bool,
+}
+
 /// A single keystroke captured into the word buffer. Stored in
 /// scancode-space because scancodes are layout-independent — the
 /// engine then translates them through layout-mapping tables to find

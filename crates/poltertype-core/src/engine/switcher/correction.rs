@@ -13,8 +13,9 @@ use tracing::{debug, warn};
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
 use crate::engine::consts::{
-    HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES,
+    CHORD_SETTLE, HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES,
     INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
+    SWITCH_HOLD_PROBES, SWITCH_HOLD_STEP,
 };
 use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
 use crate::engine::heuristics::{boundary_key_for, is_paste_shortcut, is_submission_scancode};
@@ -97,6 +98,70 @@ impl SwitcherEngine {
             );
         }
         Ok(())
+    }
+
+    /// Did the switch not merely happen, but **hold**?
+    ///
+    /// One reading is not enough. MATE's settings daemon lets the group
+    /// lock land and puts its own back a moment later — measured
+    /// 2026-08-24: the check 30 ms after the lock said yes, and the
+    /// keystrokes emitted 60 ms after that came out in the old layout
+    /// anyway. So the answer is sampled across the window the deletion
+    /// would otherwise occupy, and any single "no" is a no.
+    ///
+    /// `None` from the backend — it cannot see past its own write —
+    /// counts as held, which leaves those backends exactly as they were.
+    fn switch_held(&self, to: &LayoutId) -> bool {
+        for probe in 0..SWITCH_HOLD_PROBES {
+            if self.layout_switcher.verify_switched(to) == Some(false) {
+                return false;
+            }
+            if probe + 1 < SWITCH_HOLD_PROBES {
+                std::thread::sleep(SWITCH_HOLD_STEP);
+            }
+        }
+        true
+    }
+
+    /// Last resort for a desktop that ignores every way of setting the
+    /// layout but its own shortcut: press that shortcut until the
+    /// layout is the one we want.
+    ///
+    /// Returns whether `to` was reached. Nothing has been typed at this
+    /// point, so giving up here costs the user nothing — which is the
+    /// whole reason it sits before the deletion.
+    ///
+    /// The shortcut *cycles*, so this presses and checks rather than
+    /// computing an index: on GNOME 49 the settings key that would name
+    /// an index is inert, and the shell publishes no other. One press
+    /// per layout is the bound — beyond that the desktop is not
+    /// listening either.
+    fn switch_by_chord(&self, to: &LayoutId) -> bool {
+        let Some(chord) = self.layout_switcher.switch_chord() else {
+            return false;
+        };
+        let steps = self
+            .layout_switcher
+            .list_active()
+            .map(|l| l.len())
+            .unwrap_or(2);
+        debug!(?chord, steps, target = %to, "switching the way this desktop switches itself");
+        for _ in 0..steps {
+            if let Err(e) = self.key_emitter.send_chord(chord) {
+                debug!(?e, "this emitter cannot send a chord");
+                return false;
+            }
+            self.push_echoes(self.key_emitter.take_emitted());
+            // The desktop's handler runs on its own event loop: the
+            // shortcut is not applied by the time the last key edge is
+            // written.
+            std::thread::sleep(CHORD_SETTLE);
+            if self.layout_switcher.verify_switched(to) == Some(true) {
+                debug!(target = %to, "the desktop's own shortcut moved the layout");
+                return true;
+            }
+        }
+        false
     }
 
     fn flush_text(&self, text: &mut String) -> Result<(), InputError> {
@@ -266,7 +331,7 @@ impl SwitcherEngine {
             // identically, so the user loses it and gets it back
             // unchanged. Backends that can only read their own write
             // answer `None` and this is skipped.
-            if self.layout_switcher.verify_switched(to) == Some(false) {
+            if !self.switch_held(to) && !self.switch_by_chord(to) {
                 warn!(
                     target = %to,
                     backend = self.layout_switcher.backend_name(),

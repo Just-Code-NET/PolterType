@@ -2,7 +2,8 @@
 
 use super::*;
 use crate::{
-    EmittedKey, InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers, ReplayKey,
+    EmittedKey, InputError, InputListener, KeyDirection, KeyEmitter, KeyEvent, Modifiers,
+    ReplayKey, SwitchChord,
 };
 use crossbeam_channel::Sender;
 use evdev::uinput::VirtualDevice;
@@ -192,6 +193,52 @@ impl KeyEmitter for UinputEmitter {
                 )?;
                 thread::sleep(step);
             }
+        }
+        Ok(())
+    }
+
+    /// Modifiers down, key tapped, modifiers up in reverse — the order
+    /// a person's hand produces, and the order a compositor's shortcut
+    /// matcher expects.
+    ///
+    /// The releases are not optional bookkeeping: a modifier left down
+    /// turns every following keystroke of the replay into a shortcut,
+    /// and the correction then looks like it never happened. Measured
+    /// clean on GNOME 49 and MATE, 2026-08-24 — the chord switched and
+    /// the next characters came out as characters.
+    fn send_chord(&self, chord: SwitchChord) -> Result<(), InputError> {
+        self.ensure_device()?;
+        let mut g = self.device.lock();
+        let dev = g
+            .as_mut()
+            .ok_or_else(|| InputError::Os("uinput device not initialised".into()))?;
+        let step = Duration::from_millis(8);
+        let mut mods: Vec<KeyCode> = Vec::new();
+        if chord.ctrl {
+            mods.push(KeyCode::KEY_LEFTCTRL);
+        }
+        if chord.shift {
+            mods.push(KeyCode::KEY_LEFTSHIFT);
+        }
+        if chord.alt {
+            mods.push(KeyCode::KEY_LEFTALT);
+        }
+        if chord.meta {
+            mods.push(KeyCode::KEY_LEFTMETA);
+        }
+        for kc in &mods {
+            press(dev, &self.emitted, *kc)?;
+            thread::sleep(step);
+        }
+        // A bare-modifier chord (`Alt+Shift`, `Shift+Shift`) carries no
+        // key of its own: the second modifier *is* the key.
+        if chord.scancode != 0 {
+            tap(dev, &self.emitted, KeyCode::new(chord.scancode as u16))?;
+            thread::sleep(step);
+        }
+        for kc in mods.iter().rev() {
+            release(dev, &self.emitted, *kc)?;
+            thread::sleep(step);
         }
         Ok(())
     }

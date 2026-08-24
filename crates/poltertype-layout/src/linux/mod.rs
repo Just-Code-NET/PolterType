@@ -38,6 +38,7 @@ use tracing::info;
 
 use crate::{LayoutError, LayoutId, LayoutSwitcher};
 
+pub mod chord;
 pub mod cinnamon;
 pub mod fcitx;
 pub mod gnome;
@@ -252,6 +253,10 @@ impl LayoutSwitcher for CachedSwitcher {
     /// write — which is the exact mistake this call exists to catch.
     fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
         self.inner.verify_switched(target)
+    }
+
+    fn switch_chord(&self) -> Option<poltertype_types::SwitchChord> {
+        self.inner.switch_chord()
     }
 }
 

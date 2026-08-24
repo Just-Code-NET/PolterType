@@ -24,6 +24,23 @@ pub fn try_init() -> Option<X11Switcher> {
         return None;
     }
 
+    // MATE is the one X11 session where this backend cannot be trusted
+    // in either direction. Measured 2026-08-24: the group lock returns
+    // success, `XkbGetState` keeps reporting the new group 80 ms later,
+    // and the keystrokes still come out in the old layout — while the
+    // session's own `Alt+Shift` moves the keyboard for real, and the
+    // same `XkbGetState` fails to notice *that* too. With no reading
+    // that tracks what the keys actually produce, a correction here
+    // deletes the user's word and retypes it unchanged. Standing down
+    // leaves "layout switching is off", which is the truth.
+    if crate::linux::gnome::session_is_mate() {
+        debug!(
+            "MATE's settings daemon owns the xkb group and its state does not track \
+             what the keyboard produces; standing down rather than retyping words blind"
+        );
+        return None;
+    }
+
     let (conn, screen_num) = x11rb::connect(None).ok()?;
     // XKB is not optional in any X server built this century, but ask
     // rather than assume — a `use_extension` that reports unsupported
@@ -60,6 +77,14 @@ impl LayoutSwitcher for X11Switcher {
     /// here that can contradict its own write.
     fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
         Some(self.current().is_ok_and(|now| now == *target))
+    }
+
+    /// The `grp:` toggle the session is configured with, for desktops
+    /// whose settings daemon puts our group lock straight back — MATE
+    /// does, within milliseconds, while honouring this.
+    fn switch_chord(&self) -> Option<poltertype_types::SwitchChord> {
+        let options = read_rules_field(&self.conn, self.root, OPTIONS_FIELD)?;
+        crate::linux::chord::parse_xkb_group_option(&options)
     }
 
     fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {

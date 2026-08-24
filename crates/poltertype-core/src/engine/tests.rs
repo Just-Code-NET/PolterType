@@ -65,6 +65,8 @@ mod engine_integration_tests {
         /// test's stand-in for a physical keystroke the compositor
         /// interleaves with our replay.
         during_replay: Mutex<Option<ReplayHook>>,
+        /// Every desktop switch chord this emitter was asked to send.
+        chords: Mutex<Vec<poltertype_types::SwitchChord>>,
     }
 
     impl MockEmitter {
@@ -82,6 +84,11 @@ mod engine_integration_tests {
     }
 
     impl KeyEmitter for MockEmitter {
+        fn send_chord(&self, chord: poltertype_types::SwitchChord) -> Result<(), InputError> {
+            self.chords.lock().push(chord);
+            Ok(())
+        }
+
         fn send_backspaces(&self, n: usize) -> Result<(), InputError> {
             self.ops.lock().push(EmitOp::Backspaces(n));
             for _ in 0..n {
@@ -142,6 +149,8 @@ mod engine_integration_tests {
         /// back before a key can go out — MATE, measured 2026-08-24.
         /// The switch is recorded, `current` is not moved.
         revert: Mutex<bool>,
+        /// The chord this desktop answers to, when it has one.
+        chord: Mutex<Option<poltertype_types::SwitchChord>>,
     }
 
     impl MockSwitcher {
@@ -151,6 +160,7 @@ mod engine_integration_tests {
                 active: active.iter().map(|s| LayoutId::from(*s)).collect(),
                 switches: Mutex::new(Vec::new()),
                 revert: Mutex::new(false),
+                chord: Mutex::new(None),
                 fail_switch: false,
             }
         }
@@ -175,6 +185,9 @@ mod engine_integration_tests {
         }
         fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
             Some(*self.current.lock() == *target)
+        }
+        fn switch_chord(&self) -> Option<poltertype_types::SwitchChord> {
+            *self.chord.lock()
         }
         fn backend_name(&self) -> &'static str {
             "mock"
@@ -809,6 +822,59 @@ mod engine_integration_tests {
         assert!(
             ops.is_empty(),
             "nothing may be deleted or retyped once the layout went back: {ops:?}"
+        );
+    }
+
+    /// A desktop that switches when asked never sees a keystroke from
+    /// us.
+    ///
+    /// The chord exists for GNOME 49 and MATE, which accept nothing
+    /// else — but sending it where the direct switch worked would put a
+    /// stray `Super+space` into the user's session for no reason, and
+    /// on a desktop with three layouts it would land on the wrong one.
+    #[test]
+    fn a_desktop_that_switches_properly_is_never_sent_a_shortcut() {
+        let h = Harness::start(60_000);
+        *h.switcher.chord.lock() = Some(poltertype_types::SwitchChord {
+            scancode: 0x39,
+            meta: true,
+            ..Default::default()
+        });
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        assert!(
+            h.emitter.chords.lock().is_empty(),
+            "the layout already moved; pressing the desktop's shortcut would move it again"
+        );
+        let (ops, _) = h.stop();
+        assert!(!ops.is_empty(), "and the correction still happened");
+    }
+
+    /// When the desktop puts the layout back *and* its shortcut does
+    /// not help either, the word is still left alone — the shortcut is
+    /// tried, not trusted.
+    #[test]
+    fn a_shortcut_that_does_not_help_still_costs_the_user_nothing() {
+        let h = Harness::start(60_000);
+        *h.switcher.revert.lock() = true;
+        *h.switcher.chord.lock() = Some(poltertype_types::SwitchChord {
+            scancode: 0x2A,
+            alt: true,
+            ..Default::default()
+        });
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        let chords = h.emitter.chords.lock().len();
+        assert!(
+            chords > 0 && chords <= 2,
+            "the shortcut is tried once per layout and no more, got {chords}"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing may be deleted or retyped when the layout never moved: {ops:?}"
         );
     }
 

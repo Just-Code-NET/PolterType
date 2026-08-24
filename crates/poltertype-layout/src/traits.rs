@@ -34,6 +34,20 @@ pub trait LayoutSwitcher: Send + Sync {
         None
     }
 
+    /// The key combination this desktop binds to "next layout", for the
+    /// desktops that accept nothing else.
+    ///
+    /// It **cycles**, so the engine presses it and checks rather than
+    /// computing an index — and only after a direct
+    /// [`switch_to`](Self::switch_to) has been shown not to take, so a
+    /// backend that switches properly never sends a keystroke.
+    ///
+    /// `None` — the default — means "no such shortcut, or none we can
+    /// name a scancode for", and nothing is sent.
+    fn switch_chord(&self) -> Option<poltertype_types::SwitchChord> {
+        None
+    }
+
     /// Ask the OS what the user's keyboards actually produce, key by
     /// key — one [`OsKeymap`] per installed keyboard.
     ///

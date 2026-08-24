@@ -47,6 +47,28 @@ pub(crate) fn read_live_source() -> Option<LayoutId> {
         .next()
 }
 
+/// The shortcut GNOME binds to "switch to the next input source".
+///
+/// `gsettings` prints a list — `['<Super>space', 'XF86Keyboard']` — and
+/// only an entry we can actually name a scancode for is any use; the
+/// media keys among them are skipped rather than guessed at.
+pub(crate) fn read_switch_binding() -> Option<poltertype_types::SwitchChord> {
+    let out = Command::new("gsettings")
+        .args([
+            "get",
+            "org.gnome.desktop.wm.keybindings",
+            "switch-input-source",
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .split('\'')
+        .find_map(crate::linux::chord::parse_gtk_accelerator)
+}
+
 pub(crate) fn read_current_index() -> Result<u32, LayoutError> {
     let out = Command::new("gsettings")
         .args(["get", SCHEMA, "current"])

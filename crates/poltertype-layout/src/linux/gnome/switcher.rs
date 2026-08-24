@@ -51,6 +51,18 @@ fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
         );
         return None;
     }
+    // MATE keeps its layouts in `org.mate.peripherals-keyboard-xkb` and
+    // drives xkb from its own daemon; the GNOME schema is present only
+    // because GTK ships it. Claiming the session on that would take it
+    // off the X11 backend, which does work there — measured in the
+    // desktop matrix, 2026-08-24.
+    if matches!(unread, UnreadSchema::StandDown) && session_is_mate() {
+        debug!(
+            "input-sources schema is populated but MATE keeps its layouts elsewhere; \
+             standing down rather than writing a key nobody acts on"
+        );
+        return None;
+    }
     // The wlroots compositors keep their xkb configuration themselves
     // and read no schema at all. Measured on labwc, 2026-08-24: the
     // write returned success, the keyboard never changed group, and the
@@ -116,6 +128,13 @@ impl LayoutSwitcher for GnomeSwitcher {
         read_live_source().map(|live| live == *target)
     }
 
+    /// GNOME 49 moves for nothing else. Both keys this backend can
+    /// write are inert there, and the shell's own binding is the only
+    /// mechanism that was measured to work.
+    fn switch_chord(&self) -> Option<poltertype_types::SwitchChord> {
+        read_switch_binding()
+    }
+
     fn backend_name(&self) -> &'static str {
         // Named for what we shell out to: one tag for every desktop this
         // backend can end up driving.
@@ -144,10 +163,25 @@ fn session_is_wlroots() -> bool {
 }
 
 fn is_wlroots_name(entry: &str) -> bool {
+    names_any_of(entry, &WLROOTS_NAMES)
+}
+
+fn names_any_of(entry: &str, known: &[&str]) -> bool {
     let entry = entry.trim().rsplit('/').next().unwrap_or_default();
-    WLROOTS_NAMES
-        .iter()
-        .any(|known| entry.eq_ignore_ascii_case(known))
+    known.iter().any(|k| entry.eq_ignore_ascii_case(k))
+}
+
+/// MATE, by any of the names a display manager might announce it with.
+pub(crate) fn session_is_mate() -> bool {
+    session_is_named(&["mate"])
+}
+
+/// Does any of the desktop variables name one of these? Entries are
+/// matched whole, so `mate` never claims `mate-something`.
+fn session_is_named(known: &[&str]) -> bool {
+    crate::linux::cinnamon::DESKTOP_VARS.iter().any(|var| {
+        std::env::var(var).is_ok_and(|value| value.split(':').any(|e| names_any_of(e, known)))
+    })
 }
 
 /// One scan of `/proc/*/comm`, once at start-up, for a compositor of

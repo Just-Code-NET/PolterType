@@ -2,7 +2,7 @@
 
 use crate::*;
 use crossbeam_channel::Sender;
-pub use poltertype_types::KeyEvent;
+pub use poltertype_types::{KeyEvent, SwitchChord};
 
 /// A per-OS global keyboard listener.
 ///
@@ -52,6 +52,20 @@ pub trait KeyEmitter: Send + Sync {
     fn send_keys(&self, _keys: &[ReplayKey]) -> Result<(), InputError> {
         Err(InputError::Unsupported(
             "this backend has no scancode-replay path; use send_text".into(),
+        ))
+    }
+
+    /// Press one key with modifiers held around it — the shape a
+    /// desktop's own layout-switch shortcut takes.
+    ///
+    /// Separate from [`send_keys`](Self::send_keys), which taps each
+    /// key on its own and so can never hold `Super` across a `Space`.
+    /// Only the Linux emitters implement it, because only Linux has
+    /// desktops that refuse every other way of switching; everywhere
+    /// else the default says so plainly.
+    fn send_chord(&self, _chord: SwitchChord) -> Result<(), InputError> {
+        Err(InputError::Unsupported(
+            "this backend cannot hold modifiers around a key".into(),
         ))
     }
 
