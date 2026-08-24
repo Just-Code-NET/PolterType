@@ -113,38 +113,86 @@ impl LayoutSwitcher for GnomeSwitcher {
 /// own backend and is probed long before this one.
 const WLROOTS_NAMES: [&str; 6] = ["wlroots", "labwc", "sway", "river", "niri", "wayfire"];
 
+/// The **running compositor** decides, not the desktop's name for
+/// itself. Budgie is why: its Wayland session is labwc underneath and
+/// calls itself `Budgie`, so a name check missed it — and the app
+/// switched a layout that never moved, deleted the user's word and
+/// retyped it identically. Measured 2026-08-24.
 fn session_is_wlroots() -> bool {
-    crate::linux::cinnamon::DESKTOP_VARS.iter().any(|var| {
-        std::env::var(var).is_ok_and(|value| {
-            value.split(':').any(|entry| {
-                let entry = entry.trim().rsplit('/').next().unwrap_or_default();
-                WLROOTS_NAMES
-                    .iter()
-                    .any(|known| entry.eq_ignore_ascii_case(known))
-            })
-        })
-    })
+    let named = crate::linux::cinnamon::DESKTOP_VARS
+        .iter()
+        .any(|var| std::env::var(var).is_ok_and(|value| value.split(':').any(is_wlroots_name)));
+    named || wlroots_compositor_running()
+}
+
+fn is_wlroots_name(entry: &str) -> bool {
+    let entry = entry.trim().rsplit('/').next().unwrap_or_default();
+    WLROOTS_NAMES
+        .iter()
+        .any(|known| entry.eq_ignore_ascii_case(known))
+}
+
+/// One scan of `/proc/*/comm`, once at start-up, for a compositor of
+/// our own user. Cheaper than the `gsettings` call it guards.
+fn wlroots_compositor_running() -> bool {
+    use std::os::unix::fs::MetadataExt;
+
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return false;
+    };
+    // Our own uid, without a libc dependency for one call.
+    let Ok(uid) = std::fs::metadata("/proc/self").map(|m| m.uid()) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.file_name().is_some_and(|n| {
+            n.to_str()
+                .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
+        }) {
+            continue;
+        }
+        // Another user's compositor says nothing about our session.
+        if let Ok(meta) = std::fs::metadata(&path)
+            && meta.uid() != uid
+        {
+            continue;
+        }
+        if let Ok(comm) = std::fs::read_to_string(path.join("comm"))
+            && is_wlroots_name(comm.trim())
+        {
+            debug!(compositor = comm.trim(), "wlroots compositor detected");
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// `XDG_CURRENT_DESKTOP` on the guest reads `labwc:wlroots`, and the
-    /// entry is matched whole — `sway-something` is a fork whose input
-    /// stack nobody here has seen.
+    /// The name half of the check, kept pure: `session_is_wlroots` also
+    /// scans `/proc`, so asserting on it would pass or fail depending
+    /// on what the machine running the tests happens to be.
+    ///
+    /// `XDG_CURRENT_DESKTOP` on the guest reads `labwc:wlroots`, so
+    /// either entry has to be enough — and entries are matched whole,
+    /// because `swaything` is a fork whose input stack nobody has seen.
     #[test]
     fn wlroots_sessions_are_recognised_by_either_half_of_the_name() {
-        for value in ["labwc:wlroots", "wlroots", "sway", "SWAY", "river", "niri"] {
-            // SAFETY: single-threaded test, and the variable is restored
-            // by the next iteration or the removal below.
-            unsafe { std::env::set_var("XDG_CURRENT_DESKTOP", value) };
-            assert!(session_is_wlroots(), "{value} should read as wlroots");
+        for value in [
+            "labwc", "wlroots", "sway", "SWAY", "river", "niri", "wayfire",
+        ] {
+            assert!(is_wlroots_name(value), "{value} should read as wlroots");
         }
-        for value in ["GNOME", "ubuntu:GNOME", "KDE", "swaything"] {
-            unsafe { std::env::set_var("XDG_CURRENT_DESKTOP", value) };
-            assert!(!session_is_wlroots(), "{value} should not read as wlroots");
+        for value in ["GNOME", "ubuntu", "KDE", "swaything", "Budgie", ""] {
+            assert!(
+                !is_wlroots_name(value),
+                "{value} should not read as wlroots"
+            );
         }
-        unsafe { std::env::remove_var("XDG_CURRENT_DESKTOP") };
+        // Display managers write whole paths into these variables.
+        assert!(is_wlroots_name("/usr/share/wayland-sessions/sway"));
     }
 }
