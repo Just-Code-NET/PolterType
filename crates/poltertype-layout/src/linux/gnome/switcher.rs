@@ -51,6 +51,20 @@ fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
         );
         return None;
     }
+    // The wlroots compositors keep their xkb configuration themselves
+    // and read no schema at all. Measured on labwc, 2026-08-24: the
+    // write returned success, the keyboard never changed group, and the
+    // engine then read our own write back and decided the layout was
+    // already the one it wanted — the #26 failure exactly. Standing
+    // down leaves "layout switching is off", which is true and visible,
+    // instead of a switch that silently does nothing.
+    if matches!(unread, UnreadSchema::StandDown) && session_is_wlroots() {
+        debug!(
+            "input-sources schema is populated but this wlroots compositor does not read it; \
+             standing down rather than writing a key nobody acts on"
+        );
+        return None;
+    }
     Some(GnomeSwitcher)
 }
 
@@ -88,5 +102,49 @@ impl LayoutSwitcher for GnomeSwitcher {
         // Named for what we shell out to: one tag for every desktop this
         // backend can end up driving.
         "linux-gsettings"
+    }
+}
+
+/// Compositors that own their xkb configuration outright and read no
+/// settings schema — so a populated `input-sources` there was populated
+/// by something else, and writing to it moves nothing.
+///
+/// Hyprland is deliberately absent: it is one of these, but it has its
+/// own backend and is probed long before this one.
+const WLROOTS_NAMES: [&str; 6] = ["wlroots", "labwc", "sway", "river", "niri", "wayfire"];
+
+fn session_is_wlroots() -> bool {
+    crate::linux::cinnamon::DESKTOP_VARS.iter().any(|var| {
+        std::env::var(var).is_ok_and(|value| {
+            value.split(':').any(|entry| {
+                let entry = entry.trim().rsplit('/').next().unwrap_or_default();
+                WLROOTS_NAMES
+                    .iter()
+                    .any(|known| entry.eq_ignore_ascii_case(known))
+            })
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `XDG_CURRENT_DESKTOP` on the guest reads `labwc:wlroots`, and the
+    /// entry is matched whole — `sway-something` is a fork whose input
+    /// stack nobody here has seen.
+    #[test]
+    fn wlroots_sessions_are_recognised_by_either_half_of_the_name() {
+        for value in ["labwc:wlroots", "wlroots", "sway", "SWAY", "river", "niri"] {
+            // SAFETY: single-threaded test, and the variable is restored
+            // by the next iteration or the removal below.
+            unsafe { std::env::set_var("XDG_CURRENT_DESKTOP", value) };
+            assert!(session_is_wlroots(), "{value} should read as wlroots");
+        }
+        for value in ["GNOME", "ubuntu:GNOME", "KDE", "swaything"] {
+            unsafe { std::env::set_var("XDG_CURRENT_DESKTOP", value) };
+            assert!(!session_is_wlroots(), "{value} should not read as wlroots");
+        }
+        unsafe { std::env::remove_var("XDG_CURRENT_DESKTOP") };
     }
 }

@@ -18,6 +18,9 @@
 //!   somewhere else entirely
 //!   ([#26](https://github.com/Just-Code-NET/PolterType/issues/26)), so
 //!   this backend stands down for it — see [`crate::linux::cinnamon`].
+//!   The wlroots compositors (labwc, sway, river, …) are the same case
+//!   measured on a second desktop: they keep their own xkb config, and
+//!   the write reports success while the keyboard never changes group.
 
 #![allow(unused_imports, dead_code)] // Linux-only.
 
