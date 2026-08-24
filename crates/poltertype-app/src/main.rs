@@ -956,7 +956,19 @@ fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
     // suggestion tooltip shapes the user's words. Those targets are
     // capped at warn no matter what RUST_LOG says: typed text stays
     // out of the logs at any level.
-    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        // `[general].log_level` from `config.toml`, applied to our own
+        // crates only: it is the knob a user actually has when the app
+        // was started from a menu entry, and a global `debug` buries
+        // their own lines under iced and zbus. `RUST_LOG` still wins.
+        let mut base = EnvFilter::new("info");
+        if let Some(level) = SettingsStore::peek_log_level()
+            && let Ok(directive) = format!("poltertype={level}").parse()
+        {
+            base = base.add_directive(directive);
+        }
+        base
+    });
     for target in ["cosmic_text=warn", "fontdb=warn"] {
         if let Ok(directive) = target.parse() {
             filter = filter.add_directive(directive);

@@ -61,9 +61,12 @@ body:
     attributes:
       label: Log excerpt
       description: >
-        Tray → "Open Logs Folder…". Release builds never log typed
-        text, so logs are safe to paste — but skim them anyway before
-        posting.
+        Tray → "Open Logs Folder…". For a detailed log, set
+        `log_level = "debug"` under `[general]` in config.toml
+        (Tray → "Edit config.toml…") and restart PolterType first —
+        the default level records almost nothing about a decision.
+        Release builds never log typed text, so logs are safe to
+        paste — but skim them anyway before posting.
       render: text
   - type: textarea
     id: config

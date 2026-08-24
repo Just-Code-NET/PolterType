@@ -36,6 +36,17 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - **A digit no longer ends a word early under Caps Lock.** `abc1` read
   as `ABC!`, and `!` is a separator.
 
+### Fixed — `log_level` in `config.toml` does what it says
+
+- **Setting `[general].log_level = "debug"` now actually raises the
+  log level.** The key has been written into every config file since
+  the beginning and read by nothing: the only way to get a detailed log
+  was to relaunch from a terminal with `RUST_LOG` set, which is no help
+  at all when the app starts from a menu entry or at login. The setting
+  applies to PolterType's own crates, so a debug log stays readable
+  rather than filling with someone else's toolkit. `RUST_LOG` still
+  overrides it.
+
 ## [0.18.1] — a bracket is not a word, and a rubbed-out line is not amnesia
 
 Three reports from one afternoon of ordinary typing, all of them the

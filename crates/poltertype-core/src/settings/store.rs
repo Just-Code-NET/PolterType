@@ -25,6 +25,17 @@ impl SettingsStore {
         Ok(dirs.config_dir().join("config.toml"))
     }
 
+    /// `[general].log_level` read straight off disk, before anything
+    /// else exists.
+    ///
+    /// Deliberately a second, cheap read of the same file rather than a
+    /// reordering of startup: logging has to be up before the real load
+    /// can report a failure. `None` for a missing, unreadable or
+    /// level-less file — the caller keeps its own default.
+    pub fn peek_log_level() -> Option<String> {
+        log_level_of(&fs::read_to_string(Self::default_path().ok()?).ok()?)
+    }
+
     /// Load from disk. If the file is missing, write defaults and
     /// return them. If the file exists but is unreadable / invalid,
     /// log a warning and fall back to defaults *without* overwriting
@@ -125,4 +136,13 @@ impl SettingsStore {
         f(&mut guard);
         write_atomically(&self.path, &guard)
     }
+}
+
+/// `[general].log_level` out of raw config text. Deliberately not a
+/// `Settings` deserialise: a value the current shape rejects anywhere
+/// else in the file must not be what silences the log the user turned
+/// up to report it.
+pub(crate) fn log_level_of(text: &str) -> Option<String> {
+    let value: toml::Value = toml::from_str(text).ok()?;
+    Some(value.get("general")?.get("log_level")?.as_str()?.to_owned())
 }

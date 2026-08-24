@@ -422,3 +422,31 @@ fn no_ai_section_means_no_plugins() {
     let s: Settings = toml::from_str("schema_version = 1").expect("parse");
     assert!(s.ai.plugins.is_empty());
 }
+
+/// `log_level` was written into every config file from the start and
+/// read by nothing: the only way to a detailed log was relaunching from
+/// a terminal with `RUST_LOG` set, which a user whose app starts at
+/// login does not have.
+#[test]
+fn the_log_level_is_readable_without_the_rest_of_the_file() {
+    use crate::settings::store::log_level_of;
+
+    let written = toml::to_string_pretty(&Settings::default()).expect("serialize");
+    assert_eq!(
+        log_level_of(&written).as_deref(),
+        Some("info"),
+        "the key the app writes has to be the key it reads back"
+    );
+    assert_eq!(
+        log_level_of("[general]\nlog_level = \"debug\"\n").as_deref(),
+        Some("debug")
+    );
+    // A value the current shape would reject elsewhere must not silence
+    // the very log the user turned up in order to report it.
+    assert_eq!(
+        log_level_of("[general]\nlog_level = \"trace\"\n[engine]\nmin_word_length = true\n")
+            .as_deref(),
+        Some("trace")
+    );
+    assert_eq!(log_level_of("schema_version = 1"), None);
+}
