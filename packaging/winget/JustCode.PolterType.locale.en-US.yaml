@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
 
 PackageIdentifier: JustCode.PolterType
-PackageVersion: 0.18.1
+PackageVersion: 0.19.0
 PackageLocale: en-US
 Publisher: Just Code
 PublisherUrl: https://github.com/Just-Code-NET
