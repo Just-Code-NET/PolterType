@@ -40,25 +40,14 @@ fn init(unread: UnreadSchema) -> Option<GnomeSwitcher> {
     if sources.is_empty() {
         return None;
     }
-    // Populated is still not the same as read: Cinnamon populates this
-    // schema and drives the layout elsewhere (#26). It is probed before
-    // this backend and has already had its chance by now — this is the
-    // guard for the paths that reach us anyway.
-    if matches!(unread, UnreadSchema::StandDown) && crate::linux::cinnamon::session_is_cinnamon() {
+    // Populated is still not the same as read, and the schema is a
+    // *file* — once anything has written it, it stays written for every
+    // later session on that machine. So the question is not "is this
+    // key set" but "is anything here going to act on it".
+    if matches!(unread, UnreadSchema::StandDown) && !session_reads_this_schema() {
         debug!(
-            "input-sources schema is populated but Cinnamon does not read it; \
-             standing down rather than writing a key nobody acts on"
-        );
-        return None;
-    }
-    // MATE keeps its layouts in `org.mate.peripherals-keyboard-xkb` and
-    // drives xkb from its own daemon; the GNOME schema is present only
-    // because GTK ships it. Claiming the session on that would take it
-    // off the X11 backend, which does work there — measured in the
-    // desktop matrix, 2026-08-24.
-    if matches!(unread, UnreadSchema::StandDown) && session_is_mate() {
-        debug!(
-            "input-sources schema is populated but MATE keeps its layouts elsewhere; \
+            desktop = ?std::env::var("XDG_CURRENT_DESKTOP").ok(),
+            "input-sources schema is populated but this desktop does not read it; \
              standing down rather than writing a key nobody acts on"
         );
         return None;
@@ -140,6 +129,42 @@ impl LayoutSwitcher for GnomeSwitcher {
         // backend can end up driving.
         "linux-gsettings"
     }
+}
+
+/// Desktops whose own daemon applies `org.gnome.desktop.input-sources`.
+///
+/// A positive list, and that direction is the whole point. The negative
+/// one — stand down for Cinnamon, for MATE, for wlroots — only ever
+/// covered the desktops somebody had already been bitten by, and the
+/// schema outlives the desktop that wrote it: `dconf` is a file in the
+/// user's home, so a machine where GNOME once configured two layouts
+/// keeps that key for every later session, including the ones that
+/// never read it. Measured in the desktop matrix on 2026-08-27, on a
+/// guest where an earlier GNOME run had populated it: fluxbox, i3,
+/// icewm, LXQt, openbox and Xfce/X11 all took this backend, wrote the
+/// key, watched their own session put the layout straight back, and
+/// declined every correction — six sessions that had corrected fine on
+/// the same code with the key empty. Clearing it put them back on
+/// `linux-x11-xkb` and they worked.
+///
+/// So: name the desktops that *do* act on it, and let everything else
+/// fall through to the backend that drives that session for real.
+/// `POLTERTYPE_LAYOUT_BACKEND=gnome` overrides this for anyone whose
+/// desktop we have not heard of and whose gsettings switching works.
+///
+/// Cinnamon (#26) and MATE, which used to have a branch each here, are
+/// covered by this rule: neither names itself GNOME.
+const GNOME_FAMILY_NAMES: [&str; 6] = [
+    "gnome",
+    "gnome-classic",
+    "gnome-flashback",
+    "unity",
+    "budgie",
+    "pantheon",
+];
+
+fn session_reads_this_schema() -> bool {
+    session_is_named(&GNOME_FAMILY_NAMES)
 }
 
 /// Compositors that own their xkb configuration outright and read no
@@ -246,5 +271,47 @@ mod tests {
         }
         // Display managers write whole paths into these variables.
         assert!(is_wlroots_name("/usr/share/wayland-sessions/sway"));
+    }
+
+    /// The list that decides whether this backend claims a session at
+    /// all. Kept pure for the same reason as the one above: reading the
+    /// environment would assert on whatever desktop runs the suite.
+    #[test]
+    fn only_the_desktops_that_act_on_the_schema_are_named() {
+        let names = |value: &str| {
+            value
+                .split(':')
+                .any(|e| names_any_of(e, &GNOME_FAMILY_NAMES))
+        };
+
+        // Ubuntu's GNOME announces itself with two entries; either is
+        // enough.
+        for value in [
+            "GNOME",
+            "ubuntu:GNOME",
+            "gnome",
+            "GNOME-Flashback:GNOME",
+            "Unity",
+            "Budgie:GNOME",
+            "Pantheon",
+        ] {
+            assert!(names(value), "{value} should read as GNOME-family");
+        }
+        // The six that took this backend on a machine whose dconf had
+        // been populated by an earlier GNOME session, and could not
+        // switch a thing (2026-08-27), plus the two that had a branch
+        // of their own before.
+        for value in [
+            "i3",
+            "ICEWM",
+            "LXQt",
+            "XFCE",
+            "",
+            "X-Cinnamon",
+            "MATE",
+            "sway:wlroots",
+        ] {
+            assert!(!names(value), "{value} must not claim this backend");
+        }
     }
 }
