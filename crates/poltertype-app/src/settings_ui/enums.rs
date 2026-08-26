@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use iced::widget::text_editor;
+use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_core::plugins::SettingValue;
 use poltertype_layout::LayoutId;
 
@@ -221,6 +222,15 @@ pub enum Message {
     /// A complete `<mods>+<key>` combo arrived from the keyboard
     /// subscription while in capture mode.
     HotkeyCaptured(String),
+    /// A modifier key went down or came back up while in capture mode.
+    /// `held` is what iced says is down *besides* `role`, so a window
+    /// that lost focus mid-gesture cannot leave the capture stuck
+    /// waiting for a release that already happened.
+    HotkeyModifier {
+        role: ModRole,
+        pressed: bool,
+        held: ModSet,
+    },
     HotkeyRebindCancel,
 
     // ── Exceptions pane ────────────────────────────────────────────

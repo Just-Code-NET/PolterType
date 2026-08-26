@@ -6,6 +6,44 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-27 — A hotkey with no key in it fires on the way up
+
+Punto Switcher and Caramba users ask for the same gesture every time
+(issue #32): two modifiers, left hand, no third key. It cannot be an
+OS-level grab — `HotKey::new` takes a key code and there is no key —
+so a modifier-only binding is matched off the raw key stream instead,
+on **every** platform, while ordinary chords keep the OS grab
+everywhere except the Wayland/evdev backend. One hotkey never takes
+both paths, so nothing can double-fire.
+
+**Decision: judge the gesture on release, not on press.** The chord
+fires when the last modifier comes back up, and only if the set held
+was exactly the chord's, no other key was pressed in between, and the
+hold was shorter than half a second. That single rule is what lets
+`Ctrl+Shift` coexist with `Ctrl+Shift+V`, and `Shift+Shift` with
+typing capitals — no allow-list of shortcuts to keep in sync with the
+applications people use.
+
+**Decision: refuse a single lone modifier.** A bare `Shift` binding is
+the one Caramba offers and the one that cannot be made safe here: on
+Linux a mouse button reaches the engine as a key event and poisons the
+hold, but on Windows and macOS we do not see clicks at all, so
+Shift+click would fire a correction. Two modifiers or two taps are
+always deliberate. Caps Lock is refused for a different reason: we
+observe it rather than consume it, so a binding would flip the lock as
+well as fire.
+
+**Alternative not chosen: a mouse hook.** It would buy back the
+lone-modifier binding at the cost of a second global hook on two
+platforms, for a gesture the two-modifier and double-tap forms already
+cover.
+
+**Alternative not chosen: converting a selection**, the other half of
+#32. It needs clipboard save/restore and a synthesised `Ctrl+C`, and
+it matters least where the detector is good. It stays on the list.
+
+---
+
 ## 2026-08-26 — A process the OS created is not a process that ran
 
 The Windows self-update never once worked. Not on one machine: the

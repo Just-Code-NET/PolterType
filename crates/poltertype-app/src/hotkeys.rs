@@ -4,7 +4,9 @@
 use crossbeam_channel::Sender;
 use global_hotkey::GlobalHotKeyManager;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
-use poltertype_core::engine::{EngineCommand, KeystreamHotkeys};
+use poltertype_core::engine::{
+    Binding, EngineCommand, KeystreamHotkeys, ModChord, ModRole, ModSet,
+};
 use poltertype_input::HotkeyEnvironment;
 use tracing::{info, warn};
 
@@ -73,12 +75,36 @@ pub(crate) fn effective_switch_last(
     }
 }
 
+/// One hotkey as it is actually held here: an OS-level grab, or a
+/// modifier-only gesture the key stream matches (issue #32).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ActiveBinding {
+    Key(HotKey),
+    Mods(ModChord),
+}
+
+impl ActiveBinding {
+    /// Whether an OS hotkey event belongs to this binding. Always false
+    /// for a modifier-only chord: nothing registers it, so nothing can
+    /// deliver an event for it.
+    pub(crate) fn owns_event(self, id: u32) -> bool {
+        matches!(self, Self::Key(hk) if hk.id() == id)
+    }
+
+    fn os_grab(self) -> Option<HotKey> {
+        match self {
+            Self::Key(hk) => Some(hk),
+            Self::Mods(_) => None,
+        }
+    }
+}
+
 /// The two chords in force right now, and — through their ids — what
 /// the event loop dispatches an OS hotkey event on.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ActiveHotkeys {
-    pub(crate) pause: HotKey,
-    pub(crate) switch_last: HotKey,
+    pub(crate) pause: ActiveBinding,
+    pub(crate) switch_last: ActiveBinding,
 }
 
 /// Put the configured chords in force, replacing whatever was in force
@@ -114,51 +140,110 @@ pub(crate) fn apply_hotkeys(
         );
     }
     let active = ActiveHotkeys {
-        pause: parse_hotkey_or_default(pause.chord, DEFAULT_PAUSE_TOGGLE),
-        switch_last: parse_hotkey_or_default(switch.chord, DEFAULT_SWITCH_LAST),
+        pause: parse_binding_or_default(pause.chord, DEFAULT_PAUSE_TOGGLE),
+        switch_last: parse_binding_or_default(switch.chord, DEFAULT_SWITCH_LAST),
     };
 
-    if use_keystream {
-        let chords = KeystreamHotkeys {
-            pause: chord_from_hotkey(&active.pause),
-            switch_last: chord_from_hotkey(&active.switch_last),
-        };
-        if chords.pause.is_none() {
-            warn!(hotkey = ?active.pause, "pause hotkey key not mappable to a scancode; disabled");
-        }
-        if chords.switch_last.is_none() {
-            warn!(hotkey = ?active.switch_last, "switch-last hotkey key not mappable to a scancode; disabled");
-        }
-        let _ = engine_tx.send(EngineCommand::SetKeystreamHotkeys(chords));
-        info!(
-            pause = %pause.chord,
-            switch_last = %switch.chord,
-            "hotkeys handled off the key stream (Wayland/evdev backend)"
-        );
-    } else if let Some(manager) = manager {
+    // A modifier-only chord is matched off the key stream on every
+    // backend — there is no key code to register — while an ordinary
+    // chord is matched there only where the OS grab is deaf. Never both
+    // for one hotkey, so no double-fire.
+    let keystream = |b: ActiveBinding, what: &str| match b {
+        ActiveBinding::Mods(m) => Some(Binding::Mods(m)),
+        ActiveBinding::Key(hk) if use_keystream => match chord_from_hotkey(&hk) {
+            Some(c) => Some(Binding::Key(c)),
+            None => {
+                warn!(hotkey = ?hk, what, "hotkey key not mappable to a scancode; disabled");
+                None
+            }
+        },
+        ActiveBinding::Key(_) => None,
+    };
+    let chords = KeystreamHotkeys {
+        pause: keystream(active.pause, "pause"),
+        switch_last: keystream(active.switch_last, "switch-last"),
+    };
+    // Sent unconditionally, including when both are empty: this is also
+    // what retires a modifier chord the user has just rebound away.
+    let _ = engine_tx.send(EngineCommand::SetKeystreamHotkeys(chords));
+
+    if let Some(manager) = manager {
         // Order matters: the old grab has to go before the new one is
         // taken, or rebinding A→B while B is still held by us fails
         // with "already registered" and leaves the user on A.
         if let Some(old) = previous {
-            for hk in [old.pause, old.switch_last] {
+            for hk in [old.pause, old.switch_last]
+                .into_iter()
+                .filter_map(ActiveBinding::os_grab)
+            {
                 if let Err(e) = manager.unregister(hk) {
                     warn!(?e, hotkey = ?hk, "could not release the previous hotkey");
                 }
             }
         }
-        if let Err(e) = manager.register(active.pause) {
-            warn!(?e, hotkey = ?active.pause, "could not register pause hotkey");
+        for (hk, what) in [(active.pause, "pause"), (active.switch_last, "switch-last")]
+            .into_iter()
+            .filter_map(|(b, what)| b.os_grab().map(|hk| (hk, what)))
+        {
+            if let Err(e) = manager.register(hk) {
+                warn!(?e, hotkey = ?hk, what, "could not register hotkey");
+            }
         }
-        if let Err(e) = manager.register(active.switch_last) {
-            warn!(?e, hotkey = ?active.switch_last, "could not register switch-last hotkey");
-        }
-        info!(
-            pause = %pause.chord,
-            switch_last = %switch.chord,
-            "hotkeys registered with the OS"
-        );
     }
+    info!(
+        pause = %pause.chord,
+        switch_last = %switch.chord,
+        pause_on_keystream = chords.pause.is_some(),
+        switch_last_on_keystream = chords.switch_last.is_some(),
+        "hotkeys in force"
+    );
     active
+}
+
+/// Read a `[hotkeys]` string as whichever kind of binding it describes,
+/// falling back to `default_str` on a bad value so a typo cannot
+/// silently cost the user their hotkeys.
+pub(crate) fn parse_binding_or_default(s: &str, default_str: &str) -> ActiveBinding {
+    match parse_mod_chord(s) {
+        Some(m) => ActiveBinding::Mods(m),
+        None => ActiveBinding::Key(parse_hotkey_or_default(s, default_str)),
+    }
+}
+
+/// Read a modifier-only chord — `Ctrl+Shift`, `Shift+Shift` — or `None`
+/// for everything else, which is then an ordinary hotkey string.
+///
+/// Two shapes are accepted and no others: two or more *different*
+/// modifiers held together, and the same modifier named twice, which
+/// means two taps. A single lone modifier is refused on purpose — see
+/// [`ModChord::double_tap`].
+pub(crate) fn parse_mod_chord(s: &str) -> Option<ModChord> {
+    let mut mods = ModSet::NONE;
+    let mut count = 0usize;
+    let mut repeated = false;
+    for part in s.split('+').map(str::trim).filter(|p| !p.is_empty()) {
+        let role = match part.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ModRole::Ctrl,
+            "shift" => ModRole::Shift,
+            "alt" | "option" => ModRole::Alt,
+            "meta" | "super" | "cmd" | "command" | "win" => ModRole::Meta,
+            _ => return None,
+        };
+        repeated |= mods.contains(role);
+        mods = mods.with(role);
+        count += 1;
+    }
+    match (count, mods.count(), repeated) {
+        (2, 1, true) => Some(ModChord {
+            mods,
+            double_tap: true,
+        }),
+        (n, distinct, false) if n == distinct && distinct >= 2 => Some(ModChord {
+            mods,
+            double_tap: false,
+        }),
+        _ => None,
+    }
 }
 
 /// Parse a `[hotkeys]` string, falling back to `default_str` on a bad

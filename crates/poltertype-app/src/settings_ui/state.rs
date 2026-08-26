@@ -6,6 +6,7 @@ use std::sync::Arc;
 use iced::keyboard::{Key, key::Named};
 use iced::widget::text_editor;
 use iced::{Subscription, Theme};
+use poltertype_core::engine::ModSet;
 use poltertype_core::settings::{Settings, SettingsStore};
 use poltertype_layout::LayoutId;
 
@@ -32,6 +33,10 @@ pub struct SettingsApp {
     /// the keyboard subscription consults this to decide whether key
     /// events become `HotkeyCaptured` or are ignored.
     pub(super) capturing: Option<HotkeyKind>,
+    /// The modifier half of capture: which modifiers this gesture has
+    /// held, and whether a single-modifier tap is waiting for its
+    /// twin. Only meaningful while `capturing` is `Some`.
+    pub(super) mod_capture: ModCapture,
     /// Live answer from the permission probe, re-read on every *Check
     /// again* click. Held rather than probed inside `view`: `view` runs
     /// every frame and this touches the filesystem, and a value that
@@ -99,6 +104,21 @@ pub struct SaveBanner {
     pub(super) is_error: bool,
 }
 
+/// Capture state for a modifier-only chord (issue #32), mirroring what
+/// the engine's matcher does with the live key stream.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ModCapture {
+    /// Modifier keys down right now.
+    pub(super) down: ModSet,
+    /// Every modifier seen during this hold — the gesture is judged on
+    /// what was held together, not on what is left at the last release.
+    pub(super) peak: ModSet,
+    /// A single-modifier tap that has landed and is waiting to see
+    /// whether a second one follows. One modifier alone is never a
+    /// binding, so nothing is committed until it does.
+    pub(super) pending_tap: Option<ModSet>,
+}
+
 impl SettingsApp {
     pub(super) fn new(
         settings: Settings,
@@ -141,6 +161,7 @@ impl SettingsApp {
             bg_jitter: std::cell::Cell::new(0),
             save_banner: None,
             capturing: None,
+            mod_capture: ModCapture::default(),
             exception_draft: String::new(),
             plugins: {
                 let data_dir = poltertype_core::resolve_data_dir().unwrap_or_default();
@@ -230,10 +251,15 @@ impl SettingsApp {
             if matches!(key, Key::Named(Named::Escape)) {
                 return Some(Message::HotkeyRebindCancel);
             }
-            // Lone modifiers are not hotkeys, and every transient press
-            // while composing a combination would otherwise be caught.
-            if is_modifier_key(&key) {
-                return None;
+            // A modifier on its own is not yet a combination — it is
+            // either one being composed, or the first half of a
+            // modifier-only gesture, which only the release settles.
+            if let Some(role) = mod_role_of(&key) {
+                return Some(Message::HotkeyModifier {
+                    role,
+                    pressed: true,
+                    held: mods_from_iced(modifiers),
+                });
             }
             // Single-key hotkeys (`A`, `Space`) would clash with normal
             // typing.

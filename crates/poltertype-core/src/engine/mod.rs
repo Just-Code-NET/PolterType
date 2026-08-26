@@ -19,7 +19,10 @@ pub use buffer::{WordBoundary, WordBuffer};
 pub use decision::DecisionPolicy;
 pub use enums::{DictionaryAddOrigin, EngineCommand, SwitcherEvent};
 pub use switcher::{EngineDeps, SwitcherEngine};
-pub use types::{AcceptModifiers, Chord, KeystreamHotkeys, SuggestionAction, SuggestionEntry};
+pub use types::{
+    AcceptModifiers, Binding, Chord, KeystreamHotkeys, ModChord, ModRole, ModSet, SuggestionAction,
+    SuggestionEntry,
+};
 
 #[cfg(test)]
 mod tests;

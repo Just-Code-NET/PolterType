@@ -1,13 +1,15 @@
 //! Pure decision helpers, split out of the engine so each is
 //! unit-testable without constructing a full `SwitcherEngine`.
 
+use std::time::Instant;
+
 use poltertype_input::{KeyDirection, KeyEvent};
 use poltertype_layout::LayoutId;
 
 use crate::layouts::LayoutDb;
 
-use super::consts::{SC_INSERT, SC_V};
-use super::types::Chord;
+use super::consts::{MOD_DOUBLE_TAP_GAP, MOD_TAP_MAX, SC_INSERT, SC_V};
+use super::types::{Binding, BindingState, Chord, ModChord, ModRole, ModSet, ModTapState};
 
 /// Returns `true` exactly once per physical press of `chord`'s key while
 /// the chord's modifiers are held. `key_down` carries the latch state
@@ -31,6 +33,102 @@ pub fn match_chord(ev: &KeyEvent, chord: Chord, key_down: &mut bool) -> bool {
                 && ev.modifiers.alt == chord.alt
                 && ev.modifiers.meta == chord.meta
         }
+    }
+}
+
+/// Match one key event against whichever kind of binding this hotkey
+/// carries. `state` is the hotkey's own, one per hotkey.
+pub fn match_binding(
+    ev: &KeyEvent,
+    binding: Binding,
+    state: &mut BindingState,
+    now: Instant,
+) -> bool {
+    match binding {
+        Binding::Key(c) => match_chord(ev, c, &mut state.key_down),
+        Binding::Mods(m) => match_mod_chord(ev, m, &mut state.mods, now),
+    }
+}
+
+/// Which modifier a bare modifier key's scancode stands for, or `None`
+/// for every other key — including Caps Lock, which is a key the user
+/// types with, not a modifier we can bind.
+///
+/// Left-hand codes are SC Set-1 and shared by every backend; the
+/// right-hand Ctrl / Alt / Meta ones are the raw evdev codes the Linux
+/// listeners report. `0x5B` / `0x5C` are Windows' Win keys and macOS'
+/// Command, which `mac_keycode_to_sc1` maps onto them.
+pub fn modifier_role(sc: u32) -> Option<ModRole> {
+    Some(match sc {
+        0x1D | 0x61 => ModRole::Ctrl,
+        0x2A | 0x36 => ModRole::Shift,
+        0x38 | 0x64 => ModRole::Alt,
+        0x5B | 0x5C | 0x7D | 0x7E => ModRole::Meta,
+        _ => return None,
+    })
+}
+
+/// Returns `true` once per completed modifier-only gesture (issue #32).
+///
+/// The rule that makes it live alongside `Ctrl+C` without stealing it:
+/// nothing fires on press. The chord is judged when the last modifier
+/// comes back up, and only if the set held was *exactly* the chord's,
+/// no other key was pressed in between, and the hold was short enough
+/// to be a tap. A double-tap chord additionally needs the previous tap
+/// to have qualified within [`MOD_DOUBLE_TAP_GAP`].
+///
+/// `now` is passed in rather than read here: `KeyEvent::timestamp_ms`
+/// is filled on Windows only, and a matcher that reads the clock itself
+/// cannot be tested.
+pub fn match_mod_chord(ev: &KeyEvent, chord: ModChord, st: &mut ModTapState, now: Instant) -> bool {
+    let role = modifier_role(ev.scancode);
+    match (ev.direction, role) {
+        (KeyDirection::Press, Some(r)) => {
+            if st.down.is_empty() {
+                st.started = Some(now);
+                st.peak = ModSet::NONE;
+                st.dirty = false;
+            }
+            st.down = st.down.with(r);
+            st.peak = st.peak.with(r);
+            false
+        }
+        // Any other key during the hold — including a mouse button on
+        // the backends that report one — makes this a shortcut.
+        (KeyDirection::Press, None) => {
+            st.dirty |= !st.down.is_empty();
+            false
+        }
+        (KeyDirection::Release, Some(r)) => {
+            st.down = st.down.without(r);
+            if !st.down.is_empty() {
+                return false;
+            }
+            let held = st.started.map(|t| now.saturating_duration_since(t));
+            let qualified =
+                !st.dirty && st.peak == chord.mods && held.is_some_and(|d| d <= MOD_TAP_MAX);
+            st.peak = ModSet::NONE;
+            st.dirty = false;
+            st.started = None;
+            if !qualified {
+                st.last_tap = None;
+                return false;
+            }
+            if !chord.double_tap {
+                return true;
+            }
+            match st.last_tap {
+                Some(prev) if now.saturating_duration_since(prev) <= MOD_DOUBLE_TAP_GAP => {
+                    st.last_tap = None;
+                    true
+                }
+                _ => {
+                    st.last_tap = Some(now);
+                    false
+                }
+            }
+        }
+        (KeyDirection::Release, None) => false,
     }
 }
 

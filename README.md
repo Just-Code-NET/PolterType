@@ -240,6 +240,32 @@ the Settings window:
 > key that no app acts on. Bind it explicitly and your choice wins,
 > destructive or not.
 
+### Modifier-only chords
+
+Either hotkey can be bound to modifiers alone — the gesture people
+arrive with from Punto Switcher and Caramba:
+
+| Binding                    | Gesture                                     |
+| -------------------------- | ------------------------------------------- |
+| `Shift+Shift`              | Tap Shift twice.                            |
+| `Ctrl+Shift`, `Alt+Shift`… | Hold two modifiers together, then let go.   |
+
+They fire when the keys come **back up**, and only if nothing else was
+pressed while they were down — so `Ctrl+C`, `Ctrl+Shift+V` and typing
+capitals are left alone. A tap also has to be a tap: hold the keys for
+more than half a second and nothing happens.
+
+To bind one, click **Rebind** and make the gesture. A *single* modifier
+on its own is deliberately not offered: mouse buttons are invisible to
+PolterType on Windows and macOS, so a lone-Shift binding would fire on
+every Shift+click.
+
+Two things they cannot do. They are never consumed — the modifiers
+still reach the focused application, which is harmless for a bare
+modifier and is why this is the one chord shape that behaves the same
+everywhere. And Caps Lock is not a modifier here: binding it would
+flip the lock as well as fire, so it stays unavailable.
+
 ## Spelling suggestions
 
 Wrong-layout words get auto-corrected; plain typos get *suggested*.

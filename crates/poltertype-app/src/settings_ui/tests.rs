@@ -1,5 +1,6 @@
 use iced::keyboard::{Key, Modifiers, key::Named};
 use poltertype_core::commands::{CommandAction, UserCommand};
+use poltertype_core::engine::ModRole;
 use poltertype_layout::LayoutId;
 
 use super::enums::*;
@@ -317,21 +318,22 @@ fn accept_modifiers_hint_mirrors_engine_parse_rule() {
     }
 }
 
-/// Lone modifier presses must not be accepted as a hotkey: otherwise a
-/// user who clicks "Rebind" and taps Ctrl ends the capture immediately
-/// with a useless "Ctrl"-only binding.
+/// Modifier presses take the modifier-chord route, not the
+/// combination one: a user who clicks "Rebind" and taps Ctrl must not
+/// end the capture with a useless "Ctrl"-only binding.
 #[test]
-fn lone_modifier_keys_are_filtered() {
-    for k in [
-        Key::Named(Named::Control),
-        Key::Named(Named::Shift),
-        Key::Named(Named::Alt),
-        Key::Named(Named::Meta),
-        Key::Named(Named::Super),
+fn modifier_keys_are_routed_by_role() {
+    for (k, role) in [
+        (Key::Named(Named::Control), ModRole::Ctrl),
+        (Key::Named(Named::Shift), ModRole::Shift),
+        (Key::Named(Named::Alt), ModRole::Alt),
+        (Key::Named(Named::AltGraph), ModRole::Alt),
+        (Key::Named(Named::Meta), ModRole::Meta),
+        (Key::Named(Named::Super), ModRole::Meta),
     ] {
-        assert!(is_modifier_key(&k), "{k:?} should be classed as modifier");
+        assert_eq!(mod_role_of(&k), Some(role), "{k:?}");
     }
     // Sanity: a regular character key must NOT be flagged.
-    assert!(!is_modifier_key(&Key::Character("x".into())));
-    assert!(!is_modifier_key(&Key::Named(Named::Space)));
+    assert_eq!(mod_role_of(&Key::Character("x".into())), None);
+    assert_eq!(mod_role_of(&Key::Named(Named::Space)), None);
 }

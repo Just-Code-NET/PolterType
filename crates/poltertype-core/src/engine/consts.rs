@@ -2,6 +2,18 @@
 
 use std::time::Duration;
 
+/// Longest a modifier-only chord may be held and still count as a tap.
+///
+/// The gesture is a tap, not a hold, and the cut-off is what keeps a
+/// long `Shift` hold — reaching for a capital that never came, or a
+/// Shift+click on Windows and macOS, where mouse buttons are invisible
+/// to us — from reading as one.
+pub const MOD_TAP_MAX: Duration = Duration::from_millis(500);
+
+/// Longest gap between the two taps of a `Shift+Shift`-style chord,
+/// measured release to release.
+pub const MOD_DOUBLE_TAP_GAP: Duration = Duration::from_millis(500);
+
 /// How long after a paste shortcut we decline to auto-correct. Covers
 /// a paste replayed as a keystroke burst without swallowing the next
 /// genuinely-typed word.

@@ -1,7 +1,8 @@
-//! Keystream hotkey chords (Wayland path), the suggestion-accept
-//! digit chords (every platform), and smart-command dispatch.
+//! Hotkeys matched off the key stream, the suggestion-accept digit
+//! chords (every platform), and smart-command dispatch.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use crossbeam_channel::Receiver;
 use poltertype_input::{KeyDirection, KeyEvent};
@@ -10,14 +11,16 @@ use tracing::{info, warn};
 use crate::commands::{CommandAction, UserCommand};
 use crate::engine::buffer::WordBuffer;
 use crate::engine::enums::EngineCommand;
-use crate::engine::heuristics::match_chord;
+use crate::engine::heuristics::match_binding;
 use crate::engine::types::ChordState;
 
 use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
-    /// Match the raw key event against the keystream hotkeys (Wayland
-    /// path), mirroring what the OS `global-hotkey` grab does elsewhere.
+    /// Match the raw key event against whatever the app asked us to
+    /// watch for: an ordinary chord where the OS grab is deaf (the
+    /// Wayland/evdev backend), and a modifier-only chord anywhere,
+    /// since that one has no key code to register.
     ///
     /// Runs before the paused early-return in `handle_key`, so the pause
     /// chord can also *resume*. Our own replayed corrections cannot
@@ -34,13 +37,16 @@ impl SwitcherEngine {
             return;
         }
         let hk = *self.keystream_hotkeys.read();
-        if let Some(c) = hk.pause {
-            if match_chord(ev, c, &mut state.pause_key_down) {
+        // One clock read for both, and only where a binding exists:
+        // this runs on every key event on every backend.
+        let now = (hk.pause.is_some() || hk.switch_last.is_some()).then(Instant::now);
+        if let (Some(b), Some(now)) = (hk.pause, now) {
+            if match_binding(ev, b, &mut state.pause, now) {
                 self.handle_command(EngineCommand::TogglePause, buffer, key_rx);
             }
         }
-        if let Some(c) = hk.switch_last {
-            if match_chord(ev, c, &mut state.switch_key_down) {
+        if let (Some(b), Some(now)) = (hk.switch_last, now) {
+            if match_binding(ev, b, &mut state.switch, now) {
                 self.handle_command(EngineCommand::SwitchLastForcefully, buffer, key_rx);
             }
         }

@@ -805,9 +805,9 @@ fn main() -> Result<()> {
                 }
             }
             Event::UserEvent(UserEvent::Hotkey(id)) => {
-                if id == active_hotkeys.pause.id() {
+                if active_hotkeys.pause.owns_event(id) {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
-                } else if id == active_hotkeys.switch_last.id() {
+                } else if active_hotkeys.switch_last.owns_event(id) {
                     let _ = cmd_tx_for_loop.send(EngineCommand::SwitchLastForcefully);
                 }
             }

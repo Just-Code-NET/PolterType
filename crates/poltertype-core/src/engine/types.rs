@@ -1,6 +1,8 @@
 //! Plain data carried around by the engine: hotkey chords, the
 //! stashed last word, and the correction-window drain summary.
 
+use std::time::Instant;
+
 use poltertype_input::{KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
 use poltertype_types::WordKey;
@@ -72,12 +74,109 @@ pub struct Chord {
     pub scancode: u32,
 }
 
-/// The two engine hotkeys, resolved to key-stream chords. `None` means
-/// "not bound on this backend".
+/// Which modifier a bare modifier key stands for. Left and right keys
+/// carry the same role: nobody binds "the left Shift".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModRole {
+    Ctrl,
+    Shift,
+    Alt,
+    Meta,
+}
+
+/// A set of modifier roles — the whole of a modifier-only chord.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ModSet {
+    pub ctrl: bool,
+    pub shift: bool,
+    pub alt: bool,
+    pub meta: bool,
+}
+
+impl ModSet {
+    pub const NONE: Self = Self {
+        ctrl: false,
+        shift: false,
+        alt: false,
+        meta: false,
+    };
+
+    pub fn is_empty(self) -> bool {
+        self == Self::NONE
+    }
+
+    pub fn count(self) -> usize {
+        usize::from(self.ctrl)
+            + usize::from(self.shift)
+            + usize::from(self.alt)
+            + usize::from(self.meta)
+    }
+
+    #[must_use]
+    pub fn with(mut self, role: ModRole) -> Self {
+        *self.slot(role) = true;
+        self
+    }
+
+    #[must_use]
+    pub fn without(mut self, role: ModRole) -> Self {
+        *self.slot(role) = false;
+        self
+    }
+
+    pub fn contains(self, role: ModRole) -> bool {
+        match role {
+            ModRole::Ctrl => self.ctrl,
+            ModRole::Shift => self.shift,
+            ModRole::Alt => self.alt,
+            ModRole::Meta => self.meta,
+        }
+    }
+
+    fn slot(&mut self, role: ModRole) -> &mut bool {
+        match role {
+            ModRole::Ctrl => &mut self.ctrl,
+            ModRole::Shift => &mut self.shift,
+            ModRole::Alt => &mut self.alt,
+            ModRole::Meta => &mut self.meta,
+        }
+    }
+}
+
+/// A hotkey made of modifier keys alone — the Punto / Caramba gesture
+/// the hands already know (issue #32).
+///
+/// It cannot be an OS-level grab: `HotKey` needs a key code, and there
+/// is no key here. It is matched off the raw key stream on every
+/// backend instead, under the rule that keeps `Ctrl+C` from firing it:
+/// the chord acts on *release*, and only if nothing else was pressed
+/// while the modifiers were down.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModChord {
+    pub mods: ModSet,
+    /// Two taps rather than one — `Shift+Shift`. A single lone Shift is
+    /// deliberately not offered: Shift+click is invisible to us on
+    /// Windows and macOS, so a one-tap binding would fire on a
+    /// selection.
+    pub double_tap: bool,
+}
+
+/// What a hotkey answers to on the key stream: an ordinary chord, or
+/// modifiers alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binding {
+    Key(Chord),
+    Mods(ModChord),
+}
+
+/// The two engine hotkeys, resolved to key-stream bindings. `None`
+/// means "not matched here" — either unbound, or held by the OS-level
+/// grab, which never coexists with a key-stream match for the same
+/// hotkey.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct KeystreamHotkeys {
-    pub pause: Option<Chord>,
-    pub switch_last: Option<Chord>,
+    pub pause: Option<Binding>,
+    pub switch_last: Option<Binding>,
 }
 
 /// Per-chord rising-edge tracking. evdev reports autorepeat as repeated
@@ -85,10 +184,35 @@ pub struct KeystreamHotkeys {
 /// one fire per physical keypress, no matter how long it's held.
 #[derive(Default)]
 pub struct ChordState {
-    pub pause_key_down: bool,
-    pub switch_key_down: bool,
+    pub pause: BindingState,
+    pub switch: BindingState,
     /// One latch per digit key 1..=9 for the suggestion-accept chord.
     pub suggest_digit_down: [bool; 9],
+}
+
+/// Everything one hotkey has to remember between key events.
+#[derive(Default)]
+pub struct BindingState {
+    pub key_down: bool,
+    pub mods: ModTapState,
+}
+
+/// The modifier-only chord's view of one hold: what came down, whether
+/// anything else did, and when it started.
+#[derive(Default)]
+pub struct ModTapState {
+    /// Modifier keys physically down right now.
+    pub down: ModSet,
+    /// Every modifier seen during this hold — a chord is judged on what
+    /// was held together, not on what is left at the last release.
+    pub peak: ModSet,
+    /// A non-modifier key (or a mouse button, where we see them) was
+    /// pressed during the hold, so this is a shortcut, not a tap.
+    pub dirty: bool,
+    /// When the hold began. `None` while no modifier is down.
+    pub started: Option<Instant>,
+    /// When the previous qualifying tap ended, for the double-tap gap.
+    pub last_tap: Option<Instant>,
 }
 
 /// Modifier half of the suggestion-accept chord, parsed once at offer

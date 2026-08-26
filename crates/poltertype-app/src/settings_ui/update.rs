@@ -281,40 +281,48 @@ impl SettingsApp {
             }
 
             // ── Hotkeys ──────────────────────────────────────────
-            Message::HotkeyRebindStart(kind) => self.capturing = Some(kind),
-            Message::HotkeyRebindCancel => self.capturing = None,
-            Message::HotkeyCaptured(combo) => {
-                if let Some(kind) = self.capturing.take() {
-                    // Refuse what the tray would refuse. A key is
-                    // captured as the *character it produced*, so
-                    // rebinding to a letter while a Cyrillic layout is
-                    // active wrote `Ctrl+Shift+Ф` — which the reader
-                    // rejects, and a rejected binding is silently
-                    // replaced by the default. The rebind then looked
-                    // accepted, the pane went on showing it, and the
-                    // key did something else entirely.
-                    if !is_usable_hotkey(&combo) {
-                        warn!(?kind, %combo, "refusing a hotkey this build cannot read back");
-                        self.save_banner = Some(SaveBanner {
-                            text: format!(
-                                "{combo} can't be used as a hotkey. \
-                                 Try a Latin letter or a function key — \
-                                 a key is stored by the character it types, \
-                                 so switch layout first if you meant a letter."
-                            ),
-                            is_error: true,
-                        });
-                        return Task::none();
+            Message::HotkeyRebindStart(kind) => {
+                self.capturing = Some(kind);
+                self.mod_capture = ModCapture::default();
+            }
+            Message::HotkeyRebindCancel => {
+                self.capturing = None;
+                self.mod_capture = ModCapture::default();
+            }
+            Message::HotkeyCaptured(combo) => return self.commit_hotkey(combo),
+            Message::HotkeyModifier {
+                role,
+                pressed,
+                held,
+            } => {
+                if self.capturing.is_none() {
+                    return Task::none();
+                }
+                // `held` rather than our own count: a window that lost
+                // focus mid-gesture never delivers the release, and a
+                // capture waiting for it would take no further input.
+                if pressed {
+                    self.mod_capture.down = held.with(role);
+                    self.mod_capture.peak = self.mod_capture.peak.with(role);
+                    return Task::none();
+                }
+                self.mod_capture.down = held.without(role);
+                if !self.mod_capture.down.is_empty() {
+                    return Task::none();
+                }
+                let peak = std::mem::take(&mut self.mod_capture.peak);
+                match peak.count() {
+                    // Two or more modifiers held together and let go
+                    // with nothing typed in between: a chord.
+                    2.. => return self.commit_hotkey(format_mod_chord(peak, false)),
+                    // One alone is only ever half a binding — the pane
+                    // stays in capture until its twin arrives.
+                    1 if self.mod_capture.pending_tap == Some(peak) => {
+                        self.mod_capture.pending_tap = None;
+                        return self.commit_hotkey(format_mod_chord(peak, true));
                     }
-                    info!(?kind, %combo, "captured new hotkey combo");
-                    match kind {
-                        HotkeyKind::Pause => {
-                            self.settings.hotkeys.pause_toggle = combo;
-                        }
-                        HotkeyKind::SwitchLast => {
-                            self.settings.hotkeys.manual_switch_last = combo;
-                        }
-                    }
+                    1 => self.mod_capture.pending_tap = Some(peak),
+                    _ => {}
                 }
             }
 
@@ -611,6 +619,41 @@ impl SettingsApp {
                 let _ = self.flush_wordlist_to_disk();
                 return iced::window::close(id);
             }
+        }
+        Task::none()
+    }
+
+    /// Store a captured combination against the hotkey being rebound,
+    /// or refuse it and say why.
+    ///
+    /// Refuse what the tray would refuse. A key is captured as the
+    /// *character it produced*, so rebinding to a letter while a
+    /// Cyrillic layout is active wrote `Ctrl+Shift+Ф` — which the
+    /// reader rejects, and a rejected binding is silently replaced by
+    /// the default. The rebind then looked accepted, the pane went on
+    /// showing it, and the key did something else entirely.
+    fn commit_hotkey(&mut self, combo: String) -> Task<Message> {
+        let Some(kind) = self.capturing.take() else {
+            return Task::none();
+        };
+        self.mod_capture = ModCapture::default();
+        if !is_usable_hotkey(&combo) {
+            warn!(?kind, %combo, "refusing a hotkey this build cannot read back");
+            self.save_banner = Some(SaveBanner {
+                text: format!(
+                    "{combo} can't be used as a hotkey. \
+                     Try a Latin letter or a function key — \
+                     a key is stored by the character it types, \
+                     so switch layout first if you meant a letter."
+                ),
+                is_error: true,
+            });
+            return Task::none();
+        }
+        info!(?kind, %combo, "captured new hotkey combo");
+        match kind {
+            HotkeyKind::Pause => self.settings.hotkeys.pause_toggle = combo,
+            HotkeyKind::SwitchLast => self.settings.hotkeys.manual_switch_last = combo,
         }
         Task::none()
     }

@@ -4,6 +4,43 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.21.0] — the chord with no key in it
+
+The gesture people arrive with from Punto Switcher and Caramba:
+modifiers alone, no third key. Asked for in
+[#32](https://github.com/Just-Code-NET/PolterType/issues/32) by three
+people independently, and the one item in that thread that is felt
+every day rather than occasionally.
+
+### Added
+
+- **Either hotkey can now be modifiers alone** — `Shift+Shift` (tap it
+  twice) or two held together (`Ctrl+Shift`, `Alt+Shift`, …). Bind them
+  the same way as anything else: click *Rebind* and make the gesture.
+
+  They fire on **release**, and only if nothing else was pressed while
+  the modifiers were down, which is what leaves `Ctrl+C`, `Ctrl+Shift+V`
+  and typing capitals alone. A tap also has to be a tap: hold longer
+  than half a second and nothing fires.
+
+  There is no key code to register, so these are matched off the key
+  stream on every platform rather than through an OS-level grab — the
+  first hotkey shape that takes exactly the same path on Windows, macOS,
+  X11 and Wayland alike.
+
+- **A single lone modifier is deliberately not offered.** Mouse buttons
+  are invisible to PolterType on Windows and macOS, so a bare `Shift`
+  binding would fire on every Shift+click. Caps Lock stays unavailable
+  for the same kind of reason: we observe it rather than consume it, so
+  binding it would flip the lock as well as fire.
+
+### Fixed
+
+- **The Hotkeys pane no longer asks for a restart it does not need.**
+  It had been telling users to quit and relaunch the tray for a rebind
+  to take effect since before 0.20.1 made the rebind live on window
+  close.
+
 ## [0.20.1] — four ways a hotkey could be ignored without saying so
 
 Found by re-reading the hotkey path end to end after 0.20.0 closed

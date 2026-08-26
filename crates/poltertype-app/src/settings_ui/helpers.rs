@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use iced::keyboard::{Key, Modifiers, key::Named};
 use poltertype_core::commands::{CommandAction, UserCommand};
+use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_layout::LayoutId;
 use tracing::warn;
 
@@ -351,24 +352,6 @@ pub fn named_key_list(names: &[&str], sep: &str) -> String {
         .join(sep)
 }
 
-/// Filtered out in the keyboard subscription so a captured combo is
-/// always `<modifier(s)>+<non-modifier-key>`: a lone modifier press
-/// means the user is still composing.
-pub fn is_modifier_key(key: &Key) -> bool {
-    matches!(
-        key,
-        Key::Named(
-            Named::Control
-                | Named::Shift
-                | Named::Alt
-                | Named::AltGraph
-                | Named::Meta
-                | Named::Super
-                | Named::Hyper
-        )
-    )
-}
-
 /// Render a captured `(modifiers, key)` combo as the canonical hotkey
 /// string `global-hotkey`'s `FromStr` accepts — `Ctrl+Shift+Space`,
 /// `Alt+F4` — using the portable names, `Ctrl` rather than `Control`.
@@ -396,6 +379,52 @@ pub fn format_hotkey(key: &Key, modifiers: Modifiers) -> String {
     parts.join("+")
 }
 
+/// Which modifier a captured key stands for, or `None` for every
+/// other key. `AltGraph` counts as Alt: it is the same physical key on
+/// the layouts that have it.
+pub fn mod_role_of(key: &Key) -> Option<ModRole> {
+    Some(match key {
+        Key::Named(Named::Control) => ModRole::Ctrl,
+        Key::Named(Named::Shift) => ModRole::Shift,
+        Key::Named(Named::Alt | Named::AltGraph) => ModRole::Alt,
+        Key::Named(Named::Meta | Named::Super | Named::Hyper) => ModRole::Meta,
+        _ => return None,
+    })
+}
+
+/// iced's modifier state as the engine's set.
+pub fn mods_from_iced(modifiers: Modifiers) -> ModSet {
+    ModSet {
+        ctrl: modifiers.control(),
+        shift: modifiers.shift(),
+        alt: modifiers.alt(),
+        meta: modifiers.logo(),
+    }
+}
+
+/// Render a modifier-only chord as the canonical hotkey string — the
+/// same portable names [`format_hotkey`] uses, in the same order, with
+/// the modifier named twice for a double tap.
+pub fn format_mod_chord(mods: ModSet, double_tap: bool) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if mods.ctrl {
+        parts.push("Ctrl");
+    }
+    if mods.alt {
+        parts.push("Alt");
+    }
+    if mods.shift {
+        parts.push("Shift");
+    }
+    if mods.meta {
+        parts.push("Super");
+    }
+    if double_tap {
+        parts.extend_from_within(..);
+    }
+    parts.join("+")
+}
+
 /// Whether this build can read a captured combo back.
 ///
 /// A key is captured as the character it *produced*, so the pane can
@@ -403,7 +432,8 @@ pub fn format_hotkey(key: &Key, modifiers: Modifiers) -> String {
 /// silently replaced by the default, which is a rebind that looks
 /// accepted and does something else.
 pub fn is_usable_hotkey(combo: &str) -> bool {
-    combo.parse::<global_hotkey::hotkey::HotKey>().is_ok()
+    crate::hotkeys::parse_mod_chord(combo).is_some()
+        || combo.parse::<global_hotkey::hotkey::HotKey>().is_ok()
 }
 
 /// One-key serialisation matching `global-hotkey::HotKey::from_str`:

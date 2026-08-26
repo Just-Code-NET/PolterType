@@ -274,13 +274,19 @@ impl SettingsApp {
             let current = effective.chord;
             let capturing = self.capturing == Some(kind);
             let display: Element<'_, Message> = if capturing {
-                Text::new(tr(
-                    "hotkeys.press_combination_esc_cancel",
-                    "Press a combination… (Esc to cancel)",
-                ))
-                .size(13)
-                .color(b.warn)
-                .into()
+                // A single modifier has landed and is waiting for its
+                // twin. Without saying so, the pane looks like it
+                // ignored the tap — which is what a modifier-only
+                // binding's first half is bound to look like.
+                let prompt = match self.mod_capture.pending_tap {
+                    Some(m) => format!("Tap {} again to bind it…", format_mod_chord(m, false)),
+                    None => tr(
+                        "hotkeys.press_combination_esc_cancel",
+                        "Press a combination… (Esc to cancel)",
+                    )
+                    .to_owned(),
+                };
+                Text::new(prompt).size(13).color(b.warn).into()
             } else {
                 hotkey_chips(b, current)
             };
@@ -325,8 +331,7 @@ impl SettingsApp {
                 // the pane said otherwise while doing exactly that.
                 "Hotkeys are global — they fire whatever window has focus. \
                  Click 'Rebind', press the new combination, then save. \
-                 The new binding takes effect after the tray restarts \
-                 (Save, then Quit and relaunch from the tray)."
+                 The new binding is in force as soon as this window closes."
                     .to_owned(),
             ))
             .push(card(
@@ -346,10 +351,16 @@ impl SettingsApp {
             .push(tip(
                 b,
                 format!(
-                    "Tip: capture refuses single-letter combinations and bare \
-                     keys — at least one of {} is required. \
+                    "Tip: a combination needs at least one of {} — a bare \
+                     key would clash with typing. Modifiers on their own \
+                     count too: hold two together ({}), or tap one twice \
+                     ({}). Those fire when the keys come back up, and only \
+                     if nothing else was pressed in between, so they leave \
+                     the shortcuts they are part of alone. \
                      Esc cancels capture without changing anything.",
-                    key_list(&["Ctrl", "Alt", "Shift", "Cmd"], " / ")
+                    key_list(&["Ctrl", "Alt", "Shift", "Cmd"], " / "),
+                    key_list(&["Ctrl", "Shift"], "+"),
+                    key_list(&["Shift", "Shift"], "+"),
                 ),
             ))
             .into()

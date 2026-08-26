@@ -1882,6 +1882,83 @@ mod engine_integration_tests {
         );
     }
 
+    /// The whole point of issue #32: the gesture Punto and Caramba
+    /// users already have in their hands has to reach the same
+    /// force-switch the command does — off the key stream, with no key
+    /// code and no OS-level grab anywhere in the path.
+    #[test]
+    fn a_double_shift_tap_force_switches_the_last_word() {
+        const L_SHIFT: u32 = 0x2A;
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                pause: None,
+                switch_last: Some(Binding::Mods(ModChord {
+                    mods: ModSet {
+                        shift: true,
+                        ..ModSet::NONE
+                    },
+                    double_tap: true,
+                })),
+            }))
+            .expect("engine alive");
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        // Two taps, back to back: the pair has to land inside the
+        // double-tap window, which is why nothing settles in between.
+        h.tap(L_SHIFT);
+        h.tap(L_SHIFT);
+        h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
+        h.settle();
+
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA"), LayoutId::from("en-US")],
+            "the second tap must undo the correction the first one did not"
+        );
+    }
+
+    /// The same gesture with a letter typed between the taps is
+    /// somebody typing, not somebody asking for anything.
+    #[test]
+    fn a_shift_hold_around_a_letter_does_not_force_switch() {
+        const L_SHIFT: u32 = 0x2A;
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                pause: None,
+                switch_last: Some(Binding::Mods(ModChord {
+                    mods: ModSet {
+                        shift: true,
+                        ..ModSet::NONE
+                    },
+                    double_tap: true,
+                })),
+            }))
+            .expect("engine alive");
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let after_correction = h.switcher.switches.lock().clone();
+
+        for _ in 0..2 {
+            h.press(L_SHIFT);
+            h.tap(0x1E); // a capital A
+            h.release(L_SHIFT);
+        }
+        h.settle();
+
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            after_correction,
+            "typing capitals must not reach the force-switch"
+        );
+    }
+
     /// The manual hotkey after one of our own corrections puts the word
     /// back (re-applying the same correction deleted it and retyped it
     /// identically) and takes the rescued word into the user's
@@ -2765,6 +2842,186 @@ mod chord_tests {
             CTRL_SHIFT_SPACE,
             &mut down
         ));
+    }
+}
+
+mod mod_chord_tests {
+    use super::{MOD_TAP_MAX, ModChord, ModSet, ModTapState, match_mod_chord};
+    use poltertype_input::{KeyDirection, KeyEvent, Modifiers};
+    use std::time::{Duration, Instant};
+
+    const L_CTRL: u32 = 0x1D;
+    const L_SHIFT: u32 = 0x2A;
+    const R_SHIFT: u32 = 0x36;
+    const L_ALT: u32 = 0x38;
+    const KEY_C: u32 = 0x2E;
+
+    const CTRL_SHIFT: ModChord = ModChord {
+        mods: ModSet {
+            ctrl: true,
+            shift: true,
+            alt: false,
+            meta: false,
+        },
+        double_tap: false,
+    };
+    const DOUBLE_SHIFT: ModChord = ModChord {
+        mods: ModSet {
+            ctrl: false,
+            shift: true,
+            alt: false,
+            meta: false,
+        },
+        double_tap: true,
+    };
+
+    fn ev(scancode: u32, direction: KeyDirection) -> KeyEvent {
+        KeyEvent {
+            vk: scancode,
+            scancode,
+            direction,
+            // The matcher reads key identity, never the aggregate
+            // flags: a modifier's own press reports them differently
+            // on every backend.
+            modifiers: Modifiers::NONE,
+            injected: false,
+            timestamp_ms: 0,
+        }
+    }
+
+    /// Feed a gesture, one `(scancode, direction, offset-ms)` at a
+    /// time, and report which steps fired.
+    fn run(chord: ModChord, steps: &[(u32, KeyDirection, u64)]) -> Vec<usize> {
+        let mut st = ModTapState::default();
+        let base = Instant::now();
+        steps
+            .iter()
+            .enumerate()
+            .filter(|(_, (sc, dir, at))| {
+                match_mod_chord(
+                    &ev(*sc, *dir),
+                    chord,
+                    &mut st,
+                    base + Duration::from_millis(*at),
+                )
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    #[test]
+    fn fires_when_the_modifiers_come_back_up_and_nothing_else_was_pressed() {
+        let fired = run(
+            CTRL_SHIFT,
+            &[
+                (L_CTRL, KeyDirection::Press, 0),
+                (L_SHIFT, KeyDirection::Press, 40),
+                (L_SHIFT, KeyDirection::Release, 120),
+                (L_CTRL, KeyDirection::Release, 140),
+            ],
+        );
+        assert_eq!(fired, vec![3], "only the last release may fire");
+    }
+
+    /// The rule the whole design turns on: `Ctrl+C` must stay
+    /// `Ctrl+C`, and so must every other shortcut the chord's
+    /// modifiers are part of.
+    #[test]
+    fn a_key_pressed_during_the_hold_makes_it_a_shortcut_not_a_tap() {
+        for interloper in [KEY_C, poltertype_types::SC_POINTER_BUTTON] {
+            let fired = run(
+                CTRL_SHIFT,
+                &[
+                    (L_CTRL, KeyDirection::Press, 0),
+                    (L_SHIFT, KeyDirection::Press, 20),
+                    (interloper, KeyDirection::Press, 60),
+                    (interloper, KeyDirection::Release, 90),
+                    (L_SHIFT, KeyDirection::Release, 120),
+                    (L_CTRL, KeyDirection::Release, 130),
+                ],
+            );
+            assert!(fired.is_empty(), "fired on {interloper:#x}");
+        }
+    }
+
+    #[test]
+    fn a_modifier_outside_the_chord_does_not_fire_it() {
+        let fired = run(
+            CTRL_SHIFT,
+            &[
+                (L_CTRL, KeyDirection::Press, 0),
+                (L_SHIFT, KeyDirection::Press, 20),
+                (L_ALT, KeyDirection::Press, 40),
+                (L_ALT, KeyDirection::Release, 60),
+                (L_SHIFT, KeyDirection::Release, 80),
+                (L_CTRL, KeyDirection::Release, 100),
+            ],
+        );
+        assert!(fired.is_empty());
+    }
+
+    /// A hold is not a tap. This is what keeps a Shift held for a
+    /// capital that never came, or a Shift+click on the platforms
+    /// where mouse buttons are invisible to us, from firing.
+    #[test]
+    fn a_long_hold_is_not_a_tap() {
+        let late = MOD_TAP_MAX.as_millis() as u64 + 50;
+        let fired = run(
+            CTRL_SHIFT,
+            &[
+                (L_CTRL, KeyDirection::Press, 0),
+                (L_SHIFT, KeyDirection::Press, 10),
+                (L_SHIFT, KeyDirection::Release, late),
+                (L_CTRL, KeyDirection::Release, late + 10),
+            ],
+        );
+        assert!(fired.is_empty());
+    }
+
+    #[test]
+    fn a_double_tap_needs_both_taps_inside_the_window() {
+        let quick = run(
+            DOUBLE_SHIFT,
+            &[
+                (L_SHIFT, KeyDirection::Press, 0),
+                (L_SHIFT, KeyDirection::Release, 60),
+                (R_SHIFT, KeyDirection::Press, 200),
+                (R_SHIFT, KeyDirection::Release, 260),
+            ],
+        );
+        assert_eq!(quick, vec![3], "left and right Shift are one modifier");
+
+        let slow = run(
+            DOUBLE_SHIFT,
+            &[
+                (L_SHIFT, KeyDirection::Press, 0),
+                (L_SHIFT, KeyDirection::Release, 60),
+                (L_SHIFT, KeyDirection::Press, 2_000),
+                (L_SHIFT, KeyDirection::Release, 2_060),
+            ],
+        );
+        assert!(slow.is_empty(), "the second tap came too late to pair");
+    }
+
+    /// Typing capitals is a Shift hold with a letter in it, which the
+    /// dirty rule kills — including the letter's own Shift+release
+    /// ordering, where the letter comes up after the modifier.
+    #[test]
+    fn typing_capitals_never_fires_a_double_shift_binding() {
+        let fired = run(
+            DOUBLE_SHIFT,
+            &[
+                (L_SHIFT, KeyDirection::Press, 0),
+                (KEY_C, KeyDirection::Press, 30),
+                (L_SHIFT, KeyDirection::Release, 60),
+                (KEY_C, KeyDirection::Release, 80),
+                (L_SHIFT, KeyDirection::Press, 200),
+                (KEY_C, KeyDirection::Press, 230),
+                (L_SHIFT, KeyDirection::Release, 260),
+                (KEY_C, KeyDirection::Release, 280),
+            ],
+        );
+        assert!(fired.is_empty());
     }
 }
 
