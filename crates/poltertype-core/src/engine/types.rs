@@ -197,20 +197,31 @@ pub struct LastWord {
     pub keys: Vec<poltertype_types::WordKey>,
     pub rendered: String,
     pub layout: LayoutId,
-    /// The boundary character the user typed after the word. The
-    /// corrector backspaces over it and re-emits a copy.
-    pub boundary_char: char,
-    /// Scancode + shift of that boundary key, for faithful replay.
-    /// Enter/Tab are substituted with Space at replay time — re-
-    /// pressing those would submit a line / move focus.
-    pub boundary_scancode: u32,
-    pub boundary_shift: bool,
+    /// The key that closed the word, or `None` while it is still being
+    /// typed — which is when most people reach for the manual hotkey,
+    /// having arrived from Punto Switcher or Caramba where the gesture
+    /// acts on the word under the fingers.
+    pub boundary: Option<WordBoundaryKey>,
     /// The layout the engine's own correction moved this word to, once
     /// it has landed on screen; `None` while the word still reads as
     /// typed. This is how the manual switch-last hotkey tells its two
     /// situations apart: `None` means apply the switch the engine
     /// declined, `Some` means undo the one it made.
     pub corrected_to: Option<LayoutId>,
+}
+
+/// The separator that closed a word, kept so a correction can put an
+/// identical one back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WordBoundaryKey {
+    /// The character itself. The corrector backspaces over it and
+    /// re-emits a copy.
+    pub ch: char,
+    /// Scancode + shift, for faithful replay. Enter/Tab are substituted
+    /// with Space at replay time — re-pressing those would submit a
+    /// line or move focus.
+    pub scancode: u32,
+    pub shift: bool,
 }
 
 /// Result of one non-blocking sweep over the key channel during a

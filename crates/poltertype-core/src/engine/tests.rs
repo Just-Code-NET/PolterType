@@ -1993,6 +1993,82 @@ mod engine_integration_tests {
         assert_eq!(word, "ghbdsn");
     }
 
+    /// The gesture people actually arrive with: type the word, see the
+    /// wrong layout, press the key — with no space anywhere in it.
+    ///
+    /// Until 0.20.0 the stash was written only when a word was closed,
+    /// so this logged "no last word stashed" and did nothing at all.
+    /// Measured that way on KDE Plasma Wayland against 0.19.0, and
+    /// reported as the force-switch hotkey simply not working (#34,
+    /// and the first request in #32).
+    #[test]
+    fn the_hotkey_switches_a_word_that_has_no_separator_after_it_yet() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN); // no boundary key at all
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            vec![LayoutId::from("uk-UA")],
+            "the word under the fingers must switch like a closed one"
+        );
+    }
+
+    /// …and it retypes the word alone. A closed word is backspaced over
+    /// together with its separator; an unfinished one has no separator,
+    /// and eating the character after the caret would take something
+    /// the user never typed.
+    #[test]
+    fn switching_an_unfinished_word_leaves_the_caret_where_it_was() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        let first_erase = h.emitter.ops().iter().find_map(|o| match o {
+            EmitOp::Backspaces(n) => Some(*n),
+            _ => None,
+        });
+        assert_eq!(
+            first_erase,
+            Some(GHBDSN.len()),
+            "exactly the word, and nothing past the caret"
+        );
+    }
+
+    /// A buffer that lost the caret is not a word to switch: the
+    /// correction would land wherever the caret actually is.
+    #[test]
+    fn a_poisoned_buffer_is_left_alone_by_the_hotkey() {
+        let h = Harness::start(50);
+        type_word(&h, &GHBDSN);
+        // The idle sweep abandons the word in flight, which poisons.
+        std::thread::sleep(Duration::from_millis(160));
+        h.tap(0x1D);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "a caret we cannot vouch for must not be typed over"
+        );
+    }
+
     /// The same hotkey on a word the engine *left alone* keeps its
     /// original meaning — apply the switch we declined — and teaches
     /// nothing: the user is telling us to correct that word, which is
@@ -2129,7 +2205,7 @@ mod boundary_tests {
 }
 
 mod last_word_consume_tests {
-    use super::LastWord;
+    use super::{LastWord, WordBoundaryKey};
     use parking_lot::RwLock;
     use poltertype_layout::LayoutId;
     use std::sync::Arc;
@@ -2155,9 +2231,11 @@ mod last_word_consume_tests {
             keys: Vec::new(),
             rendered: "цщц".into(),
             layout: LayoutId::new("uk-UA"),
-            boundary_char: ' ',
-            boundary_scancode: 0x39,
-            boundary_shift: false,
+            boundary: Some(WordBoundaryKey {
+                ch: ' ',
+                scancode: 0x39,
+                shift: false,
+            }),
             corrected_to: Some(LayoutId::new("en-US")),
         });
 

@@ -841,20 +841,6 @@ impl SwitcherEngine {
         };
         let restored = target_mapping.translate_buffer(&last.keys);
         let mut corrected = restored.clone();
-        corrected.push(last.boundary_char);
-        // Enter/Tab excepted, where a re-press would submit the line or
-        // move focus. Which *key* carries the character depends on the
-        // target layout: see `boundary_key_for`.
-        let (boundary_sc, boundary_shift) = match last.boundary_scancode {
-            0x1C | 0x0F | 0x60 => (0x39, false),
-            sc => boundary_key_for(
-                &self.layouts,
-                &target,
-                sc,
-                last.boundary_shift,
-                last.boundary_char,
-            ),
-        };
         let mut replay: Vec<ReplayKey> = last
             .keys
             .iter()
@@ -863,18 +849,32 @@ impl SwitcherEngine {
                 shift: k.shift,
             })
             .collect();
-        replay.push(ReplayKey {
-            scancode: boundary_sc,
-            shift: boundary_shift,
-        });
+        // The word plus, if there is one, the boundary key that closed
+        // it. A word still being typed has none: nothing follows the
+        // caret to backspace over or put back.
+        let mut backspaces = last.keys.len();
+        if let Some(b) = last.boundary {
+            corrected.push(b.ch);
+            // Enter/Tab excepted, where a re-press would submit the line
+            // or move focus. Which *key* carries the character depends
+            // on the target layout: see `boundary_key_for`.
+            let (boundary_sc, boundary_shift) = match b.scancode {
+                0x1C | 0x0F | 0x60 => (0x39, false),
+                sc => boundary_key_for(&self.layouts, &target, sc, b.shift, b.ch),
+            };
+            replay.push(ReplayKey {
+                scancode: boundary_sc,
+                shift: boundary_shift,
+            });
+            backspaces += 1;
+        }
         let applied = self.apply_correction(
             &Correction {
                 from: &from,
                 to: &target,
                 original: &on_screen,
                 corrected: &corrected,
-                // The word, plus the boundary key that closed it.
-                backspaces: last.keys.len() + 1,
+                backspaces,
                 reason: if undoing {
                     "manual switch-last hotkey (undoing a correction)"
                 } else {

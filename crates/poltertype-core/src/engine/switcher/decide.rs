@@ -15,7 +15,7 @@ use crate::engine::heuristics::{
     app_is_disabled, boundary_key_for, is_layout_eligible, is_structural_boundary,
     is_submission_boundary, looks_like_all_caps, render_for_code_check,
 };
-use crate::engine::types::{Correction, LastWord};
+use crate::engine::types::{Correction, LastWord, WordBoundaryKey};
 
 use super::engine::SwitcherEngine;
 
@@ -36,6 +36,45 @@ impl SwitcherEngine {
             shift,
             caps,
             timestamp_ms: 0,
+        })
+    }
+
+    /// The word the user is still typing, shaped as something the
+    /// manual switch-last hotkey can act on.
+    ///
+    /// The stash proper is only written when a word is *closed*, so
+    /// until now the hotkey did nothing at all for a word with no
+    /// separator after it yet — it logged "no last word stashed" and
+    /// returned. That is the gesture people arrive with from Punto
+    /// Switcher and Caramba: type, see the wrong layout, press the key,
+    /// before any space is involved. Measured on KDE Plasma Wayland
+    /// against 0.19.0 (issues #34, #32).
+    ///
+    /// `None` on a poisoned buffer: the caret is somewhere we did not
+    /// see it move to, and a correction there would eat whatever is
+    /// actually under it.
+    pub(super) fn word_in_progress(&self, buffer: &WordBuffer) -> Option<LastWord> {
+        if buffer.poisoned() {
+            return None;
+        }
+        let keys = buffer.keys().to_vec();
+        if keys.is_empty() {
+            return None;
+        }
+        let layout = self
+            .word_layout
+            .read()
+            .clone()
+            .or_else(|| self.layout_switcher.current().ok())?;
+        let rendered = self.layouts.get(&layout)?.translate_buffer(&keys);
+        Some(LastWord {
+            keys,
+            rendered,
+            layout,
+            boundary: None,
+            // An unfinished word has never been through `decide`, so
+            // there is no correction of ours to undo.
+            corrected_to: None,
         })
     }
 
@@ -139,9 +178,11 @@ impl SwitcherEngine {
             keys: keys.clone(),
             rendered: current_text.clone(),
             layout: typed_layout.clone(),
-            boundary_char,
-            boundary_scancode,
-            boundary_shift,
+            boundary: Some(WordBoundaryKey {
+                ch: boundary_char,
+                scancode: boundary_scancode,
+                shift: boundary_shift,
+            }),
             // Filled in by `apply_correction`; the stash is written
             // before the decision is made.
             corrected_to: None,

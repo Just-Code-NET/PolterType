@@ -148,9 +148,18 @@ impl SwitcherEngine {
                     // transliterated word with the old word's suggestion.
                     self.dismiss_suggestions(None);
                     self.force_switch_last(last, buffer, key_rx);
+                } else if let Some(current) = self.word_in_progress(buffer) {
+                    self.dismiss_suggestions(None);
+                    self.force_switch_last(current, buffer, key_rx);
+                    // The user has just settled this word's layout by
+                    // hand. Its keys are still in the buffer and would
+                    // get a second opinion at the boundary — one that
+                    // can only disagree with them. `abandon` taints
+                    // exactly the next completion, which is this word.
+                    buffer.abandon();
                 } else {
                     debug!(
-                        "manual switch-last fired but no last word stashed (likely a duplicate from key auto-repeat)"
+                        "manual switch-last fired with no word to switch (empty buffer, or a duplicate from key auto-repeat)"
                     );
                 }
             }
