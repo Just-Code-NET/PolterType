@@ -1,4 +1,4 @@
-# Known gaps (as of v0.20.0)
+# Known gaps (as of v0.21.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,52 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.21.0 pass actually checked (2026-08-27).** Linux only,
+and three things: the modifier-only chord this release adds, whether
+the Settings window renders its own text, and — because the sweep that
+measured the first one said so — which layout backend a session picks.
+
+- **The modifier-only force-switch, across the desktop matrix.**
+  `Shift+Shift` bound as the force-switch, a wrong-layout word typed
+  through a virtual keyboard, auto-corrected, and then put back by two
+  taps of Shift — read out of a terminal, never out of our own API
+  (#26's lesson). Measured working on every session that corrects at
+  all: KDE Plasma Wayland, GNOME Wayland, sway, Cinnamon X11 (both
+  sessions), Xfce X11, i3, fluxbox, icewm, LXQt, openbox.
+- **The Hotkeys pane's capture of that gesture**, driven by injected
+  keystrokes in the guest's Xfce/X11 session: one tap of Shift leaves
+  the row asking for its twin, the second binds `Shift+Shift`, and
+  Ctrl+Shift held together binds on release. This is where the first
+  attempt was broken — the capture subscribed to key presses only, so
+  the gesture accumulated and never completed. No test can drive an
+  iced subscription; only the VM could catch it.
+- **That the window renders its text at all.** It did not, on a stock
+  Ubuntu 26.04 desktop: both it and the suggestion tooltip asked for a
+  font family by a name most machines do not have, and what the font
+  database answered with had no letters in it. Fixed and re-measured
+  in the same session.
+
+Two bugs the sweep found that had nothing to do with the release, both
+fixed in it and both re-measured after: hotkeys armed 25 seconds late
+on a session where GTK's start-up blocks (sway), and the gsettings
+backend claiming any session on a machine whose `dconf` a GNOME
+install had ever populated.
+
+Not re-run: everything on Windows and macOS, the updater, the tooltip
+backends, and every bullet below that is not dated today. Two of those
+are worth naming:
+
+- **The modifier-only chord has never run on Windows or macOS.** It
+  takes the same key-stream matcher the suggestion digits already use
+  there, off the same listeners, and the scancodes it matches come
+  from those listeners' own tables — but that is reasoning, not
+  measurement, and this file only counts the second one.
+- **The Settings window writes no log.** It is a child process that
+  starts before `init_tracing` on purpose (it would steal the tray's
+  log rotation), so every `info!`/`warn!` inside it goes nowhere. A
+  user reporting "the pane did nothing" cannot be answered from a log
+  file today.
 
 **What the 0.20.0 pass actually checked (2026-08-26).** Two things, and
 nothing else was re-run.

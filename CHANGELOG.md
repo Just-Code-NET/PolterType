@@ -36,6 +36,26 @@ every day rather than occasionally.
 
 ### Fixed
 
+- **A machine that had ever run GNOME could stop correcting in every
+  other desktop on it.** GNOME's `input-sources` setting lives in
+  `dconf`, a file in your home directory, and it outlives the session
+  that wrote it. PolterType took a populated setting as "this desktop
+  drives the layout through gsettings" — so on the same machine, i3,
+  fluxbox, icewm, LXQt, openbox and Xfce/X11 all picked that backend,
+  wrote the setting, watched their own session put the layout straight
+  back, and declined every correction. Six sessions in the desktop
+  matrix, each of which corrects fine with that setting empty. The
+  backend now claims a session only when the desktop is one that acts
+  on the setting; everything else falls through to the mechanism that
+  really drives it.
+
+- **Hotkeys were dead for the first half-minute after launch on some
+  sessions.** They were armed after the tray's event loop was built,
+  and building it can block: 25 seconds on sway, measured — with
+  corrections already working the whole time, which is what makes it
+  look like the hotkey is broken rather than late. Chords read off the
+  key stream are now armed before that step.
+
 - **The Settings window and the suggestion tooltip drew their text in
   whatever font the machine happened to answer with — on Ubuntu, in one
   with no letters in it.** Both asked for "Fira Sans": that is the

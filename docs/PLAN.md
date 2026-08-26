@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-25 (v0.19.0).
+> Created: 2026-05-02. Last updated: 2026-08-27 (v0.21.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation. Wherever the code has diverged from the
@@ -384,6 +384,10 @@ word_whitelist   = ["nginx", "kubectl", "github"]
 [hotkeys]
 pause_toggle        = "Ctrl+Shift+Space"   # macOS: Ctrl+Shift+P
 manual_switch_last  = "Ctrl+Shift+Backspace"   # Wayland: Ctrl+Shift+F9
+# Either may be modifiers alone: "Shift+Shift" (the same one tapped
+# twice) or two held together ("Ctrl+Shift"). Those have no key code to
+# register, so they are matched off the key stream on every platform,
+# and they fire on release — see docs/DECISIONS.md, 2026-08-27.
 
 # Text-trigger expansions. Not exposed as a table above — repeated
 # [[commands]] entries; see §3.9.

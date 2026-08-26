@@ -6,6 +6,35 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-27 — A setting that outlives the desktop that wrote it
+
+`org.gnome.desktop.input-sources` is not a property of the running
+session. It is a key in `dconf`, a file in the user's home, and once
+GNOME has configured two layouts there it stays configured for every
+session that user ever starts — i3, fluxbox, Xfce, anything.
+
+The gsettings backend read "populated" as "this desktop drives the
+layout through me". On a matrix guest whose dconf an earlier GNOME run
+had filled, six X11 sessions took that backend, wrote the key, watched
+their own session put the layout back, and declined every correction —
+the same six that correct fine with the key empty.
+
+**Decision: invert the test.** The backend claimed every session except
+those on a stand-down list (Cinnamon, MATE, wlroots), which could only
+ever name the desktops somebody had already been bitten by. It now
+claims a session only when the desktop is one whose own daemon acts on
+that schema — GNOME and its family — and everything else falls through
+to the backend that drives that session for real.
+`POLTERTYPE_LAYOUT_BACKEND=gnome` stays as the override for a desktop
+we have not heard of.
+
+**Kept, not folded in: the wlroots check.** It scans for a running
+compositor rather than trusting a name, because Budgie's Wayland
+session *is* labwc and calls itself Budgie — the one case where the
+positive list would say yes and be wrong.
+
+---
+
 ## 2026-08-27 — Ask the desktop what its font is called
 
 The Settings window and the suggestion tooltip both drew text through
