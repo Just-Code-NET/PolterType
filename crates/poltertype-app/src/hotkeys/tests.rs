@@ -129,3 +129,18 @@ fn re_applying_puts_the_new_chords_on_the_key_stream() {
     // the order the swap put them.
     assert_eq!(sent[1], (Some(0x43), Some(0x39)));
 }
+
+/// `HotKey::new` normalises META to SUPER, so a chord built from the
+/// Super key carried `meta: false` and could never match on the
+/// keystream backends — every Wayland/evdev machine, and the
+/// suggestion digits everywhere.
+#[test]
+fn a_super_chord_reaches_the_key_stream_with_its_modifier_intact() {
+    let hk = parse_hotkey_or_default("Ctrl+Super+K", DEFAULT_PAUSE_TOGGLE);
+    let chord = chord_from_hotkey(&hk);
+
+    assert_eq!(
+        chord.map(|c| (c.ctrl, c.meta, c.scancode)),
+        Some((true, true, 0x25))
+    );
+}

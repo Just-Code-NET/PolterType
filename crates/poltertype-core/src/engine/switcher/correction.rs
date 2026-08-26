@@ -814,7 +814,33 @@ impl SwitcherEngine {
                 // With two layouts "the other one" is fine; generalising
                 // means re-running the detector pipeline with
                 // `min_advantage = 0`.
-                let Some(other) = self.layouts.ids().find(|id| **id != last.layout).cloned() else {
+                //
+                // Which "other one", though, was `HashMap::keys()` —
+                // a different answer in every process. That is harmless
+                // while the DB holds exactly the two active layouts,
+                // and not at all harmless when it does not: a failed
+                // `list_active()` loads all fifteen bundled layouts,
+                // the force-switch aims at whichever one came out
+                // first, and the pre-flight below refuses it and
+                // returns without a keystroke or a word to the user.
+                // Prefer what the OS says is switchable, and settle
+                // ties by name so the same machine answers the same way
+                // twice.
+                let active = self.layout_switcher.list_active().unwrap_or_default();
+                let other = active
+                    .iter()
+                    .find(|id| **id != last.layout && self.layouts.get(id).is_some())
+                    .cloned()
+                    .or_else(|| {
+                        let mut rest: Vec<_> = self
+                            .layouts
+                            .ids()
+                            .filter(|id| **id != last.layout)
+                            .collect();
+                        rest.sort();
+                        rest.first().map(|id| (*id).clone())
+                    });
+                let Some(other) = other else {
                     warn!("only one layout known; can't force-switch");
                     return;
                 };

@@ -191,7 +191,10 @@ pub(crate) fn chord_from_hotkey(hk: &HotKey) -> Option<poltertype_core::engine::
         ctrl: hk.mods.contains(HkMods::CONTROL),
         shift: hk.mods.contains(HkMods::SHIFT),
         alt: hk.mods.contains(HkMods::ALT),
-        meta: hk.mods.contains(HkMods::META),
+        // `HotKey::new` normalises META to SUPER, so testing META
+        // alone was always false and a Super chord could never match
+        // here — measured, not assumed.
+        meta: hk.mods.intersects(HkMods::META | HkMods::SUPER),
         scancode: code_to_sc1(hk.key)?,
     })
 }

@@ -285,6 +285,27 @@ impl SettingsApp {
             Message::HotkeyRebindCancel => self.capturing = None,
             Message::HotkeyCaptured(combo) => {
                 if let Some(kind) = self.capturing.take() {
+                    // Refuse what the tray would refuse. A key is
+                    // captured as the *character it produced*, so
+                    // rebinding to a letter while a Cyrillic layout is
+                    // active wrote `Ctrl+Shift+Ф` — which the reader
+                    // rejects, and a rejected binding is silently
+                    // replaced by the default. The rebind then looked
+                    // accepted, the pane went on showing it, and the
+                    // key did something else entirely.
+                    if !is_usable_hotkey(&combo) {
+                        warn!(?kind, %combo, "refusing a hotkey this build cannot read back");
+                        self.save_banner = Some(SaveBanner {
+                            text: format!(
+                                "{combo} can't be used as a hotkey. \
+                                 Try a Latin letter or a function key — \
+                                 a key is stored by the character it types, \
+                                 so switch layout first if you meant a letter."
+                            ),
+                            is_error: true,
+                        });
+                        return Task::none();
+                    }
                     info!(?kind, %combo, "captured new hotkey combo");
                     match kind {
                         HotkeyKind::Pause => {

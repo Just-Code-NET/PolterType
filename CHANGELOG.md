@@ -4,6 +4,42 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.20.1] — four ways a hotkey could be ignored without saying so
+
+Found by re-reading the hotkey path end to end after 0.20.0 closed
+[#34](https://github.com/Just-Code-NET/PolterType/issues/34), and every
+one of them was measured rather than reasoned. They share a shape: the
+binding is refused somewhere the user cannot see, and the default
+quietly takes its place.
+
+### Fixed
+
+- **Rebinding to the Windows/Super key never worked.** The Settings pane
+  wrote `Meta` for that modifier, and the reader accepts only `Super`
+  and `Cmd` — so every Super binding was rejected on load and replaced
+  by the default, while the pane went on showing what the user had
+  pressed.
+
+- **Rebinding to a letter while a non-Latin layout was active never
+  worked either.** A key is captured as the character it *produced*, so
+  the pane offered `Ctrl+Shift+Ф` and the reader refused it. Both are
+  now refused where the user can see it: the capture is checked against
+  the same reader the tray uses, and says what to press instead.
+
+- **A `Super` chord could never fire on Wayland or Linux/evdev.**
+  Building the hotkey normalises Super to one modifier bit and the
+  key-stream matcher tested the other, so the flag was always false and
+  the chord matched nothing.
+
+- **The manual switch could aim at a layout the OS cannot switch to.**
+  "The other layout" came out of a hash map, in a different order every
+  run. Harmless with exactly two layouts loaded — and not harmless when
+  the OS layout list cannot be read at all, which loads all fifteen
+  bundled ones and leaves the force-switch aiming at whichever came
+  first, to be refused by a pre-flight check that tells the user
+  nothing. It now prefers what the OS reports as switchable, and
+  settles ties by name.
+
 ## [0.20.0] — the update that could never install itself
 
 Windows PolterType has been offering updates it was structurally

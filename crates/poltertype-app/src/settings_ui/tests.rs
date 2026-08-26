@@ -24,6 +24,14 @@ fn captured_hotkeys_round_trip_through_global_hotkey_parse() {
             "Ctrl+Alt+A",
         ),
         (Key::Named(Named::F4), Modifiers::ALT, "Alt+F4"),
+        // The Windows/Super key. `Meta` was written here for two years
+        // and the parser refuses it, so every Super binding became the
+        // default instead — this row is what the test was missing.
+        (
+            Key::Named(Named::F9),
+            Modifiers::CTRL | Modifiers::LOGO,
+            "Ctrl+Super+F9",
+        ),
     ];
     for (key, mods, expected) in cases {
         let formatted = format_hotkey(&key, mods);
@@ -37,6 +45,22 @@ fn captured_hotkeys_round_trip_through_global_hotkey_parse() {
              the rebind UI would silently drop hotkeys this shape"
         );
     }
+}
+
+/// A key is captured as the character it produced, so a rebind made
+/// while a Cyrillic layout is active offers `Ctrl+Shift+Ф`. The reader
+/// refuses that, and a refused binding used to become the default
+/// silently — the rebind looked accepted and the key did something
+/// else. It must be refused where the user can see it instead.
+#[test]
+fn a_combo_the_reader_refuses_is_not_usable() {
+    assert!(!is_usable_hotkey("Ctrl+Shift+Ф"));
+    assert!(!is_usable_hotkey("Ctrl+Meta+K"));
+    assert!(!is_usable_hotkey("Ctrl+Win+K"));
+
+    assert!(is_usable_hotkey("Ctrl+Shift+K"));
+    assert!(is_usable_hotkey("Ctrl+Super+K"));
+    assert!(is_usable_hotkey("Ctrl+Shift+F9"));
 }
 
 /// Auto-id must be deterministic and collision-free: the UI dedupes

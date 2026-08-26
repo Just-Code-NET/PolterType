@@ -384,12 +384,26 @@ pub fn format_hotkey(key: &Key, modifiers: Modifiers) -> String {
         parts.push("Shift".into());
     }
     if modifiers.logo() {
-        // global-hotkey accepts Meta / Super / Cmd / Win — use Meta
-        // for consistency with the upstream's docs.
-        parts.push("Meta".into());
+        // `Super` and `Cmd`, and nothing else: measured against
+        // `global-hotkey` 0.6.4, whose parser refuses both `Meta` and
+        // `Win` despite the name `Modifiers::META`. Writing `Meta` here
+        // produced a string our own reader rejected, and a rejected
+        // string is silently replaced by the default — a rebind that
+        // looked accepted and did nothing.
+        parts.push("Super".into());
     }
     parts.push(key_to_string(key));
     parts.join("+")
+}
+
+/// Whether this build can read a captured combo back.
+///
+/// A key is captured as the character it *produced*, so the pane can
+/// offer a combination the reader refuses — and a refused binding is
+/// silently replaced by the default, which is a rebind that looks
+/// accepted and does something else.
+pub fn is_usable_hotkey(combo: &str) -> bool {
+    combo.parse::<global_hotkey::hotkey::HotKey>().is_ok()
 }
 
 /// One-key serialisation matching `global-hotkey::HotKey::from_str`:
