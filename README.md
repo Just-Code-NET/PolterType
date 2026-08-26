@@ -45,7 +45,10 @@ tarde` lands correctly as typed.*
 > typing. The tap and emitter those changes live in have since been
 > run on real hardware again (Intel, while validating the key gate),
 > but the held-modifier case specifically still has nobody's report
-> behind it, and Apple Silicon none at all.
+> behind it. Apple Silicon has one since 0.19.0 — first launch,
+> detection, corrections, the force-switch hotkey and the self-updater
+> all confirmed on an M1 Pro — though not the held-modifier case
+> either.
 > They are the fix for a correction under a held ⌘ going out as ⌘⌫;
 > if something looks wrong on your Mac, please say so in
 > [#3](https://github.com/Just-Code-NET/PolterType/issues/3). The
@@ -85,7 +88,7 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 | OS              | Status                                                                                                                                                                        |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 10 / 11 | working                                                                                                                                                                       |
-| macOS 11+       | working — validated on macOS 15 (Intel); needs Accessibility **and** Input Monitoring permission (the app prompts on first launch). **On Intel, take 0.14.4 or newer:** every earlier DMG shipped an unsigned x86_64 slice, and macOS will not let unsigned code hold Accessibility — the app ran, the permission read as granted, and nothing was ever corrected ([#28](https://github.com/Just-Code-NET/PolterType/issues/28)) |
+| macOS 11+       | working — validated on macOS 15 (Intel) and, at 0.19.0, on macOS 26 (Apple Silicon, M1 Pro), self-update included ([#3](https://github.com/Just-Code-NET/PolterType/issues/3)); needs Accessibility **and** Input Monitoring permission (the app prompts on first launch). **On Intel, take 0.14.4 or newer:** every earlier DMG shipped an unsigned x86_64 slice, and macOS will not let unsigned code hold Accessibility — the app ran, the permission read as granted, and nothing was ever corrected ([#28](https://github.com/Just-Code-NET/PolterType/issues/28)) |
 | Linux (Wayland) | working on **Hyprland, KDE Plasma, GNOME and sway**; run `scripts/setup-linux.sh` once (evdev + uinput access). Other wlroots compositors — labwc, and Budgie's and Xfce's Wayland sessions — expose no way to change the keyboard layout, so PolterType reports that it cannot switch there rather than pretending. |
 | Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Measured on Xfce, LXQt, Cinnamon, i3, icewm, openbox and fluxbox. **MATE is the exception**: its settings daemon owns the keyboard layout and reports it inconsistently, so PolterType stands down there. |
 

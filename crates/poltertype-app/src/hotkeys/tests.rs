@@ -79,3 +79,53 @@ fn every_chord_we_substitute_survives_the_round_trip_to_a_scancode() {
         );
     }
 }
+
+/// Re-applying is the whole point: the chords used to be resolved once
+/// before the event loop, so a hotkey changed in the Settings window
+/// did nothing until the app was restarted (issue #34).
+#[test]
+fn re_applying_puts_the_new_chords_on_the_key_stream() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+
+    let first = apply_hotkeys(
+        DEFAULT_PAUSE_TOGGLE,
+        DEFAULT_SWITCH_LAST,
+        WAYLAND,
+        true,
+        None,
+        &tx,
+        None,
+    );
+    let swapped = apply_hotkeys(
+        WAYLAND_SAFE_SWITCH_LAST,
+        DEFAULT_PAUSE_TOGGLE,
+        WAYLAND,
+        true,
+        None,
+        &tx,
+        Some(first),
+    );
+
+    assert_eq!(
+        swapped.pause,
+        parse_hotkey_or_default(WAYLAND_SAFE_SWITCH_LAST, DEFAULT_PAUSE_TOGGLE)
+    );
+    assert_eq!(
+        swapped.switch_last,
+        parse_hotkey_or_default(DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST)
+    );
+
+    let mut sent = Vec::new();
+    while let Ok(cmd) = rx.try_recv() {
+        if let EngineCommand::SetKeystreamHotkeys(hk) = cmd {
+            sent.push((
+                hk.pause.map(|c| c.scancode),
+                hk.switch_last.map(|c| c.scancode),
+            ));
+        }
+    }
+    assert_eq!(sent.len(), 2, "each apply must re-arm the key stream");
+    // F9 and Space as SC Set-1 — the two the second call asked for, in
+    // the order the swap put them.
+    assert_eq!(sent[1], (Some(0x43), Some(0x39)));
+}

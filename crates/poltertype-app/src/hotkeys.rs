@@ -1,9 +1,12 @@
 //! Hotkey string parsing, scancode mapping, and which chord each
 //! hotkey actually answers to here.
 
+use crossbeam_channel::Sender;
+use global_hotkey::GlobalHotKeyManager;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers as HkMods};
+use poltertype_core::engine::{EngineCommand, KeystreamHotkeys};
 use poltertype_input::HotkeyEnvironment;
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::consts::{
     DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
@@ -68,6 +71,94 @@ pub(crate) fn effective_switch_last(
         chord: configured,
         substitution: None,
     }
+}
+
+/// The two chords in force right now, and — through their ids — what
+/// the event loop dispatches an OS hotkey event on.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ActiveHotkeys {
+    pub(crate) pause: HotKey,
+    pub(crate) switch_last: HotKey,
+}
+
+/// Put the configured chords in force, replacing whatever was in force
+/// before.
+///
+/// Called at startup **and again every time `config.toml` is re-read**.
+/// It has to be both: the chords used to be resolved once before the
+/// event loop and never again, so a hotkey changed in the Settings
+/// window sat there doing nothing until the app was restarted — which
+/// from the outside is indistinguishable from the setting being
+/// ignored, and was reported as exactly that (issue #34).
+pub(crate) fn apply_hotkeys(
+    configured_pause: &str,
+    configured_switch_last: &str,
+    env: HotkeyEnvironment,
+    use_keystream: bool,
+    manager: Option<&GlobalHotKeyManager>,
+    engine_tx: &Sender<EngineCommand>,
+    previous: Option<ActiveHotkeys>,
+) -> ActiveHotkeys {
+    let pause = effective_pause_toggle(configured_pause, env);
+    let switch = effective_switch_last(configured_switch_last, env);
+    if pause.substitution.is_some() {
+        info!(
+            rebound_to = pause.chord,
+            "macOS: default pause ({DEFAULT_PAUSE_TOGGLE}) is the system input-source shortcut; using a free chord"
+        );
+    }
+    if switch.substitution.is_some() {
+        info!(
+            rebound_to = switch.chord,
+            "Wayland: default switch-last ({DEFAULT_SWITCH_LAST}) is destructive in-app; using a safe key"
+        );
+    }
+    let active = ActiveHotkeys {
+        pause: parse_hotkey_or_default(pause.chord, DEFAULT_PAUSE_TOGGLE),
+        switch_last: parse_hotkey_or_default(switch.chord, DEFAULT_SWITCH_LAST),
+    };
+
+    if use_keystream {
+        let chords = KeystreamHotkeys {
+            pause: chord_from_hotkey(&active.pause),
+            switch_last: chord_from_hotkey(&active.switch_last),
+        };
+        if chords.pause.is_none() {
+            warn!(hotkey = ?active.pause, "pause hotkey key not mappable to a scancode; disabled");
+        }
+        if chords.switch_last.is_none() {
+            warn!(hotkey = ?active.switch_last, "switch-last hotkey key not mappable to a scancode; disabled");
+        }
+        let _ = engine_tx.send(EngineCommand::SetKeystreamHotkeys(chords));
+        info!(
+            pause = %pause.chord,
+            switch_last = %switch.chord,
+            "hotkeys handled off the key stream (Wayland/evdev backend)"
+        );
+    } else if let Some(manager) = manager {
+        // Order matters: the old grab has to go before the new one is
+        // taken, or rebinding A→B while B is still held by us fails
+        // with "already registered" and leaves the user on A.
+        if let Some(old) = previous {
+            for hk in [old.pause, old.switch_last] {
+                if let Err(e) = manager.unregister(hk) {
+                    warn!(?e, hotkey = ?hk, "could not release the previous hotkey");
+                }
+            }
+        }
+        if let Err(e) = manager.register(active.pause) {
+            warn!(?e, hotkey = ?active.pause, "could not register pause hotkey");
+        }
+        if let Err(e) = manager.register(active.switch_last) {
+            warn!(?e, hotkey = ?active.switch_last, "could not register switch-last hotkey");
+        }
+        info!(
+            pause = %pause.chord,
+            switch_last = %switch.chord,
+            "hotkeys registered with the OS"
+        );
+    }
+    active
 }
 
 /// Parse a `[hotkeys]` string, falling back to `default_str` on a bad

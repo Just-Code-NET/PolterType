@@ -13,6 +13,7 @@ use poltertype_core::engine::EngineCommand;
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::SettingsStore;
 use poltertype_types::LayoutId;
+use tao::event_loop::EventLoopProxy;
 use tracing::debug;
 
 /// Snapshot of "what should the tray look like right now". Icon and
@@ -49,6 +50,8 @@ pub(crate) struct SettingsCloseDeps {
     pub(crate) profile_dict_cache: ProfileDictCache,
     pub(crate) profile_force_reapply: Arc<AtomicBool>,
     pub(crate) reload_tx: Sender<EngineCommand>,
+    /// Announces the re-read to the tray, which owns the hotkey grabs.
+    pub(crate) proxy: EventLoopProxy<crate::enums::UserEvent>,
 }
 
 pub(crate) struct NoopEmitter;

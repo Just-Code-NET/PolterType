@@ -552,48 +552,16 @@ fn main() -> Result<()> {
         observed_not_consumed: use_keystream_hotkeys,
         system_owns_ctrl_shift_space: layout_switcher.backend_name() == "macos-tis",
     };
-    let snap = settings.snapshot();
-    let pause = effective_pause_toggle(&snap.hotkeys.pause_toggle, hk_env);
-    let switch = effective_switch_last(&snap.hotkeys.manual_switch_last, hk_env);
-    if pause.substitution.is_some() {
-        info!(
-            rebound_to = pause.chord,
-            "macOS: default pause ({DEFAULT_PAUSE_TOGGLE}) is the system input-source shortcut; using a free chord"
-        );
-    }
-    if switch.substitution.is_some() {
-        info!(
-            rebound_to = switch.chord,
-            "Wayland: default switch-last ({DEFAULT_SWITCH_LAST}) is destructive in-app; using a safe key"
-        );
-    }
-    let hk_pause = parse_hotkey_or_default(pause.chord, DEFAULT_PAUSE_TOGGLE);
-    let hk_switch = parse_hotkey_or_default(switch.chord, DEFAULT_SWITCH_LAST);
-    if use_keystream_hotkeys {
-        let chords = poltertype_core::engine::KeystreamHotkeys {
-            pause: chord_from_hotkey(&hk_pause),
-            switch_last: chord_from_hotkey(&hk_switch),
-        };
-        if chords.pause.is_none() {
-            warn!(hotkey = ?hk_pause, "pause hotkey key not mappable to a scancode; disabled");
-        }
-        if chords.switch_last.is_none() {
-            warn!(hotkey = ?hk_switch, "switch-last hotkey key not mappable to a scancode; disabled");
-        }
-        let _ = engine_cmd_tx.send(EngineCommand::SetKeystreamHotkeys(chords));
-        info!("hotkeys handled off the key stream (Wayland/evdev backend)");
-    } else {
-        if let Some(manager) = &hotkey_manager {
-            if let Err(e) = manager.register(hk_pause) {
-                warn!(?e, hotkey = ?hk_pause, "could not register pause hotkey");
-            }
-            if let Err(e) = manager.register(hk_switch) {
-                warn!(?e, hotkey = ?hk_switch, "could not register switch-last hotkey");
-            }
-        }
-    }
-    let pause_hotkey_id = hk_pause.id();
-    let switch_hotkey_id = hk_switch.id();
+    let hk_cfg = settings.snapshot().hotkeys;
+    let mut active_hotkeys = apply_hotkeys(
+        &hk_cfg.pause_toggle,
+        &hk_cfg.manual_switch_last,
+        hk_env,
+        use_keystream_hotkeys,
+        hotkey_manager.as_ref(),
+        &engine_cmd_tx,
+        None,
+    );
 
     // Smart commands are text triggers consulted on every word
     // boundary, never global hotkeys — see `poltertype_core::commands`.
@@ -639,6 +607,11 @@ fn main() -> Result<()> {
     let cmd_tx_for_loop = engine_cmd_tx.clone();
     let settings_for_loop = Arc::clone(&settings);
 
+    // Handed to every settings-UI spawn: the close handler runs on a
+    // thread of its own, and the hotkey grabs it needs re-applied live
+    // in the event loop.
+    let settings_proxy = event_loop.create_proxy();
+
     let mut tray_state = TrayState {
         layout: initial_layout,
         paused: false,
@@ -671,6 +644,21 @@ fn main() -> Result<()> {
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            Event::UserEvent(UserEvent::SettingsChanged) => {
+                // The chords, and only the chords: everything else the
+                // window can change was re-read by its close handler
+                // before this event was sent.
+                let cfg = settings_for_loop.snapshot().hotkeys;
+                active_hotkeys = apply_hotkeys(
+                    &cfg.pause_toggle,
+                    &cfg.manual_switch_last,
+                    hk_env,
+                    use_keystream_hotkeys,
+                    hotkey_manager.as_ref(),
+                    &cmd_tx_for_loop,
+                    Some(active_hotkeys),
+                );
+            }
             Event::UserEvent(UserEvent::PluginState) => {
                 // Before the menu refresh, not after: a plug-in's state
                 // command answers the same dead or alive, so the tray
@@ -748,6 +736,7 @@ fn main() -> Result<()> {
                         profile_dict_cache: Arc::clone(&profile_dict_cache),
                         profile_force_reapply: Arc::clone(&profile_force_reapply),
                         reload_tx: cmd_tx_for_loop.clone(),
+                        proxy: settings_proxy.clone(),
                     });
                 } else if id == settings_file_id {
                     open_path(&settings_path, "settings file");
@@ -782,6 +771,16 @@ fn main() -> Result<()> {
                             );
                             if changed {
                                 let _ = cmd_tx_for_loop.send(EngineCommand::SettingsReloaded);
+                                let cfg = settings_for_loop.snapshot().hotkeys;
+                                active_hotkeys = apply_hotkeys(
+                                    &cfg.pause_toggle,
+                                    &cfg.manual_switch_last,
+                                    hk_env,
+                                    use_keystream_hotkeys,
+                                    hotkey_manager.as_ref(),
+                                    &cmd_tx_for_loop,
+                                    Some(active_hotkeys),
+                                );
                             }
                         }
                         Err(e) => warn!(?e, "could not reload config.toml"),
@@ -801,13 +800,14 @@ fn main() -> Result<()> {
                         profile_dict_cache: Arc::clone(&profile_dict_cache),
                         profile_force_reapply: Arc::clone(&profile_force_reapply),
                         reload_tx: cmd_tx_for_loop.clone(),
+                        proxy: settings_proxy.clone(),
                     });
                 }
             }
             Event::UserEvent(UserEvent::Hotkey(id)) => {
-                if id == pause_hotkey_id {
+                if id == active_hotkeys.pause.id() {
                     let _ = cmd_tx_for_loop.send(EngineCommand::TogglePause);
-                } else if id == switch_hotkey_id {
+                } else if id == active_hotkeys.switch_last.id() {
                     let _ = cmd_tx_for_loop.send(EngineCommand::SwitchLastForcefully);
                 }
             }

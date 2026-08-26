@@ -111,6 +111,16 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
             if let Err(e) = deps.reload_tx.send(EngineCommand::SettingsReloaded) {
                 warn!(?e, "could not enqueue SettingsReloaded after UI exit");
             }
+            // The tray, separately: it owns the hotkey grabs, and a
+            // chord changed in the window it just closed has to start
+            // working now rather than after a restart.
+            if deps
+                .proxy
+                .send_event(crate::enums::UserEvent::SettingsChanged)
+                .is_err()
+            {
+                warn!("tray is gone; hotkeys not re-applied after settings UI exit");
+            }
         })
         .ok();
 }
