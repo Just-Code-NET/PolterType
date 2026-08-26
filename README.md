@@ -222,7 +222,7 @@ the Settings window:
 | Default                | Action                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
-| `Ctrl+Shift+Backspace` | Force-switch the most recent word — ignores every filter, including the dev-friendly skips below. On a word PolterType *just corrected* it undoes that correction, and learns the word so it won't happen again — unless the correction rested on a real word of the other language, in which case putting it back is a one-off rather than a new dictionary entry. |
+| `Ctrl+Shift+Backspace` | Force-switch a word — the one you are still typing, or the most recent finished one if you have moved past it. Ignores every filter, including the dev-friendly skips below. On a word PolterType *just corrected* it undoes that correction, and learns the word so it won't happen again — unless the correction rested on a real word of the other language, in which case putting it back is a one-off rather than a new dictionary entry. |
 
 > **On macOS the pause default is `Ctrl+Shift+P`, not
 > `Ctrl+Shift+Space`.** `Ctrl+Space` and `Ctrl+Shift+Space` are macOS's

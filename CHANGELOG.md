@@ -4,6 +4,88 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] — the update that could never install itself
+
+Windows PolterType has been offering updates it was structurally
+incapable of installing since the day the updater shipped. Found by
+reading the event log of a machine it had failed on five times.
+
+### Fixed — the Windows self-update
+
+- **"Restart to update" now installs the update.** It never once did on
+  Windows. The installer was started with `DETACHED_PROCESS`, which
+  leaves a process with no console at all, and Windows PowerShell 5.1
+  cannot start without one: it recorded that it was starting up and died
+  before the first line of the script. From inside the app that looked
+  exactly like success — the tray quit, nothing installed, PolterType did
+  not come back, and after three such clicks the verified download was
+  deleted as un-installable.
+
+- **The app no longer leaves on trust.** Every installer script now says
+  it is alive before it does anything that can fail, and the app waits to
+  hear that before quitting. No greeting, no hand-off: PolterType stays
+  running, says what happened, and the attempt is not counted against the
+  download — a spawn the OS never ran is not evidence that a file is bad.
+
+- **A refused install still gives you your app back**, on all three
+  platforms. The relaunch used to sit inside the success branch, so an
+  installer the OS turned down ended with nothing running at all. The old
+  binary is untouched in that case and perfectly able to start.
+
+- **An install that fails now says so.** Both output streams of the
+  installer go to `installer.log` in the logs folder (Tray → "Open Logs
+  Folder…"), msiexec keeps a verbose log of its own, and the exit code it
+  left behind is read back and shown the next time PolterType starts.
+  Before this, a failed update left no trace anywhere on the machine.
+
+- **macOS keeps a working app if the swap goes wrong**: the installed
+  bundle is moved aside rather than deleted, so a half-finished replace
+  can put back something that runs.
+
+- **The daily check actually happens daily.** It was counting monotonic
+  time, which stops while a laptop is suspended — so a machine that
+  sleeps every night never accumulated twenty-four hours of it and the
+  check fired once, at boot, and never again.
+  ([#3](https://github.com/Just-Code-NET/PolterType/issues/3))
+
+### Fixed — hotkeys
+
+- **A hotkey changed in Settings takes effect immediately.** The two
+  chords were resolved once, before the event loop, and never again:
+  changing either one wrote `config.toml`, reloaded everything else, and
+  left the hotkeys as they were until the app was restarted.
+  ([#34](https://github.com/Just-Code-NET/PolterType/issues/34))
+
+- **The manual switch works on the word you are still typing.** It only
+  ever acted on a word already closed by a space, so the gesture people
+  arrive with from Punto Switcher and Caramba — type, see the wrong
+  layout, press the key — did nothing at all, and said so only in a
+  debug log nobody reads. Measured on KDE Plasma Wayland.
+  ([#34](https://github.com/Just-Code-NET/PolterType/issues/34),
+  [#32](https://github.com/Just-Code-NET/PolterType/issues/32))
+
+### Verified
+
+- **Apple Silicon, by a contributor**: first launch and permissions,
+  detection and corrections, the force-switch hotkey, and the self-update
+  from 0.18.1 to 0.19.0 on an M1 Pro — the `.app`-bundle swap that
+  `docs/KNOWN-GAPS.md` had called written-from-the-docs and never run.
+  ([#3](https://github.com/Just-Code-NET/PolterType/issues/3))
+
+- **The "winit window" beside Settings on KDE Plasma Wayland is not
+  ours**, and is not fixed here. It is a throwaway window `iced_winit`
+  0.13 creates to boot its renderer, asks to be kept invisible, and
+  never destroys — and Wayland has no invisible, so a compositor that
+  lists toplevels shows it. Cosmetic, unfocusable, and gone when
+  Settings closes. iced 0.14 has no such window; that upgrade is its own
+  change. `docs/KNOWN-GAPS.md` has the protocol trace.
+  ([#35](https://github.com/Just-Code-NET/PolterType/issues/35))
+
+- **KDE Plasma Wayland**, in the desktop-matrix VM: the layout backend
+  (`linux-kde-qdbus`), the evdev listener, and — measured there for the
+  first time — the manual switch-last hotkey, both on a closed word and
+  on one still being typed.
+
 ## [0.19.0] — the Linux desktops, measured one by one
 
 Found by running PolterType on seventeen desktop sessions in a virtual

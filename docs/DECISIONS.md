@@ -6,6 +6,72 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-26 — A process the OS created is not a process that ran
+
+The Windows self-update never once worked. Not on one machine: the
+updater spawned an installer five times across three releases on the
+maintainer's own laptop, and Windows Installer has no record of a single
+transaction from the staging directory.
+
+The installer was spawned with `DETACHED_PROCESS | CREATE_NO_WINDOW`,
+on the reasoning that detachment is what keeps a child alive after its
+parent exits. On Windows nothing kills a child when its parent exits, so
+that flag bought nothing — and it costs the child its console entirely,
+which Windows PowerShell 5.1 cannot start without. The event log shows
+it: 40961 "console is starting up", then no IPC thread, no "ready", no
+exit event. It died mid-initialisation, every time, before the first
+line of a script that had been carefully tested by hand.
+
+**Decision:** `CREATE_NO_WINDOW` alone, which is what
+`poltertype-autostart` and `poltertype-shell` were already using for
+their own child processes.
+
+**And a second decision, because the flag is not the interesting part.**
+`Command::spawn` returning `Ok` proves the OS made a process and nothing
+else, and the app was quitting on that. Every installer script now
+prints one line before it can fail, and the app reads that line back
+before it leaves. No greeting, no hand-off: it stays running, tells the
+user, and does not count the attempt against the downloaded artifact.
+
+**Not chosen: trusting the fix.** A bug that survived three releases
+because "the installer path was verified" — by running the script from a
+console, which is the one context where the missing console does not
+matter — does not get to be closed by a code change either.
+`docs/KNOWN-GAPS.md` says what is still owed: a click on "Restart to
+update" on a real install fed by a published release.
+
+**Also fixed, from the same reading:** the relaunch was inside the
+success branch on all three platforms, so an install the OS refused
+ended with no PolterType running at all — the old binary being untouched
+and perfectly able to start.
+
+## 2026-08-26 — The word a person means is the one under their fingers
+
+Two issues, three reporters, one sentence between them: the force-switch
+hotkey does not work. It did work — on a word already closed by a space.
+The stash it reads is written by `decide()`, which runs at a word
+boundary, so a word still being typed had no stash and the hotkey
+returned after a DEBUG line nobody sees.
+
+Everyone who asked came from Punto Switcher or Caramba, where the
+gesture is: type, see the wrong layout, press the key. No space is
+involved, because the word is not finished — noticing is what finishes
+it.
+
+**Decision:** the hotkey falls back to the buffer's in-progress word.
+`LastWord.boundary` becomes an `Option`, since an unfinished word has
+none, and the correction then erases the word alone rather than the word
+plus a separator that is not there.
+
+**Why the buffer is abandoned afterwards:** the keys are still in it, so
+the boundary that eventually arrives would run `decide()` over a word
+the user has just settled the layout of by hand. The only thing that
+second opinion can do is disagree with them.
+
+**Not chosen: re-stamping `word_layout` and letting the word through the
+normal decision.** Cheaper, and it makes the engine argue with an
+explicit instruction — the one thing this hotkey exists to be immune to.
+
 ## 2026-08-25 — Ask the thing itself, never a proxy for it
 
 Eight bugs came out of one desktop-matrix sweep, all the same mistake:

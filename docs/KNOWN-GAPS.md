@@ -1,4 +1,4 @@
-# Known gaps (as of v0.19.0)
+# Known gaps (as of v0.20.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -10,6 +10,29 @@ silently: a heading that claims more than was checked is worse than a
 stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
+
+**What the 0.20.0 pass actually checked (2026-08-26).** Two things, and
+nothing else was re-run.
+
+- **The Windows self-update, from the event log rather than a rerun.**
+  Windows cannot be booted from here without ending the session, so this
+  pass read the machine instead: `Microsoft-Windows-PowerShell/Operational`
+  has five of our installer spawns across three releases, each logging
+  event 40961 ("console is starting up") and then no 53504 and no 40962 —
+  the process died mid-initialisation every time. `Application.evtx`
+  carries every MsiInstaller transaction the machine has ever run and
+  **not one** from the staging directory. Both facts are what
+  `DETACHED_PROCESS` predicts, and the fix is verified only as far as
+  code and its tests: **the next person to touch this must click
+  "Restart to update" on a real Windows install fed by a published
+  release.** Running the installer script by hand does not test it —
+  that is exactly the mistake the 0.18.0 pass made.
+- **KDE Plasma Wayland**, in the desktop-matrix VM (Ubuntu 26.04,
+  `kwin_wayland`), because two bug reports came from it. Measured:
+  the layout backend picks `linux-kde-qdbus`, the listener is
+  `linux-wayland-evdev` with the key gate on, a wrong-layout word is
+  corrected end to end, and — measured for the first time anywhere —
+  the manual switch-last hotkey fires and both of its cases work.
 
 **What the 0.19.0 pass actually checked (2026-08-24/25).** Linux
 only, in a VirtualBox guest (Ubuntu 26.04) carrying seventeen sessions.
@@ -632,6 +655,25 @@ what backs the Windows bullets.
   (1618) is a guess, and a machine whose installer is busy for longer
   still loses that attempt — though it now says so instead of going
   quiet.
+- **On KDE Plasma Wayland the Settings window comes with a second,
+  dead entry in the task manager, titled "winit window".** Reported
+  twice ([#35](https://github.com/Just-Code-NET/PolterType/issues/35)),
+  reproduced in the desktop-matrix VM, and **not ours to fix in this
+  release.** `iced_winit` 0.13 creates a throwaway window with default
+  attributes — hence the title, and no `app_id` at all — purely to hand
+  a window handle to the renderer while it boots
+  (`iced_winit-0.13.0/src/program.rs:300`), asks winit to keep it
+  invisible, and never destroys it. Wayland has no "invisible": winit
+  creates the `xdg_toplevel` regardless, and a compositor that lists
+  toplevels rather than mapped surfaces shows it. A `WAYLAND_DEBUG=1`
+  trace of the Settings process on `kwin_wayland` has two toplevels, one
+  of them titled `winit window`, and no destroy for it. Hyprland does
+  not list it, which is why nobody here saw it for eleven releases.
+  It is cosmetic — the window cannot be focused, and closing Settings
+  takes it with them. iced 0.14 has no boot window at all, so the fix is
+  that upgrade, and an upgrade that rewrites every pane of the Settings
+  UI is not something to bundle with a critical updater fix.
+
 - **Manifest signatures are mandatory from v0.17.2 — which turns a
   forgotten signing step into an outage.** This is no longer a gap in
   the product; it is a gap in *us*, so it stays on this list. Since
