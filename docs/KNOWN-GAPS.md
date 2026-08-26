@@ -655,6 +655,19 @@ what backs the Windows bullets.
   (1618) is a guess, and a machine whose installer is busy for longer
   still loses that attempt — though it now says so instead of going
   quiet.
+- **The manual switch on a word still being typed needs a hotkey that
+  is not itself an editing key.** 0.20.0 made the force-switch act on
+  the word under the caret, and it does — on Wayland, where the default
+  is already substituted to `Ctrl+Shift+F9` for a different reason. On
+  X11 the default stays `Ctrl+Shift+Backspace`: the X grab consumes it,
+  but our own XInput2 listener still sees the Backspace and abandons
+  the word in flight before the command is handled, so the mid-word
+  case finds an empty buffer and does nothing. The already-finished
+  word still switches normally. Measured on Xfce/`xfwm4` in the
+  desktop-matrix VM at 0.20.0. Binding any non-editing key works today;
+  the fix is for the engine to ignore a key event that *is* the
+  switch-last chord.
+
 - **On KDE Plasma Wayland the Settings window comes with a second,
   dead entry in the task manager, titled "winit window".** Reported
   twice ([#35](https://github.com/Just-Code-NET/PolterType/issues/35)),
