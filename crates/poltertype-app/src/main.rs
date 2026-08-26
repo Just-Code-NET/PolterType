@@ -385,6 +385,36 @@ fn main() -> Result<()> {
         .as_ref()
         .is_some_and(|l| l.backend_name() == "linux-wayland-evdev");
 
+    // Arm the key-stream chords *before* the event loop, not after it
+    // with the rest. Building the loop initialises GTK, and on a
+    // session with no tray host that blocked for **25 seconds** —
+    // measured on sway, 2026-08-27, where corrections were already
+    // landing while the hotkeys were not yet armed. Half a minute of a
+    // hotkey doing nothing is indistinguishable from a hotkey that
+    // does not work. Only this path can be armed here: an OS-level
+    // grab needs the manager, which needs the loop.
+    //
+    // Built from the live backends rather than probed: the tray knows
+    // exactly what it started. The Settings window has neither backend
+    // and probes instead — both then run the same resolver, which is
+    // the only thing keeping the two from disagreeing (issue #31).
+    let hk_env = poltertype_input::HotkeyEnvironment {
+        observed_not_consumed: use_keystream_hotkeys,
+        system_owns_ctrl_shift_space: layout_switcher.backend_name() == "macos-tis",
+    };
+    if use_keystream_hotkeys {
+        let cfg = settings.snapshot().hotkeys;
+        apply_hotkeys(
+            &cfg.pause_toggle,
+            &cfg.manual_switch_last,
+            hk_env,
+            true,
+            None,
+            &engine_cmd_tx,
+            None,
+        );
+    }
+
     // ─── Tao event loop + tray + global hotkeys ────────────────────
     let mut event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     // Tray-only app: on macOS `LSUIElement` alone does not keep us out
@@ -543,14 +573,6 @@ fn main() -> Result<()> {
             SWITCHER_PROBE_WINDOW.as_secs()
         );
         None
-    };
-    // Built from the live backends rather than probed: the tray knows
-    // exactly what it started. The Settings window has neither backend
-    // and probes instead — both then run the same resolver, which is
-    // the only thing keeping the two from disagreeing (issue #31).
-    let hk_env = poltertype_input::HotkeyEnvironment {
-        observed_not_consumed: use_keystream_hotkeys,
-        system_owns_ctrl_shift_space: layout_switcher.backend_name() == "macos-tis",
     };
     let hk_cfg = settings.snapshot().hotkeys;
     let mut active_hotkeys = apply_hotkeys(
