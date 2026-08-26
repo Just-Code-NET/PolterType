@@ -2071,6 +2071,75 @@ mod engine_integration_tests {
         );
     }
 
+    /// The hotkey pressed a moment late, once the next word has
+    /// started, must act on *that* word.
+    ///
+    /// A correction backspaces from the caret. The stash still names
+    /// the previous word, so using it here sent that word's backspace
+    /// count into text several characters to its right and left the
+    /// line in pieces — with no way for the user to guess why. Present
+    /// since the hotkey existed; a plausible half of the "sometimes
+    /// random symbols" in #33.
+    #[test]
+    fn the_hotkey_acts_on_the_word_the_caret_is_actually_in() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        // Three letters of a second word, deliberately unfinished.
+        let second = [0x11u32, 0x18, 0x13];
+        for sc in second {
+            h.tap(sc);
+        }
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        let erases: Vec<usize> = h
+            .emitter
+            .ops()
+            .iter()
+            .filter_map(|o| match o {
+                EmitOp::Backspaces(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            erases.last(),
+            Some(&second.len()),
+            "the erase must match the word under the caret, not the one before it"
+        );
+    }
+
+    /// …and once the caret is past more separators than the stash
+    /// recorded, there is nothing safe to switch at all.
+    #[test]
+    fn the_hotkey_gives_up_when_the_caret_has_moved_past_the_stash() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let before = h.emitter.ops().len();
+        h.tap(SPACE); // a second separator the stash knows nothing about
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            h.emitter.ops().len(),
+            before,
+            "nothing may be typed when the caret cannot be accounted for"
+        );
+    }
+
     /// A buffer that lost the caret is not a word to switch: the
     /// correction would land wherever the caret actually is.
     #[test]

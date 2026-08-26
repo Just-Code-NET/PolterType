@@ -56,6 +56,17 @@ reading the event log of a machine it had failed on five times.
   left the hotkeys as they were until the app was restarted.
   ([#34](https://github.com/Just-Code-NET/PolterType/issues/34))
 
+- **The manual switch no longer eats text when it is pressed a moment
+  late.** A correction backspaces from the caret, and the word the
+  hotkey reads was the last *finished* one — so pressing it after the
+  next word had started sent that word's backspace count several
+  characters too far right and left the line in pieces. It now acts on
+  the word the caret is actually in, and where the caret cannot be
+  accounted for at all it does nothing rather than guess. Present since
+  the hotkey existed, and a plausible half of the "sometimes random
+  symbols" in
+  [#33](https://github.com/Just-Code-NET/PolterType/issues/33).
+
 - **The manual switch works on the word you are still typing.** It only
   ever acted on a word already closed by a space, so the gesture people
   arrive with from Punto Switcher and Caramba — type, see the wrong

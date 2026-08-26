@@ -133,36 +133,62 @@ impl SwitcherEngine {
                 });
             }
             EngineCommand::SwitchLastForcefully => {
-                // Atomic take, NOT clone-and-read: the OS-level
-                // `RegisterHotKey` reads the Backspaces `force_switch_last`
-                // emits, plus the user's still-held Ctrl+Shift, as a
-                // fresh press and fires again — `wow ` accumulated to
-                // `wow wow wow…` until the app was killed. Auto-repeat
-                // does the same without the modifier edge. Taking
-                // atomically leaves every repeat fire with `None`.
-                let taken = self.last_word.write().take();
-                if let Some(last) = taken {
+                // Which word the caret is sitting after decides this.
+                // `completed() + boundary_run() + keys()` is the
+                // buffer's model of the text left of the caret, and a
+                // correction backspaces *from the caret* — so switching
+                // anything but the last item of that model erases
+                // whatever follows it instead. A hotkey pressed a
+                // moment late, once the next word had started, did
+                // exactly that: the previous word's backspace count
+                // landing several characters too far right, and a line
+                // left in pieces.
+                let in_progress = !buffer.keys().is_empty();
+                let taken = if in_progress {
+                    self.word_in_progress(buffer)
+                } else if buffer.boundary_run().len() <= 1 {
+                    // Atomic take, NOT clone-and-read: the OS-level
+                    // `RegisterHotKey` reads the Backspaces
+                    // `force_switch_last` emits, plus the user's
+                    // still-held Ctrl+Shift, as a fresh press and fires
+                    // again — `wow ` accumulated to `wow wow wow…`
+                    // until the app was killed. Auto-repeat does the
+                    // same without the modifier edge. Taking atomically
+                    // leaves every repeat fire with `None`.
+                    self.last_word.write().take()
+                } else {
+                    // More separators than the one that closed the
+                    // word: the caret is past them, and we cannot put
+                    // back what we never measured.
+                    debug!(
+                        separators = buffer.boundary_run().len(),
+                        "manual switch-last: the caret has moved past the stashed word"
+                    );
+                    None
+                };
+                if let Some(word) = taken {
                     // The force-switch replays the same scancodes, so
                     // the pending offer's identity check would still
                     // pass and a late click would replace the
                     // transliterated word with the old word's suggestion.
                     self.dismiss_suggestions(None);
-                    self.force_switch_last(last, buffer, key_rx);
-                } else if let Some(current) = self.word_in_progress(buffer) {
-                    self.dismiss_suggestions(None);
-                    self.force_switch_last(current, buffer, key_rx);
-                    // The user has just settled this word's layout by
-                    // hand. Its keys are still in the buffer and would
-                    // get a second opinion at the boundary — one that
-                    // can only disagree with them. `abandon` taints
-                    // exactly the next completion, which is this word.
-                    //
-                    // It is also what stops a held chord from switching
-                    // the same word over and over: the stash above is
-                    // taken atomically for that reason, and a fallback
-                    // that reads the buffer would hand every repeat the
-                    // same word back. Emptying it is the same guard.
-                    buffer.abandon();
+                    self.force_switch_last(word, buffer, key_rx);
+                    if in_progress {
+                        // The user has just settled this word's layout
+                        // by hand. Its keys are still in the buffer and
+                        // would get a second opinion at the boundary —
+                        // one that can only disagree with them.
+                        // `abandon` taints exactly the next completion,
+                        // which is this word.
+                        //
+                        // It is also what stops a held chord switching
+                        // the same word over and over: the stash branch
+                        // is taken atomically for that reason, and a
+                        // buffer read would hand every repeat the same
+                        // word straight back. Emptying it is the same
+                        // guard.
+                        buffer.abandon();
+                    }
                 } else {
                     debug!(
                         "manual switch-last fired with no word to switch (empty buffer, or a duplicate from key auto-repeat)"
