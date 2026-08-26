@@ -156,6 +156,12 @@ impl SwitcherEngine {
                     // get a second opinion at the boundary — one that
                     // can only disagree with them. `abandon` taints
                     // exactly the next completion, which is this word.
+                    //
+                    // It is also what stops a held chord from switching
+                    // the same word over and over: the stash above is
+                    // taken atomically for that reason, and a fallback
+                    // that reads the buffer would hand every repeat the
+                    // same word back. Emptying it is the same guard.
                     buffer.abandon();
                 } else {
                     debug!(

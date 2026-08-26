@@ -2047,6 +2047,30 @@ mod engine_integration_tests {
         );
     }
 
+    /// A held chord must not switch the same word twice. The stash is
+    /// taken atomically for exactly this reason — `wow ` once became
+    /// `wow wow wow…` under auto-repeat — and a fallback that reads the
+    /// buffer would hand every repeat the same word back.
+    #[test]
+    fn a_repeated_hotkey_switches_an_unfinished_word_only_once() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        for _ in 0..3 {
+            h.cmd_tx
+                .send(EngineCommand::SwitchLastForcefully)
+                .expect("engine alive");
+            h.settle();
+        }
+
+        assert_eq!(
+            h.switcher.switches.lock().len(),
+            1,
+            "auto-repeat must not keep re-switching the same word"
+        );
+    }
+
     /// A buffer that lost the caret is not a word to switch: the
     /// correction would land wherever the caret actually is.
     #[test]
