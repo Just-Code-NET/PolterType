@@ -268,6 +268,16 @@ impl SettingsApp {
             }
             Some(Message::HotkeyCaptured(format_hotkey(&key, modifiers)))
         });
-        Subscription::batch([close_sub, capture_sub])
+        // The other half of a modifier-only gesture, and the half that
+        // decides it: a chord of modifiers is judged when they come
+        // back up. Without this the press above only ever accumulated.
+        let release_sub = iced::keyboard::on_key_release(|key, modifiers| {
+            mod_role_of(&key).map(|role| Message::HotkeyModifier {
+                role,
+                pressed: false,
+                held: mods_from_iced(modifiers),
+            })
+        });
+        Subscription::batch([close_sub, capture_sub, release_sub])
     }
 }

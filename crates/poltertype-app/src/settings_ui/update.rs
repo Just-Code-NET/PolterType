@@ -298,31 +298,8 @@ impl SettingsApp {
                 if self.capturing.is_none() {
                     return Task::none();
                 }
-                // `held` rather than our own count: a window that lost
-                // focus mid-gesture never delivers the release, and a
-                // capture waiting for it would take no further input.
-                if pressed {
-                    self.mod_capture.down = held.with(role);
-                    self.mod_capture.peak = self.mod_capture.peak.with(role);
-                    return Task::none();
-                }
-                self.mod_capture.down = held.without(role);
-                if !self.mod_capture.down.is_empty() {
-                    return Task::none();
-                }
-                let peak = std::mem::take(&mut self.mod_capture.peak);
-                match peak.count() {
-                    // Two or more modifiers held together and let go
-                    // with nothing typed in between: a chord.
-                    2.. => return self.commit_hotkey(format_mod_chord(peak, false)),
-                    // One alone is only ever half a binding — the pane
-                    // stays in capture until its twin arrives.
-                    1 if self.mod_capture.pending_tap == Some(peak) => {
-                        self.mod_capture.pending_tap = None;
-                        return self.commit_hotkey(format_mod_chord(peak, true));
-                    }
-                    1 => self.mod_capture.pending_tap = Some(peak),
-                    _ => {}
+                if let Some(combo) = mod_capture_step(&mut self.mod_capture, role, pressed, held) {
+                    return self.commit_hotkey(combo);
                 }
             }
 

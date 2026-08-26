@@ -425,6 +425,50 @@ pub fn format_mod_chord(mods: ModSet, double_tap: bool) -> String {
     parts.join("+")
 }
 
+/// One modifier key event during a rebind. Returns the combination to
+/// bind once the gesture is complete, or `None` while it still could
+/// become something else.
+///
+/// The whole of the modifier-only capture (issue #32), kept out of
+/// `update` so it can be driven straight from a test: the iced
+/// subscription that feeds it cannot be.
+pub fn mod_capture_step(
+    cap: &mut ModCapture,
+    role: ModRole,
+    pressed: bool,
+    held: ModSet,
+) -> Option<String> {
+    // `held` rather than our own count: a window that lost focus
+    // mid-gesture never delivers the release, and a capture waiting
+    // for it would take no further input.
+    if pressed {
+        cap.down = held.with(role);
+        cap.peak = cap.peak.with(role);
+        return None;
+    }
+    cap.down = held.without(role);
+    if !cap.down.is_empty() {
+        return None;
+    }
+    let peak = std::mem::take(&mut cap.peak);
+    match peak.count() {
+        // Two or more modifiers held together and let go with nothing
+        // typed in between: a chord.
+        2.. => Some(format_mod_chord(peak, false)),
+        // One alone is only ever half a binding — the pane stays in
+        // capture until its twin arrives.
+        1 if cap.pending_tap == Some(peak) => {
+            cap.pending_tap = None;
+            Some(format_mod_chord(peak, true))
+        }
+        1 => {
+            cap.pending_tap = Some(peak);
+            None
+        }
+        _ => None,
+    }
+}
+
 /// Whether this build can read a captured combo back.
 ///
 /// A key is captured as the character it *produced*, so the pane can

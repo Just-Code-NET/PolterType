@@ -1,10 +1,11 @@
 use iced::keyboard::{Key, Modifiers, key::Named};
 use poltertype_core::commands::{CommandAction, UserCommand};
-use poltertype_core::engine::ModRole;
+use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_layout::LayoutId;
 
 use super::enums::*;
 use super::helpers::*;
+use super::state::ModCapture;
 use super::theme;
 
 /// The capture pipeline must produce strings that `global-hotkey`'s
@@ -336,4 +337,133 @@ fn modifier_keys_are_routed_by_role() {
     // Sanity: a regular character key must NOT be flagged.
     assert_eq!(mod_role_of(&Key::Character("x".into())), None);
     assert_eq!(mod_role_of(&Key::Named(Named::Space)), None);
+}
+
+/// The modifier-only capture, driven the way the keyboard subscription
+/// drives it. The subscription itself cannot be tested — which is
+/// exactly how its missing half survived a green suite once.
+#[test]
+fn a_modifier_gesture_binds_only_when_it_is_complete() {
+    const SHIFT: ModSet = ModSet {
+        shift: true,
+        ctrl: false,
+        alt: false,
+        meta: false,
+    };
+    let tap = |cap: &mut ModCapture, role, held_on_release| {
+        let _ = mod_capture_step(cap, role, true, ModSet::NONE);
+        mod_capture_step(cap, role, false, held_on_release)
+    };
+
+    // One tap alone is half a gesture: nothing is bound yet.
+    let mut cap = ModCapture::default();
+    assert_eq!(tap(&mut cap, ModRole::Shift, ModSet::NONE), None);
+    assert_eq!(cap.pending_tap, Some(SHIFT));
+    // Its twin completes it.
+    assert_eq!(
+        tap(&mut cap, ModRole::Shift, ModSet::NONE).as_deref(),
+        Some("Shift+Shift")
+    );
+    assert_eq!(cap.pending_tap, None, "the pair is spent, not carried on");
+
+    // Two different modifiers held together bind on the last release,
+    // and not before it — the first release still has the other down.
+    let mut cap = ModCapture::default();
+    assert_eq!(
+        mod_capture_step(&mut cap, ModRole::Ctrl, true, ModSet::NONE),
+        None
+    );
+    assert_eq!(
+        mod_capture_step(
+            &mut cap,
+            ModRole::Shift,
+            true,
+            ModSet {
+                ctrl: true,
+                ..ModSet::NONE
+            }
+        ),
+        None
+    );
+    assert_eq!(
+        mod_capture_step(
+            &mut cap,
+            ModRole::Shift,
+            false,
+            ModSet {
+                ctrl: true,
+                shift: true,
+                ..ModSet::NONE
+            }
+        ),
+        None,
+        "Ctrl is still down"
+    );
+    assert_eq!(
+        mod_capture_step(
+            &mut cap,
+            ModRole::Ctrl,
+            false,
+            ModSet {
+                ctrl: true,
+                ..ModSet::NONE
+            }
+        )
+        .as_deref(),
+        Some("Ctrl+Shift")
+    );
+
+    // A single tap of a *different* modifier replaces the pending one
+    // rather than pairing with it.
+    let mut cap = ModCapture::default();
+    assert_eq!(tap(&mut cap, ModRole::Shift, ModSet::NONE), None);
+    assert_eq!(tap(&mut cap, ModRole::Alt, ModSet::NONE), None);
+    assert_eq!(
+        tap(&mut cap, ModRole::Alt, ModSet::NONE).as_deref(),
+        Some("Alt+Alt")
+    );
+}
+
+/// Everything the capture can produce has to survive the trip through
+/// `config.toml` and back, or a rebind is silently replaced by the
+/// default the next time the tray reads it.
+#[test]
+fn captured_modifier_chords_read_back_as_the_same_binding() {
+    for (mods, double, expected) in [
+        (
+            ModSet {
+                shift: true,
+                ..ModSet::NONE
+            },
+            true,
+            "Shift+Shift",
+        ),
+        (
+            ModSet {
+                ctrl: true,
+                shift: true,
+                ..ModSet::NONE
+            },
+            false,
+            "Ctrl+Shift",
+        ),
+        (
+            ModSet {
+                meta: true,
+                ..ModSet::NONE
+            },
+            true,
+            "Super+Super",
+        ),
+    ] {
+        let combo = format_mod_chord(mods, double);
+        assert_eq!(combo, expected);
+        assert!(is_usable_hotkey(&combo), "{combo} must be readable back");
+        let parsed = crate::hotkeys::parse_mod_chord(&combo);
+        assert_eq!(
+            parsed.map(|m| (m.mods, m.double_tap)),
+            Some((mods, double)),
+            "{combo}"
+        );
+    }
 }
