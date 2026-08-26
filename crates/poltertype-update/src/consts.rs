@@ -40,6 +40,22 @@ pub(crate) const STAGING_DIR: &str = "updates";
 /// Bookkeeping for the artifact staged in [`STAGING_DIR`].
 pub(crate) const PENDING_FILE: &str = "pending.json";
 
+/// Left in [`STAGING_DIR`] by an installer the OS refused, carrying the
+/// exit code. Read back on the next start — an update that fails must
+/// say so, not look like a restart that did nothing.
+pub(crate) const FAILED_FILE: &str = "install-failed.txt";
+
+/// The app's rolling-log directory, relative to the data directory.
+/// Matches `SettingsStore::log_dir`, which resolves the same
+/// `ProjectDirs` triple: the installer's own log belongs where the
+/// tray's "Open Logs Folder…" already points.
+pub(crate) const LOG_DIR: &str = "logs";
+
+/// Everything the installer script prints. Outside [`STAGING_DIR`] on
+/// purpose: the successful path deletes that directory, and a log file
+/// still open by the installer is what would make the deletion fail.
+pub(crate) const INSTALLER_LOG: &str = "installer.log";
+
 /// Give up on a staged update after this many failed install attempts
 /// and delete it. Without this, an artifact that the OS installer
 /// rejects every single time would be retried on every quit, forever.

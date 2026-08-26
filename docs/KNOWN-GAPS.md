@@ -109,12 +109,15 @@ executed, not read:
   caret agreed to the pixel: the app's `anchor resolved
   anchor=Point { x: 338, y: 247, height: 18 }` and a separate probe's
   `GetGUIThreadInfo` sample at (338, 247).
-- **The MSI self-update, watched.** The one step this file said nobody
-  had seen: the script the updater writes, run against the *published*
-  v0.17.8 MSI over a v0.17.2 install. Windows Installer logged the
-  major upgrade (event 1033) and the installed binary reports 0.17.8.
-  The first attempt returned **1618**, which is what closed the gap
-  described in the updater bullet below.
+- **The MSI self-update, watched — but not the part that was broken.**
+  The script the updater writes was run against the *published* v0.17.8
+  MSI over a v0.17.2 install: Windows Installer logged the major
+  upgrade (event 1033) and the installed binary reported 0.17.8. The
+  first attempt returned **1618**, which is what closed the gap
+  described in the updater bullet below. What this did *not* cover is
+  how the script gets started, because it was started by hand — and
+  that is precisely where the Windows updater had been failing since
+  it shipped. See the updater bullet.
 - **The Setup pane and the Settings window**, opened on this machine:
   the pane probes and reports "Nothing to set up on Windows" with
   `windows-ll-hook` named as the live backend, and the window renders
@@ -595,31 +598,40 @@ what backs the Windows bullets.
   command instead), and imitate a system permission dialog (macOS shows
   its own). What is still missing from issue #10's wish list is the
   screenshots/GIFs of the macOS toggles.
-- **Self-update is proven on Linux and, since 0.18.0, on Windows;
-  unwritten-off on macOS.** The AppImage path is exercised. The MSI
-  path was "read but never watched" for seven releases — verifying it
-  needs two published releases, and this is the first pass that had
-  them. It has now been watched: the script the updater writes, run
-  against the published v0.17.8 MSI over a v0.17.2 install, produced a
-  Windows Installer major upgrade (event 1033) and a binary reporting
-  the new version.
-  **What that run found is the gap worth carrying forward.** The first
-  attempt returned **1618**, `ERROR_INSTALL_ALREADY_RUNNING` — Windows
-  serialises MSI transactions machine-wide, and a vendor support agent
-  had one open. The old script treated any non-zero code as a failed
-  package: the app quit, nothing installed, it relaunched at the old
-  version, and *no trace was left anywhere on the machine* — which is
-  exactly what happened to this maintainer's own install, unnoticed,
-  hours before the pass. 0.18.0 retries a busy installer for five
-  minutes and writes the exit code into the staging directory when it
-  finally gives up. Still open: five minutes is a guess, nothing
-  reads `install-failed.txt` back to the user, and a machine whose
-  installer is busy for longer still loses the update silently until
-  the next quit. The `.app`-bundle swap in
-  `poltertype-update/src/apply/macos.rs` is written from Apple's docs.
-  It also strips `com.apple.quarantine` from the installed bundle —
+- **Self-update: Linux and macOS are proven end to end; Windows was
+  broken from the first release that shipped it until 0.20.0.**
+  The AppImage path is exercised. The `.app`-bundle swap was validated
+  on Apple Silicon by a contributor at 0.19.0 (0.18.1 → 0.19.0 on an
+  M1 Pro, issue #3) — it had been written from Apple's docs and never
+  run. It also strips `com.apple.quarantine` from the installed bundle:
   defensible only while the app is unsigned, and it must come out the
   day we ship notarised builds.
+  **Windows never once installed an update of its own accord.** The
+  0.18.0 pass recorded the MSI path as "watched", and it had been —
+  but what was watched was the *script*, started by hand from a
+  console. The step nobody watched was the hand-off, and the hand-off
+  was where it was broken: the installer was spawned with
+  `DETACHED_PROCESS`, which leaves a process with no console at all,
+  and Windows PowerShell 5.1 cannot start without one. The event log
+  on the maintainer's own machine records five spawns across three
+  releases, each logging "PowerShell console is starting up" and then
+  dying before its first statement, and not one Windows Installer
+  transaction from the staging directory in the whole log. From inside
+  the app it was indistinguishable from success: the tray quit, the
+  update did not install, the app did not come back, and after three
+  such clicks the verified download was deleted as un-installable.
+  0.20.0 spawns with `CREATE_NO_WINDOW` — what the rest of this
+  codebase already used — and no longer takes the app down on trust:
+  every installer script announces itself, the app reads that greeting
+  back before quitting, and a hand-off that never happened leaves the
+  app running and says so. **A note for whoever verifies this next:
+  running the installer script by hand does not test the updater.**
+  The only run that counts is clicking "Restart to update" in a tray
+  fed by a published release.
+  Still open: five minutes of retries on a busy Windows Installer
+  (1618) is a guess, and a machine whose installer is busy for longer
+  still loses that attempt — though it now says so instead of going
+  quiet.
 - **Manifest signatures are mandatory from v0.17.2 — which turns a
   forgotten signing step into an outage.** This is no longer a gap in
   the product; it is a gap in *us*, so it stays on this list. Since

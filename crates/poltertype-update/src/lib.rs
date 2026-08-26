@@ -49,7 +49,7 @@ pub use consts::MANIFEST_URL;
 pub use enums::UpdateError;
 pub use manifest::platform_key;
 pub use signature::signing_payload;
-pub use staging::{clear_pending, read_pending};
+pub use staging::{clear_pending, read_pending, take_install_failure};
 pub use types::{Artifact, Manifest, PendingUpdate};
 pub use version::is_newer;
 

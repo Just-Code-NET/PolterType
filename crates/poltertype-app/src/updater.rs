@@ -8,7 +8,7 @@
 //! moment the user picked.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, RecvTimeoutError};
@@ -28,6 +28,18 @@ use crate::enums::*;
 /// has every other app competing for the same disk and network. A minute
 /// of quiet costs nothing — the update has been out for hours.
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(60);
+
+/// How often the worker wakes to ask whether a check is due.
+///
+/// The interval itself is measured against the wall clock rather than
+/// slept through: `recv_timeout` counts monotonic time, which does not
+/// advance while a machine is suspended. A laptop that is closed every
+/// night never accumulates twenty-four hours of it, so the check that
+/// runs "daily" runs on the day the user reboots and never again —
+/// which is exactly what an Apple Silicon tester reported in #3.
+/// Waking a few times an hour to compare two timestamps costs nothing
+/// and survives suspend.
+const POLL: Duration = Duration::from_secs(15 * 60);
 
 /// The staged update this build should actually offer, if any.
 ///
@@ -72,23 +84,62 @@ pub(crate) fn refresh_menu_item(item: &MenuItem, pending: Option<&PendingUpdate>
     item.set_text(menu_label(pending));
 }
 
-/// Install the staged update and tell the caller whether to exit.
+/// Report an install the OS refused last time, once.
+///
+/// The marker the installer leaves behind is the only trace a refused
+/// install has: the app it was meant to replace is still the one
+/// running, and from the user's side a "Restart to update" that fails
+/// is indistinguishable from one that did nothing at all. Consumed on
+/// read, so this is said once rather than at every start.
+///
+/// Must run before [`pending_for_this_build`], which may clear the
+/// staging directory the marker lives in.
+pub(crate) fn report_previous_install_failure() {
+    let Some(reason) = poltertype_update::take_install_failure() else {
+        return;
+    };
+    warn!(%reason, "the previous update install was refused");
+    spawn_error_notification(format!(
+        "PolterType could not install its last update.\n{reason}\n\
+         The installer's own log is in the logs folder \
+         (Tray → \"Open Logs Folder…\").\n\
+         Download it from {RELEASES_URL}"
+    ));
+}
+
+/// Install the staged update and say whether the app must now exit.
 ///
 /// `relaunch` distinguishes the two ways here: the user clicked
 /// "Restart to update" and expects the app back, or clicked Quit and
 /// expects it gone. Either way the install happens *after* we exit.
 ///
-/// A failure is reported and swallowed — refusing to quit because an
-/// installer could not be spawned would hold the user's app hostage to
-/// our update mechanism. The staged artifact stays for the next try.
-pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) {
+/// `false` means nothing was handed off, so there is nothing waiting
+/// for this process to disappear. The caller on the "Restart to update"
+/// path must then **stay running**: an app that quits for an installer
+/// that never started is an app the user has to go and start again,
+/// which is precisely how a failing updater turned into a machine with
+/// no PolterType on it.
+pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) -> bool {
     match poltertype_update::apply(pending, relaunch) {
-        Ok(true) => info!(
-            version = %pending.version,
-            relaunch,
-            "installer spawned; exiting so it can replace us"
-        ),
-        Ok(false) => info!("staged update was discarded after repeated install failures"),
+        Ok(true) => {
+            info!(
+                version = %pending.version,
+                relaunch,
+                "installer spawned; exiting so it can replace us"
+            );
+            return true;
+        }
+        Ok(false) => {
+            // Three refused installs in a row: the artifact is gone and
+            // the tray is about to go back to "Check for updates…".
+            // Silence here would read as the button doing nothing.
+            info!("staged update was discarded after repeated install failures");
+            spawn_error_notification(format!(
+                "PolterType {} could not be installed after several attempts.\n\
+                 Download it from {RELEASES_URL}",
+                pending.version
+            ));
+        }
         Err(UpdateError::UnsupportedInstall(reason)) => {
             // Not a bug and not worth a scary error: a dev build, a
             // distro package, a bare binary. We simply are not the
@@ -110,6 +161,7 @@ pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) {
             ));
         }
     }
+    false
 }
 
 /// Run the periodic check on its own thread.
@@ -127,12 +179,19 @@ pub(crate) fn spawn_update_worker(
     std::thread::Builder::new()
         .name("poltertype-updater".into())
         .spawn(move || {
-            let mut delay = FIRST_CHECK_DELAY;
+            let mut due = SystemTime::now() + FIRST_CHECK_DELAY;
             loop {
                 // Sleeping on the channel rather than `thread::sleep` is
                 // what makes a manual check instant.
-                match check_now.recv_timeout(delay) {
+                let wait = due
+                    .duration_since(SystemTime::now())
+                    .unwrap_or(Duration::ZERO)
+                    .min(POLL);
+                match check_now.recv_timeout(wait) {
                     Ok(()) => info!("manual update check requested"),
+                    // A tick, not necessarily a due check: the poll is
+                    // deliberately shorter than the interval.
+                    Err(RecvTimeoutError::Timeout) if SystemTime::now() < due => continue,
                     Err(RecvTimeoutError::Timeout) => {}
                     // The tray dropped its sender: the app is shutting
                     // down and there is nobody left to report to.
@@ -140,7 +199,7 @@ pub(crate) fn spawn_update_worker(
                 }
 
                 let cfg = settings.snapshot().updates;
-                delay = cfg.interval();
+                due = SystemTime::now() + cfg.interval();
 
                 if !cfg.enabled {
                     // The user turned updates off — possibly while an

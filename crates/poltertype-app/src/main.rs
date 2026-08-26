@@ -419,6 +419,7 @@ fn main() -> Result<()> {
     // update"; hidden entirely when `[updates].enabled` is off.
     let updates_enabled = settings.snapshot().updates.enabled;
     let mut update_pending = if updates_enabled {
+        report_previous_install_failure();
         pending_for_this_build()
     } else {
         None
@@ -706,11 +707,31 @@ fn main() -> Result<()> {
                     match update_pending.as_ref() {
                         Some(pending) => {
                             info!(version = %pending.version, "Restart to update clicked");
-                            if let Some(mut listener) = input_listener.take() {
-                                listener.stop();
+                            // Hand off first and take the app down
+                            // second: nothing is waiting for this
+                            // process unless an installer really
+                            // started, and quitting anyway is what
+                            // turned a failed update into a machine
+                            // with no PolterType running on it.
+                            if apply_now(pending, true) {
+                                if let Some(mut listener) = input_listener.take() {
+                                    listener.stop();
+                                }
+                                // A plug-in service outliving the swap
+                                // is a process whose binary moved under
+                                // it — the same reason Quit stops them.
+                                supervisor.stop_all();
+                                *control_flow = ControlFlow::Exit;
+                            } else {
+                                // Re-read rather than assume: a
+                                // discarded update is gone from disk,
+                                // a failed hand-off is still staged,
+                                // and the menu must say which.
+                                update_pending = pending_for_this_build();
+                                if let Some(item) = item_update.as_ref() {
+                                    refresh_menu_item(item, update_pending.as_ref());
+                                }
                             }
-                            apply_now(pending, true);
-                            *control_flow = ControlFlow::Exit;
                         }
                         None => {
                             info!("manual update check");

@@ -50,6 +50,11 @@ pub enum UpdateError {
     /// AppImage wrapper, a `cargo run` dev build, a distro package.
     #[error("this install cannot update itself in place: {0}")]
     UnsupportedInstall(String),
+    /// The OS created the installer process and it died without
+    /// executing anything. Distinguishable only because every script
+    /// announces itself first — see `apply::HELLO`.
+    #[error("the installer process started and stopped without running: {0}")]
+    InstallerSilent(String),
     #[error("io: {0}")]
     Io(#[from] io::Error),
 }

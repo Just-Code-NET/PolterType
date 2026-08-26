@@ -40,13 +40,29 @@ fn the_script_waits_for_us_before_touching_the_msi() {
 }
 
 #[test]
-fn a_relaunch_is_the_first_thing_the_success_branch_does() {
+fn the_script_says_it_started_before_anything_can_stop_it() {
     let s = body(true);
+    let hello = s
+        .find("PolterType installer: started")
+        .unwrap_or(usize::MAX);
+    let wait = s.find("Wait-Process").unwrap_or(0);
 
-    assert!(matches!(
-        (s.find(RELAUNCH), s.find("Remove-Item")),
-        (Some(r), Some(c)) if r < c
-    ));
+    // The line that distinguishes "the installer refused the package"
+    // from "the installer never ran", so it must precede every
+    // statement that could fail.
+    assert!(hello < wait, "the script can fail before it says it began");
+}
+
+#[test]
+fn a_refused_install_still_gives_the_user_their_app_back() {
+    let s = body(true);
+    let relaunch = s.find(RELAUNCH).unwrap_or(usize::MAX);
+    let branch = s.find("if ($code -eq 0").unwrap_or(0);
+
+    // Outside the success branch entirely: an install the OS turned
+    // down leaves the old binary in place and runnable, and a machine
+    // with no PolterType on it is the one outcome worth ruling out.
+    assert!(relaunch < branch, "a failed install leaves the app down");
 }
 
 #[test]
@@ -69,4 +85,35 @@ fn a_refused_install_leaves_its_exit_code_behind() {
         (s.find("} else {"), s.find("install-failed.txt")),
         (Some(e), Some(f)) if e < f
     ));
+}
+
+#[test]
+fn the_installer_records_why_and_not_only_that() {
+    let s = body(true);
+
+    // An exit code names a failure; only msiexec's own verbose log
+    // says what it tripped over.
+    assert!(s.contains("'/l*v'"));
+    assert!(s.contains("msiexec.log"));
+}
+
+#[test]
+fn an_app_that_is_still_running_is_never_installed_over() {
+    let s = body(true);
+    let guard = s.find("Get-Process -Id 4242").unwrap_or(usize::MAX);
+    let install = s.find("msiexec.exe").unwrap_or(0);
+
+    // The caller now stays alive when the hand-off fails, so "the wait
+    // timed out" no longer implies "the app is about to be gone" — and
+    // an MSI aimed at a live keyboard hook is the one thing this whole
+    // design exists to prevent.
+    assert!(guard < install, "the MSI can run against a live app");
+    assert!(s.contains("exit 1"));
+}
+
+#[test]
+#[ignore = "writes the script out for an external PowerShell parse check"]
+fn dump_for_syntax_check() {
+    let out = std::env::var("POLTERTYPE_SCRIPT_DUMP").expect("POLTERTYPE_SCRIPT_DUMP");
+    std::fs::write(out, body(true)).expect("write");
 }

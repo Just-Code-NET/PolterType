@@ -11,13 +11,24 @@ use crate::consts::*;
 use crate::enums::UpdateError;
 use crate::types::PendingUpdate;
 
-/// `<data_local_dir>/poltertype/updates/`. Same ProjectDirs triple the
-/// rest of the app uses, so a user who wipes the app's data directory
-/// wipes the staged update with it.
-pub(crate) fn staging_dir() -> Result<PathBuf, UpdateError> {
+/// The app's data directory. Same ProjectDirs triple the rest of the
+/// app uses, so a user who wipes it wipes the staged update with it.
+fn data_dir() -> Result<PathBuf, UpdateError> {
     let dirs =
         ProjectDirs::from("dev", "opensource", "poltertype").ok_or(UpdateError::NoDataDir)?;
-    Ok(dirs.data_local_dir().join(STAGING_DIR))
+    Ok(dirs.data_local_dir().to_path_buf())
+}
+
+/// `<data_local_dir>/poltertype/updates/`.
+pub(crate) fn staging_dir() -> Result<PathBuf, UpdateError> {
+    Ok(data_dir()?.join(STAGING_DIR))
+}
+
+/// Where the installer script's own output goes — see
+/// [`crate::consts::INSTALLER_LOG`] for why it is not in the staging
+/// directory.
+pub(crate) fn installer_log_path() -> Result<PathBuf, UpdateError> {
+    Ok(data_dir()?.join(LOG_DIR).join(INSTALLER_LOG))
 }
 
 pub(crate) fn pending_path() -> Result<PathBuf, UpdateError> {
@@ -92,15 +103,28 @@ pub fn clear_pending() {
     }
 }
 
-/// Record that we are about to hand the staged artifact to the OS
-/// installer, and say whether it is still worth trying.
+/// The exit code a refused install left behind, read once and cleared.
 ///
-/// The counter is bumped *before* the attempt: an installer that
-/// hard-kills our process would never reach an after-the-fact
-/// increment, and the broken artifact would be retried on every quit.
-pub(crate) fn note_install_attempt(pending: &PendingUpdate) -> bool {
-    let attempts = pending.attempts + 1;
-    if attempts > MAX_INSTALL_ATTEMPTS {
+/// The marker is written by the installer script and by nothing else,
+/// so its presence means the script ran and the OS turned the artifact
+/// down — which is the one thing the app could never tell apart from an
+/// installer that never started at all.
+pub fn take_install_failure() -> Option<String> {
+    let path = staging_dir().ok()?.join(FAILED_FILE);
+    let text = fs::read_to_string(&path).ok()?;
+    if let Err(e) = fs::remove_file(&path) {
+        warn!(?e, ?path, "could not clear the install-failure marker");
+    }
+    let reason = text.trim().to_owned();
+    (!reason.is_empty()).then_some(reason)
+}
+
+/// Whether this artifact has any tries left — and if not, get rid of it.
+///
+/// Without the ceiling, a file the OS installer rejects every single
+/// time would be retried on every quit, forever.
+pub(crate) fn attempts_left(pending: &PendingUpdate) -> bool {
+    if pending.attempts >= MAX_INSTALL_ATTEMPTS {
         warn!(
             version = %pending.version,
             attempts = pending.attempts,
@@ -109,8 +133,19 @@ pub(crate) fn note_install_attempt(pending: &PendingUpdate) -> bool {
         clear_pending();
         return false;
     }
+    true
+}
+
+/// Record that an installer is running with this artifact.
+///
+/// Counted once the installer has confirmed it is alive, not merely
+/// once it has been spawned. The difference is the whole point: an
+/// installer the OS never actually ran is not evidence against the
+/// artifact, and counting it burned three good downloads for a user
+/// whose PowerShell could not start at all.
+pub(crate) fn note_install_attempt(pending: &PendingUpdate) {
     let bumped = PendingUpdate {
-        attempts,
+        attempts: pending.attempts + 1,
         ..pending.clone()
     };
     if let Err(e) = write_pending(&bumped) {
@@ -119,5 +154,4 @@ pub(crate) fn note_install_attempt(pending: &PendingUpdate) -> bool {
         // counter would be the worse trade.
         warn!(?e, "could not record the install attempt");
     }
-    true
 }
