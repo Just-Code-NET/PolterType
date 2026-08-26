@@ -6,6 +6,38 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-27 — Ask the desktop what its font is called
+
+The Settings window and the suggestion tooltip both drew text through
+`cosmic-text`, and both asked for a family by a name nobody guarantees:
+iced's `Font::DEFAULT` *is* the string "Fira Sans", and cosmic-text
+resolves the generic `SansSerif` to the same string. Where the machine
+has no Fira Sans — this development laptop included — the request falls
+through to whichever installed face the font database answers with. On
+Ubuntu 26.04 that was a face with no text glyphs: the window rendered
+its headers (bold, matched elsewhere) and its layout ids (monospace)
+and nothing else.
+
+**Decision:** resolve the family once, per OS, in `poltertype-shell` —
+`fc-match sans-serif` on Linux, Segoe UI on Windows, Helvetica Neue on
+macOS — and hand it to iced as the default font and to cosmic-text as
+the meaning of `SansSerif`. The window then wears the desktop's own UI
+font, which is what a native app should look like anyway.
+
+**Not chosen: bundling a font.** It is the deterministic answer and
+iced offers the feature, but its `fira-sans` feature ships the file on
+`wasm32` only, so it would mean a `.ttf` in this repo — the one thing
+`poltertype-icon` exists to avoid — for a window opened once a month.
+
+**The bug was found late for a bad reason**, worth recording: the
+desktop-matrix VM's screenshots come from `VBoxManage screenshotpng`,
+which returns a stale framebuffer. Five of them showed the window
+"missing text" that was in fact drawn, and two showed text that had
+been fixed as still missing. Every conclusion about a window's
+contents now comes from a grab taken *inside* the session.
+
+---
+
 ## 2026-08-27 — A hotkey with no key in it fires on the way up
 
 Punto Switcher and Caramba users ask for the same gesture every time

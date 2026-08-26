@@ -20,7 +20,7 @@ use poltertype_input::setup::{StepAction, StepState};
 use super::consts::PERMISSIONS_DOC_URL;
 use super::enums::*;
 use super::state::*;
-use super::theme::{self, FONT_BOLD};
+use super::theme::{self, font_bold};
 use super::view::{card, pane_header, section_title, status_line, tip};
 
 impl SettingsApp {
@@ -170,7 +170,7 @@ impl SettingsApp {
             .push(
                 Text::new(step.title.clone())
                     .size(14)
-                    .font(FONT_BOLD)
+                    .font(font_bold())
                     .color(b.ink),
             )
             .push(Text::new(step.detail.clone()).size(12).color(b.muted));
@@ -184,7 +184,7 @@ impl SettingsApp {
             .spacing(12)
             .align_y(Alignment::Start)
             .push(
-                Container::new(Text::new(mark).size(11).font(FONT_BOLD).color(mark_color))
+                Container::new(Text::new(mark).size(11).font(font_bold()).color(mark_color))
                     .width(74)
                     .padding(Padding {
                         top: 3.0,

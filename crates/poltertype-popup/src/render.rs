@@ -95,8 +95,18 @@ pub(crate) struct Renderer {
 
 impl Renderer {
     pub fn new() -> Self {
+        let mut fonts = FontSystem::new();
+        // Every string below asks for `Family::SansSerif`, and
+        // cosmic-text resolves that to the *name* "Fira Sans", which
+        // most machines do not have — the request then falls through
+        // to whatever the font database answers with, which on Ubuntu
+        // 26.04 was a face with no text glyphs. Point the generic at
+        // what this desktop actually calls its sans-serif.
+        if let Some(family) = poltertype_shell::ui_font_family() {
+            fonts.db_mut().set_sans_serif_family(family);
+        }
         Self {
-            fonts: FontSystem::new(),
+            fonts,
             cache: SwashCache::new(),
         }
     }

@@ -90,6 +90,10 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
     let app = iced::application(SettingsApp::title, SettingsApp::update, SettingsApp::view)
         .theme(SettingsApp::theme)
         .subscription(SettingsApp::subscription)
+        // Every label that names no font of its own. Left at iced's
+        // default this asks for a family most machines do not have —
+        // see `theme::font_ui`.
+        .default_font(theme::font_ui())
         .exit_on_close_request(false)
         .window(iced::window::Settings {
             // Sized so Commands and Wordlists render without scrolling

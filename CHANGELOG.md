@@ -36,6 +36,19 @@ every day rather than occasionally.
 
 ### Fixed
 
+- **The Settings window and the suggestion tooltip drew their text in
+  whatever font the machine happened to answer with — on Ubuntu, in one
+  with no letters in it.** Both asked for "Fira Sans": that is the
+  literal family name behind iced's default font, and the one
+  `cosmic-text` resolves "sans-serif" to. Neither carries the font, so
+  on a machine without it the request fell through to whichever of the
+  hundreds of installed faces the font database returned first. On a
+  stock Ubuntu 26.04 desktop that face had no text glyphs, and the
+  Settings window rendered its headers and its layout ids and nothing
+  else: no menu, no buttons, no checkbox labels. Both now ask the
+  desktop what its sans-serif actually is (fontconfig on Linux, Segoe
+  UI on Windows, Helvetica Neue on macOS).
+
 - **The Hotkeys pane no longer asks for a restart it does not need.**
   It had been telling users to quit and relaunch the tray for a rebind
   to take effect since before 0.20.1 made the rebind live on window

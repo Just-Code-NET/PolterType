@@ -15,11 +15,13 @@
 //! | [`request_stop`] | only Unix has a signal to ask a process to leave |
 //! | [`window_platform_specific`] | only Linux ties a window to an app id, and the field exists only there |
 //! | [`install_desktop_entry`] | only Linux keeps an app's name and icon in a third file |
+//! | [`ui_font_family`] | each OS names its UI font differently, and only Linux can be asked |
 
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod desktop;
+mod font;
 mod instance;
 mod keys;
 mod process;
@@ -28,6 +30,7 @@ mod process;
 mod tests;
 
 pub use desktop::{DESKTOP_ID, install_desktop_entry, window_platform_specific};
+pub use font::ui_font_family;
 pub use instance::{InstanceLock, acquire as acquire_instance_lock};
 pub use keys::{key_glyph, key_name_with_glyph};
 pub use process::{configure_child, request_stop};

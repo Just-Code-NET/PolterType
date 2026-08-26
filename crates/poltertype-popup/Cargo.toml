@@ -14,6 +14,7 @@ workspace = true
 
 [dependencies]
 crossbeam-channel = { workspace = true }
+poltertype-shell  = { workspace = true }
 thiserror         = { workspace = true }
 tracing           = { workspace = true }
 tiny-skia         = { workspace = true }

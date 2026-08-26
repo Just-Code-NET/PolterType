@@ -29,7 +29,7 @@ use poltertype_core::plugins::{ControlKind, SettingValue};
 use super::enums::*;
 use super::plugin_pane::{CommandOutput, Slot};
 use super::state::*;
-use super::theme::{self, FONT_BOLD, FONT_MONO};
+use super::theme::{self, FONT_MONO, font_bold};
 use super::view::section_title;
 
 /// Shown where a plug-in's config does not set a value. Not "0" and
@@ -120,7 +120,7 @@ impl SettingsApp {
         let mut heading = Row::new().spacing(8).align_y(Alignment::Center).push(
             Text::new(format!("{} {}", pane.ext.name, pane.ext.version))
                 .size(15)
-                .font(FONT_BOLD),
+                .font(font_bold()),
         );
         if pane.ext.development {
             // Not a badge of honour: this is code that was never
@@ -290,7 +290,7 @@ impl SettingsApp {
                 let mut head = Column::new().spacing(6).push(
                     Text::new(control.label.as_str())
                         .size(15)
-                        .font(FONT_BOLD)
+                        .font(font_bold())
                         .color(b.ink),
                 );
                 if !control.help.is_empty() {
@@ -712,7 +712,7 @@ impl SettingsApp {
             let mut header = Row::new().spacing(6).align_y(Alignment::Center).push(
                 Text::new(format!("{}", row + 1))
                     .size(12)
-                    .font(FONT_BOLD)
+                    .font(font_bold())
                     .color(b.muted)
                     .width(Length::Fill),
             );
@@ -1146,7 +1146,7 @@ impl SettingsApp {
         let mut heading = Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
-            .push(Text::new(control.label.as_str()).size(13).font(FONT_BOLD))
+            .push(Text::new(control.label.as_str()).size(13).font(font_bold()))
             .push(
                 Button::new(Text::new("Refresh").size(11))
                     .padding(small)

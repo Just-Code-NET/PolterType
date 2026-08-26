@@ -21,7 +21,7 @@ use super::consts::*;
 use super::enums::*;
 use super::helpers::*;
 use super::state::*;
-use super::theme::{self, FONT_BOLD, GhostMark};
+use super::theme::{self, GhostMark, font_bold};
 
 impl SettingsApp {
     pub(super) fn view(&self) -> Element<'_, Message> {
@@ -109,7 +109,7 @@ impl SettingsApp {
                     .push(
                         Text::new("PolterType")
                             .size(16)
-                            .font(FONT_BOLD)
+                            .font(font_bold())
                             .color(b.ink),
                     )
                     .push(
@@ -1228,7 +1228,7 @@ impl SettingsApp {
             .push(
                 Text::new("PolterType")
                     .size(24)
-                    .font(FONT_BOLD)
+                    .font(font_bold())
                     .color(b.ink),
             )
             .push(
@@ -1366,7 +1366,7 @@ pub(super) fn pane_header(
 ) -> Element<'static, Message> {
     Column::new()
         .spacing(6)
-        .push(Text::new(title).size(22).font(FONT_BOLD).color(b.ink))
+        .push(Text::new(title).size(22).font(font_bold()).color(b.ink))
         .push(Text::new(subtitle).size(13).color(b.muted))
         .into()
 }
@@ -1386,7 +1386,11 @@ pub(super) fn section_title(
     b: &'static theme::BrandPalette,
     text: &'static str,
 ) -> Element<'static, Message> {
-    Text::new(text).size(14).font(FONT_BOLD).color(b.ink).into()
+    Text::new(text)
+        .size(14)
+        .font(font_bold())
+        .color(b.ink)
+        .into()
 }
 
 /// Sidebar label for the Setup pane. Carries the warning glyph only
