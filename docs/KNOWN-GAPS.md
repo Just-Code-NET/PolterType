@@ -655,18 +655,20 @@ what backs the Windows bullets.
   (1618) is a guess, and a machine whose installer is busy for longer
   still loses that attempt — though it now says so instead of going
   quiet.
-- **The manual switch on a word still being typed needs a hotkey that
-  is not itself an editing key.** 0.20.0 made the force-switch act on
-  the word under the caret, and it does — on Wayland, where the default
-  is already substituted to `Ctrl+Shift+F9` for a different reason. On
-  X11 the default stays `Ctrl+Shift+Backspace`: the X grab consumes it,
-  but our own XInput2 listener still sees the Backspace and abandons
-  the word in flight before the command is handled, so the mid-word
-  case finds an empty buffer and does nothing. The already-finished
-  word still switches normally. Measured on Xfce/`xfwm4` in the
-  desktop-matrix VM at 0.20.0. Binding any non-editing key works today;
-  the fix is for the engine to ignore a key event that *is* the
-  switch-last chord.
+- **The manual switch on a word still being typed is measured on
+  Wayland only, and did not work in the one X11 run.** 0.20.0 made the
+  force-switch act on the word under the caret. Measured working on KDE
+  Plasma Wayland and on GNOME Wayland, where the default chord is
+  already substituted to `Ctrl+Shift+F9`. The same probe on Xfce/`xfwm4`
+  (X11, default chord `Ctrl+Shift+Backspace`) switched the *finished*
+  word correctly and did nothing at all mid-word, logging an empty word
+  buffer. **Why the buffer was empty is not established** — the obvious
+  suspect is that our own listener sees the Backspace of the chord, but
+  a Backspace pops one key rather than clearing the buffer, so that
+  does not explain it on its own. Not shipped as a root cause until
+  somebody reproduces it; the finished-word case is unaffected
+  everywhere, and Windows and macOS carry the same Backspace-based
+  default and have not been measured for this at all.
 
 - **On KDE Plasma Wayland the Settings window comes with a second,
   dead entry in the task manager, titled "winit window".** Reported
