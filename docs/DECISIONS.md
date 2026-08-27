@@ -6,6 +6,58 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-27 — An offer aimed at fast typists must outlive fast typing
+
+The tooltip's "Add to dictionary" row is shown to people who type fast
+and dismissed by the next keystroke. Those are the same event. The
+reporter of #38 never once managed to use it, which is not a bug in the
+tooltip so much as a hole where the rest of the interaction should be.
+
+The word is kept when the offer is *missed*, not when it is made: the
+dismissal path is the one an accepted offer never reaches, so "the user
+did not take this" needs no extra state to detect.
+
+What it holds is the whole design question, because this is the only
+place the app keeps words the user typed beyond the single word the
+engine is working on. So: eight, newest first, in memory, never
+written, never logged, and no `Debug` derive — a list that cannot reach
+a bug report by accident. A repeat moves to the front rather than
+taking a second slot; the same spelling under two layouts stays two
+entries, because it goes into one wordlist and can be a word in one
+language and gibberish in the other.
+
+**Alternative rejected:** persisting the list across restarts, which is
+what "review them later" most literally asks for. It turns a menu into
+a file of things you typed, and the honest version of that is a feature
+with its own consent, not a side effect of a tooltip you missed.
+
+---
+
+## 2026-08-27 — Measure a toolkit upgrade before believing the estimate
+
+`iced_winit` 0.13's boot window (#35) had stood for eleven releases
+behind the judgement that fixing it "rewrites every pane of the
+Settings UI". That estimate was never compiled. It was 45 errors across
+nine files, all of them renames: builders where constructors used to
+take arguments, `Status::Focused` growing a field, `application()`
+taking boot where it took the title.
+
+The lesson is not that the estimate was too high. It is that a
+dependency bump has a number attached and the number takes ten minutes
+to get, so an upgrade deferred on a *guess* about its size is deferred
+on nothing.
+
+The second half is that a compiling upgrade is not a working one. Three
+of the four spellings of the brand-mark canvas compiled; one drew the
+mark at the window's origin, one masked it to a sliver, one dropped it
+entirely, and only a screenshot could tell them apart. Two of the three
+tiny-skia workarounds this repo carried were then dropped on evidence —
+the mask bug is fixed, the resize crash is gone — and the third was
+kept precisely because its symptom (flicker during a live palette
+change) is the one no screenshot can catch.
+
+---
+
 ## 2026-08-27 — A gesture you can only make once is not a gesture
 
 The force-switch consumed the stash to reach the switch, so it answered

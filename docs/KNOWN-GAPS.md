@@ -1,4 +1,4 @@
-# Known gaps (as of v0.22.0)
+# Known gaps (as of v0.23.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,29 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.23.0 pass actually checked (2026-08-27).** One machine —
+this Hyprland laptop — and the Settings window, because the release
+moves it to iced 0.14 and that touches every pane. The window was
+opened and photographed after each step of the migration, which is how
+three separate wrong spellings of the brand-mark canvas were caught: it
+drew at the window's origin, then masked to a sliver, then not at all,
+before the idiomatic form rendered it whole. The resize crash below was
+re-tested by driving the window through 300×300, 1400×1000, 320×340 and
+900×700 in sequence.
+
+Two gaps came out of this file rather than being re-stamped: the
+"winit window" ghost toplevel (#35), which iced 0.14 does not create,
+and that resize crash. **The ghost window's absence is inferred, not
+measured** — it only ever appeared on KDE Plasma Wayland, the desktop
+matrix was not re-run for this release, and what is verified here is
+that the upgrade landed and the window works. Someone on Plasma should
+confirm the second entry is gone.
+
+The missed-word tray list (#38) was checked on a live run: three
+tooltips offered and lost, the list logging 1, 2, 3 rows, and none of
+the three words appearing anywhere in the log.
+
 
 **What the 0.22.0 pass actually checked (2026-08-27).** The manual
 force-switch, which the release exists for, on two machines.
@@ -476,24 +499,6 @@ move too fast to be true.
   rather than trusted: Chrome and Terminal report ones nowhere near
   the text, and a rejected caret costs that window the caret rung, not
   the tooltip.
-- **On KDE Plasma Wayland the Settings window comes with a second,
-  dead entry in the task manager, titled "winit window".** Reported
-  twice ([#35](https://github.com/Just-Code-NET/PolterType/issues/35)),
-  reproduced in the desktop-matrix VM, and **not ours to fix in this
-  release.** `iced_winit` 0.13 creates a throwaway window with default
-  attributes — hence the title, and no `app_id` at all — purely to hand
-  a window handle to the renderer while it boots
-  (`iced_winit-0.13.0/src/program.rs:300`), asks winit to keep it
-  invisible, and never destroys it. Wayland has no "invisible": winit
-  creates the `xdg_toplevel` regardless, and a compositor that lists
-  toplevels rather than mapped surfaces shows it. A `WAYLAND_DEBUG=1`
-  trace of the Settings process on `kwin_wayland` has two toplevels, one
-  of them titled `winit window`, and no destroy for it. Hyprland does
-  not list it, which is why nobody here saw it for eleven releases.
-  It is cosmetic — the window cannot be focused, and closing Settings
-  takes it with them. iced 0.14 has no boot window at all, so the fix is
-  that upgrade, and an upgrade that rewrites every pane of the Settings
-  UI is not something to bundle with a critical updater fix.
 
 ## AI, plug-ins and onboarding
 
@@ -660,25 +665,6 @@ move too fast to be true.
   backend, which never used it. What it cannot cover is an X server
   that goes away *later* in the session — that is upstream's thread and
   upstream's null check.
-- **The Settings window can crash on a sudden large resize, in debug
-  builds only.** Reproduced 2026-08-19 on Linux/Hyprland: a big enough
-  jump (not specifically narrow↔wide — a same-direction shrink to
-  300×300 did it too) trips an `iced_tiny_skia` 0.13
-  `debug_assert!("Quad with non-normal height!")` — some quad's height
-  lands on exactly 0.0 for one frame — and the process dies
-  (`iced_tiny_skia-0.13.0/src/engine.rs:43`). Not app code: no
-  `unwrap`/`panic!` anywhere in `settings_ui`, and it reproduces
-  identically on every pane tried (Languages, Plugins), so it's the
-  shared window chrome or a scrollbar, not one pane's content. The
-  assert compiles out of `--release`, so an installed build never hits
-  this exact panic — but the *dev* autostart people actually run day to
-  day is a debug build, so it is a live nuisance there.
-  `min_size` on the window (`settings_ui/mod.rs`) is a hint, added on
-  the chance it helps a real click-and-drag resize; a compositor-driven
-  resize (`hyprctl dispatch`, the only way this was tested) ignores it
-  outright, so treat it as unverified, not fixed. Root cause is still
-  open — bisecting which widget (a scrollbar is the leading suspect) is
-  the next step if this gets prioritised.
 
 ## Deliberately out of scope (not gaps)
 

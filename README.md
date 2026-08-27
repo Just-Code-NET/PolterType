@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.22.0**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.23.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -122,7 +122,7 @@ This is the **only** part of PolterType that touches the network — a
 version, a `GET` of the installer. No account, no identifier, nothing
 about you and nothing about what you type. GitHub sees what any
 download reveals: your IP and a User-Agent naming the running version
-(`PolterType/0.22.0 (updater)`). The exact manifest URL is printed on
+(`PolterType/0.23.0 (updater)`). The exact manifest URL is printed on
 the Settings window's **General** pane, so you never have to take our
 word for it.
 
@@ -246,6 +246,12 @@ come with it — add `mañana`, and `mañanas` stops being flagged too.
 The tooltip never steals keyboard focus and disappears after 30 seconds or
 the moment you type past it. Tune or disable it on the **Suggestions**
 pane (`[suggestions]` in `config.toml`).
+
+Typing past it is easy to do — so the offer is not lost with it. The
+last eight words a tooltip offered and you typed past wait under **Add
+a missed word…** in the tray menu, and picking one adds it exactly as
+the tooltip row would. That list lives in memory only: it is never
+written to a file, never logged, and it goes when PolterType does.
 
 The tooltip only appears for words PolterType *keeps*. When it
 corrects one it shouldn't have, the teaching gesture is
