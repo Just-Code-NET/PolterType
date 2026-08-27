@@ -76,9 +76,10 @@ pub(crate) fn connect_and_select() -> Result<RustConnection, InputError> {
 pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
     let mut mods = ModState::default();
     let mut last_resync = Instant::now();
+    let mut last_caps_resync = Instant::now();
     // Seed the latch: the session may well have started with Caps Lock
     // already on, and nothing else would ever tell us.
-    resync_caps(&conn, &mut mods, true);
+    resync_caps(&conn, &mut mods, &mut last_caps_resync, true);
     while !stop.load(Ordering::SeqCst) {
         match conn.poll_for_event() {
             Ok(Some(ev)) => {
@@ -90,7 +91,7 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
                 }
             }
             Ok(None) => {
-                resync_caps(&conn, &mut mods, false);
+                resync_caps(&conn, &mut mods, &mut last_caps_resync, false);
                 resync_modifiers(&conn, &mut mods, &mut last_resync);
                 thread::sleep(POLL_IDLE);
             }
@@ -151,10 +152,16 @@ fn resync_modifiers(conn: &RustConnection, mods: &mut ModState, last: &mut Insta
 /// included — the state xkb will apply to our replayed keystrokes.
 /// Asking is the only way to know: the key is often bound to Escape,
 /// Ctrl or the layout switch, where pressing it latches nothing.
-fn resync_caps(conn: &RustConnection, mods: &mut ModState, force: bool) {
-    if !mods.take_caps_stale() && !force {
+fn resync_caps(conn: &RustConnection, mods: &mut ModState, last: &mut Instant, force: bool) {
+    // The edge is not the only way the latch moves — a compositor-level
+    // remapper or `xdotool key Caps_Lock` change it with no key event
+    // reaching us at all — so the interval is what keeps a wrong latch
+    // from outliving the session. Idle rounds only, so an idle keyboard
+    // still never asks.
+    if !mods.take_caps_stale() && !force && last.elapsed() < MOD_RESYNC_INTERVAL {
         return;
     }
+    *last = Instant::now();
     let Some(root) = conn.setup().roots.first().map(|s| s.root) else {
         return;
     };

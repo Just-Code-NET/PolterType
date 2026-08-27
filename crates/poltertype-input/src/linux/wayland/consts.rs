@@ -38,3 +38,15 @@ pub(crate) const RECENT_USE_WINDOW: Duration = Duration::from_secs(30);
 /// that outlives its correction makes the next one count held
 /// keystrokes as on-screen and delete text that was never there.
 pub(crate) const RELEASE_HANDSHAKE: Duration = Duration::from_millis(250);
+
+/// Longest the Caps Lock latch may go unverified against the kernel.
+///
+/// The `KEY_CAPSLOCK` edge is not the only way the lock moves, and on
+/// some stacks it is not a way at all: a compositor-level remapper (KDE
+/// InputActions), an on-screen keyboard or `xdotool key Caps_Lock` all
+/// change the latch with no key event on any device we read. Left
+/// purely edge-triggered the latch is then wrong for the rest of the
+/// session, which shows up as corrections retyped in the wrong case and
+/// as the ALL-CAPS filter failing to fire on text that is all caps.
+/// Two ioctls five times a second is the price of not guessing.
+pub(crate) const CAPS_RESYNC_INTERVAL: Duration = Duration::from_millis(200);

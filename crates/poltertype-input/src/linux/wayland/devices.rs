@@ -221,6 +221,7 @@ pub(crate) fn drain_devices(
     let mut known_paths: HashSet<PathBuf> = devices.iter().map(|od| od.path.clone()).collect();
     let mut batch: Vec<InputEvent> = Vec::new();
     let mut caps_stale = false;
+    let mut last_caps_read = Instant::now();
     while !stop.load(Ordering::SeqCst) {
         let mut got_any = false;
         let mut dead = Vec::new();
@@ -271,16 +272,19 @@ pub(crate) fn drain_devices(
                 Err(e) => warn!(?e, "evdev fetch_events"),
             }
         }
-        // A Caps Lock edge went by: ask again, and ask *any* keyboard
-        // that has the LED rather than the one the key came from. The
-        // key routinely arrives from a device with no LED at all — a
-        // remapper's virtual keyboard, an on-screen keyboard, a KM
-        // switch — and the compositor mirrors the latch onto every real
-        // keyboard anyway. Read here, after the borrow above is gone,
-        // which costs one poll round: still microseconds ahead of the
-        // next word key.
-        if caps_stale {
+        // A Caps Lock edge went by, or the latch is simply old enough
+        // to be worth re-reading — see `CAPS_RESYNC_INTERVAL` for why
+        // the edge alone is not enough. Ask *any* keyboard that has the
+        // LED rather than the one the key came from: the key routinely
+        // arrives from a device with no LED at all — a remapper's
+        // virtual keyboard, an on-screen keyboard, a KM switch — and
+        // the compositor mirrors the latch onto every real keyboard
+        // anyway (measured under keyd, 2026-08-27). Read here, after
+        // the borrow above is gone, which costs one poll round: still
+        // microseconds ahead of the next word key.
+        if caps_stale || last_caps_read.elapsed() >= CAPS_RESYNC_INTERVAL {
             caps_stale = false;
+            last_caps_read = Instant::now();
             if let Some(latched) = devices.iter().find_map(|od| caps_led(&od.dev))
                 && latched != caps_on
             {
