@@ -24,12 +24,14 @@ re-tested by driving the window through 300×300, 1400×1000, 320×340 and
 900×700 in sequence.
 
 Two gaps came out of this file rather than being re-stamped: the
-"winit window" ghost toplevel (#35), which iced 0.14 does not create,
-and that resize crash. **The ghost window's absence is inferred, not
-measured** — it only ever appeared on KDE Plasma Wayland, the desktop
-matrix was not re-run for this release, and what is verified here is
-that the upgrade landed and the window works. Someone on Plasma should
-confirm the second entry is gone.
+"winit window" ghost toplevel (#35) and that resize crash. The ghost
+**was** measured where it lived — a `WAYLAND_DEBUG=1` trace of the
+Settings process on KDE Plasma Wayland in the matrix guest, run against
+the *published* AppImages with 0.22.0 as a control: 0.22.0 creates two
+toplevels and titles one of them `winit window`, 0.23.0 creates one and
+titles it Settings. Neither destroys anything, which is why the old one
+lingered. The control matters — without it the trace showing one
+toplevel proves only that the trace ran.
 
 The missed-word tray list (#38) was checked on a live run: three
 tooltips offered and lost, the list logging 1, 2, 3 rows, and none of
