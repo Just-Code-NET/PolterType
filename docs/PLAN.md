@@ -908,8 +908,9 @@ separate `poltertype --settings` process.
       leave the indicator lying.
 - [x] **`FocusTracker` for Linux** — landed 2026-07-13 (post-0.2.2):
       Hyprland IPC + X11 EWMH backends, `/proc`-resolved executable
-      basename, 150 ms TTL cache. GNOME/KDE Wayland remain noop —
-      see §3.9.
+      basename, 150 ms TTL cache. Since 0.10.0 GNOME/KDE Wayland are
+      no longer noop either — the a11y bus answers, but only for apps
+      with a live accessibility bridge. See §3.9.
 - [x] **Hook-failure alert in the tray** — landed 2026-07-13
       (post-0.2.2): "Setup Guide" menu entry + tooltip warning +
       one-shot notification when the listener fails to start. The

@@ -72,6 +72,8 @@ file or convince yourself it genuinely didn't change.
 | `docs/PERMISSIONS.md` | the app takes a new OS capability — **including network** |
 | `docs/AI.md` | the AI subsystem's wiring status changes |
 | `CONTRIBUTING.md` | a crate is added or removed, or the build/check commands change |
+| `SECURITY.md` | its in-scope / out-of-scope lists name concrete mechanisms — manifest signing, the key gate, the macOS quarantine strip. A mechanism that changes state changes this file, and one of them sat here as "not mandatory yet" for four releases after it became mandatory |
+| the GitHub **wiki** | it restates the platform status in its own words across Installation, macOS-Setup, Troubleshooting and FAQ, so it rots exactly like the README — and nobody reading it can see the repo docs that contradict it. **Separate repo** (`.wiki.git`), separate commit |
 | `poltertype-web` | any user-visible claim changes. **Separate repo, separate commit** — but the site may only promise what the app actually does |
 
 ### Watch the compound claims
@@ -613,9 +615,10 @@ cargo test --workspace
 #    Walk the table in step 2. At minimum: README Status line +
 #    Goals bullets, `docs/KNOWN-GAPS.md`'s version heading,
 #    PLAN.md's `Last updated` + settings schema, a
-#    DECISIONS.md entry, and the site if any user-facing claim
-#    moved. If the release changed what the app CAN do, grep for
-#    the old promise everywhere before you tag.
+#    DECISIONS.md entry, and — each its own repo — the wiki and
+#    the site if any user-facing claim moved. If the release
+#    changed what the app CAN do, grep for the old promise
+#    everywhere before you tag.
 git diff --stat "$(git describe --tags --abbrev=0)"..HEAD   # what changed?
 git commit -m "docs: refresh for <what changed>"
 

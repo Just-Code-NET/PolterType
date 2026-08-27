@@ -158,30 +158,6 @@ degrades exactly as it does on GNOME Wayland.
   only see the *active* Space; the panel's on-screen geometry was
   confirmed via `CGWindowListCopyWindowInfo` instead.
 
-## Files touched
-
-- `crates/poltertype-popup/Cargo.toml` — macOS target deps:
-  `objc2 0.6`, `objc2-foundation 0.3`, `objc2-app-kit 0.3`,
-  `objc2-quartz-core 0.3`, `dispatch2 0.3`, `core-graphics 0.25`
-  (all already in the lockfile via tao / poltertype-input).
-- `crates/poltertype-popup/src/macos/{mod,panel,popup}.rs` — new.
-- `crates/poltertype-popup/src/lib.rs` — `mod macos`, platform table,
-  `place`/`render` cfg widened to `any(linux, windows, macos)`.
-- `crates/poltertype-popup/src/factory.rs` — macOS arm.
-- `crates/poltertype-input/src/focus/{mod,factory}.rs` — macOS arm.
-- `crates/poltertype-input/src/focus/macos_impl.rs` — new.
-- `crates/poltertype-input/Cargo.toml` — `libc` for macOS.
-
-## Verification
-
-- `cargo check --target x86_64-apple-darwin -p poltertype-popup -p poltertype-input`
-  (the macOS CI lane does the same on aarch64).
-- `cargo clippy --workspace --all-targets` + `cargo test --workspace`
-  on Linux — no regressions outside the macOS islands.
-- Runtime verification on a Mac: typing a known typo shows the panel
-  above the caret; click accepts; timeout self-hides; focus never
-  leaves the editor (type-through test).
-
 ## Explicitly out of scope
 
 - Trackpad/mouse-wheel scrolling inside the panel (≤ 9 rows fit).
