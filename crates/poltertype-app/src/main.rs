@@ -117,6 +117,10 @@ fn rebuild_deferred_menu(
         }
     }
     submenu.set_enabled(!deferred.is_empty());
+    // Count only. The whole point of this list is that it holds text
+    // the user typed, so it is the one thing that must never reach a
+    // log — see `logsafe`.
+    debug!(rows = rows.len(), "tray: missed-word list rebuilt");
 }
 
 /// Move the mark on the tray icon to match what the plug-ins are waiting
