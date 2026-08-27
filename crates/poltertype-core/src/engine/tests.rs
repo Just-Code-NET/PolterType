@@ -492,6 +492,45 @@ mod engine_integration_tests {
         ]
     }
 
+    /// Which en-US key carries `ch`, and whether it needs Shift.
+    fn en_us_key(m: &crate::layouts::LayoutMapping, ch: char) -> (u32, bool) {
+        if ch == ' ' {
+            return (SPACE, false);
+        }
+        m.keys
+            .iter()
+            .find_map(|(&sc, &(plain, shift))| {
+                if plain == ch {
+                    Some((sc, false))
+                } else if shift == Some(ch) {
+                    Some((sc, true))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| panic!("no en-US scancode for {ch:?}"))
+    }
+
+    /// Type `text` as if on a physical en-US keyboard with the Caps
+    /// Lock latch on — the state the listeners report as
+    /// `Modifiers::caps`, which is not a held Shift and is applied by
+    /// xkb rather than by us.
+    fn type_en_us_caps(h: &Harness, text: &str) {
+        use crate::layouts::LayoutDb;
+        let layouts = LayoutDb::load_embedded();
+        let m = layouts.get(&LayoutId::from("en-US")).expect("en-US");
+        for ch in text.chars() {
+            let (sc, shift) = en_us_key(m, ch);
+            let mods = poltertype_types::Modifiers {
+                shift,
+                caps: true,
+                ..poltertype_types::Modifiers::NONE
+            };
+            h.key_mods(sc, KeyDirection::Press, mods);
+            h.key_mods(sc, KeyDirection::Release, mods);
+        }
+    }
+
     /// Type `text` as if on a physical en-US keyboard.
     fn type_en_us(h: &Harness, text: &str) {
         use crate::layouts::LayoutDb;
@@ -538,6 +577,62 @@ mod engine_integration_tests {
         assert!(
             switches.is_empty(),
             "a domain typed in its own layout must not switch anything, got {switches:?}"
+        );
+        let (ops, _) = h.stop();
+        assert!(
+            ops.is_empty(),
+            "nothing should have been rewritten: {ops:?}"
+        );
+    }
+
+    /// Issue #33, the residue on 0.21.0: `auto-switch ` typed in
+    /// en-US came back as `ФГЕЩ-ЫЦШЕСР `. Both halves of that need
+    /// explaining, and this pins the half that needs no Caps Lock —
+    /// whether a hyphenated English compound survives the detector at
+    /// all. If it does not, the capitals are a second, separate fault
+    /// and the correction itself was already wrong.
+    #[test]
+    fn hyphenated_english_compound_is_not_switched() {
+        for word in ["auto-switch ", "wrong-layout ", "cross-platform "] {
+            let h = Harness::start_full(
+                60_000,
+                MockEmitter::default(),
+                false,
+                None,
+                Some(real_detectors()),
+            );
+            type_en_us(&h, word);
+            h.settle();
+            let switches = h.switcher.switches.lock().clone();
+            assert!(
+                switches.is_empty(),
+                "{word:?} is English typed in English — nothing to switch, got {switches:?}"
+            );
+            let (ops, _) = h.stop();
+            assert!(ops.is_empty(), "{word:?} should not be rewritten: {ops:?}");
+        }
+    }
+
+    /// The other half of #33: the same compound typed with Caps Lock
+    /// on. The lock is what puts the capitals on screen — we replay
+    /// scancodes and let xkb apply it — so the guard that has to hold
+    /// is the ALL-CAPS filter, and a hyphen must not let a word slip
+    /// past it.
+    #[test]
+    fn a_hyphenated_word_under_caps_lock_is_left_alone() {
+        let h = Harness::start_full(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            Some(real_detectors()),
+        );
+        type_en_us_caps(&h, "auto-switch ");
+        h.settle();
+        let switches = h.switcher.switches.lock().clone();
+        assert!(
+            switches.is_empty(),
+            "ALL-CAPS text is deliberate spelling-out, hyphen or not, got {switches:?}"
         );
         let (ops, _) = h.stop();
         assert!(
