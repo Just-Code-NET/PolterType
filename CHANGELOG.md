@@ -4,6 +4,69 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] — the window that was never there
+
+Two long-standing reports closed at their source, and the toolkit
+underneath the Settings window moved a major version to do it.
+
+### Added
+
+- **Words the tooltip offered and lost now wait in the tray**
+  ([#38](https://github.com/Just-Code-NET/PolterType/issues/38)). The
+  "Add to dictionary" row appears on a tooltip that the next keystroke
+  dismisses — so the faster you type, the less likely you are ever to
+  reach it. The reporter never once managed to. PolterType now keeps
+  the last eight such words and hangs them off a tray submenu, *Add a
+  missed word…*; picking one adds it exactly as the tooltip row would.
+
+  The list is deliberately small and deliberately forgetful. It lives
+  in memory only, is never written to a file and never reaches a log —
+  it is the one place the app holds words you typed beyond the single
+  word the engine is working on, so it stays a menu rather than
+  becoming a history.
+
+### Fixed
+
+- **The second, empty "winit window" beside Settings on KDE Wayland**
+  ([#35](https://github.com/Just-Code-NET/PolterType/issues/35)). It was
+  never ours to draw: the toolkit created a throwaway window to hand
+  its renderer a handle while starting up, asked for it to be invisible
+  and never destroyed it. Wayland has no "invisible", so a desktop that
+  lists toplevels rather than mapped surfaces showed it. The Settings
+  window now runs on iced 0.14, which has no such window at all.
+
+- **The Settings window no longer dies on a sudden resize.** A quick
+  drag to a small size could trip an assertion inside the old toolkit's
+  renderer and take the window with it — development builds only, which
+  is what people running from source use every day. Gone with the
+  upgrade, and re-measured: 300×300, 1400×1000, 320×340 and 900×700 in
+  sequence all survive.
+
+### Changed
+
+- **Nothing you can see in the Settings window.** The toolkit upgrade
+  touched every pane, so all of them were re-checked on screen rather
+  than assumed: the sidebar, the brand mark, the panes and the footer
+  render as before.
+
+### Notes
+
+- [#33](https://github.com/Just-Code-NET/PolterType/issues/33) has two
+  new regression tests rather than a fix. A hyphenated English compound
+  typed in English is not switched, and ALL-CAPS text is left alone
+  even with a hyphen through it — which between them leave exactly one
+  mechanism for the reported `auto-switch ` → `ФГЕЩ-ЫЦШЕСР `: a Caps
+  Lock that was on while PolterType believed it off. That hole was
+  closed in 0.22.0; whether it was the reported cause still needs the
+  reporter's `applying correction … caps=` line.
+
+- Selection conversion — the remaining half of
+  [#32](https://github.com/Just-Code-NET/PolterType/issues/32) — is not
+  in this release. It needs clipboard access on three platforms and the
+  ability to synthesise a `Ctrl+C` chord on two more than currently
+  can, and it is its own release rather than a rider on a toolkit
+  upgrade.
+
 ## [0.22.0] — press it twice
 
 0.21.0 gave the force-switch a gesture people already had in their
