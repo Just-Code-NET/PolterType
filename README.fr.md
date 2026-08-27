@@ -1,4 +1,4 @@
-# PolterType
+# <img src="docs/icon.png" width="32" height="32" align="absmiddle" alt=""> PolterType
 
 Commutateur automatique de disposition clavier, multiplateforme. Il vit dans la
 zone de notification, repère le moment où vous commencez à taper dans la

@@ -68,7 +68,8 @@ cargo xtask assets icon-ico <out>              # …as a multi-size Windows .ico
 `poltertype.exe` embeds its own copy of that icon at build time (see
 `crates/poltertype-app/build.rs`), so these two commands are for the
 *installers* — the Windows one only needs `.ico` for the Add/Remove
-Programs entry.
+Programs entry — and for `docs/icon.png`, the mark in the README
+heading (`--size 128`; regenerate it if the geometry ever changes).
 
 ## Git hooks (one-time per clone)
 
@@ -88,8 +89,7 @@ Bypass a single run with `git commit --no-verify` / `git push
 `cargo xtask hooks uninstall`.
 
 The hooks mirror the gates CI enforces, so failing locally means
-failing on GitHub Actions — better to know in 2 seconds than in
-2 minutes after a push.
+failing on GitHub Actions.
 
 **They are fast, and if they are not, something is wrong.** With
 everything already built, a commit costs about 4 seconds and a push
@@ -175,7 +175,8 @@ crates/
   poltertype-ai/      library — optional AI plug-ins (feature `ai`)
   poltertype-types/   library — shared types (LayoutId, KeyEvent, …)
   poltertype-icon/    library — the brand mark as geometry: RGBA, PNG and
-                                .ico, so no binary asset lives in the repo
+                                .ico, drawn at build time rather than
+                                checked in (docs/icon.png is a render of it)
 data/                source-of-truth, committed; consumed by build.rs
   layout-mappings/   declarative scancode→char tables (TOML)
   wordlists/         <stem>.txt.gz / -extras.txt / -stop.txt
@@ -209,13 +210,12 @@ scripts copy `target/dist/data/` into the install location. See
 
 ## Settings UI
 
-Tray menu **"Settings…"** opens an iced-based GUI with seven panes:
-**Languages**, **Hotkeys**, **Commands**, **Wordlists**, **General**,
-**Exceptions**, **About**. Power users still hit **"Edit
-config.toml…"** for what the GUI doesn't expose (creating a wordlist
-profile, bulk-editing `[[commands]]`, `[updates].check_interval_hours`
-— the General pane has the on/off checkbox but not the interval — and
-the `[ai]` switches).
+Tray menu **"Settings…"** opens an iced-based GUI with ten panes
+(`Pane` in `settings_ui/enums.rs` is the list). **"Edit config.toml…"**
+covers what the GUI doesn't expose: creating a wordlist profile,
+bulk-editing `[[commands]]`, `[updates].check_interval_hours` (the
+General pane has the on/off checkbox but not the interval) and the
+`[ai]` switches.
 
 The Settings GUI is the same `poltertype` binary launched with
 `--settings`; it runs as a child process so the tray's main-thread
@@ -342,8 +342,7 @@ parent as `#[cfg(test)] mod tests;`. Existing examples to copy from:
 
 Comments answer **why**, never **what** — the code already says what.
 A comment that paraphrases the line under it is noise that goes stale
-on the next edit, and we had enough of it to be worth a dedicated
-clean-up pass.
+on the next edit.
 
 | Kind | Budget |
 |---|---|
@@ -423,15 +422,9 @@ $env:VERSION = 'local'
 pwsh installers/windows/build-msi.ps1
 ```
 
-Installers are **unsigned** — we don't yet have an Apple Developer
-ID or a Windows EV/OV cert. The release notes call out the
-Gatekeeper / SmartScreen workarounds so users know what to click.
-
-To cut a release: see [docs/RELEASING.md](docs/RELEASING.md) for
-the full step-by-step checklist (pre-flight, version bump,
-commit + tag + push, recovery from common mistakes). The TL;DR
-is at the bottom of that doc if you've cut releases before and
-just need the command sequence.
+Installers are **unsigned** — we don't yet have an Apple Developer ID
+or a Windows EV/OV cert. The release notes call out the Gatekeeper /
+SmartScreen workarounds so users know what to click.
 
 [release.yml]: .github/workflows/release.yml
 

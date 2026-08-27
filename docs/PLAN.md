@@ -4,33 +4,20 @@
 > Created: 2026-05-02. Last updated: 2026-08-27 (v0.21.0).
 
 > **How to read this document.** This is a **plan**, not a description
-> of the implementation. Wherever the code has diverged from the
-> original intent, the code is the source of truth, not this file. The
-> freshest summaries:
+> of the implementation: wherever the code has diverged from the
+> original intent, the code is the source of truth. Three files are
+> fresher than this one —
 >
-> * **What has shipped** — `CHANGELOG.md` (0.1.0 "First stable" through
->   0.10.0; most recently a user-supplied LLM interface, focused-app
->   tracking on GNOME/KDE via the a11y bus, UI translation, multi-token
->   smart commands with `run_shell`, and plug-in installation) and §10
->   below, where every item is marked.
-> * **Why it is this way** — `DECISIONS.md`; several decisions below
->   have since been revisited (most notably "the full GUI is deferred",
->   even though it shipped back in 0.1.0-beta).
-> * **What does not exist despite being described below** —
->   the maintainer's known-gaps list, kept out of tree: `focused_exe()` is
->   complete on Windows / macOS / Hyprland / X11 and partial on other
->   Wayland (AT-SPI sees only apps with an accessibility bridge, which
->   excludes most terminals); AT-SPI *keystroke
->   listening* is decided against with measurements, and `libei` does
->   not exist. The AI subsystem ships an *interface* and no backend
->   at all as of 0.10.0 — a socket the user points at their own model.
->   Never call it "AI-powered": out of the box nothing answers. The
->   guided
->   onboarding window does exist as of 0.7.0 — but its macOS half has
->   never run on a Mac.
+> * **What shipped** — [CHANGELOG.md](../CHANGELOG.md), and §10 below,
+>   where every item is marked.
+> * **Why it is this way** — [DECISIONS.md](DECISIONS.md). Several
+>   decisions below have since been revisited (most notably "the full
+>   GUI is deferred", which shipped in 0.1.0-beta).
+> * **What does not exist despite being described here** —
+>   [KNOWN-GAPS.md](KNOWN-GAPS.md).
 >
-> Sections 2–4 in places describe the original intent (dependencies
-> that were never adopted; a tray menu that turned out differently).
+> Sections 2–4 in places describe the original intent — dependencies
+> that were never adopted, a tray menu that turned out differently.
 > Check against the code.
 
 ---
@@ -811,16 +798,10 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.6.2 (2026-07-30).** Phases 0–8 are, in
-> their core parts, complete and shipped across releases 0.1.0 →
-> 0.6.2 — Phase 8's auto-updater landed in 0.4.0, 0.5.0 added
-> the spelling-suggestions tooltip (surface FSTs, `poltertype-popup`,
-> AT-SPI caret anchoring — see `DECISIONS.md` 2026-07-24), 0.6.0
-> made corrections survive a user who keeps typing through them
-> (`EVIOCGRAB`, `DECISIONS.md` 2026-07-29), 0.6.1 fixed where
-> that tooltip actually lands, and 0.6.2 was the first release run on
-> a real Mac — which is also where Phase 5 stopped being theory; below,
-> what remains open is marked. Items that are **not** done are deliberately left as
+> **Status as of v0.21.0 (2026-08-27).** Phases 0–8 are, in their core
+> parts, complete and shipped; `CHANGELOG.md` is the release-by-release
+> record and does not need repeating here. Items that are **not** done
+> are deliberately left as
 > `[ ]` — that is the current work list. The wording of some items had
 > drifted behind the code (e.g. `HeuristicDetector` in Phase 3 is
 > actually called `WordPlausibilityDetector`); it is corrected here.
@@ -866,8 +847,7 @@ Levels:
 The original plan (see `docs/DECISIONS.md`, the entry
 `2026-05-02 — Phase 4: deferred full GUI`) deferred the full window.
 **That decision was later reversed**: the `iced` GUI shipped already
-in 0.1.0-beta and today has seven panels (Languages, Hotkeys,
-Commands, Wordlists, General, Exceptions, About). It launches as a
+in 0.1.0-beta and has grown to ten panes since. It launches as a
 separate `poltertype --settings` process.
 
 - [x] Tray menu: "Edit config.toml…" via `opener`.
@@ -900,12 +880,16 @@ separate `poltertype --settings` process.
       caret over the Accessibility API, caret answers validated
       because Chrome and Terminal report junk ones. See §3.9 and
       `MACOS_POPUP.md`.
-- [ ] **Keystroke hold-back.** The key gate works on Linux/evdev and
-      on macOS (validated on Intel; opt-in via `POLTERTYPE_HOLD_KEYS=1`
-      because of the post-correction latency); on Windows it is
-      implemented but unvalidated, so a keystroke can still land
-      inside a correction there.
-- [ ] **Apple Silicon.** Validation so far is Intel-only.
+- [x] **Keystroke hold-back.** The key gate runs on all three
+      platforms — on by default on Linux/evdev, opt-in via
+      `POLTERTYPE_HOLD_KEYS=1` on Windows (measured 0.11.0) and macOS
+      (measured 0.13.0, Intel), where the post-correction latency
+      makes it the wrong default.
+- [x] **Apple Silicon** — 0.19.0: first launch, detection,
+      corrections, the force-switch hotkey and the self-update, all
+      confirmed on an M1 Pro (issue #3).
+- [ ] **A correction typed under a held modifier** — what 0.7.0
+      changed and nobody has exercised on a Mac.
 
 ### Phase 6 — Linux
 
@@ -952,12 +936,11 @@ separate `poltertype --settings` process.
       maintainer's machine. Tried only when `uinput` cannot be opened,
       so nobody who already ran `setup-linux.sh` sees a consent
       dialog. See `linux/portal/`.
-- [ ] macOS (Apple Silicon): still nobody. And since 0.7.0 changed the
-      macOS input path — `FlagsChanged`, modifier release — even the
-      Intel confirmation predates what now ships. The only unconfirmed
-      item.
+- [x] macOS (Apple Silicon) — reported at 0.19.0 (issue #3). What
+      still has nobody's report is a correction typed under a *held*
+      modifier, which is what 0.7.0 changed.
 - [x] The tray shows the language, the menu works.
-- [x] The settings window: seven panels (more than planned), settings
+- [x] The settings window: ten panes (more than planned), settings
       persist.
 - [x] The AI subsystem is real: the two original stub backends were
       replaced in 0.10.0 by a single `LlmDetector` speaking three wire

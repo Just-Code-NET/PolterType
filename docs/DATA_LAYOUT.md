@@ -1,9 +1,11 @@
 # Data layout & plug-in foundations
 
-> Where layout mappings, FST wordlists, and (future) plug-ins live on
-> disk, how they're discovered at runtime, and the contract a
-> third-party language pack will need to satisfy when the plug-in
-> marketplace lands.
+> Where layout mappings, FST wordlists and language packs live on
+> disk, how they are discovered at runtime, and the contract a
+> third-party pack has to satisfy. The **data** plug-ins described
+> here are packs of layouts and wordlists; the *process* plug-ins —
+> services and commands with a tray entry and a settings pane — are a
+> different mechanism, in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Why externalised data
 

@@ -1,10 +1,13 @@
-# PolterType
+# <img src="docs/icon.png" width="32" height="32" align="absmiddle" alt=""> PolterType
 
-Cross-platform automatic keyboard layout switcher.
-Lives in the system tray. Detects when you start typing in the wrong
-layout, switches it, and retypes the last word — like a friendly
-poltergeist that haunts your keyboard.
+Cross-platform automatic keyboard layout switcher. Lives in the system
+tray, notices when you start typing in the wrong layout, switches it
+and retypes the last word — like a friendly poltergeist that haunts
+your keyboard.
 
+> [poltertype.com](https://poltertype.com) ·
+> [Wiki](../../wiki) — setup guides, configuration cookbook, FAQ
+>
 > 🌐 [Deutsch](README.de.md) · [Español](README.es.md) ·
 > [Français](README.fr.md) · [Українська](README.uk.md)
 
@@ -15,47 +18,17 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status:** v0.19.0 — out of beta since v0.1.0. Works end-to-end on
-> Windows and on Linux (Wayland and X11, on the desktops named in the
-> table below); the spelling-
-> suggestions tooltip renders on Hyprland, Sway, KDE Plasma and X11
-> (GNOME Wayland gets it through XWayland), **on Windows since
-> 0.11.0** — following the caret there too since 0.18.0, in
-> applications that keep a real one — and **on macOS since 0.15.0**,
-> where it follows the caret in applications that report one. On Linux/Wayland a
-> correction holds your keystrokes back while it types and replays
-> them behind itself, so carrying straight on with the next word no
-> longer scrambles the result — except behind an input remapper such
-> as keyd, where PolterType stands down and falls back to detecting
-> and repairing instead
-> ([docs/PERMISSIONS.md](docs/PERMISSIONS.md)). The same hold-back
-> exists on Windows and stays **off by default**
-> (`POLTERTYPE_HOLD_KEYS=1`) — 0.11.0 is the first release where it has
-> run on real hardware, and what that showed is that it works and
-> costs a noticeable delay after every correction, which is not a
-> trade worth making for everyone
-> ([#7](https://github.com/Just-Code-NET/PolterType/issues/7)).
-> On macOS the same hold-back exists too, equally **off by default**
-> (`POLTERTYPE_HOLD_KEYS=1`), validated on Intel hardware — see
-> [issue #8](https://github.com/Just-Code-NET/PolterType/issues/8).
-> **macOS: read this
-> before updating.** 0.6.2 was validated on real hardware (macOS 15,
-> Intel), but 0.7.0 changed the macOS input path — modifier events now
-> reach the engine, and corrections release held modifiers before
-> typing. The tap and emitter those changes live in have since been
-> run on real hardware again (Intel, while validating the key gate),
-> but the held-modifier case specifically still has nobody's report
-> behind it. Apple Silicon has one since 0.19.0 — first launch,
-> detection, corrections, the force-switch hotkey and the self-updater
-> all confirmed on an M1 Pro — though not the held-modifier case
-> either.
-> They are the fix for a correction under a held ⌘ going out as ⌘⌫;
-> if something looks wrong on your Mac, please say so in
-> [#3](https://github.com/Just-Code-NET/PolterType/issues/3). The
-> keystroke hold-back now exists on macOS too, off unless you switch
-> it on — the paragraph above has the detail.
-> Installers are still **unsigned**. See [docs/PLAN.md](docs/PLAN.md)
-> for the full plan and [CHANGELOG.md](CHANGELOG.md) for what's in.
+> **Status: v0.21.0**, out of beta since v0.1.0. Windows, macOS and
+> Linux (Wayland and X11, on the desktops in the table below) all
+> correct words end to end, and the spelling-suggestions tooltip
+> renders on all three. Installers are **unsigned**, so first launch
+> meets an OS warning. One macOS caveat stands: a correction typed
+> under a *held* modifier — the ⌘⌫ case — has still had no report from
+> real hardware
+> ([#3](https://github.com/Just-Code-NET/PolterType/issues/3)).
+> [docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) says what every claim here
+> was measured on and what is only reasoned;
+> [CHANGELOG.md](CHANGELOG.md) has the per-release detail.
 
 ![PolterType settings window — Languages panel](docs/screenshots/settings-window.png)
 
@@ -68,15 +41,13 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 - **Smart** — language detection per word; pluggable AI detectors for
   power users (off by default).
 - **Fast** — pure Rust, no WebView, no perceptible typing latency.
-- **Light to run** — single binary, ~10–15 MB, and a tray icon's worth
-  of CPU and RAM. **The download is not light: the installers are
-  55–65 MB**, because the fifteen bundled dictionaries are most of
-  what you're downloading. Only the languages your OS actually has
-  enabled are ever read into memory, so the disk cost is one-time and
-  the runtime cost is what it always was.
-- **Quiet** — tray-only, minimal CPU/RAM, **zero telemetry**. Exactly
-  one network call exists — the update check (§ [Staying up to
-  date](#staying-up-to-date)) — it sends nothing about you, and one
+- **Light to run** — single binary, ~10–15 MB, a tray icon's worth of
+  CPU and RAM. **The download is not light** — the installers are
+  55–65 MB, nearly all of it the fifteen bundled dictionaries — but
+  only the languages your OS has enabled are ever read into memory.
+- **Quiet** — tray-only, **zero telemetry**. Exactly one network call
+  exists, the update check (§ [Staying up to
+  date](#staying-up-to-date)); it sends nothing about you and one
   checkbox turns it off. The AI subsystem is off by default and needs
   a second explicit toggle to reach the network at all.
 - **Configurable** — autostart, per-language allowlist, per-app
@@ -88,15 +59,23 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 | OS              | Status                                                                                                                                                                        |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 10 / 11 | working                                                                                                                                                                       |
-| macOS 11+       | working — validated on macOS 15 (Intel) and, at 0.19.0, on macOS 26 (Apple Silicon, M1 Pro), self-update included ([#3](https://github.com/Just-Code-NET/PolterType/issues/3)); needs Accessibility **and** Input Monitoring permission (the app prompts on first launch). **On Intel, take 0.14.4 or newer:** every earlier DMG shipped an unsigned x86_64 slice, and macOS will not let unsigned code hold Accessibility — the app ran, the permission read as granted, and nothing was ever corrected ([#28](https://github.com/Just-Code-NET/PolterType/issues/28)) |
+| macOS 11+       | working — validated on macOS 15 (Intel) and, at 0.19.0, on macOS 26 (Apple Silicon, M1 Pro), self-update included ([#3](https://github.com/Just-Code-NET/PolterType/issues/3)). Needs Accessibility **and** Input Monitoring permission; the app prompts on first launch. **On Intel, take 0.14.4 or newer** — earlier DMGs shipped an unsigned x86_64 slice, and macOS will not let unsigned code hold Accessibility ([#28](https://github.com/Just-Code-NET/PolterType/issues/28)) |
 | Linux (Wayland) | working on **Hyprland, KDE Plasma, GNOME and sway**; run `scripts/setup-linux.sh` once (evdev + uinput access). Other wlroots compositors — labwc, and Budgie's and Xfce's Wayland sessions — expose no way to change the keyboard layout, so PolterType reports that it cannot switch there rather than pretending. |
 | Linux (X11)     | working, and needs **no setup script at all** — XInput2 listener + XTest emitter need no `input`-group membership. Measured on Xfce, LXQt, Cinnamon, i3, icewm, openbox and fluxbox. **MATE is the exception**: its settings daemon owns the keyboard layout and reports it inconsistently, so PolterType stands down there. |
 
-See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for the per-OS
-permissions story, and
-[docs/KNOWN-GAPS.md](docs/KNOWN-GAPS.md) for what "working" does not
-cover — which platform each claim was actually checked on, and what is
-reasoned rather than observed.
+Per-OS permissions are in [docs/PERMISSIONS.md](docs/PERMISSIONS.md).
+
+**Typing straight on through a correction.** On Linux a correction
+holds your keystrokes back while it types and replays them behind
+itself, so the next word doesn't scramble the result — except behind
+an input remapper such as keyd, where PolterType stands down and falls
+back to detect-and-repair. Windows (0.11.0) and macOS (0.13.0) have
+the same mechanism, both validated on real hardware and both **off by
+default** (`POLTERTYPE_HOLD_KEYS=1`): it works, and it costs a
+noticeable delay after every correction, which is not a trade worth
+making on everybody's behalf
+([#7](https://github.com/Just-Code-NET/PolterType/issues/7),
+[#8](https://github.com/Just-Code-NET/PolterType/issues/8)).
 
 ## Install
 
@@ -112,9 +91,9 @@ polls — you never download that one by hand):
 | Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland, and for NixOS, where an AppImage needs `programs.appimage.binfmt` to run at all.                                                                                        |
 | Linux (aarch64)                   | `poltertype-<ver>-aarch64.AppImage`           | Same, for ARM64 — Raspberry Pi 5, Asahi, ARM laptops and servers. Built natively, not cross-compiled.                                                                                                               |
 
-> Installers are still **unsigned** — that's why Gatekeeper /
-> SmartScreen warn on first launch. Code signing comes in a later
-> phase.
+> The installers are **unsigned** — that is why Gatekeeper and
+> SmartScreen warn on first launch; the plan is in
+> [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md).
 
 > **No Flatpak, and there won't be one.** PolterType types by writing
 > to `/dev/uinput`, which no Flatpak permission grants short of
@@ -130,22 +109,22 @@ Building from source is documented in
 
 ### Staying up to date
 
-You only have to do the above once. From then on PolterType keeps
-itself current — **this is on by default.** It checks GitHub for new
-releases once a day (first check ~a minute after startup), downloads
-the installer for your platform in the background, verifies its
-SHA-256 against the release manifest, and then **waits**. Nothing is
-installed while you are typing — the swap happens when you quit the
-app, or when you click **⟳ Restart to update** in the tray menu.
+You only have to install once. From then on PolterType keeps itself
+current — **on by default.** It checks GitHub for new releases once a
+day (first check ~a minute after startup), downloads the installer for
+your platform in the background, verifies its SHA-256 against the
+release manifest, and then **waits**: nothing is installed while you
+are typing. The swap happens when you quit the app, or when you click
+**⟳ Restart to update** in the tray menu.
 
-This is the **only** part of PolterType that touches the network. It
-is two requests: a `GET` of a small JSON manifest, and — only when
-there's actually a new version — a `GET` of the installer itself. No
-account, no identifier, nothing about you and nothing about what you
-type. What GitHub can see is what any download reveals: your IP, and
-a User-Agent naming the running version (`PolterType/0.10.0
-(updater)`). The exact manifest URL is printed on the Settings
-window's **General** pane, so you never have to take our word for it.
+This is the **only** part of PolterType that touches the network — a
+`GET` of a small JSON manifest, and, only when there really is a new
+version, a `GET` of the installer. No account, no identifier, nothing
+about you and nothing about what you type. GitHub sees what any
+download reveals: your IP and a User-Agent naming the running version
+(`PolterType/0.21.0 (updater)`). The exact manifest URL is printed on
+the Settings window's **General** pane, so you never have to take our
+word for it.
 
 Turn it off with the checkbox on that same pane, or in `config.toml`:
 
@@ -155,38 +134,26 @@ enabled              = true    # ← the default. false = never check, never dow
 check_interval_hours = 24      # floor is 1; 0 does NOT mean "off", it means hourly
 ```
 
-Switching it off also deletes anything already downloaded. To never
-have the code in the first place, build from source — but note the
-updater is a normal (non-optional) part of the default build.
+Switching it off also deletes anything already downloaded.
 
-Three caveats worth stating plainly:
+Two caveats worth stating plainly:
 
-- **Updates are signed, and since v0.17.2 an unsigned one is
+- **The manifest is signed, and since v0.17.2 an unsigned one is
   refused.** Every download is verified against the SHA-256 in the
   release manifest, which catches a corrupted transfer or a tampered
   CDN — but not a compromised GitHub account, since the checksum lives
-  in the same release as the installer. The manifest carries a detached
-  ed25519 signature made with a key that is *not* in CI, verified
-  against a public key compiled into the binary before any URL in the
-  manifest is read. From v0.17.2 a missing signature is an error rather
-  than a warning, which it could only become once every manifest a
-  user's updater resolves to had been signed for a full cycle — see
-  [docs/DECISIONS.md](docs/DECISIONS.md) for the rollout. Note what
-  this does *not* cover: the installers themselves are still unsigned
-  (see [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md)), so a first launch
+  in the same release as the installer. The manifest itself carries a
+  detached ed25519 signature made with a key that is *not* in CI,
+  checked against a public key compiled into the binary before any URL
+  in the manifest is read. The **installers** are a different matter
+  and are still unsigned
+  ([docs/CODE_SIGNING.md](docs/CODE_SIGNING.md)), so a first launch
   still meets an OS warning.
-- **Only our own installers self-update.** If you installed from a
-  distro package, or you're running a `cargo build` binary, PolterType
-  won't overwrite it — those files aren't ours. You'll get a
-  notification pointing at the Releases page instead. The same applies
-  on an architecture we don't publish for — x86_64 and aarch64 Linux,
-  x86_64 Windows and universal macOS are the whole list — since there
-  is then nothing to update to.
-- **The macOS path is unproven.** The Windows and Linux self-update
-  paths are exercised; the `.app`-bundle swap is written from Apple's
-  docs and has never run on real hardware. Treat macOS self-updating
-  as untested rather than broken — and see
-  [docs/PERMISSIONS.md](docs/PERMISSIONS.md) before relying on it.
+- **Only our own installers self-update.** A distro package or a
+  `cargo build` binary isn't ours to overwrite, so you get a
+  notification pointing at the Releases page instead — same on an
+  architecture we don't publish for (x86_64 and aarch64 Linux, x86_64
+  Windows and universal macOS are the whole list).
 
 ## Stack
 
@@ -195,18 +162,16 @@ Three caveats worth stating plainly:
 - `ureq` + `rustls` + `sha2` for the updater, plus `ed25519-dalek` to
   check the release manifest's signature (verification only; the app
   holds no secret).
-- The AI subsystem (`feature = "ai"`, compiled into the official
-  installers since v0.12.0) — one detector that speaks `openai-chat`,
+- The AI subsystem (`feature = "ai"`, in the official installers since
+  v0.12.0) — one detector that speaks `openai-chat`,
   `anthropic-messages` or `ollama-generate` to an endpoint **you**
-  configure. PolterType ships no model, no vendor SDK and no default
-  endpoint; `[ai].enabled` defaults to off, and a non-loopback
-  endpoint additionally needs `[ai].allow_remote = true`. Its HTTP
-  client (`reqwest` + `rustls`) is the second and last place a TLS
-  stack is linked in, and it is dormant until an `[[ai.plugins]]`
-  entry names an endpoint — with nothing configured the subsystem
-  builds no detectors and opens no socket. A stock source build
-  (`cargo build`, no flags) still contains none of it.
-  See [docs/AI.md](docs/AI.md).
+  configure. No model, no vendor SDK, no default endpoint;
+  `[ai].enabled` is off by default and a non-loopback endpoint needs a
+  second toggle (`[ai].allow_remote = true`). Its HTTP client
+  (`reqwest` + `rustls`) is the second and last place a TLS stack is
+  linked in, and stays dormant until an `[[ai.plugins]]` entry names
+  an endpoint. A stock source build (`cargo build`, no flags) contains
+  none of it. See [docs/AI.md](docs/AI.md).
 
 AI was involved in the development process. Code quality and the
 quality of the finished product are held to a demanding standard:
@@ -224,21 +189,18 @@ the Settings window:
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
 | `Ctrl+Shift+Backspace` | Force-switch a word — the one you are still typing, or the most recent finished one if you have moved past it. Ignores every filter, including the dev-friendly skips below. On a word PolterType *just corrected* it undoes that correction, and learns the word so it won't happen again — unless the correction rested on a real word of the other language, in which case putting it back is a one-off rather than a new dictionary entry. |
 
-> **On macOS the pause default is `Ctrl+Shift+P`, not
-> `Ctrl+Shift+Space`.** `Ctrl+Space` and `Ctrl+Shift+Space` are macOS's
-> own "select the previous / next input source" shortcuts, so claiming
-> them globally would take your layout switching away — the very thing
-> PolterType is there to complement. The substitution applies only
-> while you are on the default; bind whatever you like and it is
-> honoured as written.
+> **On macOS the pause default is `Ctrl+Shift+P`.** `Ctrl+Space` and
+> `Ctrl+Shift+Space` are macOS's own "previous / next input source"
+> shortcuts, so claiming them globally would take your layout
+> switching away — the very thing PolterType is there to complement.
 
-> **On Wayland the force-switch default is `Ctrl+Shift+F9`, not
-> `Ctrl+Shift+Backspace`.** There we read keys from the evdev
-> keystream, which means the chord also reaches the focused app — and
-> `Ctrl+Backspace` deletes the very word you asked to fix. So if you
-> leave the binding at its default, PolterType silently substitutes a
-> key that no app acts on. Bind it explicitly and your choice wins,
-> destructive or not.
+> **On Wayland the force-switch default is `Ctrl+Shift+F9`.** There we
+> read keys from the evdev keystream, so the chord reaches the focused
+> app too — and `Ctrl+Backspace` deletes the very word you asked to
+> fix, so PolterType substitutes a key no app acts on.
+
+Both substitutions apply only while you are on the default; bind
+whatever you like and it is honoured as written, destructive or not.
 
 ### Modifier-only chords
 
@@ -255,16 +217,14 @@ pressed while they were down — so `Ctrl+C`, `Ctrl+Shift+V` and typing
 capitals are left alone. A tap also has to be a tap: hold the keys for
 more than half a second and nothing happens.
 
-To bind one, click **Rebind** and make the gesture. A *single* modifier
-on its own is deliberately not offered: mouse buttons are invisible to
-PolterType on Windows and macOS, so a lone-Shift binding would fire on
-every Shift+click.
-
-Two things they cannot do. They are never consumed — the modifiers
-still reach the focused application, which is harmless for a bare
-modifier and is why this is the one chord shape that behaves the same
-everywhere. And Caps Lock is not a modifier here: binding it would
-flip the lock as well as fire, so it stays unavailable.
+To bind one, click **Rebind** and make the gesture. Two shapes are
+deliberately not offered: a *single* modifier, because mouse buttons
+are invisible to PolterType on Windows and macOS and a lone-Shift
+binding would fire on every Shift+click; and Caps Lock, because
+binding it would flip the lock as well as fire. Modifier chords are
+never consumed either — the keys still reach the focused application,
+which is harmless for a bare modifier and is why this shape behaves
+the same everywhere.
 
 ## Spelling suggestions
 
@@ -281,45 +241,38 @@ Everything is local: candidates come from the bundled dictionaries
 (plus your own wordlist overlays), ranked by a keyboard-aware edit
 distance that knows `hwllo` is a slipped finger away from `hello`.
 The last row of every tooltip is **Add to dictionary** — one click
-teaches PolterType your jargon, names and project vocabulary for
-good, and other forms of the same word are covered with it (add
-`деплой` and `деплою`, `деплоїмо`, `деплоїти` stop being flagged).
-The tooltip never steals keyboard focus and disappears after 30
-seconds or the moment you type past it. Tune or disable it on the
-**Suggestions** pane (`[suggestions]` in `config.toml`).
+teaches PolterType your jargon for good, and other forms of the word
+come with it — add `mañana`, and `mañanas` stops being flagged too.
+The tooltip never steals keyboard focus and disappears after 30 seconds or
+the moment you type past it. Tune or disable it on the **Suggestions**
+pane (`[suggestions]` in `config.toml`).
 
 The tooltip only appears for words PolterType *keeps*. When it
-corrects a word it shouldn't have, the teaching gesture is
-`Ctrl+Shift+Backspace`: it puts the word back the way you typed it
-and adds it to your dictionary. Undoing a correction that was *right*
-teaches nothing — otherwise trying the gesture out would file the
-other language's word, typed on the wrong keyboard, as vocabulary. And
-for words you already know it will get wrong, `word_whitelist` in
-`[exceptions]` takes ones it must never touch.
+corrects one it shouldn't have, the teaching gesture is
+`Ctrl+Shift+Backspace`: it puts the word back as you typed it and adds
+it to your dictionary. Undoing a correction that was *right* teaches
+nothing — otherwise trying the gesture out would file the other
+language's word, typed on the wrong keyboard, as vocabulary. For words
+you already know it will get wrong, `word_whitelist` in `[exceptions]`
+takes ones it must never touch.
 
-> The tooltip renders on **Linux**: Wayland layer-shell on Hyprland,
-> Sway and KDE Plasma, and an override-redirect window on X11 — which
-> also covers GNOME Wayland, since Mutter has no layer-shell but does
-> run XWayland. **Windows** has had one since 0.11.0, and **macOS**
-> since 0.15.0 — a non-activating panel that cannot take the keyboard
-> away from what you are typing in.
+> **Where it renders.** Linux: Wayland layer-shell on Hyprland, Sway
+> and KDE Plasma, an override-redirect window on X11 — which also
+> covers GNOME Wayland, through XWayland. Windows since 0.11.0 and
+> macOS since 0.15.0, both as a non-activating panel that cannot take
+> the keyboard away from what you are typing in.
 >
-> Where it lands depends on what the focused app will tell us. Apps
-> that expose the caret get the tooltip directly above it — the
-> accessibility bridge on Linux, the Accessibility API on macOS, and
-> since 0.18.0 the caret Windows itself keeps for the foreground
-> window. Everything else gets it just above the window's bottom
-> edge, the neighbourhood of chat boxes and shell prompts. It is
-> never placed by your mouse pointer. Which apps land in which half
-> is not something we can promise: on Windows a program that draws
-> its own caret — most browsers, most terminals — has none for the OS
-> to report, and on Linux only apps with a live accessibility bridge
-> do. The caret answer is also checked before it is trusted: on macOS
-> Chrome and Terminal report one that is nowhere near the text, and
-> on Linux the whole desktop shares one caret stream, so a caret
-> counts only where it can be proved to belong to the window you are
-> typing in. Either check failing costs that window the caret, not
-> the tooltip.
+> **Where it lands** depends on what the focused app will tell us.
+> Apps that expose a caret get the tooltip directly above it;
+> everything else gets it just above the window's bottom edge, the
+> neighbourhood of chat boxes and shell prompts. It is never placed by
+> your mouse pointer. Which apps land in which half we can't promise:
+> a program that draws its own caret — most browsers, most terminals —
+> has none for the OS to report, and on Linux only apps with a live
+> accessibility bridge do. A reported caret is checked before it is
+> trusted, too (on macOS, Chrome and Terminal report one nowhere near
+> the text), and failing that check costs the window its caret, not
+> its tooltip.
 
 ## Smart commands (text triggers)
 
@@ -427,19 +380,17 @@ explicitly:
   `config.toml`, matched case-insensitively against the focused
   process's executable basename (`Code.exe`, `code`, `kitty`, …).
   **Empty by default**: PolterType corrects everywhere until you tell
-  it not to. We used to ship a long list of editors and terminals
-  here, and the result was an app that appeared dead in exactly the
-  windows developers type in. Add the entries you want, or manage
-  them on the **Exceptions** pane in Settings.
+  it not to — a shipped list of editors and terminals only made the
+  app look dead in exactly the windows developers type in. Add your
+  own, or manage them on the **Exceptions** pane in Settings.
 
-> **The skip list needs a focus tracker, and it isn't equally good
+> **The skip list needs a focus tracker, and that isn't equally good
 > everywhere.** Reading which application has focus is complete on
 > Windows, macOS (since 0.15.0), Hyprland and X11. On other Wayland
-> sessions (GNOME, KDE) PolterType asks the accessibility bus
-> instead — which works, but only for applications that expose an
-> accessibility bridge. Most terminals don't, so the per-app skip
-> list, per-app wordlist profiles, and `apps = [...]` scoping on smart
-> commands may simply not fire there.
+> sessions (GNOME, KDE) PolterType asks the accessibility bus instead,
+> which only answers for applications that expose an accessibility
+> bridge. Most terminals don't, so the skip list, per-app wordlist
+> profiles and `apps = [...]` scoping may simply not fire there.
 
 ### Adding your own vocabulary
 
@@ -458,9 +409,6 @@ replaced by `_` (e.g. `en-US` → `en_us.txt`):
 - Linux: `~/.config/poltertype/wordlists/en_us.txt`
 
 One lowercase word per line; blank lines and `#`-comments ignored.
-Adding to the bundled `data/wordlists/*.txt` files in the repo,
-on the other hand, requires rebuilding the binary (those bake
-into the FST at compile time).
 
 **Per-app profiles** — if `kubectl` should count as a real word
 inside VS Code but not in chat, declare a `[[wordlists.profiles]]`
@@ -471,10 +419,10 @@ changes. See [docs/DATA_LAYOUT.md](docs/DATA_LAYOUT.md) for the
 full schema.
 
 Wordlist edits apply **without a restart**: closing the Settings
-window rebuilds the dictionaries automatically, and "Reload
-Settings" in the tray does the same for hand-edited files. (Only
-the *bundled* `data/wordlists/*.txt` need a rebuild — those bake
-into the FST at compile time.)
+window rebuilds the dictionaries, and "Reload Settings" in the tray
+does it for hand-edited files. Only the *bundled*
+`data/wordlists/*.txt` need a rebuild — those bake into the FST at
+compile time.
 
 Writing a comment in another language inside an IDE? Hit
 `Ctrl+Shift+Backspace` after the word — that hotkey ignores every
@@ -485,14 +433,14 @@ filter by design. (On Wayland: `Ctrl+Shift+F9`, see above.)
 Two ways to configure:
 
 1. **Tray → "Settings…"** opens a real GUI (`iced 0.13` with the
-   lightweight `tiny-skia` renderer). Seven panes: **Languages**,
-   **Hotkeys**, **Commands** (text-trigger snippet expanders),
-   **Wordlists** (per-layout user-overlay editor with optional
-   per-app profile picker), **General**, **Exceptions**, **About**.
+   lightweight `tiny-skia` renderer). Ten panes: **Setup**,
+   **Languages**, **Hotkeys**, **Commands**, **Wordlists**,
+   **General**, **Exceptions**, **Suggestions**, **Plugins**,
+   **About**.
 2. **Tray → "Edit config.toml…"** opens the raw TOML file in your
-   default editor — useful for things the GUI doesn't expose yet
-   (creating a new wordlist profile entry, listing
-   `[[commands]]` in bulk, …):
+   default editor — useful for what the GUI doesn't expose yet
+   (creating a wordlist profile entry, listing `[[commands]]` in
+   bulk, …):
    - Windows: `%APPDATA%\opensource\poltertype\config\config.toml`
    - macOS: `~/Library/Application Support/dev.opensource.poltertype/config.toml`
    - Linux: `~/.config/poltertype/config.toml`
@@ -500,18 +448,15 @@ Two ways to configure:
 **"Start automatically when I sign in"** (in **General**, on by
 default) registers PolterType with the OS: a LaunchAgent on macOS, a
 per-user run key on Windows, a systemd user service on Linux (an XDG
-autostart entry where there is no user manager). Unticking
-it removes the entry. `config.toml` is the source of truth — deleting
-the entry by hand only lasts until the next launch, so turn the setting
-off instead. macOS shows a one-time "login item added" notification the
-first time; that is the system doing its job.
+autostart entry where there is no user manager). `config.toml` is the
+source of truth — deleting the entry by hand only lasts until the next
+launch, so untick the setting instead.
 
-Logs land under the OS data dir; "Open Logs Folder…" in the tray
-takes you there. After editing the TOML, "Reload Settings" picks
-up the change — general flags, exceptions, hotkey bindings, and
-wordlist / profile overlays alike — without a restart. Closing the
-Settings window does the same thing on its way out, so anything you
-changed in the GUI is already live by the time the window is gone.
+Logs land under the OS data dir; "Open Logs Folder…" in the tray takes
+you there. Edits apply **without a restart**: closing the Settings
+window picks everything up on its way out, and "Reload Settings" in
+the tray does the same for hand-edited TOML — general flags,
+exceptions, hotkey bindings, wordlists and profile overlays alike.
 
 The tray also carries **Pause auto-switch**, **Open User Wordlists
 Folder…**, **Open User Layouts Folder…**, and — unless you turned

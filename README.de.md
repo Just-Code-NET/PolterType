@@ -1,4 +1,4 @@
-# PolterType
+# <img src="docs/icon.png" width="32" height="32" align="absmiddle" alt=""> PolterType
 
 Plattformübergreifender automatischer Tastaturlayout-Umschalter. Er lebt im
 System-Tray, merkt, wenn du im falschen Layout zu tippen beginnst, schaltet das

@@ -222,14 +222,16 @@ written on a machine with **no** systemd user manager, and removed when
 there is one: two mechanisms would start two copies, and the second one
 loses to the instance lock with a message that reads like a fault.
 
-### Option B — AT-SPI (listener: planned, not implemented)
+### Option B — AT-SPI as a listener: measured, and decided against
 
-**The keyboard listener via AT-SPI does not exist.** On Wayland,
-option A is currently the only listening path. The idea: if the
-user's accessibility bus is enabled, subscribe to keyboard events —
-no `sudo`, but higher latency, and some inputs (especially in
-non-toolkit apps) are missed. It would serve as a fallback when
-option A is not available.
+The idea was to subscribe to keyboard events on the accessibility bus
+and need no `sudo` at all. It does not work:
+`RegisterKeystrokeListener` returns false on a wlroots session and
+delivers nothing even with injected keys, because `at-spi2-registryd`
+can only relay what the compositor hands it — and only Mutter does.
+Where it *would* work (X11) there is already a listener that needs no
+permissions either, so it would add nothing. See `docs/DECISIONS.md`,
+2026-08-01. On Wayland, option A is the listening path.
 
 ### The accessibility bus IS used — for the caret, not for keys
 
@@ -270,13 +272,17 @@ correctly take the Wayland path instead.
 
 ### Sending keys (corrections) on Wayland
 
-* `uinput`, via the same device permissions `setup-linux.sh` grants.
-  **This is the only implemented path** — which is why the setup
+* `uinput`, via the same device permissions `setup-linux.sh` grants —
+  the path that actually carries corrections, which is why the setup
   script covers `/dev/uinput` as well as `/dev/input/event*`.
-* `libei` through the `org.freedesktop.portal.RemoteDesktop` /
-  `InputCapture` portal (KDE Plasma 6.0+, GNOME 46+) is the planned
-  no-`sudo` alternative. **Not implemented** — there is no portal code
-  in the tree today.
+* The `org.freedesktop.portal.RemoteDesktop` portal, since 0.10.0
+  (`linux/portal/`), as the no-`sudo` fallback: tried **only** when
+  `uinput` cannot be opened, so nobody who ran the setup script ever
+  meets a consent dialog. Written against the specification on a
+  machine with no RemoteDesktop backend — compiled and unit-tested,
+  **never executed**. `libei` was skipped deliberately: the portal's
+  `NotifyKeyboardKeycode` does the same job without a second protocol
+  implementation.
 
 ### Holding keystrokes back during a correction (input remappers)
 

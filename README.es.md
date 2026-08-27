@@ -1,4 +1,4 @@
-# PolterType
+# <img src="docs/icon.png" width="32" height="32" align="absmiddle" alt=""> PolterType
 
 Cambiador automático de distribución de teclado multiplataforma. Vive en la
 bandeja del sistema, detecta cuando empiezas a escribir en la distribución

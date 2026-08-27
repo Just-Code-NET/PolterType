@@ -95,31 +95,17 @@ grep -rn "no network\|no telemetry\|never.*network\|no build makes" \
     README.md CONTRIBUTING.md SECURITY.md docs/*.md
 ```
 
-> **A worked example — and read it precisely, because the precise
-> version is the lesson.** v0.4.0 added the updater: the first
-> network call the app had ever made, on by default. The code was
-> careful, `DECISIONS.md` was thorough, and **nothing about the
-> app's privacy posture changed** — the updater fetches a manifest
-> from a public repo, sends no body, no query string and no
-> identifier, and PolterType collects no telemetry today for
-> exactly the same reason it collected none in v0.1: we don't, and
-> we won't.
->
-> What went stale was narrower, and purely factual. `README.md`
-> advertised "**no telemetry, no network**". The first half was
-> still true. The second half was not, from the moment the tag
-> was pushed — and it stayed in the README for three releases,
-> forty lines above a correct description of the very updater it
-> contradicted. `AI.md` had the same problem in a different shape:
-> "no shipped build makes a network call" was written to mean *the
-> AI subsystem opens no socket*, which is still true, but as
-> phrased it was a claim about the whole binary, which was not.
->
-> Neither was a broken promise to users. Both were the docs
-> falling behind the code — which is the only kind of rot this
-> step exists to catch, and it is quite enough. Say what the app
-> does, keep saying it accurately, and don't let a true clause
-> smuggle a stale one past you.
+> **A worked example.** v0.4.0 added the updater — the first network
+> call the app had ever made. Nothing about the privacy posture
+> changed (no body, no identifier, no telemetry then or now), but
+> `README.md` advertised "**no telemetry, no network**", and the
+> second half stopped being true the moment the tag was pushed. It
+> stayed there for three releases, forty lines above a correct
+> description of the very updater it contradicted. `AI.md` had the
+> same shape: "no shipped build makes a network call" meant *the AI
+> subsystem opens no socket*, but as phrased it was a claim about the
+> whole binary. Neither was a broken promise — both were docs falling
+> behind code. Don't let a true clause smuggle a stale one past you.
 
 ### Verify before moving on
 
@@ -369,9 +355,8 @@ The workflow:
    uploaded, so the checksums cannot drift out of step with the
    files. A missing artefact fails the job rather than shipping a
    manifest with a hole in it.
-3. Creates a **draft** release on GitHub with the three
-   installers plus `latest.json` attached, and SHA-256 checksums
-   in the body.
+3. Creates a **draft** release on GitHub with the four installers
+   plus `latest.json` attached, and SHA-256 checksums in the body.
 4. Stops there — you publish the release manually after sanity-
    checking the artefacts.
 

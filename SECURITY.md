@@ -99,10 +99,6 @@ treated as a vulnerability:
 - **"The installers are unsigned."** Known, stated on the download page
   and in the README, and being worked on — see
   [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
-- **"Update-manifest signatures are not mandatory yet."** Deliberate
-  and documented: a wrong signature is refused today, a missing one
-  warns, and enforcement lands a release later so users on older builds
-  are not stranded. Same document.
 - **"Linux needs group membership for `/dev/input`."** That is how
   Wayland works; there is no lower-privilege path that also functions.
 - **Findings from an automated scanner with no described impact.** A
@@ -111,8 +107,9 @@ treated as a vulnerability:
 
 ## Where the honest list of weaknesses lives
 
-Every known gap is written down rather than discovered by you: the
-caveats in [`README.md`](README.md) say what does and does not work on
-each platform, and [`docs/DECISIONS.md`](docs/DECISIONS.md) records why
-each trade-off was made. If something there looks worse than we judged it, that is a
-conversation worth having.
+Every known gap is written down rather than discovered by you:
+[`docs/KNOWN-GAPS.md`](docs/KNOWN-GAPS.md) is the ledger — what does
+not work despite looking as if it should, and what is reasoned rather
+than measured — and [`docs/DECISIONS.md`](docs/DECISIONS.md) records
+why each trade-off was made. If something there looks worse than we
+judged it, that is a conversation worth having.

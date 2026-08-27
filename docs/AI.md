@@ -1,17 +1,15 @@
 # AI subsystem
 
-> **Status (v0.10.0): a working socket, and nothing plugged into it.**
+> **Status (since v0.10.0): a working socket, and nothing plugged into
+> it.**
 > PolterType ships the *interface* for a language model and never a
 > model, a vendor SDK, or a default endpoint. Configure
 > `[[ai.plugins]]` to point at an Ollama on your own machine, an API
 > you hold the key to, or a gateway of your own, and the engine gains
 > another voice in the layout decision. Configure nothing — the
-> default — and there is no AI in PolterType at all.
->
-> This is different from every previous release, where the backends
-> existed as stubs that returned no opinion. They are gone. What
-> replaced them is one detector that speaks three common HTTP shapes
-> and asks the model exactly one question.
+> default — and there is no AI in PolterType at all. One detector
+> speaks three common HTTP shapes and asks the model exactly one
+> question.
 
 ## The design, and why
 

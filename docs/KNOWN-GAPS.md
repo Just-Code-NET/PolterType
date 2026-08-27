@@ -11,6 +11,8 @@ stale one, because nobody can tell which bullets it means. It also went
 three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
+## What each release pass actually checked
+
 **What the 0.21.0 pass actually checked (2026-08-27).** Linux only,
 and three things: the modifier-only chord this release adds, whether
 the Settings window renders its own text, and — because the sweep that
@@ -131,221 +133,18 @@ Also new since 0.18.1:
   type into — unmeasured, not passing;
 - every **Windows** and **macOS** bullet stands on its earlier date.
 
-**What the 0.18.1 pass actually checked.** Nothing platform-specific,
-because nothing platform-specific moved: the release is three engine
-rules and one dictionary entry, which are the same code on every OS.
-What was run, on this Arch/Hyprland machine:
+**Earlier passes (0.17.2 → 0.18.1)** are in this file's git history:
+each stamped what it had actually run — a Windows pass on real
+hardware at 0.18.0, NixOS end to end at 0.17.6, the manifest-signature
+sweep at 0.17.2 — and every conclusion of theirs that still stands was
+folded into the bullets below. One thing they left is a rule rather
+than a record: **injection is faster than a person.** The 0.17.5 pass
+confirmed a hotkey by driving the whole sequence through uinput,
+which landed inside a two-second window a real hand would have missed
+and signed off a feature that worked for nobody. A green check can
+move too fast to be true.
 
-- **The whole workspace suite**, including four tests that fail on
-  0.18.0's code — three engine ones typing each reported case through
-  the full pipeline (a Cyrillic word whose Latin twin carries a
-  bracket, a command-line flag, and a word typed after the line before
-  it was rubbed out with Backspace) and one detector unit test.
-- **All three reports, driven live through uinput** into a real editor
-  and read back from the document: `тех` stays `тех` (its en-US twin
-  `nt[` no longer claims it), `command --wsl ` and `command --ghbdsn `
-  stay as typed, and `ghbdsn ` typed after nine backspaces is corrected
-  to `привіт ` — with a plain `ghbdsn ` as the control that the
-  correction path itself still fires. The log names the rule each
-  decision took.
-
-Not re-run: everything below that is not dated today — every Windows
-and macOS bullet, the tooltip backends, the updater, and the NixOS and
-systemd bullets stamped at 0.17.6. The Windows pass one release ago
-still stands as the last word on that platform.
-
-**What the 0.18.0 pass actually checked.** **Windows, on real
-hardware, for the first time since 0.14.3** — a Windows 11 machine
-(two monitors, 2560x1440 landscape and 1440x2560 portrait at negative
-x, both at 100% scale; en-US + uk-UA keyboards) rather than the
-Arch/Hyprland one every other stamp here was taken on. Nothing on
-Linux or macOS moved, and nothing on either was re-run. What was
-executed, not read:
-
-- **The whole workspace suite on Windows**: 673 tests, none failing,
-  plus the `#[ignore]`d Bulgarian-keyboard test run by hand against
-  three real keymaps.
-- **A correction, end to end, in a real editor.** Keystrokes injected
-  at scancode level into Notepad: `en-US` → `uk-UA` and back, the
-  layout switching with the word both ways, confirmed in the app's own
-  log and on screen. **This is the first time the Windows runtime has
-  been driven by anything but a person**, and it did not work until
-  this release — see the `injected` bullet below.
-- **The suggestion tooltip, looked at.** The thing "only a person can
-  say" about the Windows backend since 0.11.0: it renders correctly —
-  struck-through word, five numbered suggestions, the accept hint —
-  and it now hangs at the caret. Two independent readings of the same
-  caret agreed to the pixel: the app's `anchor resolved
-  anchor=Point { x: 338, y: 247, height: 18 }` and a separate probe's
-  `GetGUIThreadInfo` sample at (338, 247).
-- **The MSI self-update, watched — but not the part that was broken.**
-  The script the updater writes was run against the *published* v0.17.8
-  MSI over a v0.17.2 install: Windows Installer logged the major
-  upgrade (event 1033) and the installed binary reported 0.17.8. The
-  first attempt returned **1618**, which is what closed the gap
-  described in the updater bullet below. What this did *not* cover is
-  how the script gets started, because it was started by hand — and
-  that is precisely where the Windows updater had been failing since
-  it shipped. See the updater bullet.
-- **The Setup pane and the Settings window**, opened on this machine:
-  the pane probes and reports "Nothing to set up on Windows" with
-  `windows-ll-hook` named as the live backend, and the window renders
-  its ten panes without a visual fault.
-
-Not re-run: everything on Linux and macOS, the Linux and macOS tooltip
-backends, the AppImage and `.app` update paths, and every bullet below
-that is not dated today. Two things this pass could **not** cover on
-one machine: a **scaled display** — the DPI manifest added this release
-is reasoned from the Win32 contract, and both panels here report 96 DPI
-— and any Windows keyboard other than en-US and uk-UA. The
-multi-monitor half of the placement arithmetic *was* exercised, with a
-second monitor at negative x, which is the case `place()` shifts the
-virtual desktop's origin for.
-
-**What the 0.17.8 pass actually checked.** Two fixes: an engine rule
-plus a list of dictionary entries, which are the same code on every
-OS, and the Linux tooltip anchor, which is Linux only. Nothing on
-Windows or macOS moved. What was run, on this Arch/Hyprland machine:
-
-- **The whole workspace suite**, including two engine tests that fail
-  on 0.17.7's code — one types `cd /tmp ` through the full pipeline and
-  asserts the layout never moves, the other types `/tmp ghbdsn ` and
-  asserts the *second* word is still corrected, so the veto cannot
-  quietly widen to the rest of the line.
-- **The new dictionary entries against the real bundled
-  dictionaries**, both properties at once
-  (`crates/poltertype-core/tests/shell_vocabulary.rs`): every entry
-  survives the shipping detector pair, and none of them renders into a
-  real word of another bundled layout. Entries that failed the second
-  test — `src`, `cfg`, `ptr` — were left out rather than shipped.
-- **The reporter's assumption, from their own machine's log**: the app
-  loads only the layouts the OS reports as active (`layouts=2` here),
-  which is what makes `/` a separator rather than a letter. The engine
-  tests were changed to load the same two layouts for that reason —
-  before, they loaded all fifteen, and bg-BG's `б` on the `/` key made
-  the harness disagree with every real machine.
-- **The tooltip anchor live**, on the four-output Hyprland session the
-  earlier placement work used — including a `transform: 3` output and
-  one at fractional scale — and against the real accessibility bus: VS
-  Code yields a caret that tracks the typing position, and a chat
-  client's background caret is refused while the editor is focused.
-  Nine applications across GTK, Qt, Chromium, Gecko, native Wayland and
-  XWayland were measured for the window-size check. What that pass did
-  **not** measure is an application on a fractionally-scaled output
-  answering in device pixels: it would disagree by the scale factor and
-  cost that window the caret rung, which is the direction to be wrong
-  in but is still untested.
-
-Not re-run: everything below that is not dated today — every Windows
-and macOS bullet, the Windows and macOS tooltip backends, the updater,
-and the NixOS and systemd bullets stamped at 0.17.6. **The corrected
-engine was not driven live through uinput**; for that half the tests
-above are what this stamp rests on.
-
-**What the 0.17.7 pass actually checked.** Nothing platform-specific,
-because nothing platform-specific moved: the release is three changes to
-the detector, the undo-learning rule and the shape one line takes in a
-user wordlist file, and all three are the same code on every OS. What was
-run, on this Arch/Hyprland machine:
-
-- **The whole workspace suite**, including two engine tests and a corpus
-  test that fail on 0.17.6's code
-  (`crates/poltertype-core/tests/overlay_poisoning.rs`, which is the
-  evidence rather than a description of it). The corpus one plants the
-  stray entry in a user overlay and puts the question to the **real**
-  bundled dictionaries and layout tables, both directions.
-- **The reported failure, reproduced from the reporter's own machine
-  state** — their wordlist overlays and the app's log, which date each
-  bad entry to an undo of a correction the engine had got right.
-
-Not re-run: everything below that is not dated today, which this pass
-does not touch — every Windows and macOS bullet, the tooltip backends,
-the updater, and the NixOS and systemd bullets stamped at 0.17.6. **The
-fixed build was not driven live through uinput**; the tests above are
-what this stamp rests on.
-
-**What the 0.17.6 pass actually checked.** Linux only, on two Wayland
-machines — this Arch/Hyprland one and a NixOS 26.05 laptop (Hyprland,
-AppImage) — and every line below is something that was run, not read:
-
-- **NixOS, end to end on real hardware.** The setup script's
-  declarative path (module written, `imports` patched, backup kept,
-  staged for the flake), the owner's own `nixos-rebuild switch`, and
-  afterwards `id` showing `input` and `uinput`, `/dev/uinput` at
-  `0660 root:uinput`, binfmt registering `appimage_type_1/2`, and the
-  AppImage running by path.
-- **The entries the app writes point at the AppImage, not at its
-  mount.** Both were rewritten to
-  `~/Applications/poltertype-0.17.6-x86_64.AppImage` on that machine;
-  before this release the autostart one pointed inside a temporary
-  extraction directory.
-- **Startup with `HYPRLAND_INSTANCE_SIGNATURE` unset** — the exact
-  condition that killed the app at login — resolves the compositor from
-  its socket directory instead: `layout switcher ready
-  backend="linux-hyprland-hyprctl"`, `focus tracker ready
-  backend="linux-hyprland-ipc"`.
-- **Startup with neither that variable nor `DISPLAY`** now reaches
-  `entering event loop` and stays there. The same command on 0.17.5's
-  code left a coredump: `XDefaultRootWindow` on a null display, in
-  `global-hotkey`'s X11 thread.
-- **The systemd user service**, on a session whose
-  `graphical-session.target` is active: written, `is-enabled` →
-  `enabled`, the old `.desktop` entry removed, and
-  `systemctl --user start` → `active (running)` with the app up.
-- **The manual switch-last hotkey after a pause** — an engine test
-  driving the real sequence, which fails on 0.17.5's code. Read the
-  0.17.5 stamp below against it: that pass *did* verify this hotkey,
-  by injecting the whole sequence through uinput. Injection is faster
-  than a person, so it landed inside the two-second window the bug
-  needed, and confirmed a feature that did not work for anybody. A
-  green check can move too fast to be true.
-
-Not re-run: everything on Windows and macOS, the tooltip backends, the
-updater, and every bullet below that is not dated today.
-
-**What the 0.17.5 pass actually checked.** Two things, both on this
-machine: the Hotkeys pane renders the substituted chord (screenshot,
-Hyprland/Wayland), and `Ctrl+Shift+F9` really does fire a force-switch
-on the evdev backend — injected through uinput into a scratch window,
-confirmed by `correction applied … reason=manual switch-last hotkey` in
-the app's own log. The macOS half of the same fix is unrun, like every
-macOS bullet here. Nothing else was re-verified.
-
-**What the 0.17.4 pass actually checked.** Narrower still: the evdev
-scan and the setup script's new self-check, both against this machine's
-real `/dev/input` (29 nodes, 6 keyboards) — plus the half of the KDE
-bullet below that a reporter's Plasma 6 log now settles. Nothing else
-was re-run.
-
-**What the 0.17.3 pass actually checked.** A narrow pass on top of
-0.17.2's: the two bullets below are new and rest on this release's own
-evidence; nothing else was re-run, so every other bullet still carries
-the date of the pass that last verified it.
-
-- the **compound guard** — both directions through the real bundled
-  dictionaries and layout tables, on this machine
-  (`crates/poltertype-core/tests/compound_corpus.rs`, which is the
-  evidence, not a description of it);
-- the **KDE layout backend** — against KWin's `keyboard_layout.h` and
-  Qt's `qdbusutil.cpp` on 2026-08-20, and **not** against a running
-  Plasma session; see the bullet below.
-
-**What the 0.17.2 pass checked**, all of it re-run rather than
-recalled:
-
-- the **manifest-signature** bullet — six releases' `latest.json`
-  fetched through the live redirector, all signed, and the constant
-  flipped as a result;
-- the **Linux** desktop-integration claims — on this machine, against
-  a real Wayland session (`hyprctl clients` before and after);
-- the **macOS artefact** claims — read out of the published v0.17.1
-  DMG (`AppIcon.icns`, `Info.plist`, `_CodeSignature/`), not out of
-  Apple's documentation.
-
-Everything else — the layout tables, the key gate, focus tracking, the
-tooltip backends, the macOS runtime paths — stands on its own earlier
-dated evidence and was **not** re-run here. The 0.14.3 pass is still
-what backs the Windows bullets.
+## Switching the layout on Linux
 
 - **The KDE layout backend is now observed end to end** — but only on
   Plasma **6**, and only on Wayland. 0.17.3 rewrote it (Plasma has
@@ -398,6 +197,8 @@ what backs the Windows bullets.
   an IPC that answers honestly. niri and river expose the same kind of
   CLI; neither is packaged for the distro the desktop matrix runs, so
   neither has a backend.
+
+## Languages and keyboard data
 
 - **Nine of the fifteen bundled layouts have never been typed on.**
   0.9.0 added pl, cs, el, he, tr, bg, it, pt-PT and pt-BR. The
@@ -484,8 +285,11 @@ what backs the Windows bullets.
   another large language, ask whether the answer is a language pack
   rather than more `data/`.
 
-- **Holding keystrokes back during a correction: Linux/evdev by
-  default, Windows opt-in **and now measured**, macOS not at all.**
+## Corrections, the key gate and hotkeys
+
+- **Holding keystrokes back during a correction: on by default on
+  Linux/evdev, opt-in and measured on Windows (0.11.0) and macOS
+  (0.13.0).**
   The Windows gate ran on real hardware for the first time on
   2026-08-04 and #7 closed with the answer "works, still not the
   default". Two bugs were fixed getting there, both of which lost
@@ -495,8 +299,9 @@ what backs the Windows bullets.
   it had one, translating held keys through a layout overlay dropped
   everything structural, the **spacebar** most of all, which is the
   boundary that triggers most corrections. Both fixes are shared with
-  macOS, which had the same two holes and has still never had the gate
-  switched on.
+  macOS, which had the same two holes; 0.13.0 then validated the gate
+  there on Intel hardware — a four-key burst fired mid-correction
+  lands exactly once, in order, in the freshly switched layout.
   It stays **off unless `POLTERTYPE_HOLD_KEYS=1`**, and the reason is
   now latency rather than fear: the absorb-and-sweep loop withholds
   keys for ≥75–100 ms after every correction, which reads as the caret
@@ -508,8 +313,8 @@ what backs the Windows bullets.
 
   The rest of this bullet is about evdev. The key gate
   (`poltertype-input::KeyGate`, 0.6.0) is what stops a keystroke
-  landing inside a correction. macOS has no implementation, and X11 is
-  deliberately out (XTest serialises with real input). On Linux it also disables itself wherever it cannot
+  landing inside a correction; X11 is deliberately out (XTest
+  serialises with real input). On Linux it also disables itself wherever it cannot
   work: keyd and friends hold our own uinput device, so grabbing the
   user's keyboard would block the correction too. Those users get the
   detect-and-repair path, which is *better than 0.5.0 but not
@@ -521,6 +326,21 @@ what backs the Windows bullets.
   used to end with the gate funnelling the whole session's input into
   the app (see `docs/DECISIONS.md`, 2026-07-31). An `EBUSY` at hold
   time turns the gate off until restart.
+- **The manual switch on a word still being typed is measured on
+  Wayland only, and did not work in the one X11 run.** 0.20.0 made the
+  force-switch act on the word under the caret. Measured working on KDE
+  Plasma Wayland and on GNOME Wayland, where the default chord is
+  already substituted to `Ctrl+Shift+F9`. The same probe on Xfce/`xfwm4`
+  (X11, default chord `Ctrl+Shift+Backspace`) switched the *finished*
+  word correctly and did nothing at all mid-word, logging an empty word
+  buffer. **Why the buffer was empty is not established** — the obvious
+  suspect is that our own listener sees the Backspace of the chord, but
+  a Backspace pops one key rather than clearing the buffer, so that
+  does not explain it on its own. Not shipped as a root cause until
+  somebody reproduces it; the finished-word case is unaffected
+  everywhere, and Windows and macOS carry the same Backspace-based
+  default and have not been measured for this at all.
+
 - **A shortcut pressed mid-correction while keys are held is lost.**
   Backspace, arrows and Esc are re-emitted behind the correction, but
   a chord needs modifiers the emitter cannot reproduce, so the gate
@@ -544,10 +364,14 @@ what backs the Windows bullets.
   nothing on Windows was stripping anything. And this is *why* no
   Windows runtime test had ever run: injection is the only way to
   drive the app without a person, and the app was built to ignore it.
-- **Focus tracking is complete on Windows, Hyprland and X11, partial
-  on other Wayland, and absent on macOS.** `focused_exe()` still
-  returns `None` on macOS. On non-Hyprland Wayland it is no longer
-  `None`: since 0.10.0 `atspi_focus` watches `window:activate` on the
+
+## Focus, the tooltip and the Settings window
+
+- **Focus tracking is complete on Windows, macOS, Hyprland and X11,
+  and partial on other Wayland.** macOS answers since 0.15.0
+  (frontmost pid via `NSWorkspace` → `proc_pidpath`). On non-Hyprland
+  Wayland it is no longer
+  `None` either: since 0.10.0 `atspi_focus` watches `window:activate` on the
   a11y bus and asks the bus which process owns the sending connection
   (`GetConnectionUnixProcessID` → `/proc/<pid>/exe`), which is the
   same executable basename the other backends report. Verified live
@@ -568,18 +392,15 @@ what backs the Windows bullets.
   `disabled_apps` is now **empty by default** and opt-in. Before you
   make anything else focus-keyed, ask what it does the day a tracker
   appears on a platform that didn't have one.
-- **The suggestion tooltip renders on Linux only — but on more of
-  Linux than this file used to claim.** `poltertype-popup` *probes*:
-  layer-shell, then X11, then noop. Layer-shell covers wlroots
-  compositors **and KWin** (verified against KWin 6.7.3 on
+- **The suggestion tooltip renders on all three platforms; what
+  varies is how well it can be aimed.** On Linux `poltertype-popup`
+  *probes*: layer-shell, then X11, then noop. Layer-shell covers
+  wlroots compositors **and KWin** (verified against KWin 6.7.3 on
   2026-07-31 — the "no-op on KDE" line that stood here was simply
   wrong). Mutter has no layer-shell, but GNOME Wayland sessions run
   XWayland, so the X11 override-redirect probe still maps a window
-  there. The real remaining gap is a Wayland session with neither
-  layer-shell nor XWayland — plus **macOS and Windows**, which are
-  noop and where the feature degrades to the keyboard accept chord
-  alone, with no visible list (near-useless until a backend lands; the
-  engine side works everywhere). Never re-state this as a list of
+  there. The remaining Linux gap is a Wayland session with neither
+  layer-shell nor XWayland. Never re-state this as a list of
   desktop names: the code asks the compositor, and a name-based claim
   goes stale silently. Positioning is an anchor chain, best first: AT-SPI
   caret extents (apps with a live a11y bridge; PolterType raises
@@ -620,7 +441,33 @@ what backs the Windows bullets.
   coordinates Windows had virtualised to 96, and the two only agree at
   100% scale. 0.18.0 ships a per-monitor-v2 manifest. **That fix is
   unobserved at any other scale** — this machine has one 100% panel.
-  macOS remains noop.
+  **macOS has a backend since 0.15.0** — a non-activating `NSPanel`,
+  anchored on the Accessibility API's caret, hardware-verified on
+  Intel (`docs/MACOS_POPUP.md`). Its caret answers are validated
+  rather than trusted: Chrome and Terminal report ones nowhere near
+  the text, and a rejected caret costs that window the caret rung, not
+  the tooltip.
+- **On KDE Plasma Wayland the Settings window comes with a second,
+  dead entry in the task manager, titled "winit window".** Reported
+  twice ([#35](https://github.com/Just-Code-NET/PolterType/issues/35)),
+  reproduced in the desktop-matrix VM, and **not ours to fix in this
+  release.** `iced_winit` 0.13 creates a throwaway window with default
+  attributes — hence the title, and no `app_id` at all — purely to hand
+  a window handle to the renderer while it boots
+  (`iced_winit-0.13.0/src/program.rs:300`), asks winit to keep it
+  invisible, and never destroys it. Wayland has no "invisible": winit
+  creates the `xdg_toplevel` regardless, and a compositor that lists
+  toplevels rather than mapped surfaces shows it. A `WAYLAND_DEBUG=1`
+  trace of the Settings process on `kwin_wayland` has two toplevels, one
+  of them titled `winit window`, and no destroy for it. Hyprland does
+  not list it, which is why nobody here saw it for eleven releases.
+  It is cosmetic — the window cannot be focused, and closing Settings
+  takes it with them. iced 0.14 has no boot window at all, so the fix is
+  that upgrade, and an upgrade that rewrites every pane of the Settings
+  UI is not something to bundle with a critical updater fix.
+
+## AI, plug-ins and onboarding
+
 - **The AI subsystem is an interface with no backend, on purpose.**
   Since 0.10.0 the stubs are gone: one `LlmDetector` speaks three HTTP
   shapes and calls whatever endpoint the **user** configured — their
@@ -667,6 +514,9 @@ what backs the Windows bullets.
   command instead), and imitate a system permission dialog (macOS shows
   its own). What is still missing from issue #10's wish list is the
   screenshots/GIFs of the macOS toggles.
+
+## Updating and installing
+
 - **Self-update: Linux and macOS are proven end to end; Windows was
   broken from the first release that shipped it until 0.20.0.**
   The AppImage path is exercised. The `.app`-bundle swap was validated
@@ -701,40 +551,6 @@ what backs the Windows bullets.
   (1618) is a guess, and a machine whose installer is busy for longer
   still loses that attempt — though it now says so instead of going
   quiet.
-- **The manual switch on a word still being typed is measured on
-  Wayland only, and did not work in the one X11 run.** 0.20.0 made the
-  force-switch act on the word under the caret. Measured working on KDE
-  Plasma Wayland and on GNOME Wayland, where the default chord is
-  already substituted to `Ctrl+Shift+F9`. The same probe on Xfce/`xfwm4`
-  (X11, default chord `Ctrl+Shift+Backspace`) switched the *finished*
-  word correctly and did nothing at all mid-word, logging an empty word
-  buffer. **Why the buffer was empty is not established** — the obvious
-  suspect is that our own listener sees the Backspace of the chord, but
-  a Backspace pops one key rather than clearing the buffer, so that
-  does not explain it on its own. Not shipped as a root cause until
-  somebody reproduces it; the finished-word case is unaffected
-  everywhere, and Windows and macOS carry the same Backspace-based
-  default and have not been measured for this at all.
-
-- **On KDE Plasma Wayland the Settings window comes with a second,
-  dead entry in the task manager, titled "winit window".** Reported
-  twice ([#35](https://github.com/Just-Code-NET/PolterType/issues/35)),
-  reproduced in the desktop-matrix VM, and **not ours to fix in this
-  release.** `iced_winit` 0.13 creates a throwaway window with default
-  attributes — hence the title, and no `app_id` at all — purely to hand
-  a window handle to the renderer while it boots
-  (`iced_winit-0.13.0/src/program.rs:300`), asks winit to keep it
-  invisible, and never destroys it. Wayland has no "invisible": winit
-  creates the `xdg_toplevel` regardless, and a compositor that lists
-  toplevels rather than mapped surfaces shows it. A `WAYLAND_DEBUG=1`
-  trace of the Settings process on `kwin_wayland` has two toplevels, one
-  of them titled `winit window`, and no destroy for it. Hyprland does
-  not list it, which is why nobody here saw it for eleven releases.
-  It is cosmetic — the window cannot be focused, and closing Settings
-  takes it with them. iced 0.14 has no boot window at all, so the fix is
-  that upgrade, and an upgrade that rewrites every pane of the Settings
-  UI is not something to bundle with a critical updater fix.
-
 - **Manifest signatures are mandatory from v0.17.2 — which turns a
   forgotten signing step into an outage.** This is no longer a gap in
   the product; it is a gap in *us*, so it stays on this list. Since
@@ -781,20 +597,22 @@ what backs the Windows bullets.
   was deleted at 0.6.3 per its own instruction; the shape of that bug
   — a defaulted-on setting nothing reads — is preserved in
   `docs/DECISIONS.md` and the 0.6.2 changelog entry.
-- **macOS: the input changes from 0.7.0 still have not run on a Mac,
-  and 0.8.0 ships them again unchanged.** 0.6.2 was
-  the first release runtime-tuned on real hardware (macOS 15, Intel, by
-  an outside contributor) — but 0.7.0 rewrote the part that was
-  validated: the tap now subscribes to `FlagsChanged`, so modifier
-  edges reach the word buffer for the first time, and the emitter
-  clears event flags and posts modifier releases. Reviewed, unit-tested
-  where the logic is host-portable, compiled by CI, **executed by
-  nobody**. If a macOS report arrives about words vanishing or
-  corrections misfiring, start here. Still unproven besides: Apple
-  Silicon (#3), the updater's `.app`-bundle swap, and the keystroke
-  hold-back — the key gate is Linux/evdev only, so on macOS as on
-  Windows a keystroke can still land inside a correction.
-  `focused_exe()` remains `None` there.
+
+## Loose ends, per platform
+
+- **macOS: what 0.7.0 changed in the input path has still never been
+  exercised.** 0.6.2 was runtime-tuned on real hardware (macOS 15,
+  Intel, by an outside contributor) — and then 0.7.0 rewrote the part
+  that had been validated: the tap subscribes to `FlagsChanged`, so
+  modifier edges reach the word buffer, and the emitter clears event
+  flags and posts modifier releases. Real Macs have been back since —
+  0.15.0 for the tooltip, focus tracking and caret validation (Intel),
+  0.19.0 for Apple Silicon, where first launch, detection,
+  corrections, the force-switch hotkey and the self-update were all
+  confirmed on an M1 Pro (#3) — but a correction typed under a *held*
+  modifier, which is exactly what those changes are for, has been in
+  nobody's report. If one arrives about words vanishing or a ⌘⌫ going
+  out instead of a correction, start here.
 - **Autostart on a bare compositor still needs one manual step.** The
   unit PolterType installs is wanted by `graphical-session.target`,
   which GNOME, KDE, Xfce and `uwsm` sessions reach on their own —
@@ -833,7 +651,7 @@ what backs the Windows bullets.
   open — bisecting which widget (a scrollbar is the leading suspect) is
   the next step if this gets prioritised.
 
-Deliberately out of scope (not gaps):
+## Deliberately out of scope (not gaps)
 
 - **Code signing** — installers ship UNSIGNED. Apple Developer ID +
   Windows EV/OV cert tracked for a later phase. (Per-platform
