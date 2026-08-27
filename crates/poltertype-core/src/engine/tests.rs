@@ -1882,6 +1882,47 @@ mod engine_integration_tests {
         );
     }
 
+    /// A chord whose key also closes words must keep working.
+    ///
+    /// The default pause chord is `Ctrl+Shift+Space`, and Space is what
+    /// closes most words — so its release lands inside the correction
+    /// that word triggered, where the window reads key events straight
+    /// off the channel. The latch that makes a chord fire once per
+    /// physical press then never cleared, and pause was dead for the
+    /// rest of the session. The force-switch had the milder form of it,
+    /// answering every *other* press; that is what this was found by,
+    /// live on KDE Plasma Wayland while checking issue #37.
+    #[test]
+    fn a_chord_still_fires_after_its_key_closed_a_corrected_word() {
+        let mods = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                pause: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: SPACE,
+                })),
+                switch_last: None,
+            }))
+            .expect("engine alive");
+
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        h.key_mods(SPACE, KeyDirection::Press, mods);
+        h.key_mods(SPACE, KeyDirection::Release, mods);
+        h.wait_for(|e| matches!(e, SwitcherEvent::PausedChanged(true)));
+    }
+
     /// The whole point of issue #32: the gesture Punto and Caramba
     /// users already have in their hands has to reach the same
     /// force-switch the command does — off the key stream, with no key
@@ -2070,6 +2111,41 @@ mod engine_integration_tests {
         assert_eq!(word, "ghbdsn");
     }
 
+    /// Pause stops the engine deciding, not the engine watching.
+    ///
+    /// A user who turns auto-switch off because they dislike its false
+    /// positives is exactly the user who reaches for the manual hotkey
+    /// — and it did nothing at all, because `handle_key` returned
+    /// before the buffer could track the word and the stash the hotkey
+    /// reads is written at a word boundary (issue #36).
+    #[test]
+    fn the_manual_hotkey_still_works_while_paused() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::TogglePause)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::PausedChanged(true)));
+
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "paused must still mean no automatic correction"
+        );
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        assert_eq!(
+            h.switcher.switches.lock().len(),
+            1,
+            "the hotkey must switch the word the pause left alone"
+        );
+    }
+
     /// The gesture people actually arrive with: type the word, see the
     /// wrong layout, press the key — with no space anywhere in it.
     ///
@@ -2124,10 +2200,11 @@ mod engine_integration_tests {
         );
     }
 
-    /// A held chord must not switch the same word twice. The stash is
-    /// taken atomically for exactly this reason — `wow ` once became
-    /// `wow wow wow…` under auto-repeat — and a fallback that reads the
-    /// buffer would hand every repeat the same word back.
+    /// A held chord must not switch the same word over and over —
+    /// `wow ` once became `wow wow wow…` until the app was killed.
+    /// Sent as a burst, which is what auto-repeat and the fire our own
+    /// Backspaces provoke actually look like: everything inside
+    /// `FORCE_SWITCH_REARM` of the first is one press.
     #[test]
     fn a_repeated_hotkey_switches_an_unfinished_word_only_once() {
         let h = Harness::start(60_000);
@@ -2138,13 +2215,92 @@ mod engine_integration_tests {
             h.cmd_tx
                 .send(EngineCommand::SwitchLastForcefully)
                 .expect("engine alive");
-            h.settle();
         }
+        h.settle();
 
         assert_eq!(
             h.switcher.switches.lock().len(),
             1,
             "auto-repeat must not keep re-switching the same word"
+        );
+    }
+
+    /// …but a *deliberate* second press must be honoured. The stash
+    /// used to be consumed to reach the switch, so the hotkey worked
+    /// exactly once per word and a press made in error could not be
+    /// taken back (issue #37).
+    #[test]
+    fn pressing_the_hotkey_again_switches_the_word_back() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let after_auto = h.switcher.switches.lock().len();
+
+        for _ in 0..2 {
+            h.cmd_tx
+                .send(EngineCommand::SwitchLastForcefully)
+                .expect("engine alive");
+            h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+            h.settle();
+        }
+
+        assert_eq!(
+            h.switcher.switches.lock().len(),
+            after_auto + 2,
+            "the second press must switch the word back, not do nothing"
+        );
+        let layouts = h.switcher.switches.lock().clone();
+        assert_eq!(
+            layouts.last(),
+            layouts.get(after_auto - 1),
+            "two presses land the word where the engine had put it"
+        );
+    }
+
+    /// Undoing an engine correction teaches the word; taking back a
+    /// press of the user's own must not. A third press has the shape of
+    /// an undo — `corrected_to` is set — but it was this hotkey that
+    /// set it, and taking back your own press says nothing about the
+    /// word. Without `user_placed` a user tapping through the
+    /// renderings would silently disable correction for it forever.
+    #[test]
+    fn taking_back_your_own_press_does_not_teach_the_dictionary() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        // One: undo the engine, which teaches — the escape hatch pinned
+        // by `manual_hotkey_undo_still_learns_when_the_switch_was_a_guess`.
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }));
+        h.settle();
+        // Two: rotate back to where the engine had put it.
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        while h.out_rx.try_recv().is_ok() {}
+
+        // Three: the one that used to look like an undo.
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+
+        let taught = std::iter::from_fn(|| h.out_rx.try_recv().ok())
+            .filter(|e| matches!(e, SwitcherEvent::AddToDictionary { .. }))
+            .count();
+        assert_eq!(
+            taught, 0,
+            "only the press that undid the engine's own correction teaches"
         );
     }
 
@@ -2374,57 +2530,34 @@ mod boundary_tests {
     }
 }
 
-mod last_word_consume_tests {
-    use super::{LastWord, WordBoundaryKey};
-    use parking_lot::RwLock;
-    use poltertype_layout::LayoutId;
-    use std::sync::Arc;
+mod force_switch_rearm_tests {
+    use crate::engine::consts::FORCE_SWITCH_REARM;
+    use std::time::Duration;
 
     /// Regression for the manual-switch hotkey loop.
     ///
     /// `force_switch_last` emits Backspaces flagged injected, but Win32
     /// `RegisterHotKey` sees them combined with the user's still-held
-    /// Ctrl+Shift as a fresh press and fires again; auto-repeat does the
-    /// same. Without atomic take-and-clear every echo re-ran the
-    /// correction, so the text accumulated and the sound looped until
-    /// the app was killed.
-    ///
-    /// A full `SwitcherEngine` is impractical here, so this pins the
-    /// storage primitive: `write().take()` is load-bearing and
-    /// clone-and-read re-introduces the loop.
+    /// Ctrl+Shift as a fresh press and fires again; auto-repeat does
+    /// the same. That used to be absorbed by taking the stash
+    /// atomically, which also made the hotkey work exactly once per
+    /// word (issue #37). The stash is put back now, so this window is
+    /// the whole of the guard: wide enough to cover an echo, narrow
+    /// enough to let a person press again.
     #[test]
-    fn take_consumes_last_word_so_repeated_fires_no_op() {
-        let storage: Arc<RwLock<Option<LastWord>>> = Arc::new(RwLock::new(None));
-
-        // As stashed after auto-correcting `цщц` → `wow `.
-        *storage.write() = Some(LastWord {
-            keys: Vec::new(),
-            rendered: "цщц".into(),
-            layout: LayoutId::new("uk-UA"),
-            boundary: Some(WordBoundaryKey {
-                ch: ' ',
-                scancode: 0x39,
-                shift: false,
-            }),
-            corrected_to: Some(LayoutId::new("en-US")),
-        });
-
-        let first = storage.write().take();
+    fn the_rearm_window_separates_an_echo_from_a_second_press() {
+        // The echo is queued while we are still injecting and handled
+        // microseconds later; a held key repeats far faster still.
         assert!(
-            first.is_some(),
-            "first manual switch must see the stashed last_word"
+            FORCE_SWITCH_REARM >= Duration::from_millis(100),
+            "too narrow to cover the echo our own Backspaces provoke — \
+             if this regresses, the hotkey loop bug is back"
         );
-
-        // Echo / auto-repeat fires: subsequent takes find None, which is
-        // what stops the loop and the sound spam.
-        for _ in 0..50 {
-            let echo = storage.write().take();
-            assert!(
-                echo.is_none(),
-                "repeated manual-switch fires after the first must find None — \
-                 if this regresses, the hotkey loop bug is back"
-            );
-        }
+        // A person has to see the result before pressing again.
+        assert!(
+            FORCE_SWITCH_REARM <= Duration::from_millis(250),
+            "wide enough to swallow a deliberate second press"
+        );
     }
 }
 

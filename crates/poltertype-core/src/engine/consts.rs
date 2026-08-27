@@ -33,6 +33,19 @@ pub const PASTE_GUARD: Duration = Duration::from_millis(1200);
 /// only bounds how long an untouched machine keeps one word in RAM.
 pub const LAST_WORD_TTL: Duration = Duration::from_secs(60);
 
+/// Shortest gap between two force-switches of the same word.
+///
+/// Not a debounce for human taste — it is what replaces the stash being
+/// self-consuming. `force_switch_last` emits Backspaces, and Win32
+/// `RegisterHotKey` reads them together with the user's still-held
+/// Ctrl+Shift as a fresh press of `Ctrl+Shift+Backspace`; that command
+/// is queued while we are still injecting and handled microseconds
+/// later. Now that a switch puts a word *back* on the stash so the
+/// hotkey can be pressed twice (issue #37), only this window tells the
+/// echo apart from a person pressing again — and a person needs to see
+/// the result first, which no one does in a fifth of a second.
+pub const FORCE_SWITCH_REARM: Duration = Duration::from_millis(200);
+
 /// How long to wait after an emission burst before probing the key
 /// stream for keystrokes that raced it — the trip from the device
 /// through the listener thread into our channel. Every millisecond

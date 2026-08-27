@@ -9,10 +9,9 @@ use tracing::{debug, info};
 
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{WordBoundary, WordBuffer};
-use crate::engine::consts::{LAST_WORD_TTL, PASTE_GUARD};
+use crate::engine::consts::{FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD};
 use crate::engine::enums::{Either, EngineCommand, SwitcherEvent};
 use crate::engine::heuristics::{is_modifier_scancode, is_paste_shortcut};
-use crate::engine::types::ChordState;
 
 use super::engine::SwitcherEngine;
 
@@ -21,7 +20,6 @@ impl SwitcherEngine {
     pub fn run(self, key_rx: Receiver<KeyEvent>, cmd_rx: Receiver<EngineCommand>) {
         let mut buffer = WordBuffer::new();
         let mut last_event_at = Instant::now();
-        let mut chord_state = ChordState::default();
         let idle_timeout = Duration::from_millis(self.settings.snapshot().engine.idle_timeout_ms);
 
         info!(
@@ -55,7 +53,7 @@ impl SwitcherEngine {
                     }
                     *self.held_modifiers.write() = ev.modifiers;
                     self.click_grace_tick(&ev);
-                    self.check_keystream_hotkeys(&ev, &mut chord_state, &mut buffer, &key_rx);
+                    self.check_keystream_hotkeys(&ev, &mut buffer, &key_rx);
                     if last_event_at.elapsed() > idle_timeout {
                         // A live offer overrides idle hygiene while no
                         // word is mid-flight: pausing to read the
@@ -133,8 +131,25 @@ impl SwitcherEngine {
                 });
             }
             EngineCommand::SwitchLastForcefully => {
-                // Which word the caret is sitting after decides this.
-                // `completed() + boundary_run() + keys()` is the
+                // Every fire our own correction provokes is stopped
+                // here, and only here. `force_switch_last` emits
+                // Backspaces, which Win32 `RegisterHotKey` reads
+                // together with the user's still-held Ctrl+Shift as a
+                // fresh press; auto-repeat does the same without the
+                // modifier edge. That used to be absorbed by taking the
+                // stash atomically and leaving every repeat with
+                // `None` — `wow ` had accumulated to `wow wow wow…`
+                // until the app was killed — but the stash is now put
+                // back so the hotkey can be pressed twice (issue #37),
+                // and a window is what tells an echo from a person.
+                if let Some(t) = *self.last_force_switch.read()
+                    && t.elapsed() < FORCE_SWITCH_REARM
+                {
+                    debug!("manual switch-last ignored: within the re-arm window of the last one");
+                    return;
+                }
+                // Which word the caret is sitting after decides the
+                // rest. `completed() + boundary_run() + keys()` is the
                 // buffer's model of the text left of the caret, and a
                 // correction backspaces *from the caret* — so switching
                 // anything but the last item of that model erases
@@ -147,14 +162,6 @@ impl SwitcherEngine {
                 let taken = if in_progress {
                     self.word_in_progress(buffer)
                 } else if buffer.boundary_run().len() <= 1 {
-                    // Atomic take, NOT clone-and-read: the OS-level
-                    // `RegisterHotKey` reads the Backspaces
-                    // `force_switch_last` emits, plus the user's
-                    // still-held Ctrl+Shift, as a fresh press and fires
-                    // again — `wow ` accumulated to `wow wow wow…`
-                    // until the app was killed. Auto-repeat does the
-                    // same without the modifier edge. Taking atomically
-                    // leaves every repeat fire with `None`.
                     self.last_word.write().take()
                 } else {
                     // More separators than the one that closed the
@@ -180,13 +187,6 @@ impl SwitcherEngine {
                         // one that can only disagree with them.
                         // `abandon` taints exactly the next completion,
                         // which is this word.
-                        //
-                        // It is also what stops a held chord switching
-                        // the same word over and over: the stash branch
-                        // is taken atomically for that reason, and a
-                        // buffer read would hand every repeat the same
-                        // word straight back. Emptying it is the same
-                        // guard.
                         buffer.abandon();
                     }
                 } else {
@@ -264,9 +264,13 @@ impl SwitcherEngine {
             // `consume_echo` in the run loop).
             return;
         }
-        if *self.paused.read() {
-            return;
-        }
+        // No paused early-return here. Pause is about *auto*-switching,
+        // and a buffer that stops tracking while it is on takes the
+        // manual hotkey down with it: the stash is written at a word
+        // boundary, so nothing typed during a pause was ever reachable
+        // by it (issue #36). The decision itself is what pause stops —
+        // see `decide`.
+        //
         // Opens a window during which we decline to auto-correct — see
         // `paste_guard_until`.
         if is_paste_shortcut(&ev) {

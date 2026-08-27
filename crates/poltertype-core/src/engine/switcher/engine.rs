@@ -16,7 +16,7 @@ use poltertype_types::Modifiers;
 use crate::audio::AudioPlayer;
 use crate::commands::WordHistory;
 use crate::engine::enums::SwitcherEvent;
-use crate::engine::types::{KeystreamHotkeys, LastWord, PendingSuggestion};
+use crate::engine::types::{ChordState, KeystreamHotkeys, LastWord, PendingSuggestion};
 use crate::layouts::LayoutDb;
 use crate::settings::SettingsStore;
 
@@ -48,6 +48,14 @@ pub struct SwitcherEngine {
     pub(super) word_history: Arc<RwLock<WordHistory>>,
     /// Buffer of the previous fully-completed word (for "switch-last").
     pub(super) last_word: Arc<RwLock<Option<LastWord>>>,
+    /// When the last force-switch finished. See [`FORCE_SWITCH_REARM`].
+    pub(super) last_force_switch: RwLock<Option<Instant>>,
+    /// What each keystream chord has seen so far. Engine state rather
+    /// than the run loop's, because key events reach us by two paths:
+    /// the loop, and the correction window reading the channel
+    /// directly. A latch only one of them can clear sticks down — see
+    /// [`SwitcherEngine::observe_swallowed_release`].
+    pub(super) chord_state: Mutex<ChordState>,
     /// Layout in effect when the in-progress word's first key arrived.
     ///
     /// The buffer holds scancodes, so what a word *reads* as depends on
@@ -152,6 +160,8 @@ impl SwitcherEngine {
             paused: Arc::new(RwLock::new(false)),
             word_history: Arc::new(RwLock::new(WordHistory::default())),
             last_word: Arc::new(RwLock::new(None)),
+            last_force_switch: RwLock::new(None),
+            chord_state: Mutex::new(ChordState::default()),
             word_layout: RwLock::new(None),
             expected_echo: Mutex::new(VecDeque::new()),
             keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),

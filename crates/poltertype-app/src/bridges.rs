@@ -1,7 +1,8 @@
 //! Threads that bridge engine/OS events into the tao event loop.
 
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::Receiver;
@@ -210,13 +211,29 @@ pub(crate) fn spawn_event_bridges(
         .name("hotkey-bridge".into())
         .spawn(move || {
             let rx = GlobalHotKeyEvent::receiver();
+            // Which chords are physically down, so a held one is one
+            // press. The OS repeats `Pressed` while a chord is held,
+            // and switch-last now acts on every fire it is given (the
+            // engine's stash is no longer self-consuming — issue #37).
+            //
+            // Time-limited on purpose: if some platform ever delivers a
+            // `Pressed` without its `Released`, this degrades to one
+            // fire per second rather than a hotkey that works once and
+            // then never again.
+            let mut down: HashMap<u32, Instant> = HashMap::new();
             while let Ok(ev) = rx.recv() {
                 // `global-hotkey` 0.6+ emits both `Pressed` and
                 // `Released` for one chord. Forwarding both ran the
                 // pause toggle twice per keypress, so pause only held
                 // while the chord was physically down.
                 if ev.state != HotKeyState::Pressed {
+                    down.remove(&ev.id);
                     continue;
+                }
+                let now = Instant::now();
+                match down.insert(ev.id, now) {
+                    Some(since) if now.duration_since(since) < STUCK_HOTKEY_TIMEOUT => continue,
+                    _ => {}
                 }
                 if proxy_hk.send_event(UserEvent::Hotkey(ev.id)).is_err() {
                     break;

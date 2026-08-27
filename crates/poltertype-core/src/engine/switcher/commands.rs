@@ -12,7 +12,7 @@ use crate::commands::{CommandAction, UserCommand};
 use crate::engine::buffer::WordBuffer;
 use crate::engine::enums::EngineCommand;
 use crate::engine::heuristics::match_binding;
-use crate::engine::types::ChordState;
+use crate::engine::types::{Binding, BindingState};
 
 use super::engine::SwitcherEngine;
 
@@ -29,7 +29,6 @@ impl SwitcherEngine {
     pub(super) fn check_keystream_hotkeys(
         &self,
         ev: &KeyEvent,
-        state: &mut ChordState,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
@@ -40,17 +39,58 @@ impl SwitcherEngine {
         // One clock read for both, and only where a binding exists:
         // this runs on every key event on every backend.
         let now = (hk.pause.is_some() || hk.switch_last.is_some()).then(Instant::now);
-        if let (Some(b), Some(now)) = (hk.pause, now) {
-            if match_binding(ev, b, &mut state.pause, now) {
-                self.handle_command(EngineCommand::TogglePause, buffer, key_rx);
-            }
+        // Matched under the lock, dispatched outside it: a command can
+        // run a whole correction, whose window observes releases
+        // through this same state.
+        let (pause, switch) = {
+            let mut st = self.chord_state.lock();
+            let fire = |b: Option<Binding>, s: &mut BindingState| match (b, now) {
+                (Some(b), Some(now)) => match_binding(ev, b, s, now),
+                _ => false,
+            };
+            let pause = fire(hk.pause, &mut st.pause);
+            (pause, fire(hk.switch_last, &mut st.switch))
+        };
+        if pause {
+            self.handle_command(EngineCommand::TogglePause, buffer, key_rx);
         }
-        if let (Some(b), Some(now)) = (hk.switch_last, now) {
-            if match_binding(ev, b, &mut state.switch, now) {
-                self.handle_command(EngineCommand::SwitchLastForcefully, buffer, key_rx);
-            }
+        if switch {
+            self.handle_command(EngineCommand::SwitchLastForcefully, buffer, key_rx);
         }
-        self.check_suggestion_chord(ev, state, buffer, key_rx);
+        self.check_suggestion_chord(ev, buffer, key_rx);
+    }
+
+    /// Keep the chord latches honest about keys the correction window
+    /// swallowed.
+    ///
+    /// Every matcher here is edge-triggered: one fire per physical
+    /// press, latched until the release. But a correction reads key
+    /// events straight off the channel, so a release landing inside one
+    /// never reaches [`Self::check_keystream_hotkeys`] and the latch
+    /// stays down for good — the force-switch then answers every
+    /// *other* press, and the default `Ctrl+Shift+Space` pause chord
+    /// dies outright at the first correction a Space ever triggers,
+    /// since that Space's own release is the one swallowed.
+    ///
+    /// Releases only, and whatever they match is dropped rather than
+    /// dispatched: we are inside `apply_correction` and must not
+    /// re-enter it.
+    pub(super) fn observe_swallowed_release(&self, ev: &KeyEvent) {
+        if ev.injected || ev.direction != KeyDirection::Release {
+            return;
+        }
+        let hk = *self.keystream_hotkeys.read();
+        let now = Instant::now();
+        let mut st = self.chord_state.lock();
+        if let Some(b) = hk.pause {
+            let _ = match_binding(ev, b, &mut st.pause, now);
+        }
+        if let Some(b) = hk.switch_last {
+            let _ = match_binding(ev, b, &mut st.switch, now);
+        }
+        if let Some(i) = suggestion_digit_index(ev.scancode) {
+            st.suggest_digit_down[i] = false;
+        }
     }
 
     /// The suggestion-accept digit chord (`<modifiers>+1` … `+9`).
@@ -63,27 +103,24 @@ impl SwitcherEngine {
     fn check_suggestion_chord(
         &self,
         ev: &KeyEvent,
-        state: &mut ChordState,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
-        // Digit row 1..=9 (SC Set-1 0x02..=0x0A).
-        let Some(index) = (0x02..=0x0A)
-            .contains(&ev.scancode)
-            .then(|| (ev.scancode - 0x02) as usize)
-        else {
+        let Some(index) = suggestion_digit_index(ev.scancode) else {
             return;
         };
-        let latched = &mut state.suggest_digit_down[index];
         match ev.direction {
             KeyDirection::Release => {
-                *latched = false;
+                self.chord_state.lock().suggest_digit_down[index] = false;
             }
             KeyDirection::Press => {
-                if *latched {
-                    return; // autorepeat
+                {
+                    let latched = &mut self.chord_state.lock().suggest_digit_down[index];
+                    if *latched {
+                        return; // autorepeat
+                    }
+                    *latched = true;
                 }
-                *latched = true;
                 let generation = {
                     let slot = self.pending_suggestion.lock();
                     slot.as_ref().and_then(|p| {
@@ -233,4 +270,12 @@ impl SwitcherEngine {
             warn!(%e, id = %cmd.id, "smart command: could not start worker thread");
         }
     }
+}
+
+/// Which suggestion-accept digit a scancode is, if any: the digit row
+/// `1`..=`9` (SC Set-1 `0x02`..=`0x0A`).
+fn suggestion_digit_index(scancode: u32) -> Option<usize> {
+    (0x02..=0x0A)
+        .contains(&scancode)
+        .then(|| (scancode - 0x02) as usize)
 }

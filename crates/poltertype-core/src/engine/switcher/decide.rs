@@ -75,6 +75,7 @@ impl SwitcherEngine {
             // An unfinished word has never been through `decide`, so
             // there is no correction of ours to undo.
             corrected_to: None,
+            user_placed: false,
         })
     }
 
@@ -186,7 +187,17 @@ impl SwitcherEngine {
             // Filled in by `apply_correction`; the stash is written
             // before the decision is made.
             corrected_to: None,
+            user_placed: false,
         });
+
+        // Paused stops the engine deciding, not the engine watching:
+        // the stash above is what the manual hotkey acts on, and a
+        // person who turned auto-switch off is exactly the person
+        // reaching for it (issue #36).
+        if *self.paused.read() {
+            debug!("paused — word stashed for the manual hotkey, no automatic decision");
+            return;
+        }
 
         // A hand switch between the word and the key that closed it.
         // The word on screen is still the *old* layout's rendering, so

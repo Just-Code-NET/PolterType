@@ -736,6 +736,7 @@ impl SwitcherEngine {
                 // sign the triggering chord has been let go of. See
                 // `modifiers_held`.
                 *self.held_modifiers.write() = ev.modifiers;
+                self.observe_swallowed_release(&ev);
             }
             if ev.injected || ev.direction != KeyDirection::Press {
                 continue;
@@ -792,62 +793,72 @@ impl SwitcherEngine {
         out
     }
 
+    /// The layout a force-switch moves a word to, given the one it
+    /// reads in now: the next along the OS's own list of active
+    /// layouts, wrapping. With two layouts that is just "the other
+    /// one"; with three it is what lets repeated presses reach the
+    /// third instead of bouncing between the first two (issue #37).
+    ///
+    /// The order has to be the same in every process. `HashMap::keys()`
+    /// was not, which is harmless while the DB holds exactly the two
+    /// active layouts and not at all harmless when it does not: a
+    /// failed `list_active()` loads all fifteen bundled layouts, the
+    /// force-switch aims at whichever came out first, and the
+    /// pre-flight refuses it — no keystroke, no word, no explanation.
+    /// So: what the OS says is switchable, else the DB sorted by name.
+    fn next_layout_after(&self, current: &LayoutId) -> Option<LayoutId> {
+        let mut ring: Vec<LayoutId> = self
+            .layout_switcher
+            .list_active()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|id| self.layouts.get(id).is_some())
+            .collect();
+        if ring.len() < 2 || !ring.contains(current) {
+            ring = self.layouts.ids().cloned().collect();
+            ring.sort();
+        }
+        let at = ring.iter().position(|id| id == current)?;
+        let next = ring[(at + 1) % ring.len()].clone();
+        (next != *current).then_some(next)
+    }
+
     /// The manual switch-last hotkey, in both of its situations.
     ///
-    /// **The engine left the word alone**: switch it, bypassing every
-    /// pre-decision filter, because the user asking outranks our
-    /// guesses.
-    ///
-    /// **The engine already switched it**: put it back, and teach the
-    /// word (see [`Self::learn_undone_word`]). Re-applying the same
+    /// **The engine already switched the word**: put it back, and teach
+    /// the word (see [`Self::learn_undone_word`]). Re-applying the same
     /// correction would make the one gesture a user reaches for when a
     /// correction is wrong do visibly nothing.
+    ///
+    /// **Anything else** — a word the engine left alone, or one this
+    /// same hotkey moved a moment ago — rotates on to the next layout,
+    /// bypassing every pre-decision filter, because the user asking
+    /// outranks our guesses. Rotating rather than undoing is what makes
+    /// the gesture repeatable: press again to take back a press that
+    /// was itself a mistake, or again to reach a third layout.
     pub(super) fn force_switch_last(
         &self,
         last: LastWord,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
     ) {
-        let (from, target) = match last.corrected_to.clone() {
-            Some(applied) => (applied, last.layout.clone()),
-            None => {
-                // With two layouts "the other one" is fine; generalising
-                // means re-running the detector pipeline with
-                // `min_advantage = 0`.
-                //
-                // Which "other one", though, was `HashMap::keys()` —
-                // a different answer in every process. That is harmless
-                // while the DB holds exactly the two active layouts,
-                // and not at all harmless when it does not: a failed
-                // `list_active()` loads all fifteen bundled layouts,
-                // the force-switch aims at whichever one came out
-                // first, and the pre-flight below refuses it and
-                // returns without a keystroke or a word to the user.
-                // Prefer what the OS says is switchable, and settle
-                // ties by name so the same machine answers the same way
-                // twice.
-                let active = self.layout_switcher.list_active().unwrap_or_default();
-                let other = active
-                    .iter()
-                    .find(|id| **id != last.layout && self.layouts.get(id).is_some())
-                    .cloned()
-                    .or_else(|| {
-                        let mut rest: Vec<_> = self
-                            .layouts
-                            .ids()
-                            .filter(|id| **id != last.layout)
-                            .collect();
-                        rest.sort();
-                        rest.first().map(|id| (*id).clone())
-                    });
-                let Some(other) = other else {
-                    warn!("only one layout known; can't force-switch");
-                    return;
-                };
-                (last.layout.clone(), other)
-            }
+        // Whatever the word reads in right now is where the switch
+        // starts from, and it is the engine's correction — never our
+        // own earlier press — that a press undoes.
+        let from = last
+            .corrected_to
+            .clone()
+            .unwrap_or_else(|| last.layout.clone());
+        let undoing = last.corrected_to.is_some() && !last.user_placed;
+        let target = if undoing {
+            last.layout.clone()
+        } else {
+            let Some(next) = self.next_layout_after(&from) else {
+                warn!("only one layout known; can't force-switch");
+                return;
+            };
+            next
         };
-        let undoing = last.corrected_to.is_some();
         let target_mapping = match self.layouts.get(&target) {
             Some(m) => m,
             None => {
@@ -855,15 +866,16 @@ impl SwitcherEngine {
                 return;
             }
         };
-        // What is on screen right now: the user's own rendering,
-        // unless our correction replaced it with the `from` one.
-        let on_screen = if undoing {
+        // What is on screen right now: the user's own rendering, unless
+        // something — our correction, or an earlier press of this very
+        // hotkey — replaced it with the `from` one.
+        let on_screen = if from == last.layout {
+            last.rendered.clone()
+        } else {
             self.layouts
                 .get(&from)
                 .map(|m| m.translate_buffer(&last.keys))
                 .unwrap_or_else(|| last.rendered.clone())
-        } else {
-            last.rendered.clone()
         };
         let restored = target_mapping.translate_buffer(&last.keys);
         let mut corrected = restored.clone();
@@ -912,9 +924,28 @@ impl SwitcherEngine {
             },
             Some((key_rx, buffer)),
         );
-        if applied && undoing {
+        if !applied {
+            return;
+        }
+        if undoing {
             self.learn_undone_word(&target, &restored, &from, &on_screen);
         }
+        // Put back what is now on screen, so the hotkey can be pressed
+        // again (issue #37): getting here consumed the stash, and
+        // without this the second press finds nothing and the gesture
+        // works exactly once per word. `user_placed` marks the new
+        // rendering as the user's own doing, which is what stops the
+        // next press reading as "undo a correction" and teaching the
+        // dictionary a word nobody rescued.
+        *self.last_force_switch.write() = Some(Instant::now());
+        *self.last_word.write() = Some(LastWord {
+            corrected_to: (target != last.layout).then(|| target.clone()),
+            keys: last.keys,
+            rendered: last.rendered,
+            layout: last.layout,
+            boundary: last.boundary,
+            user_placed: true,
+        });
     }
 
     /// Remember a word the user just rescued from a correction — the

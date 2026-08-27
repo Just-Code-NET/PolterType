@@ -332,6 +332,11 @@ pub struct LastWord {
     /// situations apart: `None` means apply the switch the engine
     /// declined, `Some` means undo the one it made.
     pub corrected_to: Option<LayoutId>,
+    /// Whether the layout the word currently reads in was chosen by the
+    /// user's own hotkey rather than by the engine. It is what keeps a
+    /// second press from "undoing" a correction nobody made: the first
+    /// press undoes and teaches, every press after it rotates on.
+    pub user_placed: bool,
 }
 
 /// The separator that closed a word, kept so a correction can put an

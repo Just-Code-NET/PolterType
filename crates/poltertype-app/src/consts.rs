@@ -153,3 +153,8 @@ words you actually see auto-corrected wrongly.
 pub(crate) const SWITCHER_PROBE_WINDOW: std::time::Duration = std::time::Duration::from_secs(15);
 pub(crate) const SWITCHER_PROBE_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
+
+/// How long a global hotkey may look "still held" before the next
+/// `Pressed` is treated as a fresh press anyway. Only the OS-grab path
+/// needs it — the keystream matcher latches on real key releases.
+pub(crate) const STUCK_HOTKEY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
