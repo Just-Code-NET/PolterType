@@ -14,6 +14,8 @@ user.
 
 - [Settings UI: why a separate process](#settings-ui-why-a-separate-process)
 - [Smart commands: why text triggers, not hotkeys](#smart-commands-why-text-triggers-not-hotkeys)
+- [Hotkeys with no key in them](#hotkeys-with-no-key-in-them)
+- [Choosing a layout backend on Linux](#choosing-a-layout-backend-on-linux)
 - [The correction path](#the-correction-path)
 - [Key gate: holding keystrokes back](#key-gate-holding-keystrokes-back)
 - [Plug-ins](#plug-ins)
@@ -42,7 +44,7 @@ UI cannot take down the engine or the keyboard hook; all three
 platforms behave identically with no per-platform thread juggling; and
 the UI can be run on its own, in a debugger, or from a test driver.
 
-Two consequences worth knowing before editing `settings_ui`:
+Four consequences worth knowing before editing `settings_ui`:
 
 - **The i18n catalog must be loaded before the first widget exists.**
   `tr` is called from the view function, which runs every frame.
@@ -56,6 +58,14 @@ Two consequences worth knowing before editing `settings_ui`:
   Controls that have to ask a plug-in are kicked off from
   `startup_task()` for exactly that reason, or the pane sits at
   "Asking the plug-in…" for ever.
+- **A gesture needs every subscription it is made of.** Capturing a
+  hotkey means `on_key_press` *and* `on_key_release`; with only the
+  first, a modifier tap updates the capture state and the gesture never
+  completes — which is exactly how modifier-only binding shipped
+  broken the first time. Nothing in the test suite can drive an iced
+  subscription, so logic that has to be checked belongs in a pure
+  function the subscription calls (`mod_capture_step`), not in the
+  handler.
 
 ## Smart commands: why text triggers, not hotkeys
 
@@ -109,6 +119,75 @@ collide with prose — a case-insensitive `best regards` would fire on
 an ordinary sign-off. **Placeholders that substitute typed text into
 an action**: for `run_shell` that is an argument-injection channel, and
 elsewhere nobody has asked for it.
+
+## Hotkeys with no key in them
+
+Either global hotkey can be bound to modifiers alone — `Shift+Shift`,
+or two held together like `Ctrl+Shift` (issue #32). Two properties of
+that shape decide the design.
+
+**It cannot be an OS hotkey.** `HotKey::new` needs a key code and there
+is none, so a modifier chord is matched off the raw key stream instead
+— the same stream the engine already reads on every platform, which is
+why `SetKeystreamHotkeys` goes out unconditionally while `os_grab()`
+covers only the `Key` bindings. It also has to be armed *before* the
+event loop starts: on a session where GTK's start-up blocks, the tray
+took 25 seconds to get there, and a hotkey that only works once the
+tray is up is one the user reports as broken.
+
+**Nothing fires on press.** The chord is judged when the last modifier
+comes back up, and only if the set held was *exactly* the chord's, no
+other key went down in between, and the hold was shorter than
+`MOD_TAP_MAX`. That is what lets `Shift+Shift` live beside `Ctrl+C`,
+`Ctrl+Shift+V` and typing capitals — each of those either dirties the
+gesture or fails the exact-set test — and the tap deadline is what
+keeps a Shift held while reaching for a capital from counting.
+
+Two shapes are refused, and for reasons that live outside the matcher.
+A **single** modifier is out because mouse buttons reach the engine on
+Linux only (`SC_POINTER_BUTTON`): on Windows and macOS a bare `Shift`
+binding would fire on every Shift+click, and a gesture that holds on
+one platform and misfires on the others is worse than no gesture.
+**Caps Lock** is out because it is observed rather than consumed —
+binding it would flip the lock as well as fire.
+
+Modifier chords are never consumed either: the keys still reach the
+focused application. For a bare modifier that is harmless, and it is
+why this is the one chord shape that behaves identically everywhere.
+
+## Choosing a layout backend on Linux
+
+Eight backends are probed in priority order (`linux/mod.rs`), and two
+rules decide which one takes the session. A bug wrote each of them.
+
+**A backend must be able to name a layout.** Ubuntu installs fcitx5
+with language support and autostarts it, so `fcitx5-remote -t 1` exits
+0 on a desktop where fcitx owns no input method at all, and `-n` then
+answers with an empty line. Before the rule, that backend won on GNOME,
+Xfce, MATE, LXQt, Budgie, sway, labwc and every bare WM, reported one
+layout whose id was the empty string, loaded zero layouts, and logged
+`layout switcher ready` on an app that could no longer correct
+anything. A backend that initialises but names nothing now stands down
+for the next one (`names_a_layout`).
+
+**A backend must be the mechanism the session actually uses.**
+`org.gnome.desktop.input-sources` lives in `dconf` — a file in the
+user's home directory, which outlives the session that wrote it — so a
+machine that once ran GNOME keeps a populated schema for ever. In i3,
+fluxbox, icewm, LXQt, openbox or Xfce/X11 the gsettings backend would
+then win, write a key nothing in that session reads, and decline every
+correction with "the desktop put the layout back before we could type".
+Finding the schema populated is therefore not enough: the session has
+to be one whose own daemon acts on it (`session_reads_this_schema`).
+The wlroots process check stays alongside that, because labwc reports
+itself as Budgie.
+
+Both rules are the same lesson as
+[#26](https://github.com/Just-Code-NET/PolterType/issues/26): probe by
+what a desktop *does*, never by what it ships or by what it calls
+itself. The X11 XKB backend is probed last for a related reason —
+where a desktop drives the session, locking the xkb group underneath it
+leaves that desktop's own indicator lying.
 
 ## The correction path
 
@@ -205,11 +284,20 @@ bounded by one burst.
 
 ## Plug-ins
 
-A plug-in is a **separate process**, never code loaded into this one.
-That is what keeps the process holding the global keyboard hook out of
-the blast radius of third-party code: a plug-in that panics, deadlocks
-or is outright malicious costs the user that plug-in, not their
-keyboard. Two kinds run — a **service**, started and stopped with
+Two kinds of thing are called a plug-in, and the manifest has to say
+which before anything is installed. A **pack** is data — layouts,
+wordlists, translations — and cannot execute at all; the installer's
+allow-list is what guarantees that, and
+[DATA_LAYOUT.md](DATA_LAYOUT.md) is its contract. An **extension**
+ships a program. The kind is declared rather than inferred, so a pack
+cannot quietly become executable by gaining a field.
+
+The rest of this section is about extensions. An extension is a
+**separate process**, never code loaded into this one. That is what
+keeps the process holding the global keyboard hook out of the blast
+radius of third-party code: a plug-in that panics, deadlocks or is
+outright malicious costs the user that plug-in, not their keyboard.
+Two kinds of process run — a **service**, started and stopped with
 PolterType, and a **command**, a one-shot invocation behind a menu
 entry or a button.
 
@@ -272,92 +360,84 @@ choose what it looks like.
 A plug-in describes its settings; PolterType draws them. That is the
 whole isolation story on the UI side — a plug-in cannot render a pixel,
 so it cannot imitate a system prompt, PolterType's own dialogs or
-another plug-in. What it can declare is a small closed set of controls
-(toggle, choice, suggest, text, number, decimal, list-of-strings,
-button, report, list, records, section) bound to dotted keys in **its
-own** config file. Edits go through `toml_edit`, so the prose in that
-file — which is where a plug-in explains what each switch costs —
-survives.
+another plug-in. What it may declare is a small closed set of controls
+(toggle, choice, suggest, text, number, decimal, strings, button,
+report, list, records, section) bound to dotted keys in **its own**
+config file. Edits go through `toml_edit`, so the prose in that file —
+where a plug-in explains what each switch costs — survives. A control
+kind this PolterType does not know loads as `Unknown` rather than
+failing the parse, because serde's refusal would take the whole
+manifest, and the plug-in with it, over one word from a newer version.
 
 Seven decisions worth keeping:
 
 - **A decimal is not a number.** TOML's integer and float are different
   types to the program reading the file back, and a plug-in expecting
-  `0.35` refuses to start on `1`. So `decimal` is its own control kind
-  and always writes a float, even for a round value.
-- **Typing does not write.** A value settles when the user does
-  something else, and at the latest when the window closes. Saving on
-  every keystroke — which this pane used to do — walks a threshold on
-  its way from `0.9` to `0.95` through `0`, and for the length of a
-  keystroke a gate in a running plug-in is wide open.
+  `0.35` cannot parse `1`. So `decimal` is its own kind and always
+  writes a float, even for a round value.
+- **Typing does not write.** A value settles when the user moves on,
+  and at the latest when the window closes. Saving on every keystroke —
+  which this pane used to do — walks a threshold from `0.9` to `0.95`
+  through `0`, and for the length of that keystroke a gate in a running
+  plug-in is wide open.
 - **Sections are navigation, not decoration.** A capable plug-in has
-  around a hundred settings; PolterType lists its sections beside the
-  window's own nav and shows one at a time. A section nobody is looking
-  at is also unasked — a `list` whose rows come from the plug-in does
-  not spawn it until its section is on screen, which is what keeps
+  around a hundred settings, so PolterType lists its sections beside
+  the window's own nav and shows one at a time. A section nobody is
+  looking at is also unasked: a `list` whose rows come from the plug-in
+  is not spawned until its section is on screen, which is what keeps
   opening this pane from waking every chat client on the machine.
   Exactly one region of the pane scrolls, so a wheel never lands on an
   ambiguous boundary.
-- **An option may explain itself, and then it stops being a drop-down.**
-  A `choice` between `ask`, `auto` and `off` is three words and a
-  drop-down is right. A choice between nine language models is not: they
-  have to be *compared*, and a drop-down shows one at a time with
-  nowhere to put the sentence saying what each is for. So an option can
-  be a table carrying a `detail` and a `link`, and a choice with any
-  described option is drawn as a column of radio rows instead. The link
-  is `https` only — refused at manifest load, checked again at the click
-  — and its **visible text is the address**, because a plug-in supplying
-  a destination is a third party deciding where PolterType sends
-  somebody, and a friendly label over an arbitrary URL is exactly the
-  shape of thing the draw-it-ourselves rule exists to prevent.
-- **`records` is for a setting that is a list of composite things.**
-  Scheduled messages, each with an application, a conversation, a time
-  and a text: a `strings` list gives one line per entry with no
-  structure, and numbered slots cap at whatever number somebody guessed.
-  A `records` control names an array of tables in the plug-in's config
-  and declares what one row holds; PolterType draws one card per entry
-  with Add and Remove. Row fields are single names, not dotted paths,
-  and cannot themselves be sections, buttons, reports or more records —
-  a pane that nests is a config editor, and this is not one. A new row
-  is written **empty**: the plug-in's own defaults apply to every field
-  left out, and guessing at them would schedule a message at an hour
-  nobody chose.
+- **An option that has to be explained stops being a drop-down.** A
+  `choice` between `ask`, `auto` and `off` is three words. A choice
+  between nine language models has to be *compared*, and a drop-down
+  shows one at a time with nowhere to put the sentence saying what each
+  is for — so an option may carry a `detail` and a `link`, and a choice
+  with any described option is drawn as a column of radio rows instead.
+  The link is `https` only, refused at manifest load and checked again
+  at the click, and its **visible text is the address**: a plug-in
+  supplying a destination is a third party deciding where PolterType
+  sends somebody, and a friendly label over an arbitrary URL is exactly
+  the shape the draw-it-ourselves rule exists to prevent.
+- **`records` is for a setting that is a list of composite things** —
+  entries of several fields each, where a `strings` list gives one
+  unstructured line per entry and numbered slots cap at whatever number
+  somebody guessed. The control names an array of tables and declares
+  what one row holds; PolterType draws a card per entry with Add and
+  Remove. Row fields are single names, not dotted paths, and cannot
+  themselves be sections, buttons, reports or more records — a pane
+  that nests is a config editor, and this is not one. A new row is
+  written **empty**, so the plug-in's own defaults cover every field
+  left out rather than a value nobody chose.
 - **A `suggest` is a text box that knows the answers, not a choice with
-  an escape hatch.** Which conversation a standing message goes to has
-  candidates — the ones the plug-in can see — but no closed set: the
-  conversation somebody wants may be in a client that is not running,
-  and a `choice` would offer no way to say so. So `suggest` is free text
-  with the candidates listed beside it, narrowing as it is typed into;
-  they come from the manifest's own `options`, from a `command` (the
-  same tab-separated rows a `list` ticks), or from both. **The row's id
-  is what gets written, never its label** — what is picked has to be
-  what is stored, and a conversation name that reads well but names
-  nobody is a message sent to nobody. While the plug-in has not answered
-  the box is a plain text box rather than a dead drop-down, because the
-  value has to stay editable throughout. The whole reason it exists: the
-  conversation names in this pane were typed by hand until it did, and a
-  name typed one character wrong is a message that never goes out.
-  Its matches are drawn **inline and bounded** — at most a handful under
-  the box, the rest counted — rather than in an overlay: iced's own
-  combo box sizes its overlay to its options, and ninety-five
-  conversations covered the whole form. Typing opens the list and
-  narrows it; a small `↓` opens it without typing. Nothing here scrolls
-  on its own, for the reason at the top of `view_plugins.rs`.
+  an escape hatch.** Its candidates are whatever the plug-in can see,
+  but the set is not closed: what somebody wants may live in a client
+  that is not running, and a `choice` gives no way to say so. So it is
+  free text with the candidates beside it, narrowing as it is typed
+  into, fed by the manifest's `options`, by a `command` (the same
+  tab-separated rows a `list` ticks), or by both. **The row's id is
+  what gets written, never its label** — what is picked has to be what
+  is stored, and a name that reads well but identifies nobody is a
+  message sent to nobody. Until the plug-in answers, the box stays a
+  plain text box rather than a dead drop-down. Matches are drawn
+  **inline and bounded** — a handful under the box, the rest counted —
+  because iced's own combo box sizes its overlay to its options, and
+  ninety-five of them covered the whole form.
 - **A row of a `records` group can be acted on.** A group may declare
   `actions` and an `id_field`; each action is a button on that row's
-  card, running a declared command with `{id}` replaced by that field's
-  value — one whole argument, never pasted into one, exactly as a tray
-  list's per-row action works. Without it a settings pane can describe
-  "send this at nine on Tuesday" and offer no way to find out before
-  Tuesday whether it works, which for the one feature here that writes
-  to another person unattended is the wrong trade. A row whose naming
-  field is empty gets the button **visibly disabled** rather than
-  hidden: a command run against a nameless row is a command run against
-  nothing. The button **waits for its command and shows what it
-  printed**: "did it go?" is the only question it is pressed to answer,
-  and a detached run answers it nowhere. It runs off the UI thread with
-  a deadline long enough for an action that opens another application
-  and types (90 s, against a report's 6), then refreshes the reports it
-  just invalidated — the reports only, since re-asking a conversation
-  list would wake a chat client for a press that had nothing to do with
-  it. One at a time: these steal focus.
+  card, running a declared command with `{id}` substituted as one whole
+  argument, never pasted into one — exactly as a tray list's per-row
+  action works. Without it a pane can describe "send this at nine on
+  Tuesday" and offer no way to find out before Tuesday whether it
+  works, which for the one feature that writes to another person
+  unattended is the wrong trade. A row whose naming field is empty gets
+  the button **visibly disabled** rather than hidden: a command run
+  against a nameless row is a command run against nothing. The button
+  **waits for its command and shows what it printed**, because "did it
+  go?" is the only question it is pressed to answer and a detached run
+  answers it nowhere. It runs off the UI thread with a deadline long
+  enough for an action that opens another application and types
+  (`ACTION_TIMEOUT`, 90 s, against a report's 6), then refreshes the
+  reports it just invalidated — those only, since re-asking a list
+  would wake a client for a press that had nothing to do with it. One
+  at a time: these steal focus.
