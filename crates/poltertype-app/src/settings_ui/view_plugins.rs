@@ -20,8 +20,7 @@
 //! pointer happened to be over. So those grow to their content.
 
 use iced::widget::{
-    Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
-    horizontal_rule,
+    Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput, rule,
 };
 use iced::{Alignment, Element, Length, Padding};
 use poltertype_core::plugins::{ControlKind, SettingValue};
@@ -94,7 +93,7 @@ impl SettingsApp {
         let mut body = Column::new().spacing(12).push(section_title(b, "Plug-ins"));
         for (index, _) in self.plugins.iter().enumerate() {
             if index > 0 {
-                body = body.push(horizontal_rule(1).style(theme::hairline));
+                body = body.push(rule::horizontal(1).style(theme::hairline));
             }
             body = body.push(self.plugin_card(index));
         }
@@ -179,7 +178,7 @@ impl SettingsApp {
         let mut card = Column::new()
             .spacing(10)
             .push(head)
-            .push(horizontal_rule(1).style(theme::hairline))
+            .push(rule::horizontal(1).style(theme::hairline))
             .push(body);
 
         if let Some(status) = &pane.status {
@@ -301,12 +300,13 @@ impl SettingsApp {
                             .width(Length::Fill),
                     );
                 }
-                head.push(horizontal_rule(1).style(theme::hairline)).into()
+                head.push(rule::horizontal(1).style(theme::hairline)).into()
             }
 
             ControlKind::Toggle => self.field(
                 control,
-                Checkbox::new("", matches!(value, SettingValue::Bool(true)))
+                Checkbox::new(matches!(value, SettingValue::Bool(true)))
+                    .label("")
                     .on_toggle(move |on| Message::PluginToggled(plugin, index, on))
                     .into(),
             ),
@@ -343,7 +343,7 @@ impl SettingsApp {
             ControlKind::Number | ControlKind::Decimal => self.field(
                 control,
                 Row::new()
-                    .push(Space::with_width(Length::Fill))
+                    .push(Space::new().width(Length::Fill))
                     .push(
                         TextInput::new(PLUGIN_DEFAULT_SHORT, &typed)
                             .size(13)
@@ -818,24 +818,22 @@ impl SettingsApp {
                 })
             }
 
-            ControlKind::Toggle => Checkbox::new(
-                field.label.as_str(),
-                matches!(stored, Some(SettingValue::Bool(true))),
-            )
-            .text_size(12)
-            .on_toggle({
-                let key = key.clone();
-                move |on| {
-                    Message::PluginRecordChanged(
-                        plugin,
-                        index,
-                        row,
-                        key.clone(),
-                        SettingValue::Bool(on),
-                    )
-                }
-            })
-            .into(),
+            ControlKind::Toggle => Checkbox::new(matches!(stored, Some(SettingValue::Bool(true))))
+                .label(field.label.as_str())
+                .text_size(12)
+                .on_toggle({
+                    let key = key.clone();
+                    move |on| {
+                        Message::PluginRecordChanged(
+                            plugin,
+                            index,
+                            row,
+                            key.clone(),
+                            SettingValue::Bool(on),
+                        )
+                    }
+                })
+                .into(),
 
             ControlKind::Choice => PickList::new(
                 field
@@ -937,7 +935,7 @@ impl SettingsApp {
             if !option.detail().trim().is_empty() {
                 entry = entry.push(
                     Row::new()
-                        .push(Space::with_width(Length::Fixed(26.0)))
+                        .push(Space::new().width(Length::Fixed(26.0)))
                         .push(
                             Text::new(option.detail())
                                 .size(11)
@@ -950,7 +948,7 @@ impl SettingsApp {
             if !link.is_empty() {
                 entry = entry.push(
                     Row::new()
-                        .push(Space::with_width(Length::Fixed(22.0)))
+                        .push(Space::new().width(Length::Fixed(22.0)))
                         .push(
                             Button::new(Text::new(link.to_owned()).size(11))
                                 .style(theme::link)
@@ -1021,7 +1019,8 @@ impl SettingsApp {
                         let ticked = pane.in_array(index, &row.id);
                         let id = row.id.clone();
                         let mut entry = Column::new().spacing(2).push(
-                            Checkbox::new(row.label.as_str(), ticked)
+                            Checkbox::new(ticked)
+                                .label(row.label.as_str())
                                 .text_size(13)
                                 .on_toggle(move |on| {
                                     Message::PluginListToggled(plugin, index, id.clone(), on)
@@ -1033,7 +1032,7 @@ impl SettingsApp {
                             // than to the next one.
                             entry = entry.push(
                                 Row::new()
-                                    .push(Space::with_width(Length::Fixed(26.0)))
+                                    .push(Space::new().width(Length::Fixed(26.0)))
                                     .push(
                                         Text::new(row.detail.clone())
                                             .size(11)

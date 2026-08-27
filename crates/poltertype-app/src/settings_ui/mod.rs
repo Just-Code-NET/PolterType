@@ -87,8 +87,35 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
     // `exit_on_close_request(false)` is load-bearing: the window
     // intercepts the close request to flush an unsaved wordlist edit
     // before closing. See `docs/ARCHITECTURE.md` § Settings UI.
-    let app = iced::application(SettingsApp::title, SettingsApp::update, SettingsApp::view)
-        .theme(SettingsApp::theme)
+    let store_for_init = Arc::clone(&store);
+    // iced 0.14 takes the boot function where 0.13 took the title, and
+    // `run_with` folded into `run` once boot was a constructor
+    // argument. Same two jobs, in the other order.
+    //
+    // Boot has to be `Fn` rather than `FnOnce`, so the closure clones
+    // what it hands over rather than moving it. iced calls it once and
+    // the payload is a handful of strings and an `Arc`; a cell holding
+    // it for a single take would buy nothing but a panic path.
+    let app = iced::application(
+        move || {
+            let mut app = SettingsApp::new(
+                initial_settings.clone(),
+                os_layouts.clone(),
+                path.clone(),
+                Arc::clone(&store_for_init),
+                initial,
+                layout_backend.clone(),
+            );
+            // The pane the window opens on never fires its selection
+            // handler, so its plug-in queries start here or never.
+            let first = app.startup_task();
+            (app, first)
+        },
+        SettingsApp::update,
+        SettingsApp::view,
+    )
+    .title(SettingsApp::title)
+    .theme(SettingsApp::theme)
         .subscription(SettingsApp::subscription)
         // Every label that names no font of its own. Left at iced's
         // default this asks for a family most machines do not have —
@@ -119,22 +146,8 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
             ..Default::default()
         });
 
-    let store_for_init = Arc::clone(&store);
-    app.run_with(move || {
-        let mut app = SettingsApp::new(
-            initial_settings,
-            os_layouts,
-            path,
-            store_for_init,
-            initial,
-            layout_backend,
-        );
-        // The pane the window opens on never fires its selection
-        // handler, so its plug-in queries start here or never.
-        let first = app.startup_task();
-        (app, first)
-    })
-    .map_err(|e| anyhow::anyhow!("iced runtime: {e}"))?;
+    app.run()
+        .map_err(|e| anyhow::anyhow!("iced runtime: {e}"))?;
 
     Ok(())
 }

@@ -37,7 +37,7 @@ impl SettingsApp {
         let mut steps = Column::new().spacing(14);
         for (i, step) in report.steps.iter().enumerate() {
             if i > 0 {
-                steps = steps.push(Space::with_height(2));
+                steps = steps.push(Space::new().height(2));
             }
             steps = steps.push(self.step_row(step));
         }
@@ -50,7 +50,7 @@ impl SettingsApp {
             .iter()
             .any(|s| s.state == StepState::NeedsRelogin)
         {
-            steps = steps.push(Space::with_height(6));
+            steps = steps.push(Space::new().height(6));
             steps = steps.push(
                 Text::new(
                     "Already set up — but this login session started before it, and a session \
@@ -176,7 +176,7 @@ impl SettingsApp {
             .push(Text::new(step.detail.clone()).size(12).color(b.muted));
 
         if let Some(action) = &step.action {
-            text_col = text_col.push(Space::with_height(2));
+            text_col = text_col.push(Space::new().height(2));
             text_col = text_col.push(action_button(action));
         }
 

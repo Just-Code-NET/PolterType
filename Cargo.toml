@@ -144,11 +144,14 @@ base64        = "0.22"
 # custom side-nav. `canvas` draws the vector brand mark in the
 # Settings sidebar — far lighter than pulling an SVG renderer
 # (resvg) in for one static logo.
-iced = { version = "0.13", default-features = false, features = [
+iced = { version = "0.14", default-features = false, features = [
     "tiny-skia",
     "advanced",
-    "auto-detect-theme",
+    "linux-theme-detection",
     "canvas",
+    "wayland",
+    "x11",
+    "thread-pool",
 ] }
 
 # Linux: evdev / X11. (poltertype-layout's D-Bus access stays a

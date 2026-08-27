@@ -222,7 +222,16 @@ impl SettingsApp {
     /// colour never repeats marks the whole window damaged, so every
     /// present redraws in full. The epsilon cycles a prime 251 steps of
     /// at most 1/1024, far below 8-bit output precision, so rendered
-    /// pixels are identical frame to frame. Remove at iced 0.14.
+    /// pixels are identical frame to frame.
+    ///
+    /// Still here on iced 0.14, and deliberately: the two other
+    /// tiny-skia workarounds it shipped beside were re-measured and
+    /// dropped, but this one guards a fault that only shows as
+    /// *flicker during a live palette change*, which no test sees and
+    /// a screenshot cannot catch. Removing it on the strength of a
+    /// version bump would be guessing. To settle it: change the theme
+    /// with the window up, capture rapid `grim` frames and compare
+    /// them (`magick compare -metric AE`) with the jitter removed.
     pub(super) fn backdrop_color(&self) -> iced::Color {
         let bg = self.brand().bg;
         let n = self.bg_jitter.get().wrapping_add(1);
@@ -245,7 +254,17 @@ impl SettingsApp {
         if self.capturing.is_none() {
             return close_sub;
         }
-        let capture_sub = iced::keyboard::on_key_press(|key, modifiers| {
+        // iced 0.14 replaced `on_key_press` / `on_key_release` with a
+        // single event stream. `listen_with` takes a plain `fn`, not a
+        // closure — which these already were, having nothing to
+        // capture: the capture state lives in `self.capturing` and is
+        // read by `update`, not here.
+        let capture_sub = iced::event::listen_with(|event, _status, _window| {
+            let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) =
+                event
+            else {
+                return None;
+            };
             // Swallowing Esc here would read as a frozen UI: it is what
             // people press once they realise they don't want to rebind.
             if matches!(key, Key::Named(Named::Escape)) {
@@ -271,7 +290,13 @@ impl SettingsApp {
         // The other half of a modifier-only gesture, and the half that
         // decides it: a chord of modifiers is judged when they come
         // back up. Without this the press above only ever accumulated.
-        let release_sub = iced::keyboard::on_key_release(|key, modifiers| {
+        let release_sub = iced::event::listen_with(|event, _status, _window| {
+            let iced::Event::Keyboard(iced::keyboard::Event::KeyReleased {
+                key, modifiers, ..
+            }) = event
+            else {
+                return None;
+            };
             mod_role_of(&key).map(|role| Message::HotkeyModifier {
                 role,
                 pressed: false,

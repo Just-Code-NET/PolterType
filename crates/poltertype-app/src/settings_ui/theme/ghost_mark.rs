@@ -5,19 +5,11 @@
 //! poltertype.com show the same face. Vector, so it stays crisp at
 //! any scale / DPI without pulling an SVG renderer into the binary.
 
-use iced::advanced::graphics::geometry::Renderer as GeometryRenderer;
-use iced::advanced::graphics::geometry::frame::Backend as _;
 use iced::mouse::Cursor;
-use iced::widget::canvas::{self, Geometry, LineCap, Path, Stroke};
-use iced::{Point, Rectangle, Renderer, Size, Theme, Vector};
+use iced::widget::canvas::{self, Frame, Geometry, LineCap, Path, Stroke};
+use iced::{Point, Rectangle, Renderer, Size, Theme};
 
 use super::consts::{MARK_FACE, MARK_GHOST, MARK_KEYCAP_FACE, MARK_KEYCAP_TOP};
-
-/// The renderer's concrete geometry frame (tiny-skia's). Named through
-/// the associated type so no direct `iced_tiny_skia` dependency is
-/// needed; if the renderer ever changes (e.g. the `wgpu` feature gets
-/// enabled), this stops compiling loudly instead of mis-rendering.
-type RawFrame = <Renderer as GeometryRenderer>::Frame;
 
 /// Canvas program painting the mark into its bounds. Use as
 /// `Canvas::new(GhostMark).width(n).height(n)` — the drawing scales
@@ -30,23 +22,28 @@ impl<Message> canvas::Program<Message> for GhostMark {
     fn draw(
         &self,
         _state: &Self::State,
-        _renderer: &Renderer,
+        renderer: &Renderer,
         _theme: &Theme,
         bounds: Rectangle,
         _cursor: Cursor,
     ) -> Vec<Geometry> {
-        // NOT the idiomatic `Frame::new(renderer, bounds.size())`: that
-        // stores the clip in canvas-local coordinates while iced 0.13's
-        // tiny-skia compositor applies it as a window-global mask, so
-        // any canvas away from the window's top-left has its fills
-        // masked out. (An infinite clip unmasks them but poisons damage
-        // tracking, and the window blinks between stale buffers after a
-        // palette change.) Clip to the real window-global bounds
-        // instead, then cancel the translation the frame bakes in — the
-        // canvas widget already positions the geometry group. Drop this
-        // at iced 0.14.
-        let mut frame = RawFrame::with_clip(bounds);
-        frame.translate(Vector::new(-bounds.x, -bounds.y));
+        // Canvas-local, which is what a canvas program is supposed to
+        // draw in. Under iced 0.13 this was not usable: the tiny-skia
+        // compositor took the frame's canvas-local clip and applied it
+        // as a window-global mask, so any canvas away from the window's
+        // top-left had its fills masked away — the mark drew as an
+        // empty square. The workaround clipped to window-global bounds
+        // and cancelled the translation the frame baked in.
+        //
+        // The idiomatic frame, which iced 0.13 could not be given: its
+        // tiny-skia compositor took the canvas-local clip and applied
+        // it as a window-global mask, so any canvas away from the
+        // window's top-left drew as an empty square, and the mark went
+        // through a raw frame clipped to window-global bounds instead.
+        // 0.14 fixed the mask, and all three raw-frame spellings were
+        // checked on screen before this one: they draw the mark at the
+        // window's origin, or masked down to a sliver, or not at all.
+        let mut frame = Frame::new(renderer, bounds.size());
         // Author coordinates below are the SVG's 64×64 viewBox.
         frame.scale(bounds.width.min(bounds.height) / 64.0);
 

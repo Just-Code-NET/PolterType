@@ -19,6 +19,7 @@ static LIGHT_THEME: LazyLock<Theme> = LazyLock::new(|| {
             text: LIGHT.ink,
             primary: LIGHT.brand,
             success: LIGHT.ecto,
+            warning: LIGHT.warn,
             danger: LIGHT.garble,
         },
     )
@@ -32,6 +33,7 @@ static DARK_THEME: LazyLock<Theme> = LazyLock::new(|| {
             text: DARK.ink,
             primary: DARK.brand,
             success: DARK.ecto,
+            warning: DARK.warn,
             danger: DARK.garble,
         },
     )

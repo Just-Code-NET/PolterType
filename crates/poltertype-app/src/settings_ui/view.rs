@@ -7,7 +7,7 @@
 
 use iced::widget::{
     Button, Canvas, Checkbox, Column, Container, Row, Scrollable, Space, Text, TextInput,
-    container, horizontal_rule, text_editor, vertical_rule,
+    container, rule, text_editor,
 };
 use iced::{Alignment, Element, Font, Length, Padding};
 
@@ -60,7 +60,7 @@ impl SettingsApp {
 
         let main = Row::new()
             .push(self.nav_panel())
-            .push(vertical_rule(1).style(theme::hairline))
+            .push(rule::vertical(1).style(theme::hairline))
             .push(
                 Container::new(content)
                     .width(Length::Fill)
@@ -142,7 +142,7 @@ impl SettingsApp {
                 .push(item("Suggestions", Pane::Suggestions))
                 .push(item("Plug-ins", Pane::Plugins))
                 .push(item("About", Pane::About))
-                .push(Space::with_height(Length::Fill))
+                .push(Space::new().height(Length::Fill))
                 .push(
                     Text::new(concat!("v", env!("CARGO_PKG_VERSION")))
                         .size(11)
@@ -228,7 +228,8 @@ impl SettingsApp {
                                 .width(Length::FillPortion(2)),
                         )
                         .push(
-                            Checkbox::new(tr("languages.active", "Active"), is_active_effective)
+                            Checkbox::new(is_active_effective)
+                                .label(tr("languages.active", "Active"))
                                 .text_size(13)
                                 .on_toggle({
                                     let id = id.clone();
@@ -237,7 +238,8 @@ impl SettingsApp {
                                 .width(Length::FillPortion(1)),
                         )
                         .push(
-                            Checkbox::new(tr("languages.ignore", "Ignore"), is_ignored)
+                            Checkbox::new(is_ignored)
+                                .label(tr("languages.ignore", "Ignore"))
                                 .text_size(13)
                                 .on_toggle({
                                     let id = id.clone();
@@ -536,14 +538,14 @@ impl SettingsApp {
 
         let status: Element<'_, Message> = match &self.command_status {
             Some(banner) => status_line(b, banner),
-            None => Space::with_width(Length::Shrink).into(),
+            None => Space::new().width(Length::Shrink).into(),
         };
         form = form.push(
             Row::new()
                 .spacing(8)
                 .align_y(Alignment::Center)
                 .push(status)
-                .push(Space::with_width(Length::Fill))
+                .push(Space::new().width(Length::Fill))
                 .push(
                     Button::new(Text::new(tr("commands.add_command", "Add command")).size(12))
                         .on_press(Message::CommandAdd)
@@ -727,11 +729,11 @@ impl SettingsApp {
                 .color(b.warn)
                 .into()
         } else {
-            Space::with_width(Length::Shrink).into()
+            Space::new().width(Length::Shrink).into()
         };
         let status: Element<'_, Message> = match &self.wordlist_status {
             Some(banner) => status_line(b, banner),
-            None => Space::with_width(Length::Shrink).into(),
+            None => Space::new().width(Length::Shrink).into(),
         };
 
         // No per-pane Save / Reload: the footer pair covers
@@ -742,7 +744,7 @@ impl SettingsApp {
             Row::new()
                 .spacing(8)
                 .push(dirty_marker)
-                .push(Space::with_width(Length::Fill))
+                .push(Space::new().width(Length::Fill))
                 .push(status),
         );
 
@@ -846,48 +848,40 @@ impl SettingsApp {
             .spacing(12)
             .push(section_title(b, tr("general.behaviour", "Behaviour")))
             .push(
-                Checkbox::new(
-                    tr(
+                Checkbox::new(g.autostart)
+                    .label(tr(
                         "general.start_automatically_when_i",
                         "Start automatically when I sign in",
-                    ),
-                    g.autostart,
-                )
-                .text_size(13)
-                .on_toggle(Message::AutostartToggled),
+                    ))
+                    .text_size(13)
+                    .on_toggle(Message::AutostartToggled),
             )
             .push(
-                Checkbox::new(
-                    tr(
+                Checkbox::new(g.sound_on_correct)
+                    .label(tr(
                         "general.play_soft_chime_on",
                         "Play a soft chime on correction",
-                    ),
-                    g.sound_on_correct,
-                )
-                .text_size(13)
-                .on_toggle(Message::SoundOnCorrectToggled),
+                    ))
+                    .text_size(13)
+                    .on_toggle(Message::SoundOnCorrectToggled),
             )
             .push(
-                Checkbox::new(
-                    tr(
+                Checkbox::new(g.show_notifications)
+                    .label(tr(
                         "general.show_second_system_notification",
                         "Show a 2-second system notification on auto-switch",
-                    ),
-                    g.show_notifications,
-                )
-                .text_size(13)
-                .on_toggle(Message::ShowNotificationsToggled),
+                    ))
+                    .text_size(13)
+                    .on_toggle(Message::ShowNotificationsToggled),
             )
             .push(
-                Checkbox::new(
-                    tr(
+                Checkbox::new(e.suppress_in_identifiers)
+                    .label(tr(
                         "general.skip_auto_switch_on",
                         "Skip auto-switch on identifiers (foo_bar, snake_case, …)",
-                    ),
-                    e.suppress_in_identifiers,
-                )
-                .text_size(13)
-                .on_toggle(Message::SuppressInIdentifiersToggled),
+                    ))
+                    .text_size(13)
+                    .on_toggle(Message::SuppressInIdentifiersToggled),
             )
             .push(
                 Row::new()
@@ -999,15 +993,13 @@ impl SettingsApp {
             .spacing(12)
             .push(section_title(b, tr("general.updates", "Updates")))
             .push(
-                Checkbox::new(
-                    tr(
+                Checkbox::new(u.enabled)
+                    .label(tr(
                         "general.download_new_versions_automatically",
                         "Download new versions automatically, install on restart",
-                    ),
-                    u.enabled,
-                )
-                .text_size(13)
-                .on_toggle(Message::AutoUpdateToggled),
+                    ))
+                    .text_size(13)
+                    .on_toggle(Message::AutoUpdateToggled),
             )
             .push(interval_row)
             .push(
@@ -1126,15 +1118,13 @@ impl SettingsApp {
             .spacing(12)
             .push(section_title(b, tr("suggestions.tooltip", "Tooltip")))
             .push(
-                Checkbox::new(
-                    tr(
+                Checkbox::new(s.enabled)
+                    .label(tr(
                         "suggestions.show_suggestions_mistyped_words",
                         "Show suggestions for mistyped words",
-                    ),
-                    s.enabled,
-                )
-                .text_size(13)
-                .on_toggle(Message::SuggestionsToggled),
+                    ))
+                    .text_size(13)
+                    .on_toggle(Message::SuggestionsToggled),
             )
             .push(max_row)
             .push(timeout_row);
@@ -1222,9 +1212,9 @@ impl SettingsApp {
             .spacing(6)
             .width(Length::Fill)
             .align_x(Alignment::Center)
-            .push(Space::with_height(10))
+            .push(Space::new().height(10))
             .push(Canvas::new(GhostMark).width(64).height(64))
-            .push(Space::with_height(4))
+            .push(Space::new().height(4))
             .push(
                 Text::new("PolterType")
                     .size(24)
@@ -1250,7 +1240,7 @@ impl SettingsApp {
                     .push(link_button("GitHub", REPO_URL))
                     .push(link_button("Report an issue", ISSUES_URL)),
             )
-            .push(Space::with_height(6));
+            .push(Space::new().height(6));
 
         let escape_hatches = Column::new()
             .spacing(12)
@@ -1312,11 +1302,11 @@ impl SettingsApp {
                 .size(12)
                 .color(if banner.is_error { b.garble } else { b.ecto })
                 .into(),
-            None => Space::with_width(Length::Shrink).into(),
+            None => Space::new().width(Length::Shrink).into(),
         };
 
         Column::new()
-            .push(horizontal_rule(1).style(theme::hairline))
+            .push(rule::horizontal(1).style(theme::hairline))
             .push(
                 Row::new()
                     .padding(Padding {
@@ -1328,7 +1318,7 @@ impl SettingsApp {
                     .spacing(10)
                     .align_y(Alignment::Center)
                     .push(banner)
-                    .push(Space::with_width(Length::Fill))
+                    .push(Space::new().width(Length::Fill))
                     .push(
                         Button::new(Text::new(tr("footer.reload", "Reload")).size(13))
                             .on_press(Message::Reload)

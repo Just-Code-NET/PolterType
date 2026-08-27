@@ -57,6 +57,9 @@ pub fn keycap(theme: &Theme) -> container::Style {
             offset: Vector::new(0.0, 2.0),
             blur_radius: 0.0,
         },
+        // The whole look is a hard 1 px border over a 2 px side; a
+        // half-pixel edge blurs both.
+        snap: true,
     }
 }
 
@@ -65,9 +68,12 @@ pub fn hairline(theme: &Theme) -> rule::Style {
     let p = brand_palette(theme);
     rule::Style {
         color: p.line,
-        width: 1,
         radius: 0.0.into(),
         fill_mode: rule::FillMode::Full,
+        // Thickness is no longer part of the style in iced 0.14 — it is
+        // the argument to `rule::horizontal` / `rule::vertical`, which
+        // every call site already passes as 1.
+        snap: true,
     }
 }
 
@@ -213,7 +219,7 @@ pub fn link(theme: &Theme, status: button::Status) -> button::Style {
 pub fn input(theme: &Theme, status: text_input::Status) -> text_input::Style {
     let p = brand_palette(theme);
     let border_color = match status {
-        text_input::Status::Focused => p.brand,
+        text_input::Status::Focused { .. } => p.brand,
         text_input::Status::Hovered => p.muted,
         _ => p.line,
     };
@@ -235,7 +241,7 @@ pub fn input(theme: &Theme, status: text_input::Status) -> text_input::Style {
 pub fn editor(theme: &Theme, status: text_editor::Status) -> text_editor::Style {
     let p = brand_palette(theme);
     let border_color = match status {
-        text_editor::Status::Focused => p.brand,
+        text_editor::Status::Focused { .. } => p.brand,
         text_editor::Status::Hovered => p.muted,
         _ => p.line,
     };
@@ -246,7 +252,6 @@ pub fn editor(theme: &Theme, status: text_editor::Status) -> text_editor::Style 
             width: 1.0,
             radius: 8.0.into(),
         },
-        icon: p.muted,
         placeholder: with_alpha(p.muted, 0.7),
         value: p.ink,
         selection: with_alpha(p.brand, 0.35),

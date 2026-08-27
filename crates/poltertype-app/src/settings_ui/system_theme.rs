@@ -17,13 +17,14 @@
 
 use std::process::Command;
 
-use iced::Theme;
-
 /// True when the OS prefers a dark UI. Sampled once at window start.
+///
+/// iced 0.13's `Theme::default()` used to answer this first; in 0.14
+/// the same name is a trait method that maps a preference iced was
+/// *given* onto a theme, and detects nothing on its own. The portal is
+/// the authority here anyway, and always was — the old probe only ever
+/// short-circuited when it agreed.
 pub fn system_prefers_dark() -> bool {
-    if matches!(Theme::default(), Theme::Dark) {
-        return true;
-    }
     portal_prefers_dark()
         .or_else(gsettings_prefers_dark)
         .unwrap_or(false)
