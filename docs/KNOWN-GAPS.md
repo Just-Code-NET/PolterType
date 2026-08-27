@@ -13,16 +13,33 @@ sentence above exists to prevent.
 
 ## What each release pass actually checked
 
-**What the 0.22.0 pass actually checked (2026-08-27).** One machine —
-this Hyprland + keyd laptop — and one subject: the manual force-switch,
-which the release exists for. A wrong-layout word typed through a
+**What the 0.22.0 pass actually checked (2026-08-27).** The manual
+force-switch, which the release exists for, on two machines.
+
+On this Hyprland + keyd laptop: a wrong-layout word typed through a
 virtual keyboard, auto-corrected, then three presses of the hotkey
 running, each read back out of the saved file rather than out of our
-own API: undone, moved on, undone again, with the dictionary taught by
+own API — undone, moved on, undone again, with the dictionary taught by
 the first press only. Then the same word typed with auto-switching
-paused — left alone, and still switched by the hotkey. The desktop
-matrix was **not** re-run for this release; every per-desktop row below
-still means what the 0.21.0 pass measured.
+paused: left alone, and still switched by the hotkey.
+
+Then the desktop matrix, fifteen sessions, with three checks the sweep
+had never made before — the hotkey pressed **twice**, the pause chord
+pressed **after** a correction had already run, and the manual switch
+made **while paused**. All three pass on every session that corrects at
+all: KDE Plasma Wayland, GNOME Wayland, sway, and Cinnamon, Xfce, LXQt,
+i3, icewm, openbox and fluxbox on X11 — ten sessions, covering both
+hotkey paths (an OS-level grab on X11, the key stream on Wayland).
+
+Four sessions measure nothing because they have no layout-switching
+backend at all — Budgie, labwc, Xfce/Wayland and MATE, each logging
+`no layout switcher backend` on every word. That is unchanged from the
+0.21.0 pass and is the gap already recorded below, not a regression.
+MATE is worth naming twice: with the session itself sitting on the
+second layout, the word the harness types renders as the *corrected*
+form without anybody correcting it, and the sweep reported a green row
+for a desktop where layout switching was off entirely. The report now
+reads the log rather than the text for that distinction.
 
 
 **What the 0.21.0 pass actually checked (2026-08-27).** Linux only,
