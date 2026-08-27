@@ -4,6 +4,65 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] — press it twice
+
+0.21.0 gave the force-switch a gesture people already had in their
+hands. This release is about what happens when you make that gesture
+twice, which until now was nothing — reported within a day by the same
+user, in [#36](https://github.com/Just-Code-NET/PolterType/issues/36)
+and [#37](https://github.com/Just-Code-NET/PolterType/issues/37).
+
+### Changed
+
+- **The force-switch hotkey can be pressed more than once.** It used to
+  work exactly once per word, so a press made in error could not be
+  taken back and a word could not be walked through your layouts to
+  find the right one. Press it again and the word moves on to the next
+  active layout, wrapping — with two layouts that is simply "and back
+  again", with three it reaches the third.
+
+  The first press after a correction of ours still *undoes* it and
+  learns the word. Nothing after that learns anything: taking back a
+  press of your own says nothing about the word, and a user tapping
+  through the renderings to see them would otherwise have switched that
+  word off for good.
+
+### Fixed
+
+- **Pausing auto-switch also disabled the manual switch**
+  ([#36](https://github.com/Just-Code-NET/PolterType/issues/36)). While
+  paused the engine stopped tracking the word being typed altogether,
+  and the manual hotkey acts on what that tracking stashes — so it had
+  nothing to work on. Pause now stops PolterType *deciding*, not
+  PolterType *watching*: the word is still followed and still reachable
+  by the hotkey, and nothing is corrected without you asking. This
+  matters most to the people who turn auto-switch off precisely because
+  they would rather fix wrong-layout words by hand.
+
+- **A hotkey whose key also ends words stopped working at the first
+  correction.** Chords fire once per press and are latched until the
+  key comes back up — but the release of the Space that closed a word
+  was swallowed by the correction that word triggered, so the latch
+  never lifted. `Ctrl+Shift+Space`, the default pause chord, was dead
+  for the rest of the session; the force-switch had the milder form of
+  the same fault and answered every *other* press. Found while checking
+  the two issues above, on KDE Plasma Wayland.
+
+- **The Caps Lock state could be wrong for a whole session on Linux.**
+  It was re-read only when the Caps Lock *key* moved, and that key is
+  not the only way the lock moves — a compositor-level remapper (KDE's
+  InputActions), an on-screen keyboard or `xdotool key Caps_Lock` all
+  change it silently. Believing the lock is off while it is on is what
+  turns a corrected word into capitals in the other layout, since the
+  ALL-CAPS filter then does not recognise all-caps text and the
+  application applies the real lock to the keystrokes we replay. The
+  lock is now re-checked five times a second while you type. Whether
+  this is behind the remaining reports in
+  [#33](https://github.com/Just-Code-NET/PolterType/issues/33) is not
+  established; the `applying correction … caps=` line in a debug log
+  settles it either way. Windows and macOS read the lock per keystroke
+  and were never affected.
+
 ## [0.21.0] — the chord with no key in it
 
 The gesture people arrive with from Punto Switcher and Caramba:
