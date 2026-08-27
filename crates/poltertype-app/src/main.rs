@@ -76,12 +76,48 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tracing::{debug, error, info, warn};
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
-use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 /// How often a plug-in that reports state is re-asked while the user is
 /// not touching the menu. Slow on purpose: every tick costs one
 /// subprocess per reporting plug-in.
 const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Repopulate the "missed words" submenu from `deferred`, and record
+/// which menu id stands for which word so a click can be resolved.
+///
+/// Rebuilt wholesale rather than patched: the list is at most eight
+/// rows and changes only when a tooltip is missed or a word is taken,
+/// so the simple thing is also the fast one.
+fn rebuild_deferred_menu(
+    submenu: &Submenu,
+    deferred: &DeferredWords,
+    rows: &mut Vec<(tray_icon::menu::MenuId, LayoutId, String)>,
+    layouts: &LayoutDb,
+) {
+    // Back to front: `remove_at` shifts everything after the index it
+    // takes, so walking forwards would skip every other row and leave
+    // stale ones behind — which then resolve to words already added.
+    for i in (0..submenu.items().len()).rev() {
+        let _ = submenu.remove_at(i);
+    }
+    rows.clear();
+    for (layout, word) in deferred.iter() {
+        // The layout is named because the same spelling can be a word
+        // in one and gibberish in another, and the entry goes into one
+        // wordlist, not both.
+        let name = layouts
+            .get(layout)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| layout.as_str().to_owned());
+        let item = MenuItem::new(format!("{word}  ·  {name}"), true, None);
+        rows.push((item.id().clone(), layout.clone(), word.clone()));
+        if let Err(e) = submenu.append(&item) {
+            warn!(?e, "could not add a missed word to the submenu");
+        }
+    }
+    submenu.set_enabled(!deferred.is_empty());
+}
 
 /// Move the mark on the tray icon to match what the plug-ins are waiting
 /// on, redrawing only when the number changed: the icon is rasterised
@@ -463,6 +499,10 @@ fn main() -> Result<()> {
         None,
     );
     let item_quit = MenuItem::new("Quit", true, None);
+    // Words a tooltip offered and lost, so the offer can be taken up
+    // later (issue #38). Disabled while empty rather than hidden: a
+    // menu entry that comes and goes is harder to find than a grey one.
+    let menu_deferred = Submenu::new(DEFERRED_MENU_LABEL, false);
     menu.append_items(&[
         &item_settings_ui,
         &item_settings_file,
@@ -472,6 +512,7 @@ fn main() -> Result<()> {
         &item_reload,
         &PredefinedMenuItem::separator(),
         &item_pause,
+        &menu_deferred,
         &PredefinedMenuItem::separator(),
     ])
     .context("populate tray menu")?;
@@ -640,6 +681,10 @@ fn main() -> Result<()> {
         input_alert: input_alert.is_some(),
         attention: 0,
     };
+    let mut deferred = DeferredWords::new();
+    // The rows currently in the submenu, so a click can be turned back
+    // into the word it stands for. Rebuilt whenever the list changes.
+    let mut deferred_rows: Vec<(tray_icon::menu::MenuId, LayoutId, String)> = Vec::new();
 
     info!("entering event loop");
     // A slow heartbeat, so a mode changed from the command line — or an
@@ -691,7 +736,26 @@ fn main() -> Result<()> {
             }
             Event::UserEvent(UserEvent::Menu(id)) => {
                 announce_departed(supervisor.reap());
-                if plugin_menu.handle(&id) {
+                if let Some((layout, word)) = deferred_rows
+                    .iter()
+                    .find(|(rid, _, _)| *rid == id)
+                    .map(|(_, l, w)| (l.clone(), w.clone()))
+                {
+                    // Same route as the tooltip's own row, so the two
+                    // cannot drift apart: the engine owns no files.
+                    match add_word_to_user_overlay(&layout, &word, &dict_reload_handle) {
+                        Ok(()) => {
+                            deferred.take(&layout, &word);
+                            rebuild_deferred_menu(
+                                &menu_deferred,
+                                &deferred,
+                                &mut deferred_rows,
+                                &layouts,
+                            );
+                        }
+                        Err(e) => warn!(?e, "could not add the deferred word"),
+                    }
+                } else if plugin_menu.handle(&id) {
                     // Belonged to a plug-in, which has re-read its state:
                     // the mark has to move with it, or clearing a queue
                     // looks like a click that did nothing for another
@@ -877,6 +941,10 @@ fn main() -> Result<()> {
                             warn!(?e, "could not add the word to the user wordlist overlay");
                         }
                     }
+                }
+                SwitcherEvent::DictionaryOfferMissed { layout, word } => {
+                    deferred.push(layout, word);
+                    rebuild_deferred_menu(&menu_deferred, &deferred, &mut deferred_rows, &layouts);
                 }
                 other => handle_engine_event(
                     other,

@@ -214,13 +214,17 @@ impl SwitcherEngine {
     /// hide. `only_generation` restricts the dismissal to one
     /// specific offer (popup-side timeouts race new offers).
     pub(super) fn dismiss_suggestions(&self, only_generation: Option<u64>) {
-        let generation = {
+        let (generation, missed) = {
             let mut slot = self.pending_suggestion.lock();
             match slot.as_ref() {
                 Some(p) if only_generation.is_none_or(|g| g == p.generation) => {
                     let g = p.generation;
+                    // Only this path is a *missed* offer. An accepted
+                    // one never reaches here: `accept_suggestion` takes
+                    // the slot itself and announces its own dismissal.
+                    let missed = (p.layout.clone(), p.rendered.clone());
                     *slot = None;
-                    g
+                    (g, missed)
                 }
                 _ => return,
             }
@@ -228,6 +232,10 @@ impl SwitcherEngine {
         let _ = self
             .out_tx
             .send(SwitcherEvent::SuggestionsDismissed { generation });
+        let (layout, word) = missed;
+        let _ = self
+            .out_tx
+            .send(SwitcherEvent::DictionaryOfferMissed { layout, word });
     }
 
     /// Handle an accept (tooltip click or digit chord). Validates the

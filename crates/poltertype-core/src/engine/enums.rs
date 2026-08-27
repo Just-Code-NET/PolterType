@@ -54,6 +54,12 @@ pub enum SwitcherEvent {
         word: String,
         origin: DictionaryAddOrigin,
     },
+    /// A tooltip offering "Add to dictionary" went away without being
+    /// used. The app keeps a short list of these so the offer can be
+    /// taken up later from the tray (issue #38): the tooltip is aimed
+    /// at people who type fast, and the next keystroke dismisses it —
+    /// so the faster you type, the less reachable it is.
+    DictionaryOfferMissed { layout: LayoutId, word: String },
 }
 
 /// Why a word is being added to the user's dictionary. The app shows

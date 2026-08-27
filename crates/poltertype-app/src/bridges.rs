@@ -65,7 +65,8 @@ pub(crate) fn handle_engine_event(
         SwitcherEvent::SuggestionsReady { .. }
         | SwitcherEvent::SuggestionsDismissed { .. }
         | SwitcherEvent::SuggestionApplied { .. }
-        | SwitcherEvent::AddToDictionary { .. } => {}
+        | SwitcherEvent::AddToDictionary { .. }
+        | SwitcherEvent::DictionaryOfferMissed { .. } => {}
     }
 }
 

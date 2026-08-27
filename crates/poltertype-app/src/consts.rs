@@ -158,3 +158,7 @@ pub(crate) const SWITCHER_PROBE_INTERVAL: std::time::Duration =
 /// `Pressed` is treated as a fresh press anyway. Only the OS-grab path
 /// needs it — the keystream matcher latches on real key releases.
 pub(crate) const STUCK_HOTKEY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Tray submenu holding words a tooltip offered "Add to dictionary" for
+/// and lost to the next keystroke (issue #38).
+pub(crate) const DEFERRED_MENU_LABEL: &str = "Add a missed word…";

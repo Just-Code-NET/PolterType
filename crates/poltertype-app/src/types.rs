@@ -32,6 +32,54 @@ pub(crate) struct TrayState {
     pub(crate) attention: u32,
 }
 
+/// Words a tooltip offered "Add to dictionary" for and that went away
+/// unused, newest first, so the tray can offer them again (issue #38).
+///
+/// **RAM only, and bounded.** This is the one place the app keeps words
+/// the user typed beyond the engine's single-word buffer, so it holds
+/// as few as are useful, never reaches a file, and never reaches a log
+/// — `Debug` is deliberately not derived, to keep it out of one by
+/// accident.
+pub(crate) struct DeferredWords {
+    words: Vec<(LayoutId, String)>,
+}
+
+impl DeferredWords {
+    /// Enough to catch the ones that got away during a paragraph;
+    /// short enough to stay a menu rather than a history.
+    const CAP: usize = 8;
+
+    pub(crate) fn new() -> Self {
+        Self { words: Vec::new() }
+    }
+
+    /// Remember one, newest first. A repeat moves to the front rather
+    /// than appearing twice — the same word missed again is the same
+    /// word, and a duplicated row would read as two different offers.
+    pub(crate) fn push(&mut self, layout: LayoutId, word: String) {
+        if word.trim().is_empty() {
+            return;
+        }
+        self.words.retain(|(l, w)| !(l == &layout && w == &word));
+        self.words.insert(0, (layout, word));
+        self.words.truncate(Self::CAP);
+    }
+
+    pub(crate) fn take(&mut self, layout: &LayoutId, word: &str) -> bool {
+        let before = self.words.len();
+        self.words.retain(|(l, w)| !(l == layout && w == word));
+        self.words.len() != before
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &(LayoutId, String)> {
+        self.words.iter()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.words.is_empty()
+    }
+}
+
 /// The shared profile dictionary cache: the watcher takes a read lock per
 /// tick, and the close-handler in `spawn_settings_ui` a brief write lock
 /// to rebuild it from disk after the user saves wordlist edits.
@@ -73,3 +121,6 @@ impl poltertype_input::KeyEmitter for NoopEmitter {
 pub(crate) fn noop_emitter() -> Box<dyn poltertype_input::KeyEmitter> {
     Box::new(NoopEmitter)
 }
+
+#[cfg(test)]
+mod tests;
