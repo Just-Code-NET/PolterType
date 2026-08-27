@@ -6,6 +6,66 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-27 — A gesture you can only make once is not a gesture
+
+The force-switch consumed the stash to reach the switch, so it answered
+once per word and a press made in error could not be taken back
+(issue #37). That was not an oversight: emptying the stash is what
+stopped the hotkey looping. Win32 `RegisterHotKey` reads the Backspaces
+we emit together with the user's still-held Ctrl+Shift as a fresh
+press, and `wow ` once grew to `wow wow wow…` until the app was killed.
+
+The guard moves from "there is nothing left to switch" to "not within
+`FORCE_SWITCH_REARM` of the last one". It is a weaker kind of guard —
+a window in time rather than an impossibility — and it is the only kind
+available once the gesture has to be repeatable, because the echo and
+the second press are the same event arriving at different times. 200 ms
+separates them by an order of magnitude at both ends: the echo is
+queued while we are still injecting, and a person has to read the
+result before pressing again.
+
+What a repeated press *does* is a rotation, not a toggle. Undo is
+reserved for the engine's own correction, because that is the press
+that also teaches the word — and taking back a press of your own says
+nothing about the word, so `LastWord::user_placed` marks whose doing
+the current rendering is. Rotation also costs nothing to generalise: it
+walks the OS's active layout list, which with two layouts is a toggle
+and with three finally makes the third reachable.
+
+**Alternative rejected:** keeping the stash self-consuming and adding a
+separate "redo" hotkey. Two gestures for one idea, and the second one
+would need a default binding on four platforms.
+
+---
+
+## 2026-08-27 — Two paths read the key stream, so the latch belongs to neither
+
+Chord matchers are edge-triggered: one fire per physical press, latched
+from press until release. The latch lived in the run loop, which is
+only one of the two places key events are read — a correction reads the
+channel directly, to see what raced the replay.
+
+So the release of the key that *closed the word* was swallowed by the
+correction that word triggered, and the latch stayed down for good.
+`Ctrl+Shift+Space` — the default pause chord, whose key is Space —
+died at the first correction of the session. The force-switch had the
+milder form and answered every other press, which is what made #37 look
+half-fixed after the stash was put back.
+
+The state moves onto the engine and the correction window feeds
+swallowed releases into it, matching but never dispatching: we are
+inside `apply_correction` and must not re-enter it. A gesture made
+during a correction burst is therefore dropped rather than queued —
+which is what already happened to it, only now without the latch
+staying stuck afterwards.
+
+**Alternative rejected:** not consuming releases of keys that belong to
+a chord. The window cannot know which of them the engine is mid-replay
+for, and a release it declines to read is one the buffer never learns
+about.
+
+---
+
 ## 2026-08-27 — A setting that outlives the desktop that wrote it
 
 `org.gnome.desktop.input-sources` is not a property of the running

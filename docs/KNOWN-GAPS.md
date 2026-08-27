@@ -1,4 +1,4 @@
-# Known gaps (as of v0.21.0)
+# Known gaps (as of v0.22.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,18 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.22.0 pass actually checked (2026-08-27).** One machine —
+this Hyprland + keyd laptop — and one subject: the manual force-switch,
+which the release exists for. A wrong-layout word typed through a
+virtual keyboard, auto-corrected, then three presses of the hotkey
+running, each read back out of the saved file rather than out of our
+own API: undone, moved on, undone again, with the dictionary taught by
+the first press only. Then the same word typed with auto-switching
+paused — left alone, and still switched by the hotkey. The desktop
+matrix was **not** re-run for this release; every per-desktop row below
+still means what the 0.21.0 pass measured.
+
 
 **What the 0.21.0 pass actually checked (2026-08-27).** Linux only,
 and three things: the modifier-only chord this release adds, whether
