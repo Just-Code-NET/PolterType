@@ -194,6 +194,27 @@ the Settings window:
 > shortcuts, so claiming them globally would take your layout
 > switching away — the very thing PolterType is there to complement.
 
+### Converting a selection
+
+Off by default. With **Also convert selected text** ticked on the
+Hotkeys pane (`[selection] enabled` in `config.toml`), the same
+force-switch key also fixes a passage that is already on screen — a
+whole sentence typed in the wrong layout, or a word the detector left
+alone. Select it and press the key.
+
+It only looks at the selection when there is no just-typed word to fix,
+so it costs nothing the rest of the time. To read what you selected it
+copies it, and puts your clipboard back afterwards.
+
+That reach is why it is off until you ask for it, and it is not
+available everywhere: the toggle greys itself out on desktops where a
+background app cannot read the clipboard without stealing keyboard
+focus — GNOME and Cinnamon's Wayland sessions, measured — and says so
+in place of the setting. It detects that itself, so you never have to
+check a list. Two things it cannot promise even where it
+works: a clipboard holding an image or files cannot be preserved, and
+nothing can tell a password field from any other.
+
 > **On Wayland the force-switch default is `Ctrl+Shift+F9`.** There we
 > read keys from the evdev keystream, so the chord reaches the focused
 > app too — and `Ctrl+Backspace` deletes the very word you asked to

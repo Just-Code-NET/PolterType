@@ -502,6 +502,41 @@ move too fast to be true.
   the text, and a rejected caret costs that window the caret rung, not
   the tooltip.
 
+- **Selection conversion is unavailable on GNOME and Cinnamon's
+  Wayland sessions, and on macOS.** Reading the clipboard from a
+  process that holds no window and never takes focus needs a
+  data-control protocol. Measured 2026-08-28 on **nine of the fifteen
+  matrix sessions** — every Wayland one, and two of the seven X11 ones:
+
+  | session | `ext_data_control` | `zwlr_data_control` | windowless round trip |
+  |---|---|---|---|
+  | KDE Plasma (Wayland) | yes | no | yes |
+  | sway, labwc, Budgie, Xfce/Wayland | yes | yes | yes |
+  | **GNOME (Wayland)** | **no** | **no** | only by taking focus |
+  | **Cinnamon (Wayland)** | **no** | **no** | **no** |
+  | Cinnamon, Xfce (X11) | n/a | n/a | yes |
+
+  GNOME is the trap: `wl-clipboard` appears to work there, because it
+  falls back to creating a surface and taking focus — the one thing
+  this app will not do. The library we use has no such fallback, so the
+  feature reports itself unavailable instead of stealing focus.
+
+  **Not measured: MATE, LXQt, i3, openbox, fluxbox and icewm** — all
+  X11, where the two sessions that were checked both work and the
+  mechanism does not involve the window manager. That is a reason to
+  expect them to work, not a measurement of it.
+
+  macOS is unavailable for a different reason: its emitter cannot yet
+  hold modifiers around a key (`send_chord`), so it cannot press the
+  copy shortcut at all. The Hotkeys pane disables the toggle and gives
+  the reason in each case.
+- **A clipboard holding an image or files cannot be preserved across a
+  selection conversion.** The conversion reads and writes text; a
+  non-text clipboard is replaced by the selection and not put back.
+  Part of why the feature is off by default.
+- **Nothing distinguishes a password field.** A selection inside one is
+  copied like any other text while selection conversion is enabled.
+
 ## AI, plug-ins and onboarding
 
 - **The AI subsystem is an interface with no backend, on purpose.**
