@@ -1070,12 +1070,16 @@ impl SwitcherEngine {
     /// outranks our guesses. Rotating rather than undoing is what makes
     /// the gesture repeatable: press again to take back a press that
     /// was itself a mistake, or again to reach a third layout.
+    /// Returns `false` when nothing happened — the trigger key never
+    /// came up, the target layout went away, the desktop put the
+    /// layout back. The caller is holding the only copy of the word by
+    /// then, and a gesture that did nothing must not have eaten it.
     pub(super) fn force_switch_last(
         &self,
         last: LastWord,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
-    ) {
+    ) -> bool {
         // Whatever the word reads in right now is where the switch
         // starts from, and it is the engine's correction — never our
         // own earlier press — that a press undoes.
@@ -1089,7 +1093,7 @@ impl SwitcherEngine {
         } else {
             let Some(next) = self.next_layout_after(&from) else {
                 warn!("only one layout known; can't force-switch");
-                return;
+                return false;
             };
             next
         };
@@ -1097,7 +1101,7 @@ impl SwitcherEngine {
             Some(m) => m,
             None => {
                 warn!(%target, "target layout not in DB");
-                return;
+                return false;
             }
         };
         // What is on screen right now: the user's own rendering, unless
@@ -1159,7 +1163,7 @@ impl SwitcherEngine {
             Some((key_rx, buffer)),
         );
         if !applied {
-            return;
+            return false;
         }
         if undoing {
             self.learn_undone_word(&target, &restored, &from, &on_screen);
@@ -1185,6 +1189,7 @@ impl SwitcherEngine {
             boundary: last.boundary,
             user_placed: true,
         });
+        true
     }
 
     /// Remember a word the user just rescued from a correction — the

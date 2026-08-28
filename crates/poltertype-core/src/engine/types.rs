@@ -203,6 +203,20 @@ impl KeystreamHotkeys {
     }
 
     pub fn chords(&self) -> impl Iterator<Item = Chord> + '_ {
+        self.matched_chords()
+            .chain(self.grabbed.into_iter().flatten())
+    }
+
+    /// The chords this engine matches off the key stream itself — the
+    /// ones whose *releases* it is guaranteed to see.
+    ///
+    /// A chord an OS grab owns is deliberately not here. On X11 the
+    /// passive grab becomes active on the press, and from that moment
+    /// the key's raw events stop being delivered to anyone but the
+    /// grabbing client: the press arrives, the release never does.
+    /// Measured on Cinnamon X11, 2026-08-29 — a latch fed from
+    /// `chords()` was set by every press and cleared by nothing.
+    pub fn matched_chords(&self) -> impl Iterator<Item = Chord> + '_ {
         [self.pause, self.switch_last]
             .into_iter()
             .flatten()
@@ -210,7 +224,6 @@ impl KeystreamHotkeys {
                 Binding::Key(c) => Some(c),
                 Binding::Mods(_) => None,
             })
-            .chain(self.grabbed.into_iter().flatten())
     }
 }
 

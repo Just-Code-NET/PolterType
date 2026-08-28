@@ -2950,6 +2950,97 @@ mod engine_integration_tests {
         );
     }
 
+    /// A press that ends up doing nothing must not eat the word it was
+    /// going to act on.
+    ///
+    /// The stash is *taken* to serve a press, and a hold longer than
+    /// the wait ends with nothing typed — so without putting it back
+    /// the gesture works once and then finds nothing, which is the
+    /// symptom of #44 wearing a different cause. Only visible on a
+    /// finished word: one still being typed is read straight out of
+    /// the buffer and was never taken from anywhere. Caught by the
+    /// desktop matrix, not by the first test.
+    #[test]
+    fn a_hold_that_ends_in_nothing_leaves_the_stashed_word_alone() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let press_chord = |hold_ms: u64| {
+            h.key_mods(0x1D, KeyDirection::Press, ctrl);
+            h.key_mods(0x2A, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Press, both);
+            let until = Instant::now() + Duration::from_millis(hold_ms);
+            while Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(30));
+                h.key_mods(0x43, KeyDirection::Press, both);
+            }
+            h.key_mods(0x43, KeyDirection::Release, both);
+            h.key_mods(
+                0x2A,
+                KeyDirection::Release,
+                poltertype_types::Modifiers::NONE,
+            );
+            h.key_mods(
+                0x1D,
+                KeyDirection::Release,
+                poltertype_types::Modifiers::NONE,
+            );
+            h.settle();
+        };
+
+        // A *finished* word: the boundary is what puts it on the stash.
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let before = erase_counts(&h).len();
+
+        press_chord(CHORD_RELEASE_WAIT.as_millis() as u64 + 600);
+        assert_eq!(
+            erase_counts(&h).len(),
+            before,
+            "the hold outlasted the wait, so nothing may have been typed"
+        );
+
+        press_chord(0);
+        // Counted, not just read off the end: the automatic correction
+        // at the boundary erased exactly the same word and boundary, so
+        // the last value alone is true whether or not this press did
+        // anything at all.
+        let erases = erase_counts(&h);
+        assert_eq!(
+            erases.len(),
+            before + 1,
+            "the next press must find the word still stashed: {erases:?}"
+        );
+        assert_eq!(
+            erases.last(),
+            Some(&(GHBDSN.len() + 1)),
+            "and act on the word plus its boundary: {erases:?}"
+        );
+    }
+
     /// Issue #40 as it was actually reported: through the chord, not
     /// through the command channel.
     ///
@@ -3090,11 +3181,29 @@ mod engine_integration_tests {
         h.cmd_tx
             .send(EngineCommand::SwitchLastForcefully)
             .expect("engine alive");
-        for _ in 0..12 {
+        // Long enough to outlast the absorb window the correction
+        // waits on anyway — otherwise "nothing emitted yet" is true
+        // whether or not the chord is being waited for.
+        for _ in 0..40 {
             h.key_mods(0x43, KeyDirection::Press, both);
             std::thread::sleep(Duration::from_millis(30));
         }
-        h.key_mods(0x43, KeyDirection::Release, both);
+        // Nothing may have gone out yet: everything we emit while the
+        // grab is active is delivered to the grabbing client instead
+        // of to the application, so a burst here is a burst thrown
+        // away — and the word is left looking uncorrected.
+        assert_eq!(
+            h.emitter.ops().len(),
+            before,
+            "nothing may be emitted while the chord is still held: {:?}",
+            &h.emitter.ops()[before..]
+        );
+        // No release for the grabbed key, ever — and that is not the
+        // harness being lazy. The grab is *active* from the press, and
+        // from then on the key's raw events go to the grabbing client
+        // alone: the press arrives here, the release does not.
+        // Measured on Cinnamon X11, 2026-08-29. So the modifiers
+        // coming up is the whole of what says the chord was let go.
         h.key_mods(0x2A, KeyDirection::Release, ctrl);
         h.key_mods(
             0x1D,

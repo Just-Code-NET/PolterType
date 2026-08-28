@@ -87,11 +87,11 @@ impl SwitcherEngine {
 
     /// Follow which hotkey key is physically down.
     ///
-    /// Nothing else here knows: the per-binding latches are one per
-    /// *hotkey* and say nothing about a chord an OS grab owns, and the
-    /// modifier flags are a guess at best. A correction has to know
-    /// exactly, because it cannot happen at all while that key is down
-    /// — see `CHORD_RELEASE_WAIT` and [`Self::trigger_key_down`].
+    /// Only the chords we match ourselves: a latch can only be cleared
+    /// by a release, and a grabbed chord's release never arrives. See
+    /// [`KeystreamHotkeys::matched_chords`] and
+    /// [`Self::trigger_key_down`], which reads this one and falls back
+    /// to the modifier set for the rest.
     pub(super) fn track_trigger_key(&self, ev: &KeyEvent) {
         if ev.injected {
             return;
@@ -102,7 +102,7 @@ impl SwitcherEngine {
             && self
                 .keystream_hotkeys
                 .read()
-                .chords()
+                .matched_chords()
                 .any(|c| chord_matches(ev, c));
         let mut st = self.chord_state.lock();
         match ev.direction {
@@ -135,13 +135,33 @@ impl SwitcherEngine {
 
     /// Is a hotkey key under the user's finger right now?
     ///
-    /// The exact question, and deliberately not "is any modifier held":
-    /// a word closed by a shifted separator is corrected with Shift
-    /// still down, and making *that* wait would stall ordinary typing.
-    /// Covers a chord an OS grab owns too — the grab hides the chord
-    /// from our matcher, not the key from our listener.
+    /// Two answers, because the two kinds of binding are observed
+    /// differently. A chord we match ourselves has an exact latch: we
+    /// see its release. A chord an OS grab owns has none — on X11 the
+    /// grab goes active on the press and the release is delivered to
+    /// nobody else, so the only thing left to read is whether the
+    /// chord's own modifier set is still down.
+    ///
+    /// That fallback is deliberately not "is any modifier held": a word
+    /// closed by a shifted separator is corrected with Shift still
+    /// down, and making *that* wait would stall ordinary typing. The
+    /// held set has to be exactly some chord's.
     pub(super) fn trigger_key_down(&self) -> bool {
-        self.chord_state.lock().trigger_down.is_some()
+        if self.chord_state.lock().trigger_down.is_some() {
+            return true;
+        }
+        let m = *self.held_modifiers.read();
+        if !(m.control || m.shift || m.alt || m.meta) {
+            return false;
+        }
+        self.keystream_hotkeys
+            .read()
+            .grabbed
+            .iter()
+            .flatten()
+            .any(|c| {
+                m.control == c.ctrl && m.shift == c.shift && m.alt == c.alt && m.meta == c.meta
+            })
     }
 
     /// Keep the chord latches honest about keys the correction window

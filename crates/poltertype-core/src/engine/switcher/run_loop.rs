@@ -179,7 +179,23 @@ impl SwitcherEngine {
                     // pass and a late click would replace the
                     // transliterated word with the old word's suggestion.
                     self.dismiss_suggestions(None);
-                    self.force_switch_last(word, buffer, key_rx);
+                    // Taking the stash is how we got here, and a press
+                    // that ends up doing nothing — most often because
+                    // the key is still down — must not have eaten it.
+                    // A word still in the buffer needs no copy: it was
+                    // never taken from anywhere.
+                    let stashed = (!in_progress).then(|| word.clone());
+                    if !self.force_switch_last(word, buffer, key_rx) {
+                        // Unless the buffer was tainted on the way out,
+                        // which says the caret is no longer where the
+                        // stash thinks it is.
+                        if let Some(w) = stashed
+                            && !buffer.poisoned()
+                        {
+                            *self.last_word.write() = Some(w);
+                        }
+                        return;
+                    }
                     if in_progress {
                         // The user has just settled this word's layout
                         // by hand. Its keys are still in the buffer and
