@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.23.0**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.24.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -122,7 +122,7 @@ This is the **only** part of PolterType that touches the network — a
 version, a `GET` of the installer. No account, no identifier, nothing
 about you and nothing about what you type. GitHub sees what any
 download reveals: your IP and a User-Agent naming the running version
-(`PolterType/0.23.0 (updater)`). The exact manifest URL is printed on
+(`PolterType/0.24.0 (updater)`). The exact manifest URL is printed on
 the Settings window's **General** pane, so you never have to take our
 word for it.
 

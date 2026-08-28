@@ -1,4 +1,4 @@
-# Known gaps (as of v0.23.0)
+# Known gaps (as of v0.24.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,30 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.24.0 pass actually checked (2026-08-28).** Selection
+conversion, which the release exists for, in two passes.
+
+End to end on **KDE Plasma Wayland** in the matrix guest: a two-word
+passage typed on the wrong layout, selected, the hotkey pressed — the
+converted text on screen, and the clipboard afterwards holding what it
+held before. That run is also what found the two mechanisms that
+*compile* and do the wrong thing (`send_text` typing `43f` through
+Wayland's compose path; a scancode replay that cannot express the
+newline `Ctrl+A` picks up) and the modifier trap: the hotkey fires on
+the press, so its own `Ctrl+Shift` is still down when the copy chord
+goes out.
+
+Then the precondition on **all fifteen sessions** — can a process with
+no window and no focus round-trip this session's clipboard at all. That
+is the table below, and it is a measurement of the *session*, not of
+PolterType: the same question the app's own probe asks before it lets
+the toggle be ticked. Two sessions answer no.
+
+What this pass did **not** check: the end-to-end conversion on the
+other fourteen sessions, or on Windows and macOS. The Windows
+`send_chord` is new in this release and is covered by tests, not by a
+run on Windows.
 
 **What the 0.23.0 pass actually checked (2026-08-27).** One machine —
 this Hyprland laptop — and the Settings window, because the release
@@ -505,26 +529,29 @@ move too fast to be true.
 - **Selection conversion is unavailable on GNOME and Cinnamon's
   Wayland sessions, and on macOS.** Reading the clipboard from a
   process that holds no window and never takes focus needs a
-  data-control protocol. Measured 2026-08-28 on **nine of the fifteen
-  matrix sessions** — every Wayland one, and two of the seven X11 ones:
+  data-control protocol. Measured 2026-08-28 on **all fifteen matrix
+  sessions**, by asking each one whether a windowless process can put a
+  marker on its clipboard and read the same marker back:
 
   | session | `ext_data_control` | `zwlr_data_control` | windowless round trip |
   |---|---|---|---|
   | KDE Plasma (Wayland) | yes | no | yes |
-  | sway, labwc, Budgie, Xfce/Wayland | yes | yes | yes |
+  | sway, labwc, Budgie, Xfce (Wayland) | yes | yes | yes |
   | **GNOME (Wayland)** | **no** | **no** | only by taking focus |
   | **Cinnamon (Wayland)** | **no** | **no** | **no** |
-  | Cinnamon, Xfce (X11) | n/a | n/a | yes |
+  | Cinnamon, Xfce, MATE, LXQt, i3, openbox, fluxbox, icewm (X11) | n/a | n/a | yes |
 
-  GNOME is the trap: `wl-clipboard` appears to work there, because it
-  falls back to creating a surface and taking focus — the one thing
-  this app will not do. The library we use has no such fallback, so the
-  feature reports itself unavailable instead of stealing focus.
+  The eight X11 sessions need no protocol — an X client owns a
+  selection without a mapped window — and all eight round-trip. Of the
+  seven Wayland sessions, five advertise a data-control protocol and
+  two do not.
 
-  **Not measured: MATE, LXQt, i3, openbox, fluxbox and icewm** — all
-  X11, where the two sessions that were checked both work and the
-  mechanism does not involve the window manager. That is a reason to
-  expect them to work, not a measurement of it.
+  GNOME is the trap in that table: `wl-clipboard` appears to work
+  there, because it falls back to creating a surface and taking focus —
+  the one thing this app will not do. The library we link has no such
+  fallback, so the feature reports itself unavailable instead of
+  stealing focus, and GNOME reads as unavailable despite the "yes" a
+  naive probe returns.
 
   macOS is unavailable for a different reason: its emitter cannot yet
   hold modifiers around a key (`send_chord`), so it cannot press the

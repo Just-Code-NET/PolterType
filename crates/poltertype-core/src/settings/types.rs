@@ -73,10 +73,10 @@ pub struct Settings {
 /// nothing, because the hotkey behaves exactly as it always did.
 ///
 /// Two things it cannot promise even when on, both recorded in
-/// `docs/KNOWN-GAPS.md`: a clipboard holding an image or files cannot
-/// be put back by a text API, so the conversion declines rather than
-/// destroying it; and there is no way to know a password field from
-/// any other, so a selection inside one is copied like any other text.
+/// `docs/KNOWN-GAPS.md`: a clipboard holding an image or files reads
+/// as empty through a text API, so it is replaced by the selection and
+/// not put back; and there is no way to know a password field from any
+/// other, so a selection inside one is copied like any other text.
 /// `false` by default, which `derive(Default)` gives — and the default
 /// is the whole point, so it is spelled out here rather than left to a
 /// reader to infer from the type.

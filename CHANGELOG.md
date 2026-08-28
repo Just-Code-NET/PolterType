@@ -4,6 +4,46 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] — convert what you have selected
+
+The last item of
+[#32](https://github.com/Just-Code-NET/PolterType/issues/32), and the
+one that had been "when convenient" since April. Off by default.
+
+### Added
+
+- **The force-switch key can convert a selected passage.** Tick *Also
+  convert selected text* on the Hotkeys pane (`[selection] enabled`)
+  and the same key that fixes the word you just typed will also fix a
+  passage already on screen — a whole sentence in the wrong layout, or
+  a word the detector deliberately left alone. Select it, press the
+  key.
+
+  It looks at the selection **only when there is no just-typed word to
+  fix**, so it costs nothing the rest of the time. Pressing copy into
+  your editor on every force-switch, on the chance you had selected
+  something, would be a price everybody paid for a rare case.
+
+- **It is off until you ask for it, and that is the design.** Reading a
+  selection means copying it, which is a longer reach than the rest of
+  the app has — the word buffer never leaves memory and nothing else
+  touches your clipboard. Nobody should acquire that by upgrading. Your
+  clipboard is put back afterwards.
+
+- **The toggle knows where it cannot work, and says so.** It greys
+  itself out with the reason in place of the setting, from a real probe
+  of your session rather than a list of desktop names. Measured on all
+  fifteen desktops in our matrix: it works on KDE Plasma, sway, labwc,
+  Budgie, Xfce and every X11 session — and **not on GNOME or Cinnamon's
+  Wayland sessions**, which give a background app no way to read the
+  clipboard without stealing keyboard focus, which PolterType will not
+  do. Not on macOS either, where it cannot yet press the copy shortcut
+  at all.
+
+  Two things it cannot promise even where it works, both in
+  `docs/KNOWN-GAPS.md`: a clipboard holding an image or files is not
+  preserved, and nothing distinguishes a password field from any other.
+
 ## [0.23.0] — the window that was never there
 
 Two long-standing reports closed at their source, and the toolkit

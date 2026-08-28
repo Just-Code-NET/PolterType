@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-27 (v0.23.0).
+> Created: 2026-05-02. Last updated: 2026-08-28 (v0.24.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -408,6 +408,15 @@ max_suggestions      = 5            # clamped to 1..=9 (one digit key each)
 tooltip_timeout_secs = 30           # clamped to 3..=600 at read time
 accept_modifiers     = "Ctrl+Shift" # + digit 1..9; "" disables keyboard accept
 
+# Converting a *selected* passage with the force-switch key, rather
+# than the last word — added 2026-08-28 (v0.24.0), issue #32. OFF by
+# default and deliberately so: it is the only path that reads another
+# application's clipboard. The Hotkeys pane disables the toggle where
+# the session cannot do it at all (GNOME and Cinnamon on Wayland
+# advertise no data-control protocol; macOS has no `send_chord`).
+[selection]
+enabled = false
+
 # The app's ONLY network access, and it is ON by default. Added in
 # v0.4.0. See §6, DECISIONS.md and docs/PERMISSIONS.md § Network.
 [updates]
@@ -732,6 +741,12 @@ install` wires `.githooks/` into a clone, and they run the same
   toggles (`enabled` + `allow_remote`).
 - We do not store text. Only a short-lived word buffer in RAM, cleared
   after a decision/timeout.
+- **The clipboard is the one exception, and it is opt-in.** With
+  `[selection].enabled` the conversion copies the selection, puts the
+  converted text on the clipboard long enough for the paste, then
+  restores what was there. Nothing is written before the read, and the
+  password-field skips below do **not** cover a selection — see
+  `docs/PERMISSIONS.md` § Clipboard.
 - API keys — via `keyring` (Win Credential Manager / macOS Keychain /
   GNOME Secret Service / KWallet).
 - Password fields:
@@ -798,7 +813,7 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.23.0 (2026-08-27).** Phases 0–8 are, in their core
+> **Status as of v0.24.0 (2026-08-28).** Phases 0–8 are, in their core
 > parts, complete and shipped; `CHANGELOG.md` is the release-by-release
 > record and does not need repeating here. Items that are **not** done
 > are deliberately left as

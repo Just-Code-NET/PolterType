@@ -457,6 +457,34 @@ is a hard requirement, not a nice-to-have.
 works — does keep the app running, and surfaces the ⚠ Setup tray entry
 described under macOS above, which opens the Setup pane.)
 
+## Clipboard
+
+Off by default, and the only reach the app has into another
+application's data. With **Also convert selected text** ticked
+(`[selection].enabled`), the force-switch key — and only when it finds
+no just-typed word to fix — presses the platform's copy chord, reads
+the text, writes the converted text back, presses paste, and restores
+what the clipboard held before. Nothing is written to the clipboard
+before that read: a staged sentinel would risk destroying a clipboard
+we might then fail to put back.
+
+No OS permission gates this on Windows or X11. On Wayland it needs a
+compositor advertising `ext_data_control_manager_v1` or its `zwlr_`
+predecessor, because a process with no window and no focus cannot
+otherwise be given a clipboard. GNOME and Cinnamon's Wayland sessions
+advertise neither; there the app reports the feature unavailable and
+greys the toggle out rather than doing what `wl-clipboard` does on
+those sessions — creating a surface and taking keyboard focus. Stealing
+focus from whatever you are typing into is not a trade this app makes,
+so the clipboard library it links has no such fallback.
+
+Two limits are inherent rather than fixable, and both are in
+[KNOWN-GAPS.md](KNOWN-GAPS.md): a clipboard holding an image or files
+reads as empty through a text API, so it is replaced by the selection
+and not put back; and nothing distinguishes a password field, so a
+selection inside one is copied like any other text. Both are why this
+is off until you turn it on.
+
 ## Network
 
 PolterType asks for no network permission from the OS, but it does use

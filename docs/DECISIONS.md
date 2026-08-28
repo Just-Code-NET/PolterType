@@ -6,6 +6,68 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-28 — A selection is pasted, because the other two ways lied
+
+Converting a selected passage has three plausible mechanisms and two of
+them look right until a real session is put in front of them. Both were
+measured failing on KDE Plasma Wayland before the third shipped.
+
+`send_text` is the obvious one and is what the word path falls back to.
+On Wayland it goes through a Unicode-compose sequence that most
+applications swallow or type literally: converting `ghbdsn cdsn` that
+way put `43f` on screen.
+
+Replaying scancodes is what the word path actually uses, and it is
+right for a word — the corrected text *is* the same keys under another
+layout. A selection is not a word. `Ctrl+A` in an editor takes the
+trailing newline with it, and no key produces a newline that is safe to
+press: Enter submits forms and sends chat messages. An all-or-nothing
+mapping then declines every select-all, which is the common case.
+
+Pasting carries whatever the text actually is — newlines, punctuation
+that lives on no layout, anything. The cost is that the converted text
+sits on the clipboard for as long as the application takes to read it,
+and there is no handshake to wait on, so the restore is a timed guess.
+That cost is bounded and visible; the other two were silent and wrong.
+
+**Also measured, and not guessable from the code:** the hotkey fires on
+the *press*, so its own `Ctrl+Shift` is still down when the copy chord
+goes out — and `Ctrl+Shift+C` is not copy anywhere. Waiting for the
+release cannot work, because this runs on the thread that reads key
+events and would be blocking the very thing it waits for. The
+modifiers are released the same way the replay path releases them.
+
+---
+
+## 2026-08-28 — A capability nobody has by default, and nobody is asked to check
+
+Selection conversion reaches into another application's clipboard. That
+is a longer reach than anything else in this app has: the word buffer
+never leaves memory, and nothing else touches the clipboard at all. So
+it is off until asked for — not out of caution about the code, but
+because acquiring that reach by *upgrading* is not consent.
+
+The second half is that "supported desktops" is not a list. Whether a
+background process can read the clipboard without taking focus depends
+on which Wayland protocols the compositor advertises, and measuring
+that across the matrix produced an answer no name would have given:
+GNOME and Cinnamon's Wayland sessions advertise no data-control
+protocol at all, while KDE Plasma advertises only the newer
+`ext_data_control` and sway, labwc, Budgie and Xfce advertise both.
+
+So the toggle probes and disables itself with the reason in place of
+the setting. A hint listing desktop names would have been wrong within
+a release, and would have made every user check whether they were on
+it.
+
+GNOME is the trap worth naming: `wl-clipboard` works there, by falling
+back to creating a surface and taking focus. A library with that
+fallback would have made this feature *appear* to work while doing the
+one thing the app must not. The one we use has no fallback, which is
+what turns a missing protocol into an honest "unavailable".
+
+---
+
 ## 2026-08-27 — An offer aimed at fast typists must outlive fast typing
 
 The tooltip's "Add to dictionary" row is shown to people who type fast

@@ -96,6 +96,12 @@ treated as a vulnerability:
   system asks for your permission before allowing it, and
   [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md) explains exactly what is
   granted and why.
+- **"With `[selection].enabled` on, it reads the clipboard."** That is
+  what the setting turns on, which is why it is off by default and why
+  the app never takes keyboard focus to get it —
+  [`docs/PERMISSIONS.md`](docs/PERMISSIONS.md) § Clipboard has the
+  mechanism and its two inherent limits. A way to make it copy when the
+  user did **not** press the hotkey would be a real finding.
 - **"The installers are unsigned."** Known, stated on the download page
   and in the README, and being worked on — see
   [`docs/CODE_SIGNING.md`](docs/CODE_SIGNING.md).
