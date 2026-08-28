@@ -330,6 +330,13 @@ always deliberate. Caps Lock is refused for a different reason: we
 observe it rather than consume it, so a binding would flip the lock as
 well as fire.
 
+> **The Caps Lock half was SUPERSEDED on 2026-08-28** — see the entry
+> of that date above. The reasoning still holds; the conclusion does
+> not. The lock can be taken off the key in the layout, which is
+> something the user does once, and the binding is then the only thing
+> left on it. Refusing on the user's behalf was the wrong call for a
+> gesture people arrive with from Punto Switcher (#41).
+
 **Alternative not chosen: a mouse hook.** It would buy back the
 lone-modifier binding at the cost of a second global hook on two
 platforms, for a gesture the two-modifier and double-tap forms already
