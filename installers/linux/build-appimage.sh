@@ -13,10 +13,12 @@
 #                (default: target/<ARCH>-unknown-linux-gnu/release/poltertype).
 #   DATA_DIR   — path to the prepared `data/` tree from
 #                `crates/poltertype-core/build.rs` (default: target/dist/data).
-#   ICON_PNG   — path to a square PNG icon ≥ 256×256
-#                (recommended: target/dist/icon-1024.png, generated
-#                by `cargo xtask assets icon-png`). Required —
-#                linuxdeploy refuses to package without one.
+#   ICON_PNG   — path to a square PNG icon at one of the sizes
+#                linuxdeploy accepts, which top out at 512: use
+#                `cargo xtask assets icon-png target/dist/icon-256.png
+#                --size 256`, as the release workflow does. Required —
+#                linuxdeploy refuses to package without one, and
+#                refuses a 1024×1024 one just as flatly.
 #   OUT_DIR    — output directory (default: target/dist).
 #
 # AppDir layout (the AppImage is just an AppDir squashed into a
@@ -155,7 +157,13 @@ install -m 0755 scripts/setup-linux.sh \
 # Debian and its derivatives — CI never noticed because a runner's PATH
 # carries it.
 LDCONFIG="$(command -v ldconfig || echo /sbin/ldconfig)"
-APPINDICATOR_SO="$("${LDCONFIG}" -p | awk '/libayatana-appindicator3\.so\.1/ {print $NF; exit}')"
+# `awk … exit` on the first match closes the pipe under `ldconfig`,
+# which is still writing its several thousand lines; `pipefail` then
+# reads the SIGPIPE as a failed pipeline and `set -e` ends the build
+# with status 141 and not one word of output. Read the stream to the
+# end and keep the first match instead.
+APPINDICATOR_SO="$("${LDCONFIG}" -p |
+    awk '/libayatana-appindicator3\.so\.1/ && !seen {print $NF; seen = 1}')"
 if [[ -z "${APPINDICATOR_SO}" || ! -f "${APPINDICATOR_SO}" ]]; then
     echo "libayatana-appindicator3.so.1 not found via ldconfig." >&2
     echo "Install it before packaging (Debian/Ubuntu: libayatana-appindicator3-dev)." >&2
