@@ -1,12 +1,16 @@
 //! Handing a staged artifact to the OS installer.
 //!
-//! Every platform has the same problem: the thing being replaced is the
-//! thing doing the replacing. An MSI cannot overwrite a running
-//! `poltertype.exe`; an AppImage cannot be `mv`-ed over while its FUSE
-//! mount is live. So no backend installs anything directly — each
-//! writes a small script into the staging directory and spawns it, and
-//! the script's first act is to wait for our PID to disappear. The
-//! installer runs in the gap and relaunches us after.
+//! Windows and macOS have the same problem: the thing being replaced
+//! is the thing doing the replacing. An MSI cannot overwrite a running
+//! `poltertype.exe`. So neither backend installs anything directly —
+//! each writes a small script into the staging directory and spawns
+//! it, and the script's first act is to wait for our PID to disappear.
+//! The installer runs in the gap and relaunches us after.
+//!
+//! Linux does not, and must not: a helper spawned by an app systemd
+//! started is killed the moment that app exits, which is the moment it
+//! was waiting for. It swaps the AppImage in-process instead — see
+//! [`linux`], which carries the whole story.
 //!
 //! Paths go into the script as *files* rather than command-line
 //! arguments: they are user home directories, which routinely contain
@@ -34,22 +38,21 @@ use std::time::{Duration, Instant};
 
 use tracing::{info, warn};
 
-use crate::enums::UpdateError;
+use crate::enums::{Applied, UpdateError};
 use crate::staging;
 use crate::types::PendingUpdate;
 
 /// Install the staged update, then leave.
 ///
-/// **The caller must exit promptly** — the spawned installer is blocked
-/// on our process disappearing. `relaunch` says whether it should start
-/// PolterType again afterwards.
-///
-/// `Ok(false)` means the update was discarded rather than applied (too
-/// many failed attempts), so the caller can tell "we are about to be
-/// replaced" from "carry on quitting".
-pub fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<bool, UpdateError> {
+/// **On [`Applied::HandedOff`] the caller must exit promptly** — an
+/// installer may be blocked on our process disappearing. `relaunch`
+/// says whether PolterType should be started again afterwards; the
+/// other two outcomes both mean *keep running*, and are the difference
+/// between an update that is not coming and one that has arrived but
+/// cannot restart us.
+pub fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<Applied, UpdateError> {
     if !staging::attempts_left(pending) {
-        return Ok(false);
+        return Ok(Applied::Discarded);
     }
 
     info!(
@@ -60,18 +63,28 @@ pub fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<bool, UpdateErro
     );
 
     #[cfg(target_os = "linux")]
-    linux::apply(pending, relaunch)?;
-    #[cfg(target_os = "macos")]
-    macos::apply(pending, relaunch)?;
-    #[cfg(target_os = "windows")]
-    windows::apply(pending, relaunch)?;
+    let applied = linux::apply(pending, relaunch)?;
 
-    // Only now: the installer has spoken, so this artifact really did
-    // get a turn. Counting a spawn that never ran is what threw away
-    // three verified downloads on a machine where the installer could
-    // not start at all.
-    staging::note_install_attempt(pending);
-    Ok(true)
+    // Linux is not here because its swap has already succeeded or
+    // already failed by the time it returns, and it counts its own
+    // failures. Everywhere else the outcome is still a spawned
+    // process's to decide.
+    #[cfg(not(target_os = "linux"))]
+    let applied = {
+        #[cfg(target_os = "macos")]
+        macos::apply(pending, relaunch)?;
+        #[cfg(target_os = "windows")]
+        windows::apply(pending, relaunch)?;
+
+        // Only now: the installer has spoken, so this artifact really
+        // did get a turn. Counting a spawn that never ran is what
+        // threw away three verified downloads on a machine where the
+        // installer could not start at all.
+        staging::note_install_attempt(pending);
+        Applied::HandedOff
+    };
+
+    Ok(applied)
 }
 
 /// What every installer script prints before it does anything that can
@@ -107,6 +120,11 @@ fn write_script(name: &str, body: &str) -> Result<PathBuf, UpdateError> {
 /// The child must still be alive after the app it is replacing has
 /// exited. On Unix that means its own process group, so a signal sent to
 /// ours does not take the installer with it.
+///
+/// **That is not enough under systemd, and Linux no longer relies on
+/// it for anything that matters.** A process group is not a cgroup: a
+/// `.service` is stopped when its main process exits and takes the
+/// whole cgroup down with it, helper included. See [`linux`].
 ///
 /// **Windows takes only `CREATE_NO_WINDOW`, and this is load-bearing.**
 /// It used to take `DETACHED_PROCESS` as well, on the reasoning that
@@ -236,12 +254,18 @@ pub(crate) mod tests_util {
     }
 }
 
-/// Quote a path for a POSIX shell: wrap in single quotes, and end/
+/// Quote a string for a POSIX shell: wrap in single quotes, and end/
 /// reopen the quoting around any literal `'`. Handles every byte a
-/// path can contain, which `"$VAR"`-style interpolation does not.
+/// path or a unit name can contain, which `"$VAR"`-style interpolation
+/// does not.
+#[cfg(any(target_os = "linux", target_os = "macos", test))]
+fn sh_quote_str(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", test))]
 fn sh_quote(path: &Path) -> String {
-    format!("'{}'", path.to_string_lossy().replace('\'', r"'\''"))
+    sh_quote_str(&path.to_string_lossy())
 }
 
 /// Quote a path for PowerShell: single-quoted string, `'` doubled.

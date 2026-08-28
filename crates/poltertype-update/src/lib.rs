@@ -15,9 +15,13 @@
 //!    ([`download`]); a mismatch deletes the file and fails.
 //! 4. **Stage** — record it in `pending.json` ([`staging`]). Nothing is
 //!    installed yet.
-//! 5. **Apply** — on Quit or an explicit "Restart to update", hand the
-//!    artifact to the per-OS installer ([`apply`]) and exit. We never
-//!    swap a binary out from under a running keyboard hook.
+//! 5. **Apply** — on Quit or an explicit "Restart to update", and at
+//!    no other moment, hand the artifact to the per-OS installer
+//!    ([`apply`]) and exit. Windows and macOS install after we are
+//!    gone; Linux renames the new AppImage over the old one from
+//!    inside this process, which replaces a directory entry and leaves
+//!    the image we are executing from untouched. Either way no binary
+//!    is swapped out from under a live keyboard hook.
 //!
 //! The checksum comes from the same release as the artifact, so it
 //! catches truncated downloads and a tampered asset CDN but **not** a
@@ -46,7 +50,7 @@ mod version;
 pub use apply::apply;
 pub use check::{check_and_stage, current_version};
 pub use consts::MANIFEST_URL;
-pub use enums::UpdateError;
+pub use enums::{Applied, UpdateError};
 pub use manifest::platform_key;
 pub use signature::signing_payload;
 pub use staging::{clear_pending, read_pending, take_install_failure};

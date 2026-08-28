@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime};
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, RecvTimeoutError};
 use poltertype_core::settings::SettingsStore;
-use poltertype_update::{PendingUpdate, UpdateError};
+use poltertype_update::{Applied, PendingUpdate, UpdateError};
 use tao::event_loop::EventLoopProxy;
 use tracing::{info, warn};
 use tray_icon::menu::MenuItem;
@@ -111,25 +111,38 @@ pub(crate) fn report_previous_install_failure() {
 ///
 /// `relaunch` distinguishes the two ways here: the user clicked
 /// "Restart to update" and expects the app back, or clicked Quit and
-/// expects it gone. Either way the install happens *after* we exit.
+/// expects it gone.
 ///
-/// `false` means nothing was handed off, so there is nothing waiting
-/// for this process to disappear. The caller on the "Restart to update"
-/// path must then **stay running**: an app that quits for an installer
-/// that never started is an app the user has to go and start again,
-/// which is precisely how a failing updater turned into a machine with
-/// no PolterType on it.
+/// `false` means the app must **stay running** — because nothing is
+/// coming, or because the new build is in place but nothing on this
+/// session can start us again. An app that quits for a restart that
+/// never happens is an app the user has to go and start by hand, which
+/// is precisely how a failing updater turned into a machine with no
+/// PolterType on it.
 pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) -> bool {
     match poltertype_update::apply(pending, relaunch) {
-        Ok(true) => {
+        Ok(Applied::HandedOff) => {
             info!(
                 version = %pending.version,
                 relaunch,
-                "installer spawned; exiting so it can replace us"
+                "update handed off; exiting so it can take over"
             );
             return true;
         }
-        Ok(false) => {
+        Ok(Applied::InstalledStayUp) => {
+            // The one outcome that is neither success nor failure: the
+            // user gets the new version, just not this second.
+            info!(
+                version = %pending.version,
+                "update installed, but nothing here can restart us; staying up"
+            );
+            spawn_error_notification(format!(
+                "PolterType {} is installed, but this session could not start it again.\n\
+                 It will be the version you get the next time PolterType starts.",
+                pending.version
+            ));
+        }
+        Ok(Applied::Discarded) => {
             // Three refused installs in a row: the artifact is gone and
             // the tray is about to go back to "Check for updates…".
             // Silence here would read as the button doing nothing.

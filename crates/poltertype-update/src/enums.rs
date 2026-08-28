@@ -4,6 +4,22 @@ use std::io;
 
 use thiserror::Error;
 
+/// What [`crate::apply`] managed to arrange, and therefore whether the
+/// caller may now quit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Applied {
+    /// The update is on its way in and the caller must exit — either
+    /// an installer is waiting for this process to disappear, or the
+    /// new build is already in place and only the restart is left.
+    HandedOff,
+    /// Installed, but nothing on this session can start us again, so
+    /// the caller must **keep running**: the next launch picks the new
+    /// build up, and quitting here would only take the app away.
+    InstalledStayUp,
+    /// Refused too many times; the artifact has been deleted.
+    Discarded,
+}
+
 #[derive(Debug, Error)]
 pub enum UpdateError {
     #[error("could not locate a per-user data directory for poltertype")]
@@ -55,6 +71,10 @@ pub enum UpdateError {
     /// announces itself first — see `apply::HELLO`.
     #[error("the installer process started and stopped without running: {0}")]
     InstallerSilent(String),
+    /// The new build is installed and the app cannot bring itself
+    /// back. Never a failed install, and must not be reported as one.
+    #[error("could not arrange a restart: {0}")]
+    RelaunchFailed(String),
     #[error("io: {0}")]
     Io(#[from] io::Error),
 }

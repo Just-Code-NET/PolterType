@@ -6,6 +6,61 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-28 — The Linux update installs itself, and only the restart is delegated
+
+The AppImage updater wrote a shell script, spawned it in its own
+process group, and had it wait for our PID to vanish before swapping
+the file. That is the standard shape, and on a systemd desktop it is
+wrong: a process group is not a cgroup. systemd stops a `.service`
+when its main process exits and, under the default
+`KillMode=control-group`, SIGKILLs whatever is still in the cgroup —
+so the helper died at the instant it was waiting for, inside its poll
+loop, having done nothing. The app's own "run at login" toggle writes
+exactly such a unit, so the toggle was arming the bug.
+
+It was invisible from both ends. The script's only output was the
+greeting it prints before the wait, the app was already gone, and no
+failure marker is written on a path that never runs — "quit and never
+came back" was the entire symptom, and the retry counter still ticked
+down toward deleting the verified download. It was also intermittent
+in a way that hid the cause: an instance started by the *previous*
+helper inherits a session **scope**, and a scope has no main process
+to stop it, so those runs updated fine. One laptop's logs: eight
+clicks, five from the unit and all five lost, three from a scope and
+all three fine.
+
+**Decided:** the app renames the staged AppImage over the running one
+itself, before it spawns anything. `rename(2)` replaces a directory
+entry; the image we are executing from keeps its inode alive through
+its own open descriptor, so the running app is untouched and the swap
+is atomic. Nothing that must not be lost now depends on a process
+outliving us. This does not weaken "never install under a live
+keyboard hook" — the swap still happens only on Quit or "Restart to
+update", and it cannot disturb a running hook the way an MSI or a
+bundle replacement can.
+
+The relaunch is the only delegated step left, and it is now allowed to
+fail: an update that installed and could not restart the app is
+reported as installed, and the app stays running on the old build
+rather than quitting into nothing. Under a service the relaunch goes
+to a transient `systemd-run` unit — its own cgroup, out of reach of
+our teardown — which waits and then `systemctl --user start`s the unit
+again. Starting the AppImage directly would leave the app running
+beside a dead unit and give the next login a second copy to refuse.
+Everywhere else the detached script is kept: a scope does not kill it,
+and it assumes no init system.
+
+**Not chosen: `KillMode=process` in our own unit.** One line, and it
+fixes only the installs whose unit we wrote — not GNOME's, not KDE's,
+not a hand-written one — while telling systemd to stop tracking
+processes it should be tracking.
+
+**Not chosen: `exec`ing the new AppImage in place.** It keeps the PID
+and the cgroup and needs no helper at all, but the instance lock is
+held across `exec` unless every descriptor is `CLOEXEC`, and the exit
+path would have to be restructured around a `run_return` event loop to
+get control back at all.
+
 ## 2026-08-28 — A held hotkey is waited out, not typed over
 
 Two mechanisms broke the force-switch when the key was held rather than

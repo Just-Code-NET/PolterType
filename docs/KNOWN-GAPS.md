@@ -711,9 +711,36 @@ move too fast to be true.
 
 ## Updating and installing
 
-- **Self-update: Linux and macOS are proven end to end; Windows was
-  broken from the first release that shipped it until 0.20.0.**
-  The AppImage path is exercised. The `.app`-bundle swap was validated
+- **Self-update: the Linux AppImage path was a coin flip until
+  the fix below, macOS is proven end to end, and Windows was broken
+  from the first release that shipped it until 0.20.0.**
+  **Linux, found on a NixOS + Hyprland laptop and true of every
+  session that runs the app as a systemd user service — including the
+  unit PolterType's own "run at login" toggle writes.** The updater
+  spawned a helper script, in its own process group, whose first act
+  was to wait for the app's PID to disappear before swapping the
+  AppImage. A process group is not a cgroup: systemd stops a service
+  when its main process exits and, under the default
+  `KillMode=control-group`, SIGKILLs everything still in that cgroup —
+  so the helper was killed at the exact instant it was waiting for,
+  inside its poll loop, before it reached the swap. It left no marker
+  and no second log line, so from the outside "the app quit and never
+  came back" was the entire symptom. One maintainer laptop's logs
+  record eight "Restart to update" clicks across five releases: the
+  five made from the systemd unit all failed, and the three that
+  worked were instances the *previous* helper had started, which
+  inherit a session scope instead — a scope has no main process, so
+  nothing tears it down. The updater now renames the new AppImage over
+  the old one from inside the app, where nothing has to outlive us:
+  `rename`
+  replaces a directory entry and leaves the running image's inode
+  alone. Only the relaunch is delegated now, and under a service it
+  goes to a transient `systemd-run` unit — its own cgroup — which
+  starts the service again rather than launching the file beside a
+  dead unit. An update that installs but cannot restart the app now
+  says so and leaves the app running, instead of quitting into
+  nothing.
+  The `.app`-bundle swap was validated
   on Apple Silicon by a contributor at 0.19.0 (0.18.1 → 0.19.0 on an
   M1 Pro, issue #3) — it had been written from Apple's docs and never
   run. It also strips `com.apple.quarantine` from the installed bundle:
