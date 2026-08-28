@@ -298,8 +298,10 @@ impl SettingsApp {
             // (issue #41): it is bound bare or not at all, and once it
             // has been taken out of the layout — which it has to be, or
             // it latches on every press — it types nothing to clash
-            // with.
-            if modifiers.is_empty() && !matches!(key, Key::Named(Named::CapsLock)) {
+            // with. Recognised by its physical code as well as its
+            // name, because taking it out of the layout is what stops
+            // it having a name.
+            if modifiers.is_empty() && !is_capslock(&key, physical_key) {
                 return None;
             }
             // What the key *renders* as first, because that is what

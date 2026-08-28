@@ -320,6 +320,33 @@ fn a_key_the_reader_cannot_take_back_is_captured_by_its_physical_code() {
     );
 }
 
+/// Neutralising Caps Lock is the precondition for binding it — and it
+/// is also what takes the key's keysym away, so the pane stopped
+/// recognising the key the moment the user did what the pane asked
+/// (issue #41, reported again after 0.25.0 shipped).
+#[test]
+fn caps_lock_is_still_caps_lock_once_the_layout_has_dropped_it() {
+    use iced::keyboard::key::{Code, Physical};
+
+    assert!(
+        is_capslock(&Key::Named(Named::CapsLock), Physical::Code(Code::CapsLock)),
+        "with the lock still live, both halves say so"
+    );
+    assert!(
+        is_capslock(&Key::Unidentified, Physical::Code(Code::CapsLock)),
+        "under `caps:none` the key has no name left — only its position"
+    );
+    assert!(
+        !is_capslock(&Key::Character("a".into()), Physical::Code(Code::KeyA)),
+        "and no other bare key becomes bindable"
+    );
+    // What the capture then writes into `config.toml`.
+    assert_eq!(
+        physical_hotkey(Physical::Code(Code::CapsLock), Modifiers::empty()).as_deref(),
+        Some("CapsLock")
+    );
+}
+
 /// `Theme::custom` derives `is_dark` from background luminance and
 /// `brand_palette` keys the whole token set off that flag, so a
 /// background tweak that flipped the classification would leave every

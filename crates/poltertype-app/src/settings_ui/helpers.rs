@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use iced::keyboard::{Key, Modifiers, key::Named, key::Physical};
+use iced::keyboard::{Key, Modifiers, key::Code, key::Named, key::Physical};
 use poltertype_core::commands::{CommandAction, UserCommand};
 use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_layout::LayoutId;
@@ -489,6 +489,21 @@ pub fn physical_hotkey(physical: Physical, modifiers: Modifiers) -> Option<Strin
     let mut combo = modifier_prefix(modifiers);
     combo.push_str(&format!("{code:?}"));
     is_usable_hotkey(&combo).then_some(combo)
+}
+
+/// Is the captured key Caps Lock, whatever the layout has been told to
+/// render it as?
+///
+/// The one bare key a hotkey may be bound to (issue #41) — and the
+/// binding has a precondition the pane spells out: take the lock off
+/// the key first, or it latches on every press and the corrected word
+/// comes back in capitals. That precondition is exactly what removes
+/// the key's keysym, so the *logical* key stops being
+/// `Named::CapsLock` and the capture that worked before the user did
+/// what they were asked stopped working after. The physical code is
+/// the half no layout can take away.
+pub fn is_capslock(key: &Key, physical: Physical) -> bool {
+    matches!(key, Key::Named(Named::CapsLock)) || physical == Physical::Code(Code::CapsLock)
 }
 
 /// The modifier half of a hotkey string, in the canonical order, each
