@@ -140,6 +140,53 @@ fn re_applying_puts_the_new_chords_on_the_key_stream() {
     assert_eq!(sent[1], (Some(0x43), Some(0x39)));
 }
 
+/// Every punctuation key of the main block was missing from the SC
+/// Set-1 table, so a chord the pane happily stored — `Ctrl+Backquote`
+/// — was silently unbound on every key-stream backend (issue #43).
+/// Caps Lock is here for issue #41, which asked for it by name.
+///
+/// The values double as the evdev codes the Linux listener reports
+/// (`evdev_to_sc1` is the identity), so a wrong one here is a chord
+/// that answers to a different key rather than to none.
+#[test]
+fn the_main_block_punctuation_and_caps_lock_reach_the_key_stream() {
+    for (chord, expected) in [
+        ("Ctrl+Backquote", 0x29),
+        ("Ctrl+BracketLeft", 0x1A),
+        ("Ctrl+BracketRight", 0x1B),
+        ("Ctrl+Semicolon", 0x27),
+        ("Ctrl+Quote", 0x28),
+        ("Ctrl+Backslash", 0x2B),
+        ("Ctrl+Comma", 0x33),
+        ("Ctrl+Period", 0x34),
+        ("Ctrl+Slash", 0x35),
+        ("CapsLock", 0x3A),
+    ] {
+        let mapped = chord
+            .parse::<HotKey>()
+            .ok()
+            .and_then(|hk| chord_from_hotkey(&hk));
+        assert_eq!(
+            mapped.map(|c| c.scancode),
+            Some(expected),
+            "{chord} must reach the key stream"
+        );
+    }
+}
+
+/// Caps Lock has to be bindable *bare* — the whole point of the
+/// request is that the key stops doing anything else — and a chord
+/// matches its modifiers exactly, so `Shift+CapsLock` still latches
+/// the lock instead of firing (issue #41).
+#[test]
+fn caps_lock_binds_as_a_bare_key() {
+    let hk = parse_hotkey_or_default("CapsLock", DEFAULT_SWITCH_LAST);
+    assert_eq!(
+        chord_from_hotkey(&hk).map(|c| (c.ctrl, c.shift, c.alt, c.meta, c.scancode)),
+        Some((false, false, false, false, 0x3A))
+    );
+}
+
 /// `HotKey::new` normalises META to SUPER, so a chord built from the
 /// Super key carried `meta: false` and could never match on the
 /// keystream backends — every Wayland/evdev machine, and the

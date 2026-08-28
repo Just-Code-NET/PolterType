@@ -269,8 +269,12 @@ impl SettingsApp {
         // capture: the capture state lives in `self.capturing` and is
         // read by `update`, not here.
         let capture_sub = iced::event::listen_with(|event, _status, _window| {
-            let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) =
-                event
+            let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key,
+                physical_key,
+                modifiers,
+                ..
+            }) = event
             else {
                 return None;
             };
@@ -294,7 +298,18 @@ impl SettingsApp {
             if modifiers.is_empty() {
                 return None;
             }
-            Some(Message::HotkeyCaptured(format_hotkey(&key, modifiers)))
+            // What the key *renders* as first, because that is what
+            // the user reads off their keycap; the physical code when
+            // the rendering is something the reader cannot take back —
+            // a Cyrillic letter, or the `§` an Apple ISO keyboard puts
+            // left of `Z` (issue #43).
+            let combo = format_hotkey(&key, modifiers);
+            let combo = if is_usable_hotkey(&combo) {
+                combo
+            } else {
+                physical_hotkey(physical_key, modifiers).unwrap_or(combo)
+            };
+            Some(Message::HotkeyCaptured(combo))
         });
         // The other half of a modifier-only gesture, and the half that
         // decides it: a chord of modifiers is judged when they come

@@ -288,6 +288,12 @@ pub(crate) fn chord_from_hotkey(hk: &HotKey) -> Option<poltertype_core::engine::
 /// evdev key codes the listener reports (see `evdev_to_sc1`), so the
 /// same table serves matching against the live stream. Covers the keys
 /// realistically used in a hotkey; anything else returns `None`.
+///
+/// The main-block punctuation is here because every one of it used to
+/// be missing, which made the whole class unbindable on the key-stream
+/// backends by construction (issue #43). `IntlBackslash` — the ISO key
+/// left of `Z` — is deliberately absent: `global-hotkey`'s parser has
+/// no name for it, so no config file can ever carry it here.
 pub(crate) fn code_to_sc1(code: Code) -> Option<u32> {
     Some(match code {
         Code::Escape => 0x01,
@@ -332,6 +338,19 @@ pub(crate) fn code_to_sc1(code: Code) -> Option<u32> {
         Code::KeyB => 0x30,
         Code::KeyN => 0x31,
         Code::KeyM => 0x32,
+        Code::BracketLeft => 0x1A,
+        Code::BracketRight => 0x1B,
+        Code::Semicolon => 0x27,
+        Code::Quote => 0x28,
+        Code::Backquote => 0x29,
+        Code::Backslash => 0x2B,
+        Code::Comma => 0x33,
+        Code::Period => 0x34,
+        Code::Slash => 0x35,
+        // Bindable, and it fires on a bare press — `Shift+CapsLock`
+        // does not match a chord with no Shift in it, which is the
+        // escape hatch that still latches the lock (issue #41).
+        Code::CapsLock => 0x3A,
         Code::Space => 0x39,
         Code::F1 => 0x3B,
         Code::F2 => 0x3C,

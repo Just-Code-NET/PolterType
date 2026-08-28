@@ -265,6 +265,62 @@ fn system_theme_parsers_map_portal_and_gsettings_values() {
     assert_eq!(parse_color_scheme(""), None);
 }
 
+/// `ui_theme = "system"` meant "light" on Windows and macOS for two
+/// releases: iced 0.13's `Theme::default()` had answered for those two,
+/// and 0.14 turned the same name into something that detects nothing
+/// (issue #43). These are the parsers of the two probes that replaced
+/// it.
+#[test]
+fn the_windows_registry_probe_reads_the_apps_theme_flag() {
+    use super::system_theme::parse_reg_apps_use_light;
+
+    let dark =
+        "\r\nHKEY_CURRENT_USER\\...\\Personalize\r\n    AppsUseLightTheme    REG_DWORD    0x0\r\n";
+    let light =
+        "\r\nHKEY_CURRENT_USER\\...\\Personalize\r\n    AppsUseLightTheme    REG_DWORD    0x1\r\n";
+    assert_eq!(parse_reg_apps_use_light(dark), Some(true));
+    assert_eq!(parse_reg_apps_use_light(light), Some(false));
+    // The neighbouring value is the taskbar's, not ours.
+    assert_eq!(
+        parse_reg_apps_use_light("    SystemUsesLightTheme    REG_DWORD    0x0\r\n"),
+        None
+    );
+    assert_eq!(parse_reg_apps_use_light(""), None);
+}
+
+/// A key whose *rendering* the hotkey parser cannot read back — a
+/// Cyrillic letter, the `§` an Apple ISO keyboard puts left of `Z` —
+/// used to be refused outright, and a refused rebind is one that looks
+/// accepted and does nothing (issue #43).
+#[test]
+fn a_key_the_reader_cannot_take_back_is_captured_by_its_physical_code() {
+    use iced::keyboard::key::{Code, Physical};
+
+    let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
+    // What the layout renders is refused …
+    assert!(!is_usable_hotkey(&format_hotkey(
+        &Key::Character("ф".into()),
+        ctrl_shift
+    )));
+    // … and the key under it is not.
+    assert_eq!(
+        physical_hotkey(Physical::Code(Code::KeyA), ctrl_shift).as_deref(),
+        Some("Ctrl+Shift+KeyA")
+    );
+    // Punctuation the pane could not bind at all before.
+    assert_eq!(
+        physical_hotkey(Physical::Code(Code::Backquote), Modifiers::CTRL).as_deref(),
+        Some("Ctrl+Backquote")
+    );
+    // And the one key that stays unbindable: `global-hotkey` 0.6.4 has
+    // no spelling for the ISO key left of `Z`, so offering it would be
+    // a binding nothing could read.
+    assert_eq!(
+        physical_hotkey(Physical::Code(Code::IntlBackslash), Modifiers::CTRL),
+        None
+    );
+}
+
 /// `Theme::custom` derives `is_dark` from background luminance and
 /// `brand_palette` keys the whole token set off that flag, so a
 /// background tweak that flipped the classification would leave every

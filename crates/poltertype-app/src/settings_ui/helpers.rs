@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use iced::keyboard::{Key, Modifiers, key::Named};
+use iced::keyboard::{Key, Modifiers, key::Named, key::Physical};
 use poltertype_core::commands::{CommandAction, UserCommand};
 use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_layout::LayoutId;
@@ -356,27 +356,15 @@ pub fn named_key_list(names: &[&str], sep: &str) -> String {
 /// string `global-hotkey`'s `FromStr` accepts — `Ctrl+Shift+Space`,
 /// `Alt+F4` — using the portable names, `Ctrl` rather than `Control`.
 pub fn format_hotkey(key: &Key, modifiers: Modifiers) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    if modifiers.control() {
-        parts.push("Ctrl".into());
-    }
-    if modifiers.alt() {
-        parts.push("Alt".into());
-    }
-    if modifiers.shift() {
-        parts.push("Shift".into());
-    }
-    if modifiers.logo() {
-        // `Super` and `Cmd`, and nothing else: measured against
-        // `global-hotkey` 0.6.4, whose parser refuses both `Meta` and
-        // `Win` despite the name `Modifiers::META`. Writing `Meta` here
-        // produced a string our own reader rejected, and a rejected
-        // string is silently replaced by the default — a rebind that
-        // looked accepted and did nothing.
-        parts.push("Super".into());
-    }
-    parts.push(key_to_string(key));
-    parts.join("+")
+    // `Super` and `Cmd`, and nothing else: measured against
+    // `global-hotkey` 0.6.4, whose parser refuses both `Meta` and `Win`
+    // despite the name `Modifiers::META`. Writing `Meta` there produced
+    // a string our own reader rejected, and a rejected string is
+    // silently replaced by the default — a rebind that looked accepted
+    // and did nothing.
+    let mut combo = modifier_prefix(modifiers);
+    combo.push_str(&key_to_string(key));
+    combo
 }
 
 /// Which modifier a captured key stands for, or `None` for every
@@ -478,6 +466,48 @@ pub fn mod_capture_step(
 pub fn is_usable_hotkey(combo: &str) -> bool {
     crate::hotkeys::parse_mod_chord(combo).is_some()
         || combo.parse::<global_hotkey::hotkey::HotKey>().is_ok()
+}
+
+/// The captured key written the way the *keyboard* is laid out rather
+/// than the way the current layout renders it, when the rendering is
+/// something the reader cannot take back.
+///
+/// The logical key is what a hotkey should normally be: the user reads
+/// `Ctrl+Ж` off their own keycap. But a Cyrillic letter, or the `§` an
+/// Apple ISO keyboard puts left of `Z`, has no name in the hotkey
+/// parser — and a refused capture is a rebind that silently does
+/// nothing. The physical code (`KeyA`, `Backquote`) always has one.
+///
+/// `None` when the physical key has no `Code` either, or when its name
+/// is one the parser does not know — `IntlBackslash` is the ISO key the
+/// reporter of issue #43 wanted, and `global-hotkey` 0.6.4 has no
+/// spelling for it at all.
+pub fn physical_hotkey(physical: Physical, modifiers: Modifiers) -> Option<String> {
+    let Physical::Code(code) = physical else {
+        return None;
+    };
+    let mut combo = modifier_prefix(modifiers);
+    combo.push_str(&format!("{code:?}"));
+    is_usable_hotkey(&combo).then_some(combo)
+}
+
+/// The modifier half of a hotkey string, in the canonical order, each
+/// part followed by its `+`.
+fn modifier_prefix(modifiers: Modifiers) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if modifiers.control() {
+        parts.push("Ctrl");
+    }
+    if modifiers.alt() {
+        parts.push("Alt");
+    }
+    if modifiers.shift() {
+        parts.push("Shift");
+    }
+    if modifiers.logo() {
+        parts.push("Super");
+    }
+    parts.iter().map(|p| format!("{p}+")).collect()
 }
 
 /// One-key serialisation matching `global-hotkey::HotKey::from_str`:
