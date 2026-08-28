@@ -109,6 +109,10 @@ impl KeyEmitter for UinputEmitter {
         // `emit` is a single SYN_REPORT frame, which libinput/keyd drop
         // as a zero-duration tap. Symptom was a backspace burst missing
         // presses, leaving fragments of the previous word on screen.
+        // Logged like the replay is: a burst that goes out and erases
+        // nothing looks exactly like a burst that was never sent, and
+        // telling the two apart took a day without this line.
+        debug!(count = n, "uinput backspaces starting");
         let step = Duration::from_millis(4);
         for _ in 0..n {
             emit_one(
