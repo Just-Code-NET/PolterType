@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-28 (v0.24.0).
+> Created: 2026-05-02. Last updated: 2026-08-28 (v0.25.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -371,6 +371,10 @@ word_whitelist   = ["nginx", "kubectl", "github"]
 [hotkeys]
 pause_toggle        = "Ctrl+Shift+Space"   # macOS: Ctrl+Shift+P
 manual_switch_last  = "Ctrl+Shift+Backspace"   # Wayland: Ctrl+Shift+F9
+                                              # also: any main-block punctuation key,
+                                              # a modifier-only chord ("Ctrl+Shift",
+                                              # "Shift+Shift"), or bare "CapsLock" —
+                                              # which needs the lock taken off the key
 # Either may be modifiers alone: "Shift+Shift" (the same one tapped
 # twice) or two held together ("Ctrl+Shift"). Those have no key code to
 # register, so they are matched off the key stream on every platform,

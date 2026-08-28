@@ -1,4 +1,4 @@
-# Known gaps (as of v0.24.0)
+# Known gaps (as of v0.25.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,73 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.25.0 pass actually checked (2026-08-28).** The
+force-switch hotkey, which four of the five reports are about, across
+the whole desktop matrix — and two shapes of it the matrix had never
+been able to ask.
+
+`matrix.py` binds `Shift+Shift`, because a modifier-only chord needs no
+OS-level grab and so is the one shape that works on every session in
+the guest. That is exactly why the sweep had never measured the two
+that were reported: an ordinary chord **held down** past the kernel's
+repeat delay (#39), and **Caps Lock** as the whole binding (#41). A
+second probe runs those now, each as its own app run with its own
+`config.toml`, after every session. A third phase went into `matrix.py`
+itself for #40 — the hotkey on a word with no separator after it,
+twice, then that word rubbed out, a shorter one typed, and the hotkey
+again, which has to act on the second word.
+
+| session | corrects at all | hotkey undo | pressed twice | the word after one it switched (#40) | chord held down (#39) | Caps Lock (#41) |
+|---|---|---|---|---|---|---|
+| KDE Plasma (Wayland) | yes | yes | yes | yes | yes | n/a |
+| sway | yes | yes | yes | yes | yes | n/a |
+| GNOME (Wayland) | yes | yes | yes | yes | yes | n/a |
+| Cinnamon (X11) | yes | yes | yes | yes | yes | yes |
+| Xfce (X11) | yes | yes | yes | yes | yes | yes |
+| LXQt | yes | yes | yes | yes | yes | yes |
+| i3 | yes | yes | yes | yes | yes | yes |
+| openbox | yes | yes | yes | yes | yes | yes |
+| fluxbox | yes | yes | yes | yes | yes | yes |
+| IceWM | yes | yes | yes | yes | yes | yes |
+| MATE | **no** | n/a | n/a | n/a | n/a | n/a |
+| Budgie (Wayland) | **no** | n/a | n/a | n/a | n/a | n/a |
+| labwc | **no** | n/a | n/a | n/a | n/a | n/a |
+| Xfce (Wayland) | **no** | n/a | n/a | n/a | n/a | n/a |
+| Cinnamon (Wayland) | **no** | n/a | n/a | n/a | n/a | n/a |
+
+Read only the rows where the session corrects at all. Budgie, labwc,
+Xfce's Wayland session and MATE have no layout-switching backend in
+this guest, so nothing is ever corrected there and "the hotkey put the
+word back" and "nothing happened" write the same bytes; Cinnamon's
+Wayland session delivered nothing to the terminal, as it has in every
+sweep since it was installed. Caps Lock reads `n/a` on the three
+Wayland sessions that do correct because the binding needs `caps:none`
+and none of the three could be given it from outside: sway keeps its
+keymap in its own config, and KDE's `kxkbrc` route did not take.
+
+That is also what closes a gap this file had carried since 0.20.0 —
+the mid-word switch that "did nothing at all" on Xfce/X11 under
+`Ctrl+Shift+Backspace`. It was the Ctrl, not the Backspace, and Xfce
+(X11) is a yes in every column above.
+
+What this pass did **not** check: anything on macOS or Windows. Four
+things in this release live there — the TCC state the Setup pane now
+recognises (#42), the two system-theme probes, the punctuation
+scancodes as those listeners report them, and Caps Lock on the
+key-stream path — and every one is compiled, unit-tested where there is
+logic to test, and run by nobody.
+
+One measurement in this pass was wrong for most of an afternoon, and
+the next person will hit it too. An ordinary chord hotkey reaches the
+focused application as well as us — that is what `observed_not_consumed`
+means — and a terminal renders `Ctrl+Shift+F9` as six literal bytes of
+`ESC [20;6~`, which land in the line the correction is about to fix and
+soak up six of its seven backspaces. Every Wayland row then read as a
+correction that erased nothing, which looks exactly like a regression
+and is not one: strip the escape sequence before applying the erases
+and the word is correct. X11 does not show it, because there the grab
+consumes the key.
 
 **What the 0.24.0 pass actually checked (2026-08-28).** Selection
 conversion, which the release exists for, in two passes.
@@ -407,20 +474,46 @@ move too fast to be true.
   used to end with the gate funnelling the whole session's input into
   the app (see `docs/DECISIONS.md`, 2026-07-31). An `EBUSY` at hold
   time turns the gate off until restart.
-- **The manual switch on a word still being typed is measured on
-  Wayland only, and did not work in the one X11 run.** 0.20.0 made the
-  force-switch act on the word under the caret. Measured working on KDE
-  Plasma Wayland and on GNOME Wayland, where the default chord is
-  already substituted to `Ctrl+Shift+F9`. The same probe on Xfce/`xfwm4`
-  (X11, default chord `Ctrl+Shift+Backspace`) switched the *finished*
-  word correctly and did nothing at all mid-word, logging an empty word
-  buffer. **Why the buffer was empty is not established** — the obvious
-  suspect is that our own listener sees the Backspace of the chord, but
-  a Backspace pops one key rather than clearing the buffer, so that
-  does not explain it on its own. Not shipped as a root cause until
-  somebody reproduces it; the finished-word case is unaffected
-  everywhere, and Windows and macOS carry the same Backspace-based
-  default and have not been measured for this at all.
+- **The manual switch on a word still being typed: the X11 hole has a
+  name now.** 0.20.0 made the force-switch act on the word under the
+  caret, and it was measured working on KDE Plasma Wayland and GNOME
+  Wayland — where the default chord is already substituted to
+  `Ctrl+Shift+F9` — while the same probe on Xfce/`xfwm4` (X11, default
+  chord `Ctrl+Shift+Backspace`) switched the *finished* word and did
+  nothing at all mid-word, logging an empty word buffer. This file said
+  the reason was not established, and ruled out the obvious suspect: a
+  Backspace pops one key rather than clearing the buffer.
+  It was not the Backspace. It was the **Ctrl**. `handle_key` reads any
+  press carrying Ctrl/Alt/Meta as a shortcut that may have edited the
+  text arbitrarily and drops the word buffer — so the chord's own key
+  emptied the buffer the switch was about to read. 0.25.0 exempts the
+  force-switch chord's own key from that (and only that chord: the
+  pause default is Space, which would close the word). The same taint
+  is what made the gesture stop answering for every word typed after
+  one it had switched, which is how it was reported (#40).
+  Measured, not just reasoned: Xfce (X11) is a yes in every column of
+  the 0.25.0 table above, as is every other session in the guest that
+  can switch layouts at all. Windows and macOS carry the same
+  Backspace-based default and have never been measured for it.
+
+- **Caps Lock works as the force-switch key, and only if you take the
+  lock off it first** (0.25.0, #41). PolterType watches keys and never
+  swallows them, so binding this one still latches the lock on every
+  press — and a latched lock makes the corrected word come back in
+  capitals, because the replay is scancodes and the *system* applies
+  the lock to them. `caps:none` (or the equivalent in whatever remapper
+  you run) is what makes the key carry the binding and nothing else;
+  the Hotkeys pane says so under the row. Once it is neutralised no
+  OS-level shortcut registry can find the key any more — `XGrabKey`
+  resolves a key through its keysym and it no longer has one — so the
+  binding is read off the key stream on every platform instead.
+  Measured on all seven X11 sessions in the guest that can switch
+  layouts, 2026-08-28: bound live the word comes back in capitals,
+  bound with `caps:none` it comes back exactly as typed. Unmeasured on
+  the Wayland sessions, where nothing outside the compositor can set
+  that option — sway keeps its keymap in its own config — and on
+  Windows and macOS, where the same key-stream path is now used and the
+  listeners do report the key.
 
 - **A shortcut pressed mid-correction while keys are held is lost.**
   Backspace, arrows and Esc are re-emitted behind the correction, but
@@ -678,6 +771,26 @@ move too fast to be true.
   the installers still may not be called signed.** Those need
   certificates we do not hold; see `docs/CODE_SIGNING.md` and say what
   the README says.
+- **On macOS every self-update costs both permissions, and until
+  0.25.0 the app offered a button that could not give them back**
+  (#42). Our bundles are ad-hoc signed, so TCC keys Accessibility and
+  Input Monitoring to the code-directory hash rather than to a team
+  identifier: the updater replaces the bundle, the hash changes, and
+  the app is denied while both switches still read "on". Because a
+  record exists, `AXIsProcessTrustedWithOptions` and
+  `IOHIDRequestAccess` return without raising a dialog — so *Ask macOS
+  now* did nothing at all, and the only fix is removing PolterType from
+  each list and adding it back. `IOHIDCheckAccess` can tell a recorded
+  denial from "never asked", which the Setup pane now uses to say that
+  in words and open the pane; `AXIsProcessTrusted` cannot, so
+  Accessibility follows Input Monitoring on the reasoning that TCC is
+  asked for both at the same moment. The Updates card says the price
+  before it is paid.
+  **A Developer ID signature is the actual fix** and is out of scope
+  until there is an Apple developer account; see
+  `docs/CODE_SIGNING.md`. Everything in this bullet is **compiled, not
+  run** — there is no Mac here, and the reporter's machine reproduces
+  it every time.
 - **An install that isn't ours can't self-update.** A distro package,
   a `cargo run` dev build, or a bare binary has no AppImage to swap
   (`$APPIMAGE` is unset) and no bundle to replace. Those users get a

@@ -48,6 +48,17 @@ the signature that makes the permissions work at all. Builds before
 v0.14.4 had no usable identity on Intel Macs, where the permission
 could be granted but never took effect.
 
+**And "grant again" does not mean "toggle it off and on".** Both
+switches stay *on* after the update — the entries are there, enabled,
+and the app is denied anyway, because what they authorise is the old
+copy of it. macOS will not show its permission dialog again either: a
+decision is on record, and both `AXIsProcessTrustedWithOptions` and
+`IOHIDRequestAccess` return quietly without raising one, which is why
+the Setup pane's *Ask macOS now* button looks dead. The only thing that
+works is removing PolterType from each list with the **−** button and
+adding it back with **+**. Since v0.25.0 the Setup pane recognises that
+state, says exactly this, and opens the pane for you (issue #42).
+
 **Autostart is a third, lighter capability.** With *"Start
 automatically when I sign in"* enabled, the app writes a per-user
 LaunchAgent to `~/Library/LaunchAgents/dev.opensource.poltertype.plist`

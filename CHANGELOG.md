@@ -4,6 +4,95 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] — the key you are holding
+
+Five reports in a day, from two people on two platforms. Four are
+fixed; the fifth needs one more detail from the machine it happens on.
+
+### Fixed
+
+- **Holding the force-switch key no longer breaks the correction it
+  asked for** ([#39](https://github.com/Just-Code-NET/PolterType/issues/39)).
+  Tap the key and the word came back; hold it a moment longer and the
+  word was left in the wrong layout, or lost. Two causes, both about
+  the key still being down. Your keyboard reports a held key as a
+  stream of presses, and PolterType read those as you typing a shortcut
+  mid-correction, which is a thing it refuses to type over — so it
+  abandoned the correction untouched. And on X11 the shortcut you are
+  holding *keeps the keyboard to itself* until you let go, so anything
+  PolterType typed went nowhere at all. It now recognises its own key
+  repeating, and waits — up to two seconds — for your fingers to lift
+  before it types. Measured with the chord held for a full second on
+  every session in our desktop matrix that can switch layouts at all:
+  ten of them, Wayland and X11.
+
+- **The force-switch key keeps working on the words you type next**
+  ([#40](https://github.com/Just-Code-NET/PolterType/issues/40)).
+  Pressing it on a word you have not finished typing told the internal
+  model that it no longer knew where the cursor was — which is a state
+  it deliberately refuses to act in. So the key answered once and then
+  went quiet for everything typed afterwards, until a space happened to
+  clear it: press it on a new word and you got the old word's letters,
+  or nothing. It now marks only what it needs to (this word has been
+  placed by hand, leave it alone at the boundary) and keeps track of
+  the cursor, which it never actually lost. Same ten sessions, same
+  sweep — including the one where this had been an unexplained hole in
+  our own notes since 0.20.0.
+
+- **`ui_theme = "system"` follows the system again on Windows and
+  macOS** ([#43](https://github.com/Just-Code-NET/PolterType/issues/43)).
+  It has meant "light" on both since 0.23.0: the toolkit upgrade
+  replaced the call that used to answer this with one that answers
+  nothing, and on Linux the desktop portal had always been the real
+  authority, so nothing looked wrong here. Both new probes are
+  compiled and their parsers tested; neither has been run on the
+  platform it is for, because there is no Mac or Windows box in this
+  release's test loop.
+
+- **Punctuation keys can be used as hotkeys** (also #43). Every key of
+  the main block that is not a letter, a digit or a function key —
+  backtick, brackets, semicolon, quote, comma, period, slash, backslash
+  — was missing from an internal table, so binding one produced a
+  hotkey that answered to nothing. The ISO key to the left of `Z` is
+  still not bindable: the hotkey library we register with has no name
+  for it.
+
+- **Rebinding to a key your layout renders as something exotic no
+  longer fails silently** (also #43). A capture reads the character the
+  key produces, so rebinding to a letter with a Cyrillic layout active
+  wrote a combination our own reader rejects — and a rejected binding
+  is quietly replaced by the default. It now falls back to the key's
+  physical position, which always has a name.
+
+### Added
+
+- **Caps Lock can be the force-switch key**
+  ([#41](https://github.com/Just-Code-NET/PolterType/issues/41)) — the
+  Punto Switcher gesture, asked for by name. Two things to know, and
+  the Hotkeys pane says both. PolterType watches keys and never
+  swallows them, so Caps Lock still latches the lock unless you take it
+  off the key first (the `caps:none` keyboard option, or whatever your
+  remapper calls it) — and a latched lock makes the corrected word come
+  back in capitals. Once it is neutralised, no operating-system
+  shortcut registry can find the key any more, so PolterType reads it
+  off the key stream instead, on every platform. Bare Caps Lock only:
+  `Shift`+Caps Lock is left alone, which is the escape hatch for
+  latching the lock when you actually want it.
+
+- **macOS says what an update will cost, instead of offering a button
+  that cannot work**
+  ([#42](https://github.com/Just-Code-NET/PolterType/issues/42)). Our
+  builds are not signed with an Apple Developer ID, so macOS ties
+  Accessibility and Input Monitoring to the exact copy of the app —
+  and every self-update replaces it. The switches stay on, the app is
+  denied anyway, and because macOS has an answer on record it will not
+  show its permission dialog again, which is why *Ask macOS now* did
+  nothing. The Setup pane now recognises that state, says to remove
+  PolterType from the list and add it back, and opens the right pane;
+  the Updates card says so before you update rather than after.
+  Compiled, not run — the reporter's M1 Pro reproduces the problem
+  every time and is the machine that can confirm the fix.
+
 ## [0.24.0] — convert what you have selected
 
 The last item of

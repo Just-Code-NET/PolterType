@@ -6,6 +6,68 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-28 — A held hotkey is waited out, not typed over
+
+Two mechanisms broke the force-switch when the key was held rather than
+tapped, and only one of them was the one we guessed.
+
+The guessed one is real: evdev reports a held key as repeated presses,
+the correction window reads any press carrying Ctrl as a shortcut it
+cannot reconstruct, and it therefore abandoned the correction the chord
+had just asked for. Swallowing the chord's own repeats fixes that, and
+it is what the engine now does.
+
+The other only shows on a real X11 session. A `XGrabKey` passive grab
+becomes an *active* grab while the key is down, so every keystroke the
+correction emits — ours included, XTEST or uinput — is delivered to the
+grabbing client instead of to the application. Nothing is typed and
+nothing is deleted, and from inside the app it is indistinguishable
+from success. Measured on IceWM in the matrix guest, 2026-08-28.
+
+So the correction waits for the trigger to come back up before emitting,
+bounded at two seconds. Rejected: emitting anyway and repairing
+afterwards (there is nothing to repair — the keystrokes never landed),
+and releasing the grab ourselves (it is not ours to release).
+
+"Trigger" is deliberately narrow — a hotkey's own modifier set, not any
+modifier. A word closed by a shifted separator is corrected with Shift
+still down, and waiting there would put two seconds into ordinary
+typing. Where an OS-level grab owns the chord the engine matches
+nothing itself, so the app sends the grabbed chords along for
+recognition only.
+
+**Alternative considered and rejected:** treating the grab as a
+platform quirk and documenting it. The gesture is the product's second
+headline feature; "do not hold the key" is not an answer.
+
+---
+
+## 2026-08-28 — Caps Lock is a key-stream binding on every platform
+
+Asked for by name (#41), and it only works under two conditions that
+are worth writing down.
+
+PolterType watches keys and never swallows them, so binding Caps Lock
+still latches the lock on every press — and the replay is scancodes,
+which the system then applies the lock to, so the corrected word comes
+back in capitals. The key has to be neutralised in the layout first
+(`caps:none`, or the remapper's equivalent). That is a real
+precondition, not a caveat: the Hotkeys pane says it under the row.
+
+And once it *is* neutralised, no OS-level shortcut registry can find
+the key: `XGrabKey` resolves a key through its keysym, and it no longer
+has one. Measured on IceWM — bound with `caps:none` and registered as a
+grab, the binding fired on nothing at all.
+
+So Caps Lock is matched off the key stream everywhere and never
+registered as a grab, which is the one shape that works on both sides
+of that condition. Rejected: refusing the binding (it is what Punto
+Switcher users arrive expecting), and tapping the key a second time to
+undo the latch ourselves (racy, and on the grab path our own injected
+tap can re-enter the hotkey).
+
+---
+
 ## 2026-08-28 — A selection is pasted, because the other two ways lied
 
 Converting a selected passage has three plausible mechanisms and two of
