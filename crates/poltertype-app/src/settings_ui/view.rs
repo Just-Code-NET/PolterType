@@ -310,16 +310,30 @@ impl SettingsApp {
                     bottom: 5.0,
                     left: 12.0,
                 }));
-            match effective.substitution {
+            let note = match effective.substitution {
+                Some(s) => Some(substitution_note(s)),
+                // A Caps Lock binding works, and it latches the lock on
+                // every press unless the key has been taken out of the
+                // layout — which the pane has to say, because the
+                // symptom is the corrected word coming back in
+                // capitals and nothing about it points here.
+                None if current.eq_ignore_ascii_case("capslock") => Some(
+                    tr(
+                        "hotkeys.caps_lock_still_locks",
+                        "PolterType watches this key, it never swallows it, so Caps Lock still \
+                         latches — and a latched lock makes the corrected word come back in \
+                         capitals. Take the lock off the key first: the `caps:none` keyboard \
+                         option, or whatever your remapper calls it.",
+                    )
+                    .to_owned(),
+                ),
+                None => None,
+            };
+            match note {
                 None => line.into(),
-                // Under the row, not beside it: a chord the user never
-                // chose needs a sentence, and a sentence does not fit
+                // Under the row, not beside it: a sentence does not fit
                 // in a table cell.
-                Some(s) => Column::new()
-                    .spacing(4)
-                    .push(line)
-                    .push(tip(b, substitution_note(s)))
-                    .into(),
+                Some(n) => Column::new().spacing(4).push(line).push(tip(b, n)).into(),
             }
         };
 
@@ -355,11 +369,12 @@ impl SettingsApp {
                 b,
                 format!(
                     "Tip: a combination needs at least one of {} — a bare \
-                     key would clash with typing. Modifiers on their own \
-                     count too: hold two together ({}), or tap one twice \
-                     ({}). Those fire when the keys come back up, and only \
-                     if nothing else was pressed in between, so they leave \
-                     the shortcuts they are part of alone. \
+                     key would clash with typing, and Caps Lock is the one \
+                     exception. Modifiers on their own count too: hold two \
+                     together ({}), or tap one twice ({}). Those fire when \
+                     the keys come back up, and only if nothing else was \
+                     pressed in between, so they leave the shortcuts they \
+                     are part of alone. \
                      Esc cancels capture without changing anything.",
                     key_list(&["Ctrl", "Alt", "Shift", "Cmd"], " / "),
                     key_list(&["Ctrl", "Shift"], "+"),

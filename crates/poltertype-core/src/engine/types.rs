@@ -182,6 +182,9 @@ pub struct KeystreamHotkeys {
     /// to tell its own trigger — held down, autorepeating — from the
     /// user typing a shortcut, and on that path nothing else says what
     /// the trigger was. See `SwitcherEngine::is_own_hotkey_press`.
+    ///
+    /// `[pause, switch_last]`, in that order, mirroring the two fields
+    /// above.
     pub grabbed: [Option<Chord>; 2],
 }
 
@@ -189,6 +192,16 @@ impl KeystreamHotkeys {
     /// Every ordinary chord in force, wherever it is matched. Skips the
     /// modifier-only bindings: they fire on release and have no key of
     /// their own to hold down or repeat.
+    /// The force-switch chord alone, wherever it is matched. Its own
+    /// key press has to be told from an ordinary shortcut: see
+    /// `SwitcherEngine::handle_key`.
+    pub fn switch_chord(&self) -> Option<Chord> {
+        match self.switch_last {
+            Some(Binding::Key(c)) => Some(c),
+            _ => self.grabbed[1],
+        }
+    }
+
     pub fn chords(&self) -> impl Iterator<Item = Chord> + '_ {
         [self.pause, self.switch_last]
             .into_iter()

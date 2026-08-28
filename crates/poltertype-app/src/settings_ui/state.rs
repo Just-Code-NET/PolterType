@@ -294,8 +294,12 @@ impl SettingsApp {
                 });
             }
             // Single-key hotkeys (`A`, `Space`) would clash with normal
-            // typing.
-            if modifiers.is_empty() {
+            // typing. Caps Lock is the exception people ask for by name
+            // (issue #41): it is bound bare or not at all, and once it
+            // has been taken out of the layout — which it has to be, or
+            // it latches on every press — it types nothing to clash
+            // with.
+            if modifiers.is_empty() && !matches!(key, Key::Named(Named::CapsLock)) {
                 return None;
             }
             // What the key *renders* as first, because that is what

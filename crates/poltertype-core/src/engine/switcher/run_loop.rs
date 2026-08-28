@@ -297,10 +297,18 @@ impl SwitcherEngine {
             // Bare modifier presses are exempt (`is_modifier_scancode`):
             // the suggestion-accept chord must survive its own
             // modifiers, and the digit that follows is what accepts.
-            buffer.abandon();
-            // A shortcut can also move the caret (Ctrl+End, app-specific
-            // jumps), so the next word may start mid-word.
-            buffer.mark_context_unclean();
+            //
+            // So is the force-switch chord's own key, which by now has
+            // already run its correction and knows precisely where the
+            // caret is: tainting there is what left the gesture dead
+            // for every word typed after it (issue #40).
+            if !self.is_own_switch_press(&ev) {
+                buffer.abandon();
+                // A shortcut can also move the caret (Ctrl+End,
+                // app-specific jumps), so the next word may start
+                // mid-word.
+                buffer.mark_context_unclean();
+            }
             self.dismiss_suggestions(None);
             return;
         }

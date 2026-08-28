@@ -78,13 +78,27 @@ impl SwitcherEngine {
     /// grabbed for as long as the key is down — so the repeats arrive
     /// exactly where they do the most damage.
     pub(super) fn is_own_hotkey_press(&self, ev: &KeyEvent) -> bool {
-        self.keystream_hotkeys.read().chords().any(|c| {
-            ev.scancode == c.scancode
-                && ev.modifiers.control == c.ctrl
-                && ev.modifiers.shift == c.shift
-                && ev.modifiers.alt == c.alt
-                && ev.modifiers.meta == c.meta
-        })
+        self.keystream_hotkeys
+            .read()
+            .chords()
+            .any(|c| chord_matches(ev, c))
+    }
+
+    /// Narrower: is this the *force-switch* chord's own key?
+    ///
+    /// `handle_key` treats any press carrying Ctrl/Alt/Meta as a
+    /// shortcut that may have edited the text arbitrarily, and taints
+    /// the buffer accordingly. For this one key that is wrong twice
+    /// over: the correction it just triggered knows exactly where the
+    /// caret is, and the taint is what made the gesture stop answering
+    /// for every word typed afterwards (issue #40). The pause chord is
+    /// deliberately not exempt — its default key is Space, which the
+    /// buffer would read as a word boundary.
+    pub(super) fn is_own_switch_press(&self, ev: &KeyEvent) -> bool {
+        self.keystream_hotkeys
+            .read()
+            .switch_chord()
+            .is_some_and(|c| chord_matches(ev, c))
     }
 
     /// Is the gesture that asked for this correction still down?
@@ -318,6 +332,16 @@ impl SwitcherEngine {
             warn!(%e, id = %cmd.id, "smart command: could not start worker thread");
         }
     }
+}
+
+/// Does this key event carry exactly the chord's key and modifiers?
+/// Extra held modifiers do not match, the same rule `match_chord` uses.
+fn chord_matches(ev: &KeyEvent, c: crate::engine::types::Chord) -> bool {
+    ev.scancode == c.scancode
+        && ev.modifiers.control == c.ctrl
+        && ev.modifiers.shift == c.shift
+        && ev.modifiers.alt == c.alt
+        && ev.modifiers.meta == c.meta
 }
 
 /// Which suggestion-accept digit a scancode is, if any: the digit row

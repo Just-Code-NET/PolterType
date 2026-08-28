@@ -2681,6 +2681,90 @@ mod engine_integration_tests {
         );
     }
 
+    /// Issue #40 as it was actually reported: through the chord, not
+    /// through the command channel.
+    ///
+    /// The chord's own key carries Ctrl, and `handle_key` reads any
+    /// press carrying Ctrl as a shortcut that may have edited the text
+    /// — so the correction settled the buffer and the very same key
+    /// event then threw it away again. Only the modifier-only binding
+    /// escaped it, which is why the first regression net missed this.
+    #[test]
+    fn the_chord_itself_leaves_the_word_it_just_switched_alone() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let press_chord = || {
+            h.key_mods(0x1D, KeyDirection::Press, ctrl);
+            h.key_mods(0x2A, KeyDirection::Press, both);
+            std::thread::sleep(Duration::from_millis(120));
+            h.key_mods(0x43, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Release, both);
+            h.key_mods(0x2A, KeyDirection::Release, ctrl);
+            h.key_mods(
+                0x1D,
+                KeyDirection::Release,
+                poltertype_types::Modifiers::NONE,
+            );
+        };
+
+        // A word with no separator after it, switched out and back.
+        type_word(&h, &GHBDSN);
+        h.settle();
+        press_chord();
+        h.settle();
+        press_chord();
+        h.settle();
+
+        // Rub it out, type a shorter one, and ask again.
+        for _ in 0..GHBDSN.len() {
+            h.tap(BACKSPACE);
+        }
+        let second = [0x32u32, 0x18, 0x18];
+        for sc in second {
+            h.tap(sc);
+        }
+        h.settle();
+        press_chord();
+        h.settle();
+
+        let erases: Vec<usize> = h
+            .emitter
+            .ops()
+            .iter()
+            .filter_map(|o| match o {
+                EmitOp::Backspaces(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            erases.last(),
+            Some(&second.len()),
+            "the third press must act on the word now under the caret: {erases:?}"
+        );
+    }
+
     /// The same hold, where an OS-level grab owns the chord and the
     /// engine matches nothing itself.
     ///
