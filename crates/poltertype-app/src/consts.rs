@@ -168,3 +168,8 @@ pub(crate) const STUCK_HOTKEY_TIMEOUT: std::time::Duration = std::time::Duration
 /// Tray submenu holding words a tooltip offered "Add to dictionary" for
 /// and lost to the next keystroke (issue #38).
 pub(crate) const DEFERRED_MENU_LABEL: &str = "Add a missed word…";
+
+/// The one row that submenu carries while nothing has been missed.
+/// Disabled, and there so the entry can be opened at all: an empty
+/// submenu answers a click with nothing, which reads as a broken menu.
+pub(crate) const DEFERRED_MENU_EMPTY: &str = "No missed words yet";

@@ -102,6 +102,17 @@ fn rebuild_deferred_menu(
         let _ = submenu.remove_at(i);
     }
     rows.clear();
+    if deferred.is_empty() {
+        // A submenu that is empty *and* disabled is indistinguishable
+        // from one that is broken: reported as "I click it and nothing
+        // happens" (issue #38). One disabled row says which it is.
+        let empty = MenuItem::new(DEFERRED_MENU_EMPTY, false, None);
+        if let Err(e) = submenu.append(&empty) {
+            warn!(?e, "could not add the missed-word placeholder");
+        }
+        debug!("tray: missed-word list rebuilt rows=0");
+        return;
+    }
     for (layout, word) in deferred.iter() {
         // The layout is named because the same spelling can be a word
         // in one and gibberish in another, and the entry goes into one
@@ -116,7 +127,6 @@ fn rebuild_deferred_menu(
             warn!(?e, "could not add a missed word to the submenu");
         }
     }
-    submenu.set_enabled(!deferred.is_empty());
     // Count only. The whole point of this list is that it holds text
     // the user typed, so it is the one thing that must never reach a
     // log — see `logsafe`.
@@ -532,7 +542,7 @@ fn main() -> Result<()> {
     // Words a tooltip offered and lost, so the offer can be taken up
     // later (issue #38). Disabled while empty rather than hidden: a
     // menu entry that comes and goes is harder to find than a grey one.
-    let menu_deferred = Submenu::new(DEFERRED_MENU_LABEL, false);
+    let menu_deferred = Submenu::new(DEFERRED_MENU_LABEL, true);
     menu.append_items(&[
         &item_settings_ui,
         &item_settings_file,
@@ -720,6 +730,9 @@ fn main() -> Result<()> {
     // The rows currently in the submenu, so a click can be turned back
     // into the word it stands for. Rebuilt whenever the list changes.
     let mut deferred_rows: Vec<(tray_icon::menu::MenuId, LayoutId, String)> = Vec::new();
+    // Once before anything is missed, so the submenu says so instead of
+    // opening on nothing.
+    rebuild_deferred_menu(&menu_deferred, &deferred, &mut deferred_rows, &layouts);
 
     info!("entering event loop");
     // A slow heartbeat, so a mode changed from the command line — or an

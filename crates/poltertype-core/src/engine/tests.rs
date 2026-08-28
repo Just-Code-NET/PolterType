@@ -2659,6 +2659,166 @@ mod engine_integration_tests {
         );
     }
 
+    /// Two taps of the chord, one after the other, must be two
+    /// corrections.
+    #[test]
+    fn two_taps_of_the_chord_are_two_corrections() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..none
+        };
+        let tap_chord = |h: &Harness| {
+            h.key_mods(0x1D, KeyDirection::Press, ctrl);
+            h.key_mods(0x2A, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Release, both);
+            h.key_mods(0x2A, KeyDirection::Release, ctrl);
+            h.key_mods(0x1D, KeyDirection::Release, none);
+        };
+
+        type_word(&h, &GHBDSN);
+        h.settle();
+        tap_chord(&h);
+        h.settle();
+        tap_chord(&h);
+        h.settle();
+        assert_eq!(
+            erase_counts(&h).len(),
+            2,
+            "each tap is its own press: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The report that reopened #44, replayed as key events rather than
+    /// as commands: the chord is what carries the state that can get
+    /// stuck, and a command sent straight to the engine skips all of
+    /// it. Several switches by hand, the line deleted, new text, and
+    /// the gesture again.
+    #[test]
+    fn the_chord_still_answers_after_switches_a_deletion_and_a_retype() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..none
+        };
+        let tap_chord = |h: &Harness| {
+            h.key_mods(0x1D, KeyDirection::Press, ctrl);
+            h.key_mods(0x2A, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Release, both);
+            h.key_mods(0x2A, KeyDirection::Release, ctrl);
+            h.key_mods(0x1D, KeyDirection::Release, none);
+        };
+
+        type_word(&h, &GHBDSN);
+        h.settle();
+        for _ in 0..3 {
+            tap_chord(&h);
+            h.settle();
+            // keyd hands our own correction back through the stream,
+            // which is the reporter's stack and the half a command-only
+            // replay leaves out.
+            h.replay_echoes();
+            h.settle();
+        }
+        let before = erase_counts(&h).len();
+
+        for _ in 0..(GHBDSN.len() + 4) {
+            h.tap(BACKSPACE);
+        }
+        h.settle();
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        tap_chord(&h);
+        h.settle();
+        assert_eq!(
+            erase_counts(&h).len(),
+            before + 1,
+            "the chord must still answer: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The same gesture, but the line is rubbed out *past* what the
+    /// buffer ever saw — which is what deleting a line actually looks
+    /// like. Reported against 0.25.1: several manual switches, then the
+    /// text deleted and retyped, and the hotkey answered nothing.
+    #[test]
+    fn the_hotkey_still_answers_after_the_line_was_rubbed_out_past_the_buffer() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        for _ in 0..3 {
+            h.cmd_tx
+                .send(EngineCommand::SwitchLastForcefully)
+                .expect("engine alive");
+            h.settle();
+        }
+        let before = h.switcher.switches.lock().len();
+
+        // Four keystrokes more than the word: the caret is now left of
+        // anything this buffer has ever tracked.
+        for _ in 0..(GHBDSN.len() + 4) {
+            h.tap(BACKSPACE);
+        }
+        h.settle();
+
+        type_word(&h, &GHBDSN);
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            h.switcher.switches.lock().len(),
+            before + 1,
+            "the gesture must answer the word typed after a deleted line"
+        );
+    }
+
     /// Two presses on a word still being typed put it back where it
     /// started — the rotation is computed from where the word reads
     /// *now*, not from the layout it was first typed in.

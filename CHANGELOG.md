@@ -44,6 +44,18 @@ PolterType did not.
   the Settings window has always worked that way; the pause hotkey
   does now too.
 
+- **"Add a missed word…" says when there is nothing in it**
+  ([#38](https://github.com/Just-Code-NET/PolterType/issues/38)). The
+  entry sat there greyed out until a tooltip offer had actually been
+  missed, and a menu entry that answers a click with nothing reads as a
+  menu that does not work. It now opens on a single row saying so.
+
+  The mechanism itself was measured while looking into this, on the
+  KDE Plasma Wayland session it was reported from: the missed word does
+  reach the tray. Read off the tray's own D-Bus menu rather than off a
+  screenshot, so it is the rows the desktop is holding, not the ones
+  we think we sent.
+
 ## [0.25.1] — after you let go
 
 Two follow-ups from the same reporter on the release meant to settle
