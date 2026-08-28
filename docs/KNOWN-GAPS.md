@@ -33,9 +33,12 @@ PolterType: the same question the app's own probe asks before it lets
 the toggle be ticked. Two sessions answer no.
 
 What this pass did **not** check: the end-to-end conversion on the
-other fourteen sessions, or on Windows and macOS. The Windows
-`send_chord` is new in this release and is covered by tests, not by a
-run on Windows.
+other fourteen sessions, or on Windows. The Windows `send_chord` is new
+in this release and has been **compiled, not run** — the engine's *use*
+of it is unit-tested through a fake emitter, but no test and no person
+has exercised the `SendInput` path on a Windows machine. macOS is not
+a gap here for once: it has no `send_chord` at all, so the toggle
+reports itself unavailable rather than half-working.
 
 **What the 0.23.0 pass actually checked (2026-08-27).** One machine —
 this Hyprland laptop — and the Settings window, because the release
