@@ -15,6 +15,15 @@ pub enum StepState {
     /// out. Worth its own state precisely because "Todo" would send
     /// them to re-run a script that has already done its job.
     NeedsRelogin,
+    /// The OS has a decision on record and it says no, so its own
+    /// prompt will never appear again — the only way through is to
+    /// remove the app from the permission list and add it back. The
+    /// macOS trap behind it: our bundle is ad-hoc signed, so TCC keys
+    /// the grant to the code-directory hash rather than to a team
+    /// identifier, and every self-update replaces the bundle and
+    /// changes that hash. The switch stays on, the app is denied, and
+    /// "Ask macOS now" does nothing (issue #42).
+    NeedsReset,
     /// We could not tell. Shown as a neutral note rather than a
     /// warning: claiming a problem we have not proven is how a setup
     /// guide loses the user's trust.

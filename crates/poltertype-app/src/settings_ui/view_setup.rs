@@ -62,6 +62,28 @@ impl SettingsApp {
             );
         }
 
+        // Same shape as the note above, and for the same reason: every
+        // `NeedsReset` step has one cause and one fix.
+        if report
+            .steps
+            .iter()
+            .any(|s| s.state == StepState::NeedsReset)
+        {
+            steps = steps.push(Space::new().height(6));
+            steps = steps.push(
+                Text::new(
+                    "macOS already has an answer on record for PolterType and it is \"no\", so \
+                     its own permission dialog will not appear again — pressing Ask does \
+                     nothing. Open the pane, select PolterType, remove it with the − button, \
+                     then add it back with +. This is what an update costs on an unsigned \
+                     build: the permission is tied to the exact copy of the app, and updating \
+                     replaces it.",
+                )
+                .size(12)
+                .color(b.brand),
+            );
+        }
+
         let mut body = Column::new()
             .spacing(18)
             .push(pane_header(
@@ -162,6 +184,7 @@ impl SettingsApp {
             StepState::Done => ("Ready", b.ecto),
             StepState::Todo => ("Needs you", b.garble),
             StepState::NeedsRelogin => ("Log out", b.brand),
+            StepState::NeedsReset => ("Re-add", b.garble),
             StepState::Unknown => ("Unknown", b.muted),
         };
 

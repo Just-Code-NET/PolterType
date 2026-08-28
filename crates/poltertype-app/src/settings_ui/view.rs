@@ -1021,7 +1021,7 @@ impl SettingsApp {
             )
             .push(step("+1", 1));
 
-        let updates = Column::new()
+        let mut updates = Column::new()
             .spacing(12)
             .push(section_title(b, tr("general.updates", "Updates")))
             .push(
@@ -1051,6 +1051,13 @@ impl SettingsApp {
                     .font(Font::MONOSPACE)
                     .color(b.muted),
             );
+
+        // Beside the switch that turns updating on, because that is
+        // where the price is paid — the alternative is finding out
+        // after the restart, with the app silently deaf.
+        if let Some(note) = poltertype_shell::update_permission_note() {
+            updates = updates.push(Text::new(note).size(11).color(b.brand));
+        }
 
         let folders = Column::new()
             .spacing(12)

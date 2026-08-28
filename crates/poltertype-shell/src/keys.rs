@@ -49,3 +49,31 @@ pub fn key_name_with_glyph(name: &str) -> String {
         _ => name.to_owned(),
     }
 }
+
+/// What an in-place self-update costs the user's permissions here, if
+/// anything. `None` on the platforms where an update costs nothing.
+///
+/// macOS ties a privacy grant to the *code* it was given to. A
+/// Developer ID signature keys it to the team identifier, and the grant
+/// then survives the bundle being replaced; our builds are ad-hoc
+/// signed (see `docs/CODE_SIGNING.md`), so TCC keys it to the code
+/// directory hash instead, and every update makes a new hash. The
+/// switch is still on in System Settings, the app is denied anyway,
+/// and macOS suppresses its own prompt because a record exists —
+/// which is why this has to be said *before* the update, not
+/// discovered after it (issue #42).
+pub fn update_permission_note() -> Option<&'static str> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Some(
+            "After updating, macOS will ask for Accessibility and Input Monitoring again: \
+             these builds are not signed with an Apple Developer ID, so a permission is tied \
+             to the exact copy of the app and updating replaces it. The Setup pane will say \
+             so, and the fix is to remove PolterType from each list and add it back.",
+        )
+    }
+}

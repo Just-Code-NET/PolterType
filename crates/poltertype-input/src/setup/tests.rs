@@ -28,7 +28,10 @@ fn the_probe_always_produces_something_renderable() {
 #[test]
 fn every_actionable_step_says_what_to_do() {
     for step in probe_setup().steps {
-        if matches!(step.state, StepState::Todo | StepState::NeedsRelogin) {
+        if matches!(
+            step.state,
+            StepState::Todo | StepState::NeedsRelogin | StepState::NeedsReset
+        ) {
             assert!(
                 step.action.is_some(),
                 "step `{}` tells the user they must act and gives them no way to",

@@ -36,9 +36,10 @@ unsafe extern "C" {
 //
 // The request type we care about is `kIOHIDRequestTypeListenEvent` (1)
 // — Input Monitoring. The returned access type is 0 granted, 1 denied,
-// 2 unknown, and the third is kept rather than folded into "denied":
-// unknown means the system has not decided, which is a different
-// sentence to write on screen.
+// 2 unknown, and the three are three different sentences: only
+// "unknown" means the system has not decided, and so only there can a
+// prompt still appear. "Denied" is a record, and a record is what
+// makes the prompt silent.
 #[link(name = "IOKit", kind = "framework")]
 unsafe extern "C" {
     fn IOHIDCheckAccess(request: u32) -> u32;
@@ -48,8 +49,11 @@ unsafe extern "C" {
 const K_IOHID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
 const K_IOHID_ACCESS_TYPE_GRANTED: u32 = 0;
 const K_IOHID_ACCESS_TYPE_DENIED: u32 = 1;
+const K_IOHID_ACCESS_TYPE_UNKNOWN: u32 = 2;
 
 pub(super) fn probe() -> SetupReport {
+    let listen = input_monitoring_state();
+    let accessibility = accessibility_state(listen);
     SetupReport {
         backend: Some("macos-cg-event-tap".to_owned()),
         steps: vec![
@@ -59,8 +63,8 @@ pub(super) fn probe() -> SetupReport {
                          PolterType on. This is what lets the app watch for a wrong-layout \
                          word and type the corrected one back."
                     .to_owned(),
-                state: accessibility_state(),
-                action: Some(StepAction::RequestPermission(Permission::Accessibility)),
+                action: Some(step_action(accessibility, Permission::Accessibility)),
+                state: accessibility,
             },
             SetupStep {
                 title: "Grant Input Monitoring".to_owned(),
@@ -68,8 +72,8 @@ pub(super) fn probe() -> SetupReport {
                          PolterType on. Separate from Accessibility and easy to miss — with \
                          only one of the two granted the app starts but never sees a keystroke."
                     .to_owned(),
-                state: input_monitoring_state(),
-                action: Some(StepAction::RequestPermission(Permission::InputMonitoring)),
+                action: Some(step_action(listen, Permission::InputMonitoring)),
+                state: listen,
             },
             SetupStep {
                 title: "Open the right pane".to_owned(),
@@ -83,10 +87,30 @@ pub(super) fn probe() -> SetupReport {
     }
 }
 
-fn accessibility_state() -> StepState {
+/// A button that cannot work is worse than no button: once TCC holds a
+/// denial, `AXIsProcessTrustedWithOptions` and `IOHIDRequestAccess`
+/// both return quietly without raising a dialog. Send the user to the
+/// pane instead.
+fn step_action(state: StepState, permission: Permission) -> StepAction {
+    if state == StepState::NeedsReset {
+        StepAction::Open(settings_pane_url(permission).to_owned())
+    } else {
+        StepAction::RequestPermission(permission)
+    }
+}
+
+/// `AXIsProcessTrusted` is a bare yes/no: unlike `IOHIDCheckAccess` it
+/// cannot say whether a *record* exists, so nothing here can tell "the
+/// user has never been asked" from "the user was asked and the answer
+/// no longer matches this bundle". Input Monitoring can, and it
+/// answers for both: TCC is asked for the two at the same moment, so a
+/// recorded denial there means a record exists here too.
+fn accessibility_state(listen: StepState) -> StepState {
     // Safety: a nullary C call that reads the trust database.
     if unsafe { AXIsProcessTrusted() } {
         StepState::Done
+    } else if listen == StepState::NeedsReset {
+        StepState::NeedsReset
     } else {
         StepState::Todo
     }
@@ -96,7 +120,11 @@ fn input_monitoring_state() -> StepState {
     // Safety: a plain C call taking an integer request type.
     match unsafe { IOHIDCheckAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) } {
         K_IOHID_ACCESS_TYPE_GRANTED => StepState::Done,
-        K_IOHID_ACCESS_TYPE_DENIED => StepState::Todo,
+        // A decision is on record and it says no. `Todo` used to stand
+        // here, which offered a prompt macOS will never show again.
+        K_IOHID_ACCESS_TYPE_DENIED => StepState::NeedsReset,
+        // Nothing decided yet — the prompt still works.
+        K_IOHID_ACCESS_TYPE_UNKNOWN => StepState::Todo,
         _ => StepState::Unknown,
     }
 }

@@ -11,6 +11,7 @@
 //! | [`instance_lock_id`] | `single-instance` means a different thing by "id" per OS |
 //! | [`keep_out_of_dock`] | only macOS has a Dock, and `tao` overrides `LSUIElement` |
 //! | [`key_glyph`] | macOS prints glyphs on the keys, the others print words |
+//! | [`update_permission_note`] | only macOS makes an update cost the user their permissions |
 //! | [`configure_child`] | only Windows hands a console program a window |
 //! | [`request_stop`] | only Unix has a signal to ask a process to leave |
 //! | [`window_platform_specific`] | only Linux ties a window to an app id, and the field exists only there |
@@ -32,7 +33,7 @@ mod tests;
 pub use desktop::{DESKTOP_ID, install_desktop_entry, window_platform_specific};
 pub use font::ui_font_family;
 pub use instance::{InstanceLock, acquire as acquire_instance_lock};
-pub use keys::{key_glyph, key_name_with_glyph};
+pub use keys::{key_glyph, key_name_with_glyph, update_permission_note};
 pub use process::{configure_child, request_stop};
 
 /// Keep a tray-only app out of the Dock and the app switcher.
