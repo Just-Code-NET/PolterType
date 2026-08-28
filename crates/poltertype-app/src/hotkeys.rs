@@ -93,10 +93,27 @@ impl ActiveBinding {
 
     fn os_grab(self) -> Option<HotKey> {
         match self {
-            Self::Key(hk) => Some(hk),
-            Self::Mods(_) => None,
+            Self::Key(hk) if !is_lock_key(&hk) => Some(hk),
+            _ => None,
         }
     }
+}
+
+/// A key that is a *lock*, and so is read off the key stream on every
+/// backend rather than registered as an OS-level grab.
+///
+/// Caps Lock has to be neutralised in the keyboard layout before it is
+/// usable as a hotkey at all: PolterType watches keys and never
+/// swallows them, so a live lock latches on every press and the word
+/// the correction retypes comes back in capitals — the system applies
+/// the lock to our replayed scancodes, and it is right to. But once the
+/// key *is* neutralised (`caps:none`, or a remapper), no grab can find
+/// it any more: `XGrabKey` resolves a key through its keysym and the
+/// key no longer has one, so the binding fired on nothing. Measured on
+/// IceWM, 2026-08-28. The key code is still on the wire either way, and
+/// that is what the key-stream matcher reads (issue #41).
+fn is_lock_key(hk: &HotKey) -> bool {
+    hk.key == Code::CapsLock
 }
 
 /// The two chords in force right now, and — through their ids — what
@@ -150,18 +167,26 @@ pub(crate) fn apply_hotkeys(
     // for one hotkey, so no double-fire.
     let keystream = |b: ActiveBinding, what: &str| match b {
         ActiveBinding::Mods(m) => Some(Binding::Mods(m)),
-        ActiveBinding::Key(hk) if use_keystream => match chord_from_hotkey(&hk) {
-            Some(c) => Some(Binding::Key(c)),
-            None => {
-                warn!(hotkey = ?hk, what, "hotkey key not mappable to a scancode; disabled");
-                None
+        ActiveBinding::Key(hk) if use_keystream || is_lock_key(&hk) => {
+            match chord_from_hotkey(&hk) {
+                Some(c) => Some(Binding::Key(c)),
+                None => {
+                    warn!(hotkey = ?hk, what, "hotkey key not mappable to a scancode; disabled");
+                    None
+                }
             }
-        },
+        }
         ActiveBinding::Key(_) => None,
     };
+    // What the grab owns is sent too, and only so the engine can
+    // recognise it: a correction has to tell its own trigger held down
+    // from the user typing a shortcut, and a grab hides the chord from
+    // our matcher without hiding the key from our listener.
+    let grabbed = |b: ActiveBinding| b.os_grab().as_ref().and_then(chord_from_hotkey);
     let chords = KeystreamHotkeys {
         pause: keystream(active.pause, "pause"),
         switch_last: keystream(active.switch_last, "switch-last"),
+        grabbed: [grabbed(active.pause), grabbed(active.switch_last)],
     };
     // Sent unconditionally, including when both are empty: this is also
     // what retires a modifier chord the user has just rebound away.

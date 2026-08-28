@@ -2002,6 +2002,7 @@ mod engine_integration_tests {
         let h = Harness::start(60_000);
         h.cmd_tx
             .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
                 pause: Some(Binding::Key(Chord {
                     ctrl: true,
                     shift: true,
@@ -2033,6 +2034,7 @@ mod engine_integration_tests {
         let h = Harness::start(60_000);
         h.cmd_tx
             .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
                 pause: None,
                 switch_last: Some(Binding::Mods(ModChord {
                     mods: ModSet {
@@ -2070,6 +2072,7 @@ mod engine_integration_tests {
         let h = Harness::start(60_000);
         h.cmd_tx
             .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
                 pause: None,
                 switch_last: Some(Binding::Mods(ModChord {
                     mods: ModSet {
@@ -2620,6 +2623,7 @@ mod engine_integration_tests {
 
         h.cmd_tx
             .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
                 pause: None,
                 switch_last: Some(Binding::Key(Chord {
                     ctrl: true,
@@ -2674,6 +2678,90 @@ mod engine_integration_tests {
                 .iter()
                 .any(|o| matches!(o, EmitOp::Keys(k) if k.len() == GHBDSN.len() + 1)),
             "and the word must be typed back, not left erased"
+        );
+    }
+
+    /// The same hold, where an OS-level grab owns the chord and the
+    /// engine matches nothing itself.
+    ///
+    /// The grab hides the chord from our matcher, not the key from our
+    /// listener — and on X11 it keeps the whole keyboard grabbed while
+    /// the key is down, so everything the correction emits goes to the
+    /// grabbing client instead of to the application. Measured on
+    /// IceWM, 2026-08-28: the deletion deleted nothing and the replay
+    /// typed nothing.
+    #[test]
+    fn a_grabbed_chord_held_down_is_waited_out_rather_than_typed_over() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let before = h.emitter.ops().len();
+
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                pause: None,
+                switch_last: None,
+                grabbed: [
+                    None,
+                    Some(Chord {
+                        ctrl: true,
+                        shift: true,
+                        alt: false,
+                        meta: false,
+                        scancode: 0x43,
+                    }),
+                ],
+            }))
+            .expect("engine alive");
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        // Let the run loop take the modifiers before the chord fires:
+        // a person's fingers arrive in that order, and a correction
+        // that finds a bare Ctrl press still queued reads it as a
+        // shortcut it cannot reconstruct — which is a different bug.
+        std::thread::sleep(Duration::from_millis(200));
+        h.key_mods(0x43, KeyDirection::Press, both);
+        // The grab delivered the chord; the key events reach us too.
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        for _ in 0..12 {
+            h.key_mods(0x43, KeyDirection::Press, both);
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        h.key_mods(0x43, KeyDirection::Release, both);
+        h.key_mods(0x2A, KeyDirection::Release, ctrl);
+        h.key_mods(
+            0x1D,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.settle();
+
+        let ops = h.emitter.ops();
+        let erases: Vec<usize> = ops[before..]
+            .iter()
+            .filter_map(|o| match o {
+                EmitOp::Backspaces(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            erases,
+            vec![GHBDSN.len() + 1],
+            "the held chord must undo the correction exactly once"
         );
     }
 }

@@ -14,10 +14,10 @@ use tracing::{debug, info, warn};
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
 use crate::engine::consts::{
-    CHORD_RELEASE_SETTLE, CHORD_SETTLE, COPY_CHORD, HELD_FLUSH, HELD_FLUSH_QUIET_PROBES,
-    INTRUSION_PROBES, INTRUSION_QUIET_PROBES, INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_CHORD,
-    PASTE_GUARD, PASTE_SETTLE, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE, SELECTION_COPY_WAIT,
-    SWITCH_HOLD_PROBES, SWITCH_HOLD_STEP,
+    CHORD_RELEASE_SETTLE, CHORD_RELEASE_WAIT, CHORD_SETTLE, COPY_CHORD, HELD_FLUSH,
+    HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES, INTRUSION_REPAIRS,
+    LAYOUT_SETTLE, PASTE_CHORD, PASTE_GUARD, PASTE_SETTLE, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
+    SELECTION_COPY_WAIT, SWITCH_HOLD_PROBES, SWITCH_HOLD_STEP,
 };
 use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
 use crate::engine::heuristics::{boundary_key_for, is_paste_shortcut, is_submission_scancode};
@@ -267,6 +267,10 @@ impl SwitcherEngine {
         let mut suspicious = false;
         if let Some((rx, _)) = live.as_ref() {
             let deadline = Instant::now() + Duration::from_millis(600);
+            // The chord that asked for this is a different thing to
+            // wait for than the user's typing, and it is worth waiting
+            // longer: see `CHORD_RELEASE_WAIT`.
+            let chord_deadline = Instant::now() + CHORD_RELEASE_WAIT;
             let mut quiet_probes = 0u8;
             loop {
                 let w = self.drain_correction_window(rx, &mut click_allowance);
@@ -296,7 +300,8 @@ impl SwitcherEngine {
                         break;
                     }
                 }
-                if Instant::now() >= deadline {
+                let now = Instant::now();
+                if now >= deadline && !(self.trigger_held() && now < chord_deadline) {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(30));

@@ -53,6 +53,18 @@ pub const COPY_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchCh
 /// copy chord, so the compositor does not read both in one frame.
 pub const CHORD_RELEASE_SETTLE: Duration = Duration::from_millis(40);
 
+/// How long a correction will wait for the chord that asked for it to
+/// come back up before emitting anyway.
+///
+/// Not politeness: on X11 the passive grab that delivered the hotkey is
+/// *active* while the key is down, so every keystroke we emit goes to
+/// the grabbing client instead of to the application — the deletion
+/// deletes nothing, the replay types nothing, and the correction looks
+/// as though it never happened. Measured on IceWM, 2026-08-28. Long
+/// enough for a deliberate hold, short enough that leaning on the key
+/// still ends in a correction rather than in silence (issue #39).
+pub const CHORD_RELEASE_WAIT: Duration = Duration::from_millis(2000);
+
 /// The paste chord that puts the converted selection back.
 pub const PASTE_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchChord {
     // `V` in Win SC Set-1, which coincides with evdev's `KEY_V`.

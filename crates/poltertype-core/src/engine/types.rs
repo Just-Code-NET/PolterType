@@ -177,6 +177,28 @@ pub enum Binding {
 pub struct KeystreamHotkeys {
     pub pause: Option<Binding>,
     pub switch_last: Option<Binding>,
+    /// The same two chords where an OS-level grab owns them instead:
+    /// never matched here, only recognised. A correction has to be able
+    /// to tell its own trigger — held down, autorepeating — from the
+    /// user typing a shortcut, and on that path nothing else says what
+    /// the trigger was. See `SwitcherEngine::is_own_hotkey_press`.
+    pub grabbed: [Option<Chord>; 2],
+}
+
+impl KeystreamHotkeys {
+    /// Every ordinary chord in force, wherever it is matched. Skips the
+    /// modifier-only bindings: they fire on release and have no key of
+    /// their own to hold down or repeat.
+    pub fn chords(&self) -> impl Iterator<Item = Chord> + '_ {
+        [self.pause, self.switch_last]
+            .into_iter()
+            .flatten()
+            .filter_map(|b| match b {
+                Binding::Key(c) => Some(c),
+                Binding::Mods(_) => None,
+            })
+            .chain(self.grabbed.into_iter().flatten())
+    }
 }
 
 /// Per-chord rising-edge tracking. evdev reports autorepeat as repeated

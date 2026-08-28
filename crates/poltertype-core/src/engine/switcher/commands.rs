@@ -72,26 +72,40 @@ impl SwitcherEngine {
     /// worse, since the abandon also drops the stash and taints the
     /// buffer (issue #39).
     ///
-    /// Only the chords matched off the key stream: where an OS-level
-    /// grab owns the hotkey, its repeats never reach the key stream as
-    /// something we could mistake for typing.
+    /// Both the chords matched here and the ones an OS-level grab
+    /// delivers: a grab does not stop the key reaching our listener,
+    /// only our matcher, and X11 in particular keeps the keyboard
+    /// grabbed for as long as the key is down — so the repeats arrive
+    /// exactly where they do the most damage.
     pub(super) fn is_own_hotkey_press(&self, ev: &KeyEvent) -> bool {
-        let hk = *self.keystream_hotkeys.read();
-        [hk.pause, hk.switch_last]
-            .into_iter()
-            .flatten()
-            .any(|b| match b {
-                Binding::Key(c) => {
-                    ev.scancode == c.scancode
-                        && ev.modifiers.control == c.ctrl
-                        && ev.modifiers.shift == c.shift
-                        && ev.modifiers.alt == c.alt
-                        && ev.modifiers.meta == c.meta
-                }
-                // Modifier-only chords fire on release and have no key
-                // of their own to repeat.
-                Binding::Mods(_) => false,
-            })
+        self.keystream_hotkeys.read().chords().any(|c| {
+            ev.scancode == c.scancode
+                && ev.modifiers.control == c.ctrl
+                && ev.modifiers.shift == c.shift
+                && ev.modifiers.alt == c.alt
+                && ev.modifiers.meta == c.meta
+        })
+    }
+
+    /// Is the gesture that asked for this correction still down?
+    ///
+    /// Deliberately not "is any modifier held": a word closed by a
+    /// shifted separator is corrected with Shift still down, and making
+    /// *that* wait is a two-second stall on ordinary typing. The
+    /// question is whether what is held is a hotkey's own modifier set
+    /// — as close as an OS-level grab lets us get, since nothing tells
+    /// the engine which key that grab delivered. Where we match the
+    /// chord ourselves the latch is exact, and it is what answers for a
+    /// binding with no modifier in it at all.
+    pub(super) fn trigger_held(&self) -> bool {
+        let m = *self.held_modifiers.read();
+        if !(m.control || m.shift || m.alt || m.meta) {
+            let st = self.chord_state.lock();
+            return st.switch.key_down || st.pause.key_down;
+        }
+        self.keystream_hotkeys.read().chords().any(|c| {
+            m.control == c.ctrl && m.shift == c.shift && m.alt == c.alt && m.meta == c.meta
+        })
     }
 
     /// Keep the chord latches honest about keys the correction window

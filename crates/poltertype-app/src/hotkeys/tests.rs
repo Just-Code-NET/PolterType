@@ -187,6 +187,37 @@ fn caps_lock_binds_as_a_bare_key() {
     );
 }
 
+/// …and it is read off the key stream even where an OS-level grab is
+/// available, because a Caps Lock that has been neutralised in the
+/// layout — which is the only shape this binding is usable in — has no
+/// keysym left for a grab to resolve. See `is_lock_key`.
+#[test]
+fn caps_lock_is_never_an_os_grab() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+    let active = apply_hotkeys(
+        DEFAULT_PAUSE_TOGGLE,
+        "CapsLock",
+        PLAIN,
+        false, // the backend where every other chord *is* a grab
+        None,
+        &tx,
+        None,
+    );
+    assert_eq!(active.switch_last.os_grab(), None);
+    assert!(
+        active.pause.os_grab().is_some(),
+        "only the lock key changes path"
+    );
+
+    let mut sent = Vec::new();
+    while let Ok(cmd) = rx.try_recv() {
+        if let EngineCommand::SetKeystreamHotkeys(hk) = cmd {
+            sent.push((key_scancode(hk.pause), key_scancode(hk.switch_last)));
+        }
+    }
+    assert_eq!(sent, vec![(None, Some(0x3A))]);
+}
+
 /// `HotKey::new` normalises META to SUPER, so a chord built from the
 /// Super key carried `meta: false` and could never match on the
 /// keystream backends — every Wayland/evdev machine, and the
