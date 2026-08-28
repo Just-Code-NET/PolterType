@@ -300,6 +300,9 @@ pub enum Message {
     /// macOS `x-apple.systempreferences:` deep link. Owned `String`
     /// rather than `&'static str` because the probe builds these.
     SetupOpen(String),
+    /// Selection conversion on or off. Only reachable where the
+    /// session can do it — see `SettingsApp::selection_support`.
+    SelectionEnabledToggled(bool),
     /// Copy a shell command to the clipboard. We never run it: the
     /// Linux setup script needs `sudo`, and the user reading it first
     /// is the point.

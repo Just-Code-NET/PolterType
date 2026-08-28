@@ -33,6 +33,54 @@ pub const PASTE_GUARD: Duration = Duration::from_millis(1200);
 /// only bounds how long an untouched machine keeps one word in RAM.
 pub const LAST_WORD_TTL: Duration = Duration::from_secs(60);
 
+/// The copy chord selection conversion presses into the focused
+/// application: `Ctrl+C` on the platforms that have one.
+///
+/// macOS wants `Cmd+C`, which is why this is a constant to be corrected
+/// rather than a literal buried in the flow — and why the macOS
+/// emitter's `send_chord` still answering `Unsupported` is what keeps
+/// the feature honestly off there rather than pressing the wrong keys.
+pub const COPY_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchChord {
+    // `C` in Win SC Set-1, which coincides with evdev's `KEY_C`.
+    scancode: 0x2E,
+    ctrl: true,
+    shift: false,
+    alt: false,
+    meta: false,
+};
+
+/// Pause between releasing the hotkey's own modifiers and pressing the
+/// copy chord, so the compositor does not read both in one frame.
+pub const CHORD_RELEASE_SETTLE: Duration = Duration::from_millis(40);
+
+/// The paste chord that puts the converted selection back.
+pub const PASTE_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchChord {
+    // `V` in Win SC Set-1, which coincides with evdev's `KEY_V`.
+    scancode: 0x2F,
+    ctrl: true,
+    shift: false,
+    alt: false,
+    meta: false,
+};
+
+/// How long the converted text stays on the clipboard after the paste
+/// chord goes out, before the user's own clipboard is put back.
+///
+/// The application reads the clipboard when it handles the paste, not
+/// when the keys arrive, and there is no handshake to wait on. Too
+/// short and the user gets their old clipboard pasted instead.
+pub const PASTE_SETTLE: Duration = Duration::from_millis(250);
+
+/// How long to wait for a copy to reach the clipboard before deciding
+/// nothing was selected.
+///
+/// The clipboard is not readable the instant the chord goes out: the
+/// application has to notice it, and on Wayland ownership changes hands
+/// asynchronously. Polled inside this window rather than slept through,
+/// so the common case — a selection, copied at once — costs one poll
+/// and the miss costs the whole window exactly once.
+pub const SELECTION_COPY_WAIT: Duration = Duration::from_millis(400);
+
 /// Shortest gap between two force-switches of the same word.
 ///
 /// Not a debounce for human taste — it is what replaces the stash being

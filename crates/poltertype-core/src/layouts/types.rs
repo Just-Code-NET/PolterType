@@ -171,6 +171,45 @@ impl LayoutMapping {
         out
     }
 
+    /// Re-render `text` as if the same keys had been pressed under
+    /// `to` — the word-level correction generalised to arbitrary text,
+    /// for converting a *selection* (issue #32).
+    ///
+    /// A character this layout does not carry is passed through
+    /// unchanged rather than dropped: a selection is prose, not a word
+    /// buffer, and it holds spaces, newlines and punctuation that live
+    /// on neither layout. Dropping them would silently reflow the
+    /// user's text while claiming to have changed its layout.
+    ///
+    /// `None` when nothing at all changed, which is the caller's cue
+    /// that this selection was not wrong-layout text and should be put
+    /// back untouched.
+    pub fn transliterate_to(&self, text: &str, to: &Self) -> Option<String> {
+        let mut out = String::with_capacity(text.len());
+        let mut changed = false;
+        for ch in text.chars() {
+            let mapped = self.key_for_char(ch).and_then(|(scancode, shift)| {
+                to.translate_key(WordKey {
+                    scancode,
+                    shift,
+                    // The lock is a property of the keyboard right now,
+                    // not of text that was typed at some point in the
+                    // past. Shift comes from the character's own level.
+                    caps: false,
+                    timestamp_ms: 0,
+                })
+            });
+            match mapped {
+                Some(c) => {
+                    changed |= c != ch;
+                    out.push(c);
+                }
+                None => out.push(ch),
+            }
+        }
+        changed.then_some(out)
+    }
+
     /// Build the [`LayoutProfile`] used by the detector pipeline.
     pub fn detector_profile(&self) -> LayoutProfile {
         LayoutProfile::new(self.id.clone(), self.script, self.vowels.iter().copied())

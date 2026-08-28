@@ -371,12 +371,36 @@ fn main() -> Result<()> {
     // LayoutChanged through the same channel.
     let engine_event_tx_for_poller = engine_event_tx.clone();
 
+    // Opened once, and only where the feature is actually wanted: the
+    // probe is a real connection, and on Wayland holding one means
+    // holding a socket. `Err` is the ordinary answer on GNOME and
+    // Cinnamon's Wayland sessions, which offer no way to read the
+    // clipboard without taking focus — so it is logged as a fact about
+    // the session, not as a failure.
+    let clipboard: Option<Arc<dyn poltertype_input::Clipboard>> =
+        if settings.snapshot().selection.enabled {
+            match poltertype_input::selection_support().and_then(|()| poltertype_input::clipboard())
+            {
+                Ok(cb) => {
+                    info!("selection conversion: clipboard available");
+                    Some(Arc::from(cb))
+                }
+                Err(gap) => {
+                    warn!(%gap, "selection conversion is on but unavailable here");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
     let engine = SwitcherEngine::new(EngineDeps {
         settings: Arc::clone(&settings),
         layouts: Arc::clone(&layouts),
         detectors,
         layout_switcher: Arc::clone(&layout_switcher),
         key_emitter: Arc::clone(&key_emitter),
+        clipboard,
         key_gate: key_gate.clone(),
         focus_tracker: Arc::clone(&focus_tracker),
         audio: Arc::clone(&audio),

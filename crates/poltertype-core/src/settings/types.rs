@@ -53,9 +53,37 @@ pub struct Settings {
     /// network access a default build performs — see [`UpdateSettings`].
     #[serde(default)]
     pub updates: UpdateSettings,
+    /// Converting a *selected* passage rather than the last word.
+    /// **Off by default** — see [`SelectionSettings`].
+    #[serde(default)]
+    pub selection: SelectionSettings,
     /// Reserved for the AI subsystem (Phase 7). Disabled by default.
     #[serde(default)]
     pub ai: AiSettings,
+}
+
+/// Converting whatever the user has selected, with the same hotkey
+/// that switches the last word (issue #32).
+///
+/// **Off by default, and that is the point.** Doing this at all means
+/// pressing `Ctrl+C` into somebody else's application and reading
+/// their clipboard — a strictly larger reach than the rest of the app
+/// has, and one nobody should acquire by upgrading. Turning it on is
+/// the user saying which trade they want; leaving it off costs them
+/// nothing, because the hotkey behaves exactly as it always did.
+///
+/// Two things it cannot promise even when on, both recorded in
+/// `docs/KNOWN-GAPS.md`: a clipboard holding an image or files cannot
+/// be put back by a text API, so the conversion declines rather than
+/// destroying it; and there is no way to know a password field from
+/// any other, so a selection inside one is copied like any other text.
+/// `false` by default, which `derive(Default)` gives — and the default
+/// is the whole point, so it is spelled out here rather than left to a
+/// reader to infer from the type.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SelectionSettings {
+    pub enabled: bool,
 }
 
 impl Default for Settings {
@@ -73,6 +101,7 @@ impl Default for Settings {
             sounds: SoundSettings::default(),
             suggestions: SuggestionSettings::default(),
             updates: UpdateSettings::default(),
+            selection: SelectionSettings::default(),
             ai: AiSettings::default(),
         }
     }

@@ -3,8 +3,8 @@
 use tracing::debug;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP,
-    KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_BACK, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN,
-    VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
+    KEYEVENTF_SCANCODE, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY, VK_BACK, VK_LCONTROL, VK_LMENU,
+    VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
 };
 
 use super::consts::EMITTER_MARKER;
@@ -82,8 +82,61 @@ impl KeyEmitter for WindowsEmitter {
         send_inputs(&events)
     }
 
+    /// Hold modifiers around one key — what selection conversion needs
+    /// to press `Ctrl+C` into the focused application (issue #32).
+    ///
+    /// By scancode, not by virtual key: the engine reasons in Set-1
+    /// scancodes throughout, and `KEYEVENTF_SCANCODE` is what makes the
+    /// press independent of whatever layout the user is in — `C` is not
+    /// on the same virtual key everywhere.
+    fn send_chord(&self, chord: poltertype_types::SwitchChord) -> Result<(), InputError> {
+        let mut mods: Vec<VIRTUAL_KEY> = Vec::new();
+        if chord.ctrl {
+            mods.push(VK_LCONTROL);
+        }
+        if chord.shift {
+            mods.push(VK_LSHIFT);
+        }
+        if chord.alt {
+            mods.push(VK_LMENU);
+        }
+        if chord.meta {
+            mods.push(VK_LWIN);
+        }
+        let mut events: Vec<INPUT> = Vec::new();
+        events.extend(mods.iter().map(|&vk| make_vk_input(vk, false)));
+        // A bare-modifier chord carries no key of its own; the second
+        // modifier is the key. Same shape as the Linux emitter.
+        if chord.scancode != 0 {
+            events.push(make_scancode_input(chord.scancode as u16, false));
+            events.push(make_scancode_input(chord.scancode as u16, true));
+        }
+        events.extend(mods.iter().rev().map(|&vk| make_vk_input(vk, true)));
+        send_inputs(&events)
+    }
+
     fn backend_name(&self) -> &'static str {
         "windows-sendinput"
+    }
+}
+
+/// One key press or release addressed by Set-1 scancode.
+fn make_scancode_input(scancode: u16, key_up: bool) -> INPUT {
+    let mut flags = KEYEVENTF_SCANCODE;
+    if key_up {
+        flags |= KEYEVENTF_KEYUP;
+    }
+    INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(0),
+                wScan: scancode,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
     }
 }
 

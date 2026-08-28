@@ -28,6 +28,14 @@ pub struct SettingsApp {
     /// Call counter behind [`SettingsApp::backdrop_color`]. `Cell`
     /// because `view` only gets `&self`.
     pub(super) bg_jitter: std::cell::Cell<u32>,
+    /// Whether this session lets a windowless process reach the
+    /// clipboard, sampled once when the window opens.
+    ///
+    /// Probed here rather than read from a list of desktop names: the
+    /// answer depends on which Wayland protocols the compositor
+    /// actually advertises, and a name is a guess about that. `Err`
+    /// carries the sentence the pane shows instead of the toggle.
+    pub(super) selection_support: Result<(), String>,
     pub(super) save_banner: Option<SaveBanner>,
     /// `Some(kind)` while the user is in "press a combination…" mode;
     /// the keyboard subscription consults this to decide whether key
@@ -159,6 +167,7 @@ impl SettingsApp {
             setup_status: None,
             system_prefers_dark: super::system_theme::system_prefers_dark(),
             bg_jitter: std::cell::Cell::new(0),
+            selection_support: poltertype_input::selection_support().map_err(|gap| gap.to_string()),
             save_banner: None,
             capturing: None,
             mod_capture: ModCapture::default(),

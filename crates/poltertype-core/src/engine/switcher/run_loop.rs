@@ -189,6 +189,14 @@ impl SwitcherEngine {
                         // which is this word.
                         buffer.abandon();
                     }
+                } else if self.settings.snapshot().selection.enabled {
+                    // No word to act on is exactly the shape of "the
+                    // user selected something instead", and the only
+                    // moment worth spending a `Ctrl+C` on. Off by
+                    // default; see `SelectionSettings`.
+                    if self.convert_selection() {
+                        *self.last_force_switch.write() = Some(Instant::now());
+                    }
                 } else {
                     debug!(
                         "manual switch-last fired with no word to switch (empty buffer, or a duplicate from key auto-repeat)"

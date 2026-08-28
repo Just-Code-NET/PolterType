@@ -2,19 +2,21 @@
 //! user lands mid-correction, the delete + replay sequence, and the
 //! manual force-switch-last path.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::Receiver;
-use poltertype_input::{InputError, KeyDirection, KeyEvent, ReplayKey};
+use poltertype_input::{Clipboard, InputError, KeyDirection, KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
 use poltertype_types::logsafe;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
 use crate::engine::consts::{
-    CHORD_SETTLE, HELD_FLUSH, HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES,
-    INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_GUARD, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
+    CHORD_RELEASE_SETTLE, CHORD_SETTLE, COPY_CHORD, HELD_FLUSH, HELD_FLUSH_QUIET_PROBES,
+    INTRUSION_PROBES, INTRUSION_QUIET_PROBES, INTRUSION_REPAIRS, LAYOUT_SETTLE, PASTE_CHORD,
+    PASTE_GUARD, PASTE_SETTLE, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE, SELECTION_COPY_WAIT,
     SWITCH_HOLD_PROBES, SWITCH_HOLD_STEP,
 };
 use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
@@ -791,6 +793,187 @@ impl SwitcherEngine {
             }
         }
         out
+    }
+
+    /// Convert whatever the user has *selected*, when the hotkey found
+    /// no word to act on (issue #32).
+    ///
+    /// Only reachable with `[selection] enabled = true`, which is off
+    /// by default: this is the one path that reaches into another
+    /// application's clipboard, and nobody should acquire that by
+    /// upgrading.
+    ///
+    /// The shape is forced by what a selection is. We cannot ask
+    /// whether one exists — no cross-platform API answers that — so we
+    /// ask the application, by copying and seeing whether anything
+    /// arrives. That is also why this runs *only* when there is no word
+    /// to switch: pressing `Ctrl+C` into someone's editor on every
+    /// force-switch, on the chance that they had selected something,
+    /// would be a cost paid by everybody for a case that is rare.
+    ///
+    /// Returns whether it converted anything. `false` means the caller
+    /// should behave exactly as it did before this feature existed.
+    pub(super) fn convert_selection(&self) -> bool {
+        let Some(clipboard) = self.clipboard.as_ref() else {
+            debug!("selection conversion: no windowless clipboard on this session");
+            return false;
+        };
+        // What the clipboard held before we asked for a copy. `None` is
+        // an ordinary answer — an empty clipboard, or one holding an
+        // image — and *not* a reason to stop: refusing on `None` meant
+        // refusing on a fresh session, which is most of them.
+        //
+        // Nothing is written here. The old shape staged a sentinel so
+        // "unchanged" could be told from "nothing copied", and writing
+        // into someone's clipboard before we know we can put it back is
+        // the one thing this feature must not do. Comparing against
+        // what was already there costs one rare miss instead — a
+        // selection identical to the current clipboard reads as "the
+        // copy never happened" — and that miss is harmless.
+        let previous = clipboard.text().unwrap_or_else(|e| {
+            debug!(
+                ?e,
+                "selection conversion: clipboard unreadable before the copy"
+            );
+            None
+        });
+
+        let copied = self.copy_selection(clipboard, previous.as_deref());
+        let outcome = copied.as_deref().and_then(|text| self.converted(text));
+
+        let Some((converted, from, to)) = outcome else {
+            self.restore_clipboard(clipboard, previous.as_deref());
+            return false;
+        };
+        let original = copied.unwrap_or_default();
+
+        // Pasted, not typed. Both of the other ways are wrong for a
+        // *selection*, and both were measured wrong:
+        //
+        // * `send_text` on Wayland goes through a Unicode-compose
+        //   sequence most applications swallow or type literally —
+        //   converting `ghbdsn cdsn` that way put `43f` on screen.
+        // * Replaying scancodes, which is right for a single word,
+        //   cannot express a selection: `Ctrl+A` in an editor takes the
+        //   trailing newline with it, and no key produces one that is
+        //   safe to press — Enter submits forms and chat boxes.
+        //
+        // A paste carries whatever the text actually is.
+        if let Err(e) = clipboard.set_text(&converted) {
+            warn!(
+                ?e,
+                "selection conversion: could not stage the converted text"
+            );
+            self.restore_clipboard(clipboard, previous.as_deref());
+            return false;
+        }
+        if let Err(e) = self.key_emitter.send_chord(PASTE_CHORD) {
+            debug!(?e, "selection conversion: could not send the paste chord");
+            self.restore_clipboard(clipboard, previous.as_deref());
+            return false;
+        }
+        self.push_echoes(self.key_emitter.take_emitted());
+        // The application reads the clipboard when it handles the
+        // paste, not when the keys arrive, so the restore has to wait
+        // for it. Too short and the user gets their old clipboard
+        // pasted; there is no handshake to wait on instead.
+        std::thread::sleep(PASTE_SETTLE);
+        self.restore_clipboard(clipboard, previous.as_deref());
+
+        info!(%from, %to, "selection converted");
+        let _ = self.out_tx.send(SwitcherEvent::Corrected {
+            from_layout: from,
+            to_layout: to,
+            original_text: original,
+            corrected_text: converted,
+            reason: "selection conversion".into(),
+        });
+        true
+    }
+}
+
+impl SwitcherEngine {
+    /// Press the platform's copy chord and wait for the clipboard to
+    /// stop reading as `previous`.
+    ///
+    /// Polled rather than slept on: the clipboard is not readable the
+    /// instant the chord goes out — the application has to notice, and
+    /// on Wayland ownership changes hands asynchronously — but waiting
+    /// a fixed worst case would make every miss feel like a hang.
+    fn copy_selection(
+        &self,
+        clipboard: &Arc<dyn Clipboard>,
+        previous: Option<&str>,
+    ) -> Option<String> {
+        // The hotkey that got us here fires on the *press*, so its own
+        // `Ctrl+Shift` is still down, and `Ctrl+C` under a held Shift
+        // is `Ctrl+Shift+C` — not copy in any application. The
+        // clipboard then never changes and the whole thing reads as
+        // "nothing was selected", which is exactly how it read on KDE
+        // before this.
+        //
+        // Released rather than waited for. Waiting cannot work here:
+        // this runs on the thread that reads key events, so the release
+        // that would end the wait cannot arrive until we return. Same
+        // call, same reason, as the replay path a few hundred lines
+        // down — and the modifiers are deliberately not pressed back,
+        // since re-pressing one the user has let go of leaves it stuck.
+        let holding = *self.held_modifiers.read();
+        if holding.control || holding.shift || holding.alt || holding.meta {
+            if let Err(e) = self.key_emitter.release_modifiers(holding) {
+                debug!(?e, "selection conversion: could not release the held chord");
+                return None;
+            }
+            self.push_echoes(self.key_emitter.take_emitted());
+            // The compositor needs the releases before the chord that
+            // follows them, or it reads both in the same frame.
+            std::thread::sleep(CHORD_RELEASE_SETTLE);
+        }
+        if let Err(e) = self.key_emitter.send_chord(COPY_CHORD) {
+            debug!(
+                ?e,
+                "selection conversion: this backend cannot send a copy chord"
+            );
+            return None;
+        }
+        self.push_echoes(self.key_emitter.take_emitted());
+        let deadline = Instant::now() + SELECTION_COPY_WAIT;
+        while Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+            match clipboard.text() {
+                Ok(Some(text)) if !text.is_empty() && Some(text.as_str()) != previous => {
+                    return Some(text);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    debug!(?e, "selection conversion: clipboard unreadable mid-copy");
+                    return None;
+                }
+            }
+        }
+        debug!("selection conversion: nothing was selected");
+        None
+    }
+
+    /// The selection re-rendered under another layout, or `None` when
+    /// it is not wrong-layout text at all.
+    fn converted(&self, text: &str) -> Option<(String, LayoutId, LayoutId)> {
+        let from = self.layout_switcher.current().ok()?;
+        let to = self.next_layout_after(&from)?;
+        let source = self.layouts.get(&from)?;
+        let target = self.layouts.get(&to)?;
+        let converted = source.transliterate_to(text, target)?;
+        Some((converted, from, to))
+    }
+
+    /// Put back what the user had, best effort. A failure here is worth
+    /// a line: they lost a clipboard because of us.
+    fn restore_clipboard(&self, clipboard: &Arc<dyn Clipboard>, previous: Option<&str>) {
+        if let Some(prev) = previous
+            && let Err(e) = clipboard.set_text(prev)
+        {
+            warn!(?e, "selection conversion: could not restore the clipboard");
+        }
     }
 
     /// The layout a force-switch moves a word to, given the one it

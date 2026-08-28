@@ -1026,3 +1026,45 @@ script = "Latin"
         assert_eq!(mapping.key_for_char('|'), Some((0x2B, true)));
     }
 }
+
+/// The selection-conversion primitive (issue #32): a whole phrase
+/// re-rendered as if the same keys had been pressed under the other
+/// layout.
+#[test]
+fn transliterate_converts_a_whole_phrase() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let uk = db.get(&LayoutId::from("uk-UA")).expect("uk-UA");
+    // `ghbdsn` on en-US keys is `привіт` on uk-UA ones.
+    assert_eq!(en.transliterate_to("ghbdsn", uk).as_deref(), Some("привіт"));
+}
+
+/// Prose is not a word buffer. Spaces and punctuation that live on
+/// neither layout have to survive: dropping them would reflow the
+/// user's text while claiming only to have changed its layout.
+#[test]
+fn transliterate_keeps_what_it_cannot_map() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let uk = db.get(&LayoutId::from("uk-UA")).expect("uk-UA");
+    let got = en
+        .transliterate_to("ghbdsn ghbdsn", uk)
+        .expect("something changed");
+    assert_eq!(got, "привіт привіт", "the space between them survives");
+    assert_eq!(
+        got.chars().filter(|c| *c == ' ').count(),
+        1,
+        "and exactly one of it"
+    );
+}
+
+/// Text that maps to itself is not wrong-layout text, and the caller
+/// needs to know so it can put the selection back untouched rather
+/// than retyping it identically.
+#[test]
+fn transliterate_reports_no_change() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    assert_eq!(en.transliterate_to("hello", en), None);
+    assert_eq!(en.transliterate_to("   ", en), None);
+}

@@ -328,6 +328,11 @@ mod engine_integration_tests {
                 layout_switcher: Arc::<MockSwitcher>::clone(&switcher)
                     as Arc<dyn poltertype_layout::LayoutSwitcher>,
                 key_emitter: Arc::<MockEmitter>::clone(&emitter) as Arc<dyn KeyEmitter>,
+                // Selection conversion is off in these tests, which is
+                // also its shipped default. It reaches into another
+                // application's clipboard and cannot be exercised
+                // against a mock emitter that types into nothing.
+                clipboard: None,
                 // The gate is a no-op in tests: these exercise the
                 // path taken when keystrokes cannot be held back.
                 key_gate: poltertype_input::KeyGate::disabled(),

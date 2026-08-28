@@ -9,7 +9,7 @@ use std::time::Instant;
 use crossbeam_channel::Sender;
 use parking_lot::{Mutex, RwLock};
 use poltertype_detect::{Detector, SuggestionProvider};
-use poltertype_input::{FocusTracker, KeyEmitter, KeyGate};
+use poltertype_input::{Clipboard, FocusTracker, KeyEmitter, KeyGate};
 use poltertype_layout::{LayoutId, LayoutSwitcher};
 use poltertype_types::Modifiers;
 
@@ -26,6 +26,11 @@ pub struct SwitcherEngine {
     pub(super) detectors: Vec<Box<dyn Detector>>,
     pub(super) layout_switcher: Arc<dyn LayoutSwitcher>,
     pub(super) key_emitter: Arc<dyn KeyEmitter>,
+    /// The system clipboard, when this session lets a windowless
+    /// process reach one. `None` is not a failure state — it is most of
+    /// the desktops PolterType runs on answering honestly, and the
+    /// selection path checks it before it touches anybody's text.
+    pub(super) clipboard: Option<Arc<dyn Clipboard>>,
     /// Holds the user's keystrokes back while a correction burst is on
     /// the wire. A no-op gate (every platform but Linux/evdev, and
     /// stacks where grabbing would gag us instead) leaves the engine on
@@ -123,6 +128,9 @@ pub struct EngineDeps {
     pub detectors: Vec<Box<dyn Detector>>,
     pub layout_switcher: Arc<dyn LayoutSwitcher>,
     pub key_emitter: Arc<dyn KeyEmitter>,
+    /// `None` where the session offers no windowless clipboard access,
+    /// which turns selection conversion off however the setting reads.
+    pub clipboard: Option<Arc<dyn Clipboard>>,
     pub key_gate: KeyGate,
     pub focus_tracker: Arc<dyn FocusTracker>,
     pub audio: Arc<AudioPlayer>,
@@ -140,6 +148,7 @@ impl SwitcherEngine {
             detectors,
             layout_switcher,
             key_emitter,
+            clipboard,
             key_gate,
             focus_tracker,
             audio,
@@ -152,6 +161,7 @@ impl SwitcherEngine {
             detectors,
             layout_switcher,
             key_emitter,
+            clipboard,
             key_gate,
             held_modifiers: RwLock::new(Modifiers::NONE),
             focus_tracker,

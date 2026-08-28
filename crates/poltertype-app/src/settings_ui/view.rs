@@ -348,7 +348,8 @@ impl SettingsApp {
                         "Force-switch the last word",
                         &self.settings.hotkeys.manual_switch_last,
                         HotkeyKind::SwitchLast,
-                    )),
+                    ))
+                    .push(self.selection_row(b)),
             ))
             .push(tip(
                 b,
@@ -365,6 +366,37 @@ impl SettingsApp {
                     key_list(&["Shift", "Shift"], "+"),
                 ),
             ))
+            .into()
+    }
+
+    /// The selection-conversion toggle, under the hotkey it extends.
+    ///
+    /// Disabled rather than hidden where the session cannot do it: a
+    /// setting that exists on one machine and not another is a support
+    /// question, and the sentence under it answers that question once
+    /// instead of every time. The check is a real probe of this
+    /// session's clipboard, not a list of desktop names — GNOME and
+    /// Cinnamon's Wayland sessions offer no way to read the clipboard
+    /// without taking focus, and a name would not have told us that.
+    fn selection_row(&self, b: &'static theme::BrandPalette) -> Element<'static, Message> {
+        let available = self.selection_support.is_ok();
+        let mut checkbox = Checkbox::new(self.settings.selection.enabled && available)
+            .label("Also convert selected text")
+            .text_size(13);
+        if available {
+            checkbox = checkbox.on_toggle(Message::SelectionEnabledToggled);
+        }
+        let note = match &self.selection_support {
+            Ok(()) => "With this on, the force-switch key converts whatever you have \
+                       selected when there is no just-typed word to fix. It copies the \
+                       selection to read it, then puts your clipboard back."
+                .to_owned(),
+            Err(why) => format!("Not available here — {why}."),
+        };
+        Column::new()
+            .spacing(4)
+            .push(checkbox)
+            .push(tip(b, note))
             .into()
     }
 

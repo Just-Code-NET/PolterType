@@ -10,6 +10,7 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod clipboard;
 pub mod focus;
 pub mod setup;
 
@@ -39,6 +40,7 @@ mod hold;
 mod traits;
 mod types;
 
+pub use clipboard::{Clipboard, ClipboardGap, clipboard, selection_support};
 pub use enums::*;
 pub use factory::*;
 pub use gate::*;

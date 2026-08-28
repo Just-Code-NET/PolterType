@@ -416,6 +416,15 @@ impl SettingsApp {
             }
             // ── Suggestions ──────────────────────────────────────
             Message::SuggestionsToggled(b) => self.settings.suggestions.enabled = b,
+            // Guarded rather than trusted: the pane disables the
+            // toggle where the session cannot do this, and a message
+            // that arrives anyway must not write a setting the app
+            // would then log a failure for on every press.
+            Message::SelectionEnabledToggled(b) => {
+                if self.selection_support.is_ok() {
+                    self.settings.selection.enabled = b;
+                }
+            }
             Message::SuggestionMaxDelta(delta) => {
                 // 1..=9 is the clamp `SuggestionSettings::max_clamped`
                 // applies at read time — one digit key per entry — and

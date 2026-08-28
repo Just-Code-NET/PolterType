@@ -161,6 +161,18 @@ iced = { version = "0.14", default-features = false, features = [
 # CLI shell-out cannot provide, so it links zbus directly.)
 evdev = "0.13"
 x11rb = "0.13"
+
+# Selection conversion (issue #32) reads and writes the clipboard from a
+# process that never holds focus. `wayland-data-control` is what makes
+# that possible without one: it speaks the data-control protocols and
+# has no fallback that would take focus instead — so a compositor
+# offering neither reports the feature unavailable, which is the honest
+# answer and the one GNOME and Cinnamon's Wayland sessions get.
+# `image-data` stays off: this handles text and must never rewrite
+# somebody's copied image.
+arboard = { version = "3.6", default-features = false, features = [
+    "wayland-data-control",
+] }
 # zbus's blocking API on its built-in async-io executor thread —
 # explicitly NOT the `tokio` feature: no tokio in the tree. Already
 # present transitively (notify-rust), so no new licences either.
