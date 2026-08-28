@@ -743,6 +743,11 @@ impl SwitcherEngine {
             if ev.injected || ev.direction != KeyDirection::Press {
                 continue;
             }
+            if self.is_own_hotkey_press(&ev) {
+                // The chord that asked for this correction, held down
+                // past the kernel's repeat delay. Not the user typing.
+                continue;
+            }
             if ev.scancode == poltertype_types::SC_POINTER_BUTTON && *click_allowance > 0 {
                 // The click that accepted the tooltip, echoing through
                 // the key stream — it never reached the app below.
@@ -1121,6 +1126,11 @@ impl SwitcherEngine {
         // next press reading as "undo a correction" and teaching the
         // dictionary a word nobody rescued.
         *self.last_force_switch.write() = Some(Instant::now());
+        // The word on screen now reads in `target`, and a word still
+        // being typed is still the buffer's. Leaving the old stamp
+        // here made the next press compute the rotation from the
+        // layout the word *used* to be in and retype it unchanged.
+        *self.word_layout.write() = Some(target.clone());
         *self.last_word.write() = Some(LastWord {
             corrected_to: (target != last.layout).then(|| target.clone()),
             keys: last.keys,

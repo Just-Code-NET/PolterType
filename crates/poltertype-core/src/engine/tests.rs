@@ -2526,6 +2526,156 @@ mod engine_integration_tests {
             "forcing a switch must not add the pre-switch word to the dictionary"
         );
     }
+
+    /// Issue #40: the hotkey must keep working on the words typed
+    /// *after* one it has already switched.
+    ///
+    /// Switching a word still being typed used to `abandon` the buffer,
+    /// which says "the caret is lost" — and a lost caret is refused,
+    /// so the gesture went dead for every following word until a
+    /// separator cleared the taint. The user sees a hotkey that stops
+    /// answering, or answers with the word before.
+    #[test]
+    fn the_hotkey_still_works_on_the_word_typed_after_a_switched_one() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        // Two presses: out to the other layout and back, the shape in
+        // the report.
+        for _ in 0..2 {
+            h.cmd_tx
+                .send(EngineCommand::SwitchLastForcefully)
+                .expect("engine alive");
+            h.settle();
+        }
+        // Rub the word out and type a shorter one in its place.
+        for _ in 0..GHBDSN.len() {
+            h.tap(BACKSPACE);
+        }
+        let second = [0x32u32, 0x18, 0x18];
+        for sc in second {
+            h.tap(sc);
+        }
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        let erases: Vec<usize> = h
+            .emitter
+            .ops()
+            .iter()
+            .filter_map(|o| match o {
+                EmitOp::Backspaces(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            erases.last(),
+            Some(&second.len()),
+            "the erase must match the word now under the caret"
+        );
+    }
+
+    /// Two presses on a word still being typed put it back where it
+    /// started — the rotation is computed from where the word reads
+    /// *now*, not from the layout it was first typed in.
+    #[test]
+    fn a_second_press_on_an_unfinished_word_rotates_it_back() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        for _ in 0..2 {
+            h.cmd_tx
+                .send(EngineCommand::SwitchLastForcefully)
+                .expect("engine alive");
+            h.settle();
+        }
+        let switches = h.switcher.switches.lock().clone();
+        assert_eq!(
+            switches,
+            vec![LayoutId::from("uk-UA"), LayoutId::from("en-US")],
+            "the second press must bring the word back, not re-apply the first"
+        );
+    }
+
+    /// Issue #39: the force-switch chord held down long enough for the
+    /// kernel to autorepeat it.
+    ///
+    /// evdev reports a held key as repeated presses. Those arrive while
+    /// the correction is still being prepared, and any press carrying
+    /// Ctrl reads as a shortcut the engine cannot reconstruct — so the
+    /// correction the chord had just asked for was abandoned before a
+    /// single key went out.
+    #[test]
+    fn holding_the_force_switch_chord_does_not_abort_its_own_correction() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let before = h.emitter.ops().len();
+
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        h.key_mods(0x43, KeyDirection::Press, both);
+        for _ in 0..20 {
+            h.key_mods(0x43, KeyDirection::Press, both);
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        h.key_mods(0x43, KeyDirection::Release, both);
+        h.key_mods(0x2A, KeyDirection::Release, ctrl);
+        h.key_mods(
+            0x1D,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.settle();
+
+        let ops = h.emitter.ops();
+        let erases: Vec<usize> = ops[before..]
+            .iter()
+            .filter_map(|o| match o {
+                EmitOp::Backspaces(n) => Some(*n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            erases,
+            vec![GHBDSN.len() + 1],
+            "the held chord must undo the correction exactly once — word plus its boundary"
+        );
+        assert!(
+            ops[before..]
+                .iter()
+                .any(|o| matches!(o, EmitOp::Keys(k) if k.len() == GHBDSN.len() + 1)),
+            "and the word must be typed back, not left erased"
+        );
+    }
 }
 
 mod boundary_tests {

@@ -184,10 +184,15 @@ impl SwitcherEngine {
                         // The user has just settled this word's layout
                         // by hand. Its keys are still in the buffer and
                         // would get a second opinion at the boundary —
-                        // one that can only disagree with them.
-                        // `abandon` taints exactly the next completion,
-                        // which is this word.
-                        buffer.abandon();
+                        // one that can only disagree with them. This
+                        // taints exactly that completion; `abandon`,
+                        // which used to stand here, also told the
+                        // buffer the caret was lost, and a lost caret
+                        // is refused by `word_in_progress` — so the
+                        // hotkey went dead for every word typed
+                        // afterwards until a separator cleared it
+                        // (issue #40).
+                        buffer.settle();
                     }
                 } else if self.settings.snapshot().selection.enabled {
                     // No word to act on is exactly the shape of "the

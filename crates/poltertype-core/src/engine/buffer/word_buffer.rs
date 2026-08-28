@@ -24,6 +24,11 @@ pub struct WordBuffer {
     /// Set when the current word's tracking is known-unreliable;
     /// cleared at the next boundary. See module docs.
     poisoned: bool,
+    /// The user settled this word's layout by hand — the force-switch
+    /// hotkey. Its completion must not get a second opinion, but unlike
+    /// `poisoned` the caret is exactly where we typed it, so the word
+    /// itself stays switchable. Cleared when the next word starts.
+    settled: bool,
     /// Is the caret known to sit right after a boundary? False after
     /// clicks / nav / Esc / idle abandons, where the caret may be
     /// mid-word in text we never saw.
@@ -44,6 +49,7 @@ impl Default for WordBuffer {
             lead: None,
             prev_lead: None,
             poisoned: false,
+            settled: false,
             // Fresh tracking starts trusted: nothing is left of the
             // caret that we could be splitting.
             context_clean: true,
@@ -105,6 +111,15 @@ impl WordBuffer {
         self.poisoned = true;
     }
 
+    /// The user has just placed this word's layout by hand. Skips the
+    /// decision at its boundary — which could only disagree — without
+    /// pretending the caret is lost: `abandon` did that, and it left
+    /// the hotkey dead for every word typed afterwards until a
+    /// separator arrived (issue #40).
+    pub fn settle(&mut self) {
+        self.settled = true;
+    }
+
     /// Full reset to a clean, trusted state — only when the caller
     /// knows the next word can be trusted (settings reload).
     pub fn reset(&mut self) {
@@ -124,6 +139,7 @@ impl WordBuffer {
         if !self.keys.is_empty() {
             self.poisoned = true;
         }
+        self.settled = false;
         self.keys.clear();
         self.prev_word.clear();
         self.boundary_run.clear();
@@ -166,6 +182,7 @@ impl WordBuffer {
             KeyKind::Word => {
                 if self.keys.is_empty() {
                     self.word_clean = self.context_clean;
+                    self.settled = false;
                     if self.boundary_run.is_empty() && !self.prev_word.is_empty() {
                         // No boundary since the previous completion can
                         // only mean that word was re-opened and fully
@@ -183,7 +200,8 @@ impl WordBuffer {
                 WordBoundary::InProgress
             }
             KeyKind::Boundary => {
-                let tainted = self.poisoned;
+                let tainted = self.poisoned || self.settled;
+                self.settled = false;
                 // Any boundary re-syncs tracking: the next word is
                 // observed from its first key and starts right after a
                 // separator we saw, so the caret cannot be mid-word.

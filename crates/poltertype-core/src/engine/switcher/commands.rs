@@ -60,6 +60,40 @@ impl SwitcherEngine {
         self.check_suggestion_chord(ev, buffer, key_rx);
     }
 
+    /// Is this press the force-switch (or pause) chord itself,
+    /// repeating?
+    ///
+    /// evdev reports a held key as repeated presses, so a chord kept
+    /// down past the kernel's repeat delay keeps arriving while the
+    /// correction it asked for is still being emitted. The correction
+    /// window reads any press carrying Ctrl/Alt/Meta as a shortcut it
+    /// cannot reconstruct and abandons the whole correction — so
+    /// holding the hotkey a moment too long did nothing at all, or
+    /// worse, since the abandon also drops the stash and taints the
+    /// buffer (issue #39).
+    ///
+    /// Only the chords matched off the key stream: where an OS-level
+    /// grab owns the hotkey, its repeats never reach the key stream as
+    /// something we could mistake for typing.
+    pub(super) fn is_own_hotkey_press(&self, ev: &KeyEvent) -> bool {
+        let hk = *self.keystream_hotkeys.read();
+        [hk.pause, hk.switch_last]
+            .into_iter()
+            .flatten()
+            .any(|b| match b {
+                Binding::Key(c) => {
+                    ev.scancode == c.scancode
+                        && ev.modifiers.control == c.ctrl
+                        && ev.modifiers.shift == c.shift
+                        && ev.modifiers.alt == c.alt
+                        && ev.modifiers.meta == c.meta
+                }
+                // Modifier-only chords fire on release and have no key
+                // of their own to repeat.
+                Binding::Mods(_) => false,
+            })
+    }
+
     /// Keep the chord latches honest about keys the correction window
     /// swallowed.
     ///
