@@ -519,6 +519,11 @@ fn main() -> Result<()> {
     let item_reload = MenuItem::new("Reload Settings", true, None);
     // Auto-switching may have been left off in a previous run.
     let start_paused = settings.snapshot().general.paused;
+    if start_paused {
+        // Said out loud: an app that does nothing because of a state it
+        // remembered is the hardest kind to diagnose from a log.
+        info!("auto-switch starts off — remembered from config.toml");
+    }
     let item_pause = MenuItem::new(tray::pause_item_label(start_paused), true, None);
 
     // One dual-purpose entry — "Check for updates…" or "⟳ Restart to

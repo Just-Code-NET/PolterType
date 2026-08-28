@@ -2293,6 +2293,54 @@ mod engine_integration_tests {
         h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
     }
 
+    /// An app that came back paused has to be resumable by the chord —
+    /// the pause hotkey is matched before the paused early-return, and
+    /// a build that started paused would otherwise have no way back
+    /// except the tray.
+    #[test]
+    fn the_pause_chord_resumes_an_app_that_started_paused() {
+        let h = Harness::start_configured(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            None,
+            None,
+            |s| s.general.paused = true,
+        );
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+                switch_last: None,
+            }))
+            .expect("engine alive");
+
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..none
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        h.key_mods(0x43, KeyDirection::Press, both);
+        h.key_mods(0x43, KeyDirection::Release, both);
+        h.key_mods(0x2A, KeyDirection::Release, ctrl);
+        h.key_mods(0x1D, KeyDirection::Release, none);
+        h.wait_for(|e| matches!(e, SwitcherEvent::PausedChanged(false)));
+    }
+
     /// The config file names a state, and the watcher re-applies it
     /// after *any* edit to the file. Read as a toggle, changing the
     /// sound theme would resume a paused app.
