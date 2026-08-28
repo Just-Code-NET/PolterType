@@ -6,6 +6,46 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-29 — A correction under a held key does not happen at all
+
+The two-second wait from the day before had a fallback: wait, then
+type anyway. Issue #44 is what that fallback does.
+
+Before typing, a correction releases the modifiers the user is
+holding — a replay under a held Ctrl produces shortcuts, not text.
+On Wayland that release is discarded. libinput tracks key state per
+device and drops a release for a key the sending device never
+pressed, and ours is a virtual keyboard that never pressed anything.
+So the modifier stays down and the burst arrives as `Ctrl+H`,
+`Ctrl+G`, `Ctrl+B`. Measured on KDE Plasma Wayland, 2026-08-28: seven
+`^H` and five control characters in the terminal where the word
+should have been, with the app's own log reporting a clean
+correction. On X11 the active grab swallows the same burst instead,
+so the fallback has never worked anywhere.
+
+So the wait is now the whole mechanism, and it happens *before* the
+layout switch rather than after: nothing is switched, deleted or
+typed while the key is down. Past the bound — five seconds now, since
+nothing is riding on it being short — the word is left exactly as the
+user typed it and the stash is kept, so the gesture answers the next
+press. Doing nothing is a real outcome here; it is the only one that
+cannot make the document worse.
+
+"Trigger" is now exact rather than modifier-shaped: one latch holding
+the scancode of whichever hotkey key is physically down, set by the
+press that matched a chord and cleared by that key's release. It
+covers a chord an OS grab owns, which nothing else here tracks — the
+grab hides the chord from our matcher, not the key from our listener.
+
+**Alternative considered and rejected:** pressing the modifier before
+releasing it, so libinput has a press to match. It would work, and it
+tells the compositor something false about a key the user is holding
+— the next keystroke of theirs would arrive unmodified. It also does
+nothing for X11, where the grab is the problem. One rule for both
+desktops, and no lying about the keyboard.
+
+---
+
 ## 2026-08-28 — The Linux update installs itself, and only the restart is delegated
 
 The AppImage updater wrote a shell script, spawned it in its own
@@ -61,6 +101,8 @@ held across `exec` unless every descriptor is `CLOEXEC`, and the exit
 path would have to be restructured around a `run_return` event loop to
 get control back at all.
 
+---
+
 ## 2026-08-28 — A held hotkey is waited out, not typed over
 
 Two mechanisms broke the force-switch when the key was held rather than
@@ -90,6 +132,12 @@ still down, and waiting there would put two seconds into ordinary
 typing. Where an OS-level grab owns the chord the engine matches
 nothing itself, so the app sends the grabbed chords along for
 recognition only.
+
+> **The bound was SUPERSEDED on 2026-08-29** — see the entry below.
+> "Waits, then emits anyway" was the half that did not survive
+> contact: the emitting-anyway path is not a fallback, it is a way of
+> typing control characters into someone's document. The waiting half
+> stands, and is now the whole of it.
 
 **Alternative considered and rejected:** treating the grab as a
 platform quirk and documenting it. The gesture is the product's second

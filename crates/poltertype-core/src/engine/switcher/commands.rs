@@ -79,29 +79,19 @@ impl SwitcherEngine {
     /// grabbed for as long as the key is down — so the repeats arrive
     /// exactly where they do the most damage.
     pub(super) fn is_own_hotkey_press(&self, ev: &KeyEvent) -> bool {
-        self.trigger_key_repeating(ev)
-            || self
-                .keystream_hotkeys
-                .read()
-                .chords()
-                .any(|c| chord_matches(ev, c))
+        self.keystream_hotkeys
+            .read()
+            .chords()
+            .any(|c| chord_matches(ev, c))
     }
 
-    /// Follow which hotkey key is physically down, so a repeat of it
-    /// stays recognisable after we have stripped its modifiers.
+    /// Follow which hotkey key is physically down.
     ///
-    /// A correction releases whatever the user is holding before it
-    /// types — a replay under a held Ctrl produces shortcuts, not text.
-    /// Those releases go out on the same wire the listener folds into
-    /// the modifier flags it stamps on every key, so from that moment
-    /// the chord the user has not let go of repeats as a *bare* key.
-    /// `Ctrl+Shift+F9` became a naked F9, which is a nav key: the
-    /// correction read it as the user jumping the caret, aborted,
-    /// poisoned the buffer and dropped the stash — and the gesture then
-    /// answered nothing at all until a fresh word was typed (issue #44).
-    ///
-    /// Latched from the press that *did* carry the modifiers, so it
-    /// cannot fire on a bare key the user genuinely typed.
+    /// Nothing else here knows: the per-binding latches are one per
+    /// *hotkey* and say nothing about a chord an OS grab owns, and the
+    /// modifier flags are a guess at best. A correction has to know
+    /// exactly, because it cannot happen at all while that key is down
+    /// — see `CHORD_RELEASE_WAIT` and [`Self::trigger_key_down`].
     pub(super) fn track_trigger_key(&self, ev: &KeyEvent) {
         if ev.injected {
             return;
@@ -126,13 +116,6 @@ impl SwitcherEngine {
         }
     }
 
-    /// Is this press the key of a chord that is still under the user's
-    /// finger? See [`Self::track_trigger_key`].
-    pub(super) fn trigger_key_repeating(&self, ev: &KeyEvent) -> bool {
-        ev.direction == KeyDirection::Press
-            && self.chord_state.lock().trigger_down == Some(ev.scancode)
-    }
-
     /// Narrower: is this the *force-switch* chord's own key?
     ///
     /// `handle_key` treats any press carrying Ctrl/Alt/Meta as a
@@ -150,25 +133,15 @@ impl SwitcherEngine {
             .is_some_and(|c| chord_matches(ev, c))
     }
 
-    /// Is the gesture that asked for this correction still down?
+    /// Is a hotkey key under the user's finger right now?
     ///
-    /// Deliberately not "is any modifier held": a word closed by a
-    /// shifted separator is corrected with Shift still down, and making
-    /// *that* wait is a two-second stall on ordinary typing. The
-    /// question is whether what is held is a hotkey's own modifier set
-    /// — as close as an OS-level grab lets us get, since nothing tells
-    /// the engine which key that grab delivered. Where we match the
-    /// chord ourselves the latch is exact, and it is what answers for a
-    /// binding with no modifier in it at all.
-    pub(super) fn trigger_held(&self) -> bool {
-        let m = *self.held_modifiers.read();
-        if !(m.control || m.shift || m.alt || m.meta) {
-            let st = self.chord_state.lock();
-            return st.switch.key_down || st.pause.key_down;
-        }
-        self.keystream_hotkeys.read().chords().any(|c| {
-            m.control == c.ctrl && m.shift == c.shift && m.alt == c.alt && m.meta == c.meta
-        })
+    /// The exact question, and deliberately not "is any modifier held":
+    /// a word closed by a shifted separator is corrected with Shift
+    /// still down, and making *that* wait would stall ordinary typing.
+    /// Covers a chord an OS grab owns too — the grab hides the chord
+    /// from our matcher, not the key from our listener.
+    pub(super) fn trigger_key_down(&self) -> bool {
+        self.chord_state.lock().trigger_down.is_some()
     }
 
     /// Keep the chord latches honest about keys the correction window

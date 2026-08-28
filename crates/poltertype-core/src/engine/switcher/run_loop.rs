@@ -289,6 +289,19 @@ impl SwitcherEngine {
         if is_paste_shortcut(&ev) {
             *self.paste_guard_until.write() = Instant::now() + PASTE_GUARD;
         }
+        if self.is_own_switch_press(&ev) {
+            // The force-switch chord's own key, which by now has
+            // already run its correction and knows precisely where the
+            // caret is. Feeding it to the buffer taints the word it
+            // just switched — which left the gesture dead for every
+            // word typed after it (issue #40) — and for a binding with
+            // no modifier on it there is nothing below to catch it at
+            // all: the classifier reads a bare function key as the
+            // caret moving, so the press threw away the very word it
+            // had switched and the next press found nothing.
+            self.dismiss_suggestions(None);
+            return;
+        }
         if ev.modifiers.is_command() && !is_modifier_scancode(ev.scancode) {
             // Shortcuts can edit text arbitrarily, so a mid-flight word
             // is no longer trustworthy. The stashed last-word survives
@@ -298,25 +311,13 @@ impl SwitcherEngine {
             // the suggestion-accept chord must survive its own
             // modifiers, and the digit that follows is what accepts.
             //
-            // So is the force-switch chord's own key, which by now has
-            // already run its correction and knows precisely where the
-            // caret is: tainting there is what left the gesture dead
-            // for every word typed after it (issue #40).
-            if !self.is_own_switch_press(&ev) {
-                buffer.abandon();
-                // A shortcut can also move the caret (Ctrl+End,
-                // app-specific jumps), so the next word may start
-                // mid-word.
-                buffer.mark_context_unclean();
-            }
+            // The pause chord is deliberately not exempt: its default
+            // key is Space, which the buffer reads as a word boundary.
+            buffer.abandon();
+            // A shortcut can also move the caret (Ctrl+End,
+            // app-specific jumps), so the next word may start mid-word.
+            buffer.mark_context_unclean();
             self.dismiss_suggestions(None);
-            return;
-        }
-        if self.trigger_key_repeating(&ev) {
-            // The hotkey the user has not let go of, repeating with its
-            // modifiers stripped off by our own correction — so the
-            // branch above no longer catches it and the buffer would
-            // read a bare F9 as the caret jumping away (issue #44).
             return;
         }
 

@@ -2815,6 +2815,141 @@ mod engine_integration_tests {
         );
     }
 
+    /// Past the wait, a correction does not happen at all — because
+    /// there is nowhere for it to go.
+    ///
+    /// Neither desktop delivers a keystroke of ours anywhere useful
+    /// while the key that asked for it is down: X11 hands everything to
+    /// the client holding the grab, and on Wayland libinput drops the
+    /// modifier release we send from a device that never pressed it, so
+    /// the burst lands as `Ctrl+H`, `Ctrl+G`, `Ctrl+B`. That is what
+    /// issue #44 actually put into the reporter's window. Leaving the
+    /// word as typed is the only outcome that cannot make it worse.
+    #[test]
+    fn a_hold_outlasting_the_wait_types_nothing_at_all() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        h.key_mods(0x43, KeyDirection::Press, both);
+        let until = Instant::now() + CHORD_RELEASE_WAIT + Duration::from_millis(600);
+        while Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(30));
+            h.key_mods(0x43, KeyDirection::Press, both);
+        }
+        assert!(
+            erase_counts(&h).is_empty(),
+            "nothing may be emitted while the key is still down: {:?}",
+            h.emitter.ops()
+        );
+
+        h.key_mods(0x43, KeyDirection::Release, both);
+        h.key_mods(
+            0x2A,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.key_mods(
+            0x1D,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.settle();
+
+        // And the gesture is still there to be used, on the word that
+        // is still exactly as it was typed.
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        h.key_mods(0x43, KeyDirection::Press, both);
+        h.key_mods(
+            0x43,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.key_mods(
+            0x2A,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.key_mods(
+            0x1D,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.settle();
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len()],
+            "one correction, and it is the one asked for after the key came up"
+        );
+    }
+
+    /// A hotkey with no modifier on it — a bare function key, or the
+    /// Caps Lock people ask for by name — used to work exactly once per
+    /// word.
+    ///
+    /// Its own press reaches the buffer like any other key, and the
+    /// classifier reads the function row as navigation: the cursor has
+    /// moved, forget everything. So the press that had just switched a
+    /// word threw that word away on its way out, and the next press
+    /// found nothing to act on.
+    #[test]
+    fn a_hotkey_with_no_modifier_does_not_throw_away_the_word_it_switched() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: false,
+                    shift: false,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        type_word(&h, &GHBDSN);
+        h.settle();
+        for _ in 0..2 {
+            h.tap(0x43);
+            h.settle();
+        }
+
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len(), GHBDSN.len()],
+            "both presses must act on the word that is still on screen"
+        );
+    }
+
     /// Issue #40 as it was actually reported: through the chord, not
     /// through the command channel.
     ///

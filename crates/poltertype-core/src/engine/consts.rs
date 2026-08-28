@@ -53,17 +53,28 @@ pub const COPY_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchCh
 /// copy chord, so the compositor does not read both in one frame.
 pub const CHORD_RELEASE_SETTLE: Duration = Duration::from_millis(40);
 
-/// How long a correction will wait for the chord that asked for it to
-/// come back up before emitting anyway.
+/// How long a correction will wait for the key that asked for it to
+/// come back up. Nothing is switched, deleted or typed until it does.
 ///
-/// Not politeness: on X11 the passive grab that delivered the hotkey is
-/// *active* while the key is down, so every keystroke we emit goes to
-/// the grabbing client instead of to the application — the deletion
-/// deletes nothing, the replay types nothing, and the correction looks
-/// as though it never happened. Measured on IceWM, 2026-08-28. Long
-/// enough for a deliberate hold, short enough that leaning on the key
-/// still ends in a correction rather than in silence (issue #39).
-pub const CHORD_RELEASE_WAIT: Duration = Duration::from_millis(2000);
+/// Neither desktop lets us type underneath a key the user is holding.
+/// On X11 the passive grab that delivered the chord is *active* while
+/// the key is down, so every keystroke we emit goes to the grabbing
+/// client rather than to the application — measured on IceWM,
+/// 2026-08-28. On Wayland the modifiers are the problem instead: we
+/// release them before typing, because a replay under a held Ctrl
+/// produces shortcuts, but libinput drops a release for a key the
+/// sending device never pressed — so the Ctrl in the user's hand stays
+/// down and the correction goes into the application as `Ctrl+H`,
+/// `Ctrl+G`, `Ctrl+B`. Measured on KDE Plasma Wayland, 2026-08-28,
+/// which is what issue #44 was: seven `^H` and five control characters
+/// where a word should have been.
+///
+/// So the wait is not politeness and not a deadline to type past — it
+/// is the only moment a correction can happen at all. Long enough to
+/// outlast a deliberate hold; past it the word is left exactly as the
+/// user typed it, which is the one outcome that cannot make things
+/// worse.
+pub const CHORD_RELEASE_WAIT: Duration = Duration::from_millis(5000);
 
 /// The paste chord that puts the converted selection back.
 pub const PASTE_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchChord {

@@ -220,6 +220,56 @@ impl SwitcherEngine {
         // compositor's xkb propagation.
         let mut switched_at: Option<Instant> = None;
 
+        let mut live = live;
+        let mut click_allowance = pointer_click_allowance;
+        let mut tail: Vec<KeyEvent> = Vec::new();
+        let mut resume: Option<KeyEvent> = None;
+        let mut suspicious = false;
+
+        // ── Wait for the user's finger to come off the hotkey ───────
+        //
+        // Before the layout switch, not after: neither desktop will
+        // deliver a keystroke of ours anywhere useful while that key is
+        // down (see `CHORD_RELEASE_WAIT`), and a correction that types
+        // control characters into the user's document is worse than one
+        // that does not happen. So nothing at all happens until the key
+        // is up — and if it never is, the word is left as typed.
+        if self.trigger_key_down() {
+            if let Some((rx, _)) = live.as_ref() {
+                let deadline = Instant::now() + CHORD_RELEASE_WAIT;
+                while self.trigger_key_down()
+                    && !suspicious
+                    && resume.is_none()
+                    && Instant::now() < deadline
+                {
+                    let w = self.drain_correction_window(rx, &mut click_allowance);
+                    tail.extend(w.word_keys);
+                    suspicious |= w.suspicious;
+                    resume = w.resume;
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+            // Checked again rather than only on the deadline: the loop
+            // also ends when something arrives that we cannot place,
+            // and proceeding then would emit under the held key after
+            // all.
+            if self.trigger_key_down() {
+                debug!(
+                    "the key that asked for this correction is still down; \
+                     leaving the word as it was typed"
+                );
+                // Whatever we swallowed while waiting is on screen and
+                // no longer in the buffer's model of it.
+                if (!tail.is_empty() || suspicious || resume.is_some())
+                    && let Some((_, buffer)) = live.as_mut()
+                {
+                    self.seed_buffer(&tail, buffer);
+                    buffer.poison();
+                }
+                return false;
+            }
+        }
+
         // Pre-flight BEFORE touching the user's text: `decide()` filters
         // candidates but `force_switch_last` bypasses that filter, and
         // settings or the OS layout list can change in between. On query
@@ -260,24 +310,15 @@ impl SwitcherEngine {
         // fix that. So fold arriving presses into the plan until the
         // stream comes back empty; a boundary means the user finished
         // their next word too, a submission or anything murkier aborts.
-        let mut live = live;
-        let mut click_allowance = pointer_click_allowance;
-        let mut tail: Vec<KeyEvent> = Vec::new();
-        let mut resume: Option<KeyEvent> = None;
-        let mut suspicious = false;
         if let Some((rx, _)) = live.as_ref() {
             let deadline = Instant::now() + Duration::from_millis(600);
-            // The chord that asked for this is a different thing to
-            // wait for than the user's typing, and it is worth waiting
-            // longer: see `CHORD_RELEASE_WAIT`.
-            let chord_deadline = Instant::now() + CHORD_RELEASE_WAIT;
             let mut quiet_probes = 0u8;
             loop {
                 let w = self.drain_correction_window(rx, &mut click_allowance);
                 tail.extend(w.word_keys);
                 suspicious |= w.suspicious;
                 if let Some(r) = w.resume {
-                    if is_submission_scancode(r.scancode) {
+                    if is_submission_scancode(r.scancode) || resume.is_some() {
                         suspicious = true;
                     } else {
                         resume = Some(r);
@@ -300,8 +341,7 @@ impl SwitcherEngine {
                         break;
                     }
                 }
-                let now = Instant::now();
-                if now >= deadline && !(self.trigger_held() && now < chord_deadline) {
+                if Instant::now() >= deadline {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(30));
