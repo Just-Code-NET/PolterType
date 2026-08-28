@@ -123,6 +123,11 @@ pub struct GeneralSettings {
     /// posture as `ui_language`.
     pub ui_theme: String,
     pub log_level: String,
+    /// Auto-switching is off. Written by the app itself every time the
+    /// pause hotkey or the tray item is used, so the state the user
+    /// left it in is the state it starts in (issue #46) — and read
+    /// back live, so setting it here pauses a running app too.
+    pub paused: bool,
 }
 
 impl Default for GeneralSettings {
@@ -134,6 +139,7 @@ impl Default for GeneralSettings {
             ui_language: "system".into(),
             ui_theme: "system".into(),
             log_level: "info".into(),
+            paused: false,
         }
     }
 }

@@ -490,13 +490,16 @@ source of truth — deleting the entry by hand only lasts until the next
 launch, so untick the setting instead.
 
 Logs land under the OS data dir; "Open Logs Folder…" in the tray takes
-you there. Edits apply **without a restart**: closing the Settings
-window picks everything up on its way out, and "Reload Settings" in
-the tray does the same for hand-edited TOML — general flags,
-exceptions, hotkey bindings, wordlists and profile overlays alike.
+you there. Edits apply **without a restart**: `config.toml` is watched,
+so a hotkey rebound and saved takes effect while the Settings window is
+still open, and a chord typed straight into the file takes effect the
+moment you save it. Closing the Settings window additionally picks up
+wordlists and profile overlays, and "Reload Settings" in the tray does
+the same on demand.
 
-The tray also carries **Pause auto-switch**, **Open User Wordlists
-Folder…**, **Open User Layouts Folder…**, and — unless you turned
+The tray also carries **Pause auto-switch** — remembered across
+restarts, so an app you left paused comes back paused — **Open User
+Wordlists Folder…**, **Open User Layouts Folder…**, and — unless you turned
 updates off — **Check for updates…**, which becomes **⟳ Restart to
 update** once a new version is staged. If the keyboard hooks fail to
 start, a **⚠ Setup Guide…** entry appears at the top pointing at

@@ -60,9 +60,16 @@ pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayS
     ))) {
         warn!(?e, "could not update tray tooltip");
     }
-    item_pause.set_text(if state.paused {
+    item_pause.set_text(pause_item_label(state.paused));
+}
+
+/// The pause item's own text. Shared with the menu's construction: the
+/// app can now start paused, and a menu built from a fixed string would
+/// offer to pause something that already is.
+pub(crate) fn pause_item_label(paused: bool) -> &'static str {
+    if paused {
         "▶ Resume auto-switch"
     } else {
         "⏸ Pause auto-switch"
-    });
+    }
 }

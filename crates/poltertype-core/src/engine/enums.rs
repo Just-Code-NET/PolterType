@@ -78,6 +78,11 @@ pub enum DictionaryAddOrigin {
 #[derive(Debug, Clone)]
 pub enum EngineCommand {
     TogglePause,
+    /// Put auto-switching in a named state instead of flipping it.
+    /// `config.toml` carries the same state, and a toggle driven by a
+    /// file lands the wrong way round whenever the two have drifted —
+    /// which is exactly when the file is being applied.
+    SetPaused(bool),
     /// Force a switch on the most recently completed word, ignoring
     /// the detector (Manual-switch-last hotkey).
     SwitchLastForcefully,

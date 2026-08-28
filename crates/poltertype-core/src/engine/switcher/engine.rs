@@ -155,6 +155,7 @@ impl SwitcherEngine {
             out_tx,
             suggester,
         } = deps;
+        let start_paused = settings.snapshot().general.paused;
         Self {
             settings,
             layouts,
@@ -167,7 +168,7 @@ impl SwitcherEngine {
             focus_tracker,
             audio,
             out_tx,
-            paused: Arc::new(RwLock::new(false)),
+            paused: Arc::new(RwLock::new(start_paused)),
             word_history: Arc::new(RwLock::new(WordHistory::default())),
             last_word: Arc::new(RwLock::new(None)),
             last_force_switch: RwLock::new(None),

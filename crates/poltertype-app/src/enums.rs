@@ -13,10 +13,11 @@ pub(crate) enum UserEvent {
     /// Suggestion-tooltip interaction (click / timeout).
     Popup(PopupUiEvent),
     Update(UpdateOutcome),
-    /// `config.toml` has been re-read — by the tray's own "Reload
-    /// Settings", or because the Settings window closed. Carried
-    /// through the event loop because the hotkey grabs live there and
-    /// are not `Send`.
+    /// `config.toml` has been re-read — because the Settings window
+    /// closed, or because the watcher saw the file change under a
+    /// running app. Carried through the event loop because the hotkey
+    /// grabs live there and are not `Send`; whoever sends this has
+    /// already reloaded the store.
     SettingsChanged,
     /// Time to re-ask every plug-in what state it is in, so the tray
     /// reflects a change made somewhere else — from the command line,

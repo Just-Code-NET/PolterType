@@ -154,6 +154,12 @@ pub(crate) const SWITCHER_PROBE_WINDOW: std::time::Duration = std::time::Duratio
 pub(crate) const SWITCHER_PROBE_INTERVAL: std::time::Duration =
     std::time::Duration::from_millis(500);
 
+/// How often the tray re-stats `config.toml` to notice an edit made
+/// anywhere else — the Settings window's Save, a text editor, another
+/// machine's synced file. One `stat` a second is below noise, and the
+/// file is replaced atomically, so its size and mtime move together.
+pub(crate) const CONFIG_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// How long a global hotkey may look "still held" before the next
 /// `Pressed` is treated as a fresh press anyway. Only the OS-grab path
 /// needs it — the keystream matcher latches on real key releases.

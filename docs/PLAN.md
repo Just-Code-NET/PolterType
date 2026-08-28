@@ -345,6 +345,9 @@ show_notifications = false
 ui_language = "system"     # or "en", "uk"
 ui_theme = "system"        # Settings window theme: "system", "light", "dark"
 log_level = "info"
+paused = false             # auto-switch off. Written by the app itself
+                           # every time you pause or resume, and read
+                           # back live — see DECISIONS, 2026-08-29
 
 [languages]
 active   = ["en-US", "uk-UA"]

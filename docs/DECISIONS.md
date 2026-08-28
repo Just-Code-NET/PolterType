@@ -6,6 +6,59 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-29 — `config.toml` is watched, and the pause state lives in it
+
+Two reports from one user on the same build, and the same sentence
+answers both: the running app treats the file as the truth and re-reads
+it when it moves.
+
+**The rebind that needed a restart (issue #45).** The chords were
+re-applied at exactly one moment — when the Settings window the tray
+had spawned exited. That is not when a user finds out whether a rebind
+worked. They press Save, the banner says "Saved to …", they try the new
+chord with the window still open, and nothing happens; a chord typed
+straight into `config.toml` never arrived either, short of the tray's
+"Reload Settings". Measured here 2026-08-28 against 0.25.1: rewriting
+`pause_toggle` under a running app left the engine on the old scancode
+indefinitely.
+
+A watcher thread now stats the file once a second and, when it has
+moved, re-reads it and puts what changed in force. Polled rather than
+`inotify`-watched: one `stat` a second is below noise, needs no new
+dependency, and works the same on all three platforms. The stamp is
+size *and* mtime, because the edit this exists for — one chord for
+another — routinely leaves the file exactly as long as it was.
+
+Only outside edits get through. `SettingsStore::update` keeps the
+store's own snapshot in step with what it writes, so a write the app
+made itself re-reads as no change and stops at the watcher.
+
+**The pause state that was forgotten (issue #46).** Turning
+auto-switch off is a decision, not a mood: it now rides in
+`[general].paused`, written every time the hotkey or the tray item is
+used, and read at startup. Because the file is watched, it is also
+applied live — which is why the engine gained `SetPaused(bool)` rather
+than reusing `TogglePause`. A file names a state; a toggle read off a
+file lands the wrong way round exactly when the two have drifted, and
+the watcher re-applies it after *any* edit, so editing the sound theme
+would have resumed a paused app.
+
+The Settings window never shows the field and would have written back
+whatever the file held when it opened, silently resuming an app paused
+since. Its Save now re-reads that one value off disk and folds it into
+what it writes.
+
+The cost, stated plainly: pausing rewrites `config.toml`, and a
+serialised TOML round-trip does not preserve comments. That was already
+true of the window's Save; it is now true of the pause hotkey too.
+
+Alternative considered and rejected: a separate state file next to
+`config.toml`. It would leave comments alone, but it hides a setting
+users ask about, cannot be hand-set, and adds a second source of truth
+for one boolean.
+
+---
+
 ## 2026-08-29 — A correction under a held key does not happen at all
 
 The two-second wait from the day before had a fallback: wait, then

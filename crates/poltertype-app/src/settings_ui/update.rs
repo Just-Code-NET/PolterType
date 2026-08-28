@@ -488,7 +488,13 @@ impl SettingsApp {
                 if !matches!(wordlist_outcome, WordlistFlushOutcome::Nothing) {
                     self.wordlist_status = Some(banner_for_wordlist_save(wordlist_outcome));
                 }
-                let staged = self.settings.clone();
+                // Straight off disk first: the tray may have written
+                // the pause state since this window opened, and the
+                // store's snapshot is this process's own copy.
+                if let Err(e) = self.store.reload() {
+                    warn!(?e, "could not re-read config.toml before saving");
+                }
+                let staged = with_runtime_state(self.settings.clone(), &self.store.snapshot());
                 match self.store.update(|s| *s = staged) {
                     Ok(()) => {
                         info!(path = ?self.config_path, "settings saved from UI");

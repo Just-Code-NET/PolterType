@@ -2262,6 +2262,70 @@ mod engine_integration_tests {
         );
     }
 
+    /// Turning auto-switch off is a decision, not a mood: the app used
+    /// to forget it on quit, so the next launch went back to correcting
+    /// words for somebody who had switched that off (issue #46).
+    #[test]
+    fn auto_switch_left_off_in_the_config_comes_back_off() {
+        let h = Harness::start_configured(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            None,
+            None,
+            |s| s.general.paused = true,
+        );
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "a config that says auto-switch was left off must start it off"
+        );
+
+        h.cmd_tx
+            .send(EngineCommand::SetPaused(false))
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::PausedChanged(false)));
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+    }
+
+    /// The config file names a state, and the watcher re-applies it
+    /// after *any* edit to the file. Read as a toggle, changing the
+    /// sound theme would resume a paused app.
+    #[test]
+    fn being_told_the_pause_state_it_is_already_in_changes_nothing() {
+        let h = Harness::start_configured(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            None,
+            None,
+            |s| s.general.paused = true,
+        );
+        h.cmd_tx
+            .send(EngineCommand::SetPaused(true))
+            .expect("engine alive");
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "still paused, so still no correction"
+        );
+        let (_, events) = h.stop();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::PausedChanged(_))),
+            "nothing changed, so the tray must not be told anything did"
+        );
+    }
+
     /// The gesture people actually arrive with: type the word, see the
     /// wrong layout, press the key — with no space anywhere in it.
     ///

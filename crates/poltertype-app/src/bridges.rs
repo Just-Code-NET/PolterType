@@ -1,13 +1,14 @@
 //! Threads that bridge engine/OS events into the tao event loop.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::Receiver;
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
-use poltertype_core::engine::SwitcherEvent;
+use poltertype_core::engine::{EngineCommand, SwitcherEvent};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::SettingsStore;
 use poltertype_types::LayoutId;
@@ -50,6 +51,14 @@ pub(crate) fn handle_engine_event(
             info!(paused, "engine paused state changed");
             state.paused = paused;
             refresh_tray(tray, item_pause, state);
+            // Remembered on disk so the app comes back the way it was
+            // left (issue #46). Guarded, because this event also
+            // arrives when the file is what asked for the change.
+            if settings.snapshot().general.paused != paused
+                && let Err(e) = settings.update(|s| s.general.paused = paused)
+            {
+                warn!(?e, "could not remember the pause state");
+            }
         }
         SwitcherEvent::LayoutChanged(id) => {
             debug!(layout = %id, "layout changed");
@@ -315,3 +324,75 @@ pub(crate) fn spawn_layout_poller(
         .context("spawn layout poller thread")?;
     Ok(())
 }
+
+/// What `config.toml` looks like from the outside. Compared as a whole,
+/// including the `None` a replace-by-rename shows for an instant: a
+/// spurious wake-up costs one re-read that reports no change.
+fn config_stamp(path: &Path) -> Option<(u64, SystemTime)> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.len(), m.modified().ok()?))
+}
+
+/// Notice a `config.toml` written by anybody else, and put it in force.
+///
+/// The running app used to re-read the file at exactly one moment: when
+/// the Settings window it had spawned exited. So a hotkey rebound and
+/// *saved* with that window still open did nothing, and a chord written
+/// into the file by hand did nothing either — both until the app was
+/// restarted, which is how it was reported (issue #45).
+///
+/// Only edits from outside get this far. `SettingsStore::update` keeps
+/// the store's own snapshot in step with what it writes, so the tray's
+/// own pause bookkeeping re-reads as no change and stops here.
+pub(crate) fn spawn_config_watcher(
+    proxy: EventLoopProxy<UserEvent>,
+    settings: Arc<SettingsStore>,
+    engine_tx: crossbeam_channel::Sender<EngineCommand>,
+) -> Result<()> {
+    let path = settings.path().to_owned();
+    std::thread::Builder::new()
+        .name("poltertype-config-watcher".into())
+        .spawn(move || {
+            debug!(?path, "config watcher thread started");
+            let mut last = config_stamp(&path);
+            loop {
+                std::thread::sleep(CONFIG_WATCH_INTERVAL);
+                let now = config_stamp(&path);
+                if now == last {
+                    continue;
+                }
+                last = now;
+                match settings.reload() {
+                    Ok(false) => {}
+                    Ok(true) => {
+                        info!(?path, "config.toml changed on disk; applying it");
+                        let paused = settings.snapshot().general.paused;
+                        if engine_tx.send(EngineCommand::SettingsReloaded).is_err()
+                            || engine_tx.send(EngineCommand::SetPaused(paused)).is_err()
+                        {
+                            break;
+                        }
+                        // The chords are re-applied in the event loop:
+                        // the OS-level grabs live there and are not
+                        // `Send`.
+                        if proxy.send_event(UserEvent::SettingsChanged).is_err() {
+                            break;
+                        }
+                    }
+                    // Half-written, or edited into something that does
+                    // not parse. Keep what is in force and wait for the
+                    // next write rather than dropping the user's
+                    // settings for a file they are still typing into.
+                    Err(e) => warn!(
+                        ?e,
+                        "config.toml changed on disk but could not be read; keeping the settings in force"
+                    ),
+                }
+            }
+        })
+        .context("spawn config watcher thread")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

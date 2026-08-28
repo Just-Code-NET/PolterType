@@ -113,6 +113,11 @@ impl SwitcherEngine {
                 info!(?hk, "keystream hotkeys configured");
                 *self.keystream_hotkeys.write() = hk;
             }
+            EngineCommand::SetPaused(want) => {
+                if *self.paused.read() != want {
+                    self.handle_command(EngineCommand::TogglePause, buffer, key_rx);
+                }
+            }
             EngineCommand::TogglePause => {
                 let now = {
                     let mut g = self.paused.write();

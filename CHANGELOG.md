@@ -4,6 +4,46 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.25.2] — what the file says
+
+Two more from the reporter of #44, both the same shape: PolterType knew
+something and the file did not, or the file knew something and
+PolterType did not.
+
+### Fixed
+
+- **A rebound hotkey works the moment you save it**
+  ([#45](https://github.com/Just-Code-NET/PolterType/issues/45)). It
+  used to work only after a restart. The chords were put in force at
+  exactly one moment — when the Settings window closed — which is not
+  when anyone finds out whether a rebind worked: you press Save, the
+  banner says it saved, you try the new chord with the window still
+  open, and nothing happens. A chord typed straight into `config.toml`
+  never arrived either, short of clicking "Reload Settings".
+
+  `config.toml` is now watched. Whatever writes it — the Settings
+  window, your text editor, a file synced from another machine — the
+  running app re-reads it within a second and re-arms the chords from
+  it. Verified on this machine against 0.25.1: rewriting the pause
+  chord under the running app left it on the old key indefinitely;
+  it now moves inside a second.
+
+- **Auto-switch left off stays off**
+  ([#46](https://github.com/Just-Code-NET/PolterType/issues/46)).
+  Pausing from the tray or the hotkey lasted until you quit, and the
+  next launch was correcting words again for somebody who had
+  deliberately switched that off. The state now lives in
+  `[general].paused`, written whenever you pause or resume, read at
+  startup — and, since the file is watched, applied live: setting it by
+  hand pauses or resumes a running app. The tray icon and the menu
+  entry come up matching it, so a PolterType that starts paused says so
+  before you go looking.
+
+  One consequence worth knowing: pausing rewrites `config.toml`, and
+  that rewrite does not keep comments you added by hand. Saving from
+  the Settings window has always worked that way; the pause hotkey
+  does now too.
+
 ## [0.25.1] — after you let go
 
 Two follow-ups from the same reporter on the release meant to settle

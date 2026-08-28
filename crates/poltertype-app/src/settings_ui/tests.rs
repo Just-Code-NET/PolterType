@@ -549,3 +549,28 @@ fn captured_modifier_chords_read_back_as_the_same_binding() {
         );
     }
 }
+
+/// The window stages the whole `Settings` struct and writes it back
+/// wholesale, but the pause state belongs to the tray, which rewrites
+/// it whenever auto-switch is paused or resumed. Saving anything at all
+/// would otherwise resume an app the user paused after this window
+/// opened (issue #46).
+#[test]
+fn saving_the_window_cannot_resume_an_app_paused_since_it_opened() {
+    let mut staged = poltertype_core::settings::Settings::default();
+    staged.general.paused = false;
+    staged.general.show_notifications = true;
+
+    let mut on_disk = poltertype_core::settings::Settings::default();
+    on_disk.general.paused = true;
+
+    let merged = with_runtime_state(staged, &on_disk);
+    assert!(
+        merged.general.paused,
+        "the tray's state must survive a Save"
+    );
+    assert!(
+        merged.general.show_notifications,
+        "and everything the window does own must still be written"
+    );
+}

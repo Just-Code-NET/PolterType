@@ -450,3 +450,18 @@ fn the_log_level_is_readable_without_the_rest_of_the_file() {
     );
     assert_eq!(log_level_of("schema_version = 1"), None);
 }
+
+/// The pause state travels in `config.toml` so it survives a quit
+/// (issue #46) — and a file written before the key existed must still
+/// read as "running", not fail to parse.
+#[test]
+fn the_pause_state_round_trips_and_defaults_to_running() {
+    let old: Settings = toml::from_str("schema_version = 1").expect("parse");
+    assert!(!old.general.paused);
+
+    let mut paused = Settings::default();
+    paused.general.paused = true;
+    let text = toml::to_string_pretty(&paused).expect("serialize");
+    let back: Settings = toml::from_str(&text).expect("parse");
+    assert!(back.general.paused);
+}

@@ -507,7 +507,9 @@ fn main() -> Result<()> {
     let item_wordlists = MenuItem::new("Open User Wordlists Folder…", true, None);
     let item_layouts = MenuItem::new("Open User Layouts Folder…", true, None);
     let item_reload = MenuItem::new("Reload Settings", true, None);
-    let item_pause = MenuItem::new("Pause auto-switch", true, None);
+    // Auto-switching may have been left off in a previous run.
+    let start_paused = settings.snapshot().general.paused;
+    let item_pause = MenuItem::new(tray::pause_item_label(start_paused), true, None);
 
     // One dual-purpose entry — "Check for updates…" or "⟳ Restart to
     // update"; hidden entirely when `[updates].enabled` is off.
@@ -582,7 +584,7 @@ fn main() -> Result<()> {
     // flash a "??" before the first LayoutChanged event arrives.
     let initial_layout: Option<LayoutId> = layout_switcher.current().ok();
     let initial_icon = match initial_layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, false, false)?,
+        Some(l) => icon_render::for_layout(l, start_paused, false)?,
         None => icon_render::unknown(false)?,
     };
 
@@ -603,7 +605,7 @@ fn main() -> Result<()> {
         .with_menu(Box::new(menu))
         .with_tooltip(tooltip_for(
             initial_layout.as_ref(),
-            false,
+            start_paused,
             input_alert.is_some(),
             0,
         ))
@@ -682,6 +684,11 @@ fn main() -> Result<()> {
     }
 
     spawn_layout_poller(Arc::clone(&layout_switcher), engine_event_tx_for_poller)?;
+    spawn_config_watcher(
+        event_loop.create_proxy(),
+        Arc::clone(&settings),
+        engine_cmd_tx.clone(),
+    )?;
 
     if !profile_dict_cache.read().is_empty() {
         spawn_profile_watcher(
@@ -705,7 +712,7 @@ fn main() -> Result<()> {
 
     let mut tray_state = TrayState {
         layout: initial_layout,
-        paused: false,
+        paused: start_paused,
         input_alert: input_alert.is_some(),
         attention: 0,
     };
@@ -740,9 +747,9 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::SettingsChanged) => {
-                // The chords, and only the chords: everything else the
-                // window can change was re-read by its close handler
-                // before this event was sent.
+                // The chords, and only the chords: whoever sent this —
+                // the window's close handler, or the config watcher —
+                // re-read the file and refreshed the rest first.
                 let cfg = settings_for_loop.snapshot().hotkeys;
                 active_hotkeys = apply_hotkeys(
                     &cfg.pause_toggle,

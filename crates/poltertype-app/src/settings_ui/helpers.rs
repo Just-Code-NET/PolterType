@@ -7,6 +7,7 @@ use anyhow::Result;
 use iced::keyboard::{Key, Modifiers, key::Code, key::Named, key::Physical};
 use poltertype_core::commands::{CommandAction, UserCommand};
 use poltertype_core::engine::{ModRole, ModSet};
+use poltertype_core::settings::Settings;
 use poltertype_layout::LayoutId;
 use tracing::warn;
 
@@ -584,6 +585,19 @@ pub fn first_lines(text: &str, n: usize) -> String {
     } else {
         kept.join(" · ")
     }
+}
+
+/// Fold back the one setting this window does not own, right before it
+/// writes the file.
+///
+/// `[general].paused` belongs to the tray: it is rewritten every time
+/// auto-switch is paused or resumed, and this window neither shows the
+/// field nor hears about it moving. Saving the whole struct would put
+/// back the value the file carried when the window opened, silently
+/// resuming an app the user had paused since (issue #46).
+pub fn with_runtime_state(mut staged: Settings, on_disk: &Settings) -> Settings {
+    staged.general.paused = on_disk.general.paused;
+    staged
 }
 
 #[cfg(test)]

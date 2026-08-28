@@ -211,10 +211,10 @@ pub(crate) fn add_word_to_user_overlay(
 ///
 /// Only **global overlays for already-loaded layouts** are picked up
 /// live — the load-bearing case, adding vocabulary like `kubectl`.
-/// Brand-new user layouts, per-profile overlays, `[[wordlists.profiles]]`
-/// schema changes and hotkey rebinds all need a restart: the engine holds
-/// a snapshot `Arc<LayoutDb>`, the profile cache is built once at
-/// startup, and the two built-in hotkeys are registered with the OS once.
+/// Brand-new user layouts and per-profile overlays still need a
+/// restart: the engine holds a snapshot `Arc<LayoutDb>` and the profile
+/// cache is built once at startup. Hotkeys do not — `config.toml` is
+/// watched and the chords are re-applied from it (issue #45).
 ///
 /// `[[commands]]` text triggers are the exception: the engine reads them
 /// from `settings.snapshot()` on every word boundary.
