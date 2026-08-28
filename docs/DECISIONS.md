@@ -13,15 +13,19 @@ type anyway. Issue #44 is what that fallback does.
 
 Before typing, a correction releases the modifiers the user is
 holding — a replay under a held Ctrl produces shortcuts, not text.
-On Wayland that release is discarded. libinput tracks key state per
-device and drops a release for a key the sending device never
-pressed, and ours is a virtual keyboard that never pressed anything.
-So the modifier stays down and the burst arrives as `Ctrl+H`,
-`Ctrl+G`, `Ctrl+B`. Measured on KDE Plasma Wayland, 2026-08-28: seven
-`^H` and five control characters in the terminal where the word
-should have been, with the app's own log reporting a clean
-correction. On X11 the active grab swallows the same burst instead,
-so the fallback has never worked anywhere.
+On Wayland that release changes nothing, because it comes from a
+virtual keyboard that never pressed the key.
+
+Measured on KDE Plasma Wayland, 2026-08-28, and the capture is
+unambiguous: every one of the held key's escape sequences carried
+`;6` (Ctrl+Shift) right through the burst, and the burst itself
+arrived as seven `^H` and `Ctrl+G`, `Ctrl+H`, `Ctrl+B`, `Ctrl+D`,
+`Ctrl+T` — while the app's own log reported a clean correction. What
+was measured is that the release we send does not take the modifier
+up; *why* is presumably libinput declining a release for a key that
+device never pressed, which is consistent but was not read out of its
+source. On X11 the active grab swallows the same burst instead, so
+the fallback has never worked anywhere.
 
 So the wait is now the whole mechanism, and it happens *before* the
 layout switch rather than after: nothing is switched, deleted or
@@ -31,11 +35,21 @@ user typed it and the stash is kept, so the gesture answers the next
 press. Doing nothing is a real outcome here; it is the only one that
 cannot make the document worse.
 
-"Trigger" is now exact rather than modifier-shaped: one latch holding
-the scancode of whichever hotkey key is physically down, set by the
-press that matched a chord and cleared by that key's release. It
-covers a chord an OS grab owns, which nothing else here tracks — the
-grab hides the chord from our matcher, not the key from our listener.
+"Trigger" is answered two ways, because the two kinds of binding are
+observed differently. A chord the engine matches off the key stream
+gets an exact latch: the scancode of the key that is down, set by the
+press that matched and cleared by that key's release.
+
+A chord an OS grab owns gets no latch at all, and the first attempt at
+this was wrong to give it one. On X11 the passive grab becomes
+*active* on the press, and from that moment the key's raw events are
+delivered to the grabbing client alone: the press arrives, the release
+never does. Measured on Cinnamon X11, 2026-08-29 — the latch was set
+by every press and cleared by nothing, so every correction on every
+X11 session waited its five seconds and gave up. For those the only
+readable signal is whether the chord's own modifier set is still down,
+which is what the previous entry used for everything. It is a fair
+reading there and a poor one elsewhere, so now it is used only there.
 
 **Alternative considered and rejected:** pressing the modifier before
 releasing it, so libinput has a press to match. It would work, and it

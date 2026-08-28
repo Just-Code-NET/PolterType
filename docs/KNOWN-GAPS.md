@@ -1,4 +1,4 @@
-# Known gaps (as of v0.25.0)
+# Known gaps (as of v0.25.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,68 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.25.1 pass actually checked (2026-08-29).** The
+force-switch hotkey again, in every shape the guest can produce, on
+every session the display manager offers — because the release is two
+fixes to the previous release's fix and neither was caught by a test.
+
+The probe now drives six lines instead of two: the chord tapped, held
+~1 s, held ~3 s, tapped again, held ~6 s — past the wait — and tapped
+once more. The last two are what #44 turned out to need. It also counts
+**control characters** in the capture, which is the only reading that
+separates "nothing was typed" from "something illegible was": a burst
+that goes out under a held Ctrl arrives as `^H` and the control code of
+every letter, and `read_lines` strips escape sequences and applies
+erases, so it renders that as a plausible-looking word.
+
+| session        | corrects at all | tap | held ~1 s (#39) | held ~3 s (#44) | pressed after (#44) | held past the wait | pressed after that | Caps Lock (#41) | stray control bytes |
+|----------------|-----------------|-----|-----------------|-----------------|---------------------|--------------------|--------------------|-----------------|---------------------|
+| budgie-desktop | **no**          | n/a | n/a             | n/a             | n/a                 | n/a                | n/a                | n/a             | 0                   |
+| cinnamon       | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| cinnamon2d     | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| fluxbox        | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| i3             | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| icewm-session  | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| labwc          | **no**          | n/a | n/a             | n/a             | n/a                 | n/a                | n/a                | n/a             | 0                   |
+| lxqt           | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| mate           | **no**          | n/a | n/a             | n/a             | n/a                 | n/a                | n/a                | n/a             | 0                   |
+| openbox        | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| plasma         | yes             | yes | yes             | yes             | yes                 | yes                | yes                | n/a             | 0                   |
+| sway           | yes             | yes | yes             | yes             | yes                 | yes                | yes                | n/a             | 0                   |
+| ubuntu         | yes             | yes | yes             | yes             | yes                 | yes                | yes                | n/a             | 0                   |
+| xfce           | yes             | yes | yes             | yes             | yes                 | yes                | yes                | yes             | 0                   |
+| xfce-wayland   | **no**          | n/a | n/a             | n/a             | n/a                 | n/a                | n/a                | n/a             | 0                   |
+
+Every session that can switch layouts is green in every column, and no
+control character reached any application anywhere in the sweep. Read
+only those rows: Budgie, labwc, MATE and Xfce's Wayland session have no
+layout-switching backend, so nothing is corrected there and every
+hotkey verdict is unmeasurable rather than failed. Caps Lock reads
+`n/a` on the three Wayland sessions that do correct, for the same
+reason as in 0.25.0 — the binding needs `caps:none` and none of the
+three can be given it from outside.
+
+Two sessions were **not run**: Cinnamon's Wayland session never became
+ready (it has produced no terminal in any sweep since it was
+installed), and `i3-with-shmlog`, which is i3's debug variant and is
+covered by the i3 row.
+
+One row is honestly intermittent, and it is not this release's doing.
+GNOME's settings daemon sometimes puts the layout back before
+PolterType can type, and the guard then declines with `the desktop put
+the layout back before we could type; leaving the word alone` — the
+right answer, but it makes whichever phase it lands on read as a
+failure. Three runs on GNOME: the race was lost in two of them, at a
+different phase each time, and the third was green in every column.
+Nothing in this release touches that path, and the new wait was never
+the cause — zero give-ups in every one of those logs.
+
+What this pass did **not** check: anything on macOS or Windows. The
+engine change is platform-neutral and unit-tested; the Hotkeys-pane
+change was measured on this laptop's own session rather than compiled
+and hoped for, but on Wayland/Hyprland, not on the platforms whose
+listeners report Caps Lock differently.
 
 **What the 0.25.0 pass actually checked (2026-08-28).** The
 force-switch hotkey, which four of the five reports are about, across
@@ -514,6 +576,29 @@ move too fast to be true.
   that option — sway keeps its keymap in its own config — and on
   Windows and macOS, where the same key-stream path is now used and the
   listeners do report the key.
+
+  The precondition and the Hotkeys pane were at odds until 0.25.1:
+  neutralising the key is what leaves it with no keysym, the pane
+  matched Caps Lock by *name*, and so *Rebind* recognised the key only
+  until the user did the one thing the pane told them to do. It now
+  matches the physical code. Measured both ways on a live `caps:none`
+  session, 2026-08-29 — 0.25.0 never sees the key, 0.25.1 captures
+  `CapsLock`.
+
+- **A correction cannot happen while the key that asked for it is
+  still down, on either display server** (0.25.1, #44). On X11 the
+  passive grab that delivered the chord goes *active* on the press:
+  everything the correction emits is handed to the grabbing client
+  rather than to the application, and the key's own release is never
+  delivered to us at all. On Wayland the modifiers are the problem
+  instead — the release PolterType sends for them comes from a virtual
+  keyboard that never pressed them and changes nothing, so the burst
+  arrives as `Ctrl+H`, `Ctrl+G`, `Ctrl+B`. Both measured in the guest,
+  2026-08-28/29. So nothing is switched, deleted or typed until the
+  key comes up; past five seconds the word is left exactly as typed
+  and the gesture stays live for the next press. What this costs is
+  real and is the design: **lean on the key for more than five seconds
+  and that press does nothing at all.**
 
 - **A shortcut pressed mid-correction while keys are held is lost.**
   Backspace, arrows and Esc are re-emitted behind the correction, but
