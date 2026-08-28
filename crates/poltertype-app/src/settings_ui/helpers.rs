@@ -473,15 +473,15 @@ pub fn is_usable_hotkey(combo: &str) -> bool {
 /// something the reader cannot take back.
 ///
 /// The logical key is what a hotkey should normally be: the user reads
-/// `Ctrl+Ж` off their own keycap. But a Cyrillic letter, or the `§` an
-/// Apple ISO keyboard puts left of `Z`, has no name in the hotkey
-/// parser — and a refused capture is a rebind that silently does
-/// nothing. The physical code (`KeyA`, `Backquote`) always has one.
+/// `Ctrl+Ж` off their own keycap. But a Cyrillic letter has no name in
+/// the hotkey parser — and a refused capture is a rebind that silently
+/// does nothing. The physical code (`KeyA`, `Backquote`) always has
+/// one.
 ///
 /// `None` when the physical key has no `Code` either, or when its name
-/// is one the parser does not know — `IntlBackslash` is the ISO key the
-/// reporter of issue #43 wanted, and `global-hotkey` 0.6.4 has no
-/// spelling for it at all.
+/// is one the parser does not know: `global-hotkey` 0.6.4 has no
+/// spelling for `IntlBackslash` at all, so a fallback that offered it
+/// would write a binding nothing can read back.
 pub fn physical_hotkey(physical: Physical, modifiers: Modifiers) -> Option<String> {
     let Physical::Code(code) = physical else {
         return None;

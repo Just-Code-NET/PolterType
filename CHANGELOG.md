@@ -7,7 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ## [0.25.0] — the key you are holding
 
 Five reports in a day, from two people on two platforms. Four are
-fixed; the fifth needs one more detail from the machine it happens on.
+fixed; the fifth is fixed and waiting to be confirmed on the machine
+that sees it.
 
 ### Fixed
 
@@ -44,22 +45,25 @@ fixed; the fifth needs one more detail from the machine it happens on.
   It has meant "light" on both since 0.23.0: the toolkit upgrade
   replaced the call that used to answer this with one that answers
   nothing, and on Linux the desktop portal had always been the real
-  authority, so nothing looked wrong here. Both new probes are
-  compiled and their parsers tested; neither has been run on the
-  platform it is for, because there is no Mac or Windows box in this
-  release's test loop.
+  authority, so nothing looked wrong here. The reporter sees it on both
+  platforms — macOS with `AppleInterfaceStyle = Dark`, Windows 11 with
+  the dark app theme — which is what says the two probes are the right
+  two. Both are compiled and their parsers tested; neither has been run
+  on the platform it is for, because there is no Mac or Windows box in
+  this release's test loop.
 
-- **Punctuation keys can be used as hotkeys** (also #43). Every key of
-  the main block that is not a letter, a digit or a function key —
-  backtick, brackets, semicolon, quote, comma, period, slash, backslash
-  — was missing from an internal table, so binding one produced a
-  hotkey that answered to nothing. The ISO key to the left of `Z` is
-  still not bindable: the hotkey library we register with has no name
-  for it.
+- **Punctuation keys work as hotkeys on the backends that match chords
+  themselves** — Wayland and evdev. Every key of the main block that is
+  not a letter, a digit or a function key — backtick, brackets,
+  semicolon, quote, comma, period, slash, backslash — was missing from
+  an internal scancode table, so binding one there produced a hotkey
+  that answered to nothing at all. Found while looking into #43, whose
+  reporter turned out to be hitting something else entirely: another
+  layout switcher was swallowing the chord before PolterType saw it.
 
 - **Rebinding to a key your layout renders as something exotic no
-  longer fails silently** (also #43). A capture reads the character the
-  key produces, so rebinding to a letter with a Cyrillic layout active
+  longer fails silently.** A capture reads the character the key
+  produces, so rebinding to a letter with a Cyrillic layout active
   wrote a combination our own reader rejects — and a rejected binding
   is quietly replaced by the default. It now falls back to the key's
   physical position, which always has a name.

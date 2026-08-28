@@ -289,9 +289,8 @@ fn the_windows_registry_probe_reads_the_apps_theme_flag() {
 }
 
 /// A key whose *rendering* the hotkey parser cannot read back — a
-/// Cyrillic letter, the `§` an Apple ISO keyboard puts left of `Z` —
-/// used to be refused outright, and a refused rebind is one that looks
-/// accepted and does nothing (issue #43).
+/// Cyrillic letter, most obviously — used to be refused outright, and
+/// a refused rebind is one that looks accepted and does nothing.
 #[test]
 fn a_key_the_reader_cannot_take_back_is_captured_by_its_physical_code() {
     use iced::keyboard::key::{Code, Physical};
@@ -312,9 +311,9 @@ fn a_key_the_reader_cannot_take_back_is_captured_by_its_physical_code() {
         physical_hotkey(Physical::Code(Code::Backquote), Modifiers::CTRL).as_deref(),
         Some("Ctrl+Backquote")
     );
-    // And the one key that stays unbindable: `global-hotkey` 0.6.4 has
-    // no spelling for the ISO key left of `Z`, so offering it would be
-    // a binding nothing could read.
+    // And the one code that stays unbindable: `global-hotkey` 0.6.4 has
+    // no spelling for `IntlBackslash`, so offering it would write a
+    // binding nothing could read back.
     assert_eq!(
         physical_hotkey(Physical::Code(Code::IntlBackslash), Modifiers::CTRL),
         None

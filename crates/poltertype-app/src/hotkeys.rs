@@ -316,9 +316,9 @@ pub(crate) fn chord_from_hotkey(hk: &HotKey) -> Option<poltertype_core::engine::
 ///
 /// The main-block punctuation is here because every one of it used to
 /// be missing, which made the whole class unbindable on the key-stream
-/// backends by construction (issue #43). `IntlBackslash` — the ISO key
-/// left of `Z` — is deliberately absent: `global-hotkey`'s parser has
-/// no name for it, so no config file can ever carry it here.
+/// backends by construction. `IntlBackslash` is deliberately absent:
+/// `global-hotkey`'s parser has no name for it, so no config file can
+/// ever carry it here.
 pub(crate) fn code_to_sc1(code: Code) -> Option<u32> {
     Some(match code {
         Code::Escape => 0x01,
