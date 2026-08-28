@@ -238,14 +238,24 @@ pressed while they were down — so `Ctrl+C`, `Ctrl+Shift+V` and typing
 capitals are left alone. A tap also has to be a tap: hold the keys for
 more than half a second and nothing happens.
 
-To bind one, click **Rebind** and make the gesture. Two shapes are
+To bind one, click **Rebind** and make the gesture. One shape is
 deliberately not offered: a *single* modifier, because mouse buttons
 are invisible to PolterType on Windows and macOS and a lone-Shift
-binding would fire on every Shift+click; and Caps Lock, because
-binding it would flip the lock as well as fire. Modifier chords are
-never consumed either — the keys still reach the focused application,
-which is harmless for a bare modifier and is why this shape behaves
-the same everywhere.
+binding would fire on every Shift+click. Modifier chords are never
+consumed either — the keys still reach the focused application, which
+is harmless for a bare modifier and is why this shape behaves the same
+everywhere.
+
+**Caps Lock** can carry the force-switch since 0.25.0, which is the
+other gesture people arrive with. It needs one thing done to the
+keyboard first: PolterType watches keys and never swallows them, so the
+key still latches the lock unless you take the lock off it — the
+`caps:none` keyboard option, or the equivalent in whatever remapper you
+run — and a latched lock makes the corrected word come back in
+capitals. The Hotkeys pane says so under the row, and the wiki's
+[Configuration Cookbook](../../wiki/Configuration-Cookbook) has the
+recipe per desktop. `Shift`+Caps Lock is left alone, so you keep a way
+to latch the lock on purpose.
 
 ## Spelling suggestions
 
