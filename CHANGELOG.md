@@ -4,6 +4,73 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.25.1] — after you let go
+
+Two follow-ups from the same reporter on the release meant to settle
+them, and a Linux updater that had been losing updates for five of
+them.
+
+### Fixed
+
+- **"Restart to update" installs the update on Linux.** On any desktop
+  that runs PolterType as a systemd user service — which includes the
+  unit the app's own *run at login* toggle writes — it did not. The
+  swap lived in a helper the app started and then quit for, and that
+  helper shared the app's control group: systemd killed it at the
+  exact moment it was waiting for, before it had swapped anything. The
+  app quit, the update was lost, and nothing said so. One maintainer's
+  logs record it happening on five of eight attempts across five
+  releases. The app now puts the new AppImage in place itself, before
+  it starts anything, which is atomic and needs nothing to outlive it;
+  only the relaunch is handed off, and an update that installs but
+  cannot restart the app now says so and leaves the app running
+  instead of quitting into nothing. Verified end to end in a unit of
+  the same shape.
+
+- **Leaning on the force-switch key no longer leaves it answering
+  nothing** ([#44](https://github.com/Just-Code-NET/PolterType/issues/44)).
+  Tap it and the word came back; hold it a few seconds and the gesture
+  went dead — for that word and everything typed after it, until the
+  app was restarted.
+
+  0.25.0 had it wait two seconds for your fingers to lift and then
+  type anyway. That last part cannot work. Before typing, PolterType
+  releases the modifiers you are still holding, because a replay under
+  a held Ctrl produces shortcuts instead of text — and on Wayland that
+  release changes nothing, because it comes from a virtual keyboard
+  that never pressed the key. Measured on KDE Plasma Wayland: the Ctrl
+  in your hand stayed down and the correction arrived in the window as
+  seven `^H` and five control codes, where a word should have been. On
+  X11 it is different and no better — the shortcut you are holding
+  keeps the keyboard to itself, so the same burst reached nothing at
+  all.
+
+  A correction can only happen once the key is up, so now nothing
+  happens until it is: no layout switch, no deletion, no typing. The
+  wait is five seconds, and past it the word is simply left as you
+  typed it — the one outcome that cannot make things worse — with the
+  gesture still there to press again. Measured on every session in our
+  desktop matrix that can switch layouts — eleven of them, Wayland and
+  X11 — with the key tapped, held for one, three and six seconds, and
+  pressed again after each; and with the capture checked for control
+  characters, which is the only reading that tells "nothing was typed"
+  from "something illegible was".
+
+- **The Hotkeys pane recognises Caps Lock once you have neutralised
+  it** ([#41](https://github.com/Just-Code-NET/PolterType/issues/41)).
+  Binding Caps Lock needs the lock taken off the key first — the pane
+  says so — and that is exactly what leaves the key with no name for
+  the pane to match on. So *Rebind* saw it before you did what it
+  asked, and not after. It now recognises the key by its position,
+  which no keyboard layout can move.
+
+- **A hotkey with no modifier on it works more than once per word.**
+  Its own keypress reached the word buffer like any other, and the
+  classifier reads a bare function key as the cursor moving — so the
+  press that had just switched a word threw that word away on its way
+  out, and the next press found nothing to act on. Found while fixing
+  the two above; it applies to any bare binding, Caps Lock included.
+
 ## [0.25.0] — the key you are holding
 
 Five reports in a day, from two people on two platforms. Four are
