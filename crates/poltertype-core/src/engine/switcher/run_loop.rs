@@ -312,6 +312,13 @@ impl SwitcherEngine {
             self.dismiss_suggestions(None);
             return;
         }
+        if self.trigger_key_repeating(&ev) {
+            // The hotkey the user has not let go of, repeating with its
+            // modifiers stripped off by our own correction — so the
+            // branch above no longer catches it and the buffer would
+            // read a bare F9 as the caret jumping away (issue #44).
+            return;
+        }
 
         // A pointer press is about to abandon the buffer below — freeze
         // the screen model first, so a click ON the tooltip (whose

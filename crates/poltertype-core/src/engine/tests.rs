@@ -470,6 +470,19 @@ mod engine_integration_tests {
     const SPACE: u32 = 0x39;
     const BACKSPACE: u32 = 0x0E;
 
+    /// Every backspace burst the emitter has seen, in order — the
+    /// shape most correction assertions are made of.
+    fn erase_counts(h: &Harness) -> Vec<usize> {
+        h.emitter
+            .ops()
+            .iter()
+            .filter_map(|o| match o {
+                EmitOp::Backspaces(n) => Some(*n),
+                _ => None,
+            })
+            .collect()
+    }
+
     fn type_word(h: &Harness, scancodes: &[u32]) {
         for &sc in scancodes {
             h.tap(sc);
@@ -2678,6 +2691,127 @@ mod engine_integration_tests {
                 .iter()
                 .any(|o| matches!(o, EmitOp::Keys(k) if k.len() == GHBDSN.len() + 1)),
             "and the word must be typed back, not left erased"
+        );
+    }
+
+    /// Issue #44: leaning on the chord for longer than
+    /// `CHORD_RELEASE_WAIT` left the gesture dead — the reporter had to
+    /// quit and reopen the app, and even then the next long hold killed
+    /// it again.
+    #[test]
+    fn the_chord_still_answers_after_a_hold_outlasting_the_release_wait() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                grabbed: [None, None],
+                pause: None,
+                switch_last: Some(Binding::Key(Chord {
+                    ctrl: true,
+                    shift: true,
+                    alt: false,
+                    meta: false,
+                    scancode: 0x43,
+                })),
+            }))
+            .expect("engine alive");
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        // `hold_ms` of autorepeat, the way a real machine reports a
+        // held chord — including what our own emitter does to it.
+        //
+        // The listener folds modifier *events* into the flags it stamps
+        // on every key, and `release_modifiers` puts Ctrl and Shift
+        // releases on that same wire. So from the moment a correction
+        // gives up waiting, the key the user is still holding repeats
+        // with no modifiers on it at all.
+        let press_chord = |hold_ms: u64| {
+            let released_mods = || {
+                h.emitter
+                    .ops()
+                    .iter()
+                    .any(|o| matches!(o, EmitOp::ReleaseModifiers))
+            };
+            let base = released_mods();
+            let mut mods = both;
+            h.key_mods(0x1D, KeyDirection::Press, ctrl);
+            h.key_mods(0x2A, KeyDirection::Press, both);
+            h.key_mods(0x43, KeyDirection::Press, mods);
+            let until = Instant::now() + Duration::from_millis(hold_ms);
+            while Instant::now() < until {
+                std::thread::sleep(Duration::from_millis(30));
+                if !base && released_mods() {
+                    mods = poltertype_types::Modifiers::NONE;
+                }
+                h.key_mods(0x43, KeyDirection::Press, mods);
+            }
+            h.key_mods(0x43, KeyDirection::Release, mods);
+            h.key_mods(
+                0x2A,
+                KeyDirection::Release,
+                poltertype_types::Modifiers::NONE,
+            );
+            h.key_mods(
+                0x1D,
+                KeyDirection::Release,
+                poltertype_types::Modifiers::NONE,
+            );
+        };
+
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        press_chord(0);
+        h.settle();
+        let after_first = erase_counts(&h).len();
+        assert_eq!(after_first, 1, "a plain press must switch the word");
+
+        press_chord(2_600);
+        h.settle();
+        let after_hold = erase_counts(&h).len();
+        assert_eq!(
+            after_hold, 2,
+            "the held press must switch it too, once the chord comes up"
+        );
+
+        press_chord(0);
+        h.settle();
+        let erases = erase_counts(&h);
+        assert_eq!(
+            erases.len(),
+            3,
+            "and the gesture must still answer afterwards: {erases:?}"
+        );
+        assert_eq!(
+            erases.last(),
+            Some(&GHBDSN.len()),
+            "acting on the word under the caret, not on a stale one: {erases:?}"
+        );
+
+        // The word behind the caret has to have survived the hold too.
+        // Repeats land inside the correction's own probes as well, and
+        // read there as the user reaching for a nav key they abandoned
+        // the buffer: the six characters on screen stopped being
+        // anything the engine knew, so the next press acted on the tail.
+        let tail = [0x18u32, 0x1F];
+        for sc in tail {
+            h.tap(sc);
+        }
+        h.settle();
+        press_chord(0);
+        h.settle();
+        assert_eq!(
+            erase_counts(&h).last(),
+            Some(&(GHBDSN.len() + tail.len())),
+            "the whole word must still be the engine's: {:?}",
+            erase_counts(&h)
         );
     }
 

@@ -743,6 +743,7 @@ impl SwitcherEngine {
                 // sign the triggering chord has been let go of. See
                 // `modifiers_held`.
                 *self.held_modifiers.write() = ev.modifiers;
+                self.track_trigger_key(&ev);
                 self.observe_swallowed_release(&ev);
             }
             if ev.injected || ev.direction != KeyDirection::Press {

@@ -223,6 +223,11 @@ pub struct ChordState {
     pub switch: BindingState,
     /// One latch per digit key 1..=9 for the suggestion-accept chord.
     pub suggest_digit_down: [bool; 9],
+    /// The scancode of the hotkey key the user is physically holding,
+    /// latched by the press that matched a chord and cleared by that
+    /// key's release. Covers chords an OS grab owns too, which nothing
+    /// else here tracks. See `SwitcherEngine::track_trigger_key`.
+    pub trigger_down: Option<u32>,
 }
 
 /// Everything one hotkey has to remember between key events.

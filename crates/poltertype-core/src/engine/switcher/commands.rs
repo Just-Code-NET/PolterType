@@ -35,6 +35,7 @@ impl SwitcherEngine {
         if ev.injected {
             return;
         }
+        self.track_trigger_key(ev);
         let hk = *self.keystream_hotkeys.read();
         // One clock read for both, and only where a binding exists:
         // this runs on every key event on every backend.
@@ -78,10 +79,58 @@ impl SwitcherEngine {
     /// grabbed for as long as the key is down — so the repeats arrive
     /// exactly where they do the most damage.
     pub(super) fn is_own_hotkey_press(&self, ev: &KeyEvent) -> bool {
-        self.keystream_hotkeys
-            .read()
-            .chords()
-            .any(|c| chord_matches(ev, c))
+        self.trigger_key_repeating(ev)
+            || self
+                .keystream_hotkeys
+                .read()
+                .chords()
+                .any(|c| chord_matches(ev, c))
+    }
+
+    /// Follow which hotkey key is physically down, so a repeat of it
+    /// stays recognisable after we have stripped its modifiers.
+    ///
+    /// A correction releases whatever the user is holding before it
+    /// types — a replay under a held Ctrl produces shortcuts, not text.
+    /// Those releases go out on the same wire the listener folds into
+    /// the modifier flags it stamps on every key, so from that moment
+    /// the chord the user has not let go of repeats as a *bare* key.
+    /// `Ctrl+Shift+F9` became a naked F9, which is a nav key: the
+    /// correction read it as the user jumping the caret, aborted,
+    /// poisoned the buffer and dropped the stash — and the gesture then
+    /// answered nothing at all until a fresh word was typed (issue #44).
+    ///
+    /// Latched from the press that *did* carry the modifiers, so it
+    /// cannot fire on a bare key the user genuinely typed.
+    pub(super) fn track_trigger_key(&self, ev: &KeyEvent) {
+        if ev.injected {
+            return;
+        }
+        // Read before the lock: `check_keystream_hotkeys` takes them in
+        // this order too.
+        let matched = ev.direction == KeyDirection::Press
+            && self
+                .keystream_hotkeys
+                .read()
+                .chords()
+                .any(|c| chord_matches(ev, c));
+        let mut st = self.chord_state.lock();
+        match ev.direction {
+            KeyDirection::Press if matched && st.trigger_down.is_none() => {
+                st.trigger_down = Some(ev.scancode);
+            }
+            KeyDirection::Release if st.trigger_down == Some(ev.scancode) => {
+                st.trigger_down = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Is this press the key of a chord that is still under the user's
+    /// finger? See [`Self::track_trigger_key`].
+    pub(super) fn trigger_key_repeating(&self, ev: &KeyEvent) -> bool {
+        ev.direction == KeyDirection::Press
+            && self.chord_state.lock().trigger_down == Some(ev.scancode)
     }
 
     /// Narrower: is this the *force-switch* chord's own key?
