@@ -4,6 +4,54 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.25.3] — after the line was cleared
+
+One bug, and it took the reporter naming the exact key to find. Clearing
+what you had typed with a keyboard shortcut left PolterType unable to
+vouch for the line — and it went on not vouching for the word you typed
+next, which it had watched from its first keystroke.
+
+### Fixed
+
+- **Clearing the line no longer kills the hotkey**
+  ([#44](https://github.com/Just-Code-NET/PolterType/issues/44)). Clear
+  a line with `Ctrl+Backspace` — or with `Ctrl+A` and then Backspace —
+  and the word you typed next could not be force-switched. Nothing was
+  said about it: no sound, no message, and a debug log that reported it
+  the same way as a hotkey pressed with nothing to switch. It stayed
+  that way until a space went by.
+
+  A shortcut can edit text arbitrarily, so PolterType marks the word it
+  was tracking as one it can no longer account for — a correction
+  deletes a counted number of characters, and it must not count
+  characters it cannot see. But that mark was lifted only at the next
+  word boundary, so it covered the word typed *after* the shortcut as
+  well, and that word is watched from its first keystroke like any
+  other. A backwards word-delete is the one shortcut whose effect on the
+  text is known: it erases exactly what the mark exists to protect. It
+  now lifts the mark instead of setting it, and so does backspacing past
+  everything we are tracking, which is what `Ctrl+A` and Backspace comes
+  to.
+
+  The automatic pass had the same hole for the same reason, and this
+  closes it too: the first word after a cleared line went uncorrected,
+  which is the harder half to notice because there is no gesture to
+  blame. Both halves are regression tests now, and both were measured
+  across the desktop matrix.
+
+  A refusal like this also gets its own line in the debug log now. The
+  one it used to share said "fired with no word to switch", which is
+  what an empty buffer says too — the two readings are indistinguishable
+  in a log, and this report needed two rounds because of it.
+
+- **The missed-word menu says where the word goes**
+  ([#38](https://github.com/Just-Code-NET/PolterType/issues/38)). It
+  reads **"Add a missed word to the dictionary…"** now, on the reporter's
+  observation that nothing in the menu said what picking a row does. The
+  entry stays where it is while the list is empty, showing the row
+  0.25.2 added: a menu that vanishes when it holds nothing is a menu
+  nobody finds in the first place.
+
 ## [0.25.2] — what the file says
 
 Three more from the same reporter, and two of them are the same shape:
