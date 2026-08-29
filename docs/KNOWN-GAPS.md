@@ -1,4 +1,4 @@
-# Known gaps (as of v0.25.3)
+# Known gaps (as of v0.25.4)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,21 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.25.4 pass actually checked (2026-08-29).** One report on
+0.25.3, and no desktop dimension to it: whether the force-switch plays a
+sound is decided in `poltertype-core` before any backend is involved,
+and the guest has no audio device to hear it with. So the reading is a
+unit test rather than a sweep — but a new kind of one. The engine's test
+audio player used to drop every command on the floor, so sound was the
+one thing nothing in this repository asserted on, and that is exactly
+how a hardcoded `play_sound: true` sat in the manual-switch path since
+the gesture existed (#47). The player now hands its receiver back and
+the test reads both directions: chime off means silence, chime on means
+one `Correct`.
+
+The 0.25.3 desktop sweep stands unchanged — nothing in this release
+touches the correction path itself.
 
 **What the 0.25.3 pass actually checked (2026-08-29).** The one thing
 this release changes, on every session the guest offers, plus a re-run
