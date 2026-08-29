@@ -545,8 +545,9 @@ fn main() -> Result<()> {
     );
     let item_quit = MenuItem::new("Quit", true, None);
     // Words a tooltip offered and lost, so the offer can be taken up
-    // later (issue #38). Disabled while empty rather than hidden: a
-    // menu entry that comes and goes is harder to find than a grey one.
+    // later (issue #38). Always here and always openable: an entry that
+    // comes and goes is harder to find than one that says it is empty,
+    // and a disabled one answers a click with nothing at all.
     let menu_deferred = Submenu::new(DEFERRED_MENU_LABEL, true);
     menu.append_items(&[
         &item_settings_ui,

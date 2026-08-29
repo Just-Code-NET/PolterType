@@ -13,6 +13,68 @@ sentence above exists to prevent.
 
 ## What each release pass actually checked
 
+**What the 0.25.2 pass actually checked (2026-08-29).** Two settings
+that only exist between a file and a running app, so neither can be
+read off a screen. `config-probe.py` rewrites `config.toml` under a
+running app and then presses the new chord and the old one; it also
+quits the app and starts it again to see whether the pause state came
+back. `tray-probe.py` reads the missed-word submenu off the tray's own
+`com.canonical.dbusmenu` — the rows the desktop is holding, not the
+ones we think we sent.
+
+| session | display | chord bound | old chord dead | new chord live | pause written | starts paused | resumes | missed-word row |
+|---|---|---|---|---|---|---|---|---|
+| budgie-desktop | wayland | yes | yes | yes | yes | yes | yes | n/a |
+| cinnamon | x11 | yes | yes | yes | yes | yes | yes | yes |
+| cinnamon-wayland | wayland | **n/a** | n/a | n/a | n/a | n/a | n/a | n/a |
+| cinnamon2d | x11 | yes | yes | yes | yes | yes | yes | yes |
+| fluxbox | x11 | yes | yes | yes | yes | yes | yes | n/a |
+| i3 | x11 | yes | yes | yes | yes | yes | yes | n/a |
+| icewm-session | x11 | yes | yes | yes | yes | yes | yes | n/a |
+| labwc | wayland | **n/a** | n/a | n/a | n/a | n/a | n/a | n/a |
+| lxqt | x11 | yes | yes | yes | yes | yes | yes | yes |
+| mate | x11 | yes | yes | yes | yes | yes | yes | n/a |
+| openbox | x11 | yes | yes | yes | yes | yes | yes | n/a |
+| plasma | wayland | yes | yes | yes | yes | yes | yes | yes |
+| sway | wayland | yes | yes | yes | yes | yes | yes | n/a |
+| ubuntu | wayland | yes | yes | yes | yes | yes | yes | yes |
+| xfce | x11 | yes | yes | yes | yes | yes | yes | yes |
+| xfce-wayland | wayland | yes | yes | yes | yes | yes | yes | n/a |
+
+Fourteen of sixteen green in every column. The two that are not are
+cinnamon-wayland and labwc, where no injected key reaches the app at
+all — the same two rows the correction table calls unmeasurable, for
+the same reason. `n/a` in the last column is a session with no
+StatusNotifier host, or one whose watcher never registered our item
+(Budgie and Xfce's Wayland session both have a watcher and neither
+lists us); the row measures nothing there rather than failing. The
+missed word itself was seen arriving in the tray on KDE Plasma
+Wayland, which is where #38 was reported.
+
+The X11 rows are the load-bearing ones for the rebind: there a chord is
+an OS-level grab, so changing it means releasing one grab and taking
+another, and that is the half that can fail quietly.
+
+**The first sweep's rows for this probe were wrong, and the app was
+not what changed.** The probe waited a fixed eight seconds after
+starting the app — but the config watcher is started with the event
+loop, and building that loop initialises GTK, which on a session with
+no tray host takes tens of seconds. So the file was rewritten before
+anything was watching it, and sway read as a rebind that never took.
+It now waits for the app to say it is up, and keeps one virtual
+keyboard across the restart rather than making a second one the app has
+to rescan for. Same binary, same commit: plasma, sway, budgie, mate and
+xfce-wayland all went from failing to green.
+
+The correction matrix itself is unchanged from 0.25.1 — every session
+with a layout backend corrects, `Shift+Shift` puts the word back, all
+three 0.22.0 phases pass, and no control character reached any
+application anywhere in the sweep. GNOME needed a second run of the
+hotkey probe: the first left two of six lines corrected-but-not-undone,
+the second was clean in all six. That is the gnome-settings-daemon
+layout-revert race already recorded for 0.25.1, not a change in this
+release.
+
 **What the 0.25.1 pass actually checked (2026-08-29).** The
 force-switch hotkey again, in every shape the guest can produce, on
 every session the display manager offers — because the release is two
@@ -600,6 +662,19 @@ move too fast to be true.
   real and is the design: **lean on the key for more than five seconds
   and that press does nothing at all.**
 
+- **A shortcut that clears the line leaves the force-switch declining
+  the next word, and saying so only in a debug line.** A press carrying
+  Ctrl/Alt/Meta can edit the text arbitrarily, so the buffer stops
+  vouching for what is on screen; the manual switch then refuses the
+  word typed straight afterwards, because a word half-switched in place
+  is worse than one left alone. The refusal is deliberate. What is not
+  is that it is silent: clearing a line with `Ctrl+A`, `Ctrl+Backspace`
+  or `Shift+Home` and typing again reads as a hotkey that stopped
+  working, until the next space re-syncs the buffer and it answers
+  again. Reproduced here on 2026-08-29 against 0.25.1, following up on
+  #44. Plain Backspace does not do this, however far past the buffer it
+  goes — that path is measured and green.
+
 - **A shortcut pressed mid-correction while keys are held is lost.**
   Backspace, arrows and Esc are re-emitted behind the correction, but
   a chord needs modifiers the emitter cannot reproduce, so the gate
@@ -625,6 +700,12 @@ move too fast to be true.
   drive the app without a person, and the app was built to ignore it.
 
 ## Focus, the tooltip and the Settings window
+
+- **Anything the app writes to `config.toml` drops comments you added
+  by hand.** The file is serialised from the settings struct, never
+  edited in place. That has always been true of the Settings window's
+  Save; since 0.25.2 it is also true of pausing, which records its
+  state there.
 
 - **Focus tracking is complete on Windows, macOS, Hyprland and X11,
   and partial on other Wayland.** macOS answers since 0.15.0

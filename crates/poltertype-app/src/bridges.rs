@@ -344,6 +344,11 @@ fn config_stamp(path: &Path) -> Option<(u64, SystemTime)> {
 /// Only edits from outside get this far. `SettingsStore::update` keeps
 /// the store's own snapshot in step with what it writes, so the tray's
 /// own pause bookkeeping re-reads as no change and stops here.
+///
+/// Started with the rest of the event loop, which means the first
+/// seconds after launch are unwatched — and on a session with no tray
+/// host, building that loop initialises GTK and takes tens of seconds.
+/// The chords themselves are armed before it for exactly that reason.
 pub(crate) fn spawn_config_watcher(
     proxy: EventLoopProxy<UserEvent>,
     settings: Arc<SettingsStore>,
