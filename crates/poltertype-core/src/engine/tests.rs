@@ -2799,6 +2799,45 @@ mod engine_integration_tests {
         h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
     }
 
+    /// The fence around the three above. A shortcut that deletes
+    /// nothing has to go on tainting: the word it interrupted is still
+    /// on screen, immediately left of the caret, so a correction of the
+    /// next one would count characters it cannot see and splice into
+    /// its tail.
+    #[test]
+    fn a_shortcut_that_deletes_nothing_still_stops_the_hotkey() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2E, KeyDirection::Press, ctrl); // C — copies, edits nothing
+        h.key_mods(0x2E, KeyDirection::Release, ctrl);
+        h.key_mods(0x1D, KeyDirection::Release, none);
+        h.settle();
+        let before = erase_counts(&h).len();
+        for sc in [0x32u32, 0x18, 0x18] {
+            h.tap(sc);
+        }
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            erase_counts(&h).len(),
+            before,
+            "the abandoned word is still on screen: {:?}",
+            h.emitter.ops()
+        );
+    }
+
     /// One `Ctrl+Backspace`, modifier edges included — the shape the
     /// listener reports it in.
     fn ctrl_backspace(h: &Harness) {
