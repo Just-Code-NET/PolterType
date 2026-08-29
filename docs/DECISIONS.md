@@ -6,6 +6,33 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-30 — The desktop entry is renamed into place, not rewritten
+
+A menu cache is keyed on the modification time of the `applications`
+directory, not on the entries in it. Rewriting `poltertype.desktop` in
+place therefore changes nothing any desktop can see: after a
+hand-installed AppImage was replaced by a differently-named one, KDE
+went on launching the path that was gone (issue #48). Measured on Plasma
+Wayland, with nothing asked of the session: the directory's mtime never
+moved and its menu cache kept the old `Exec` for as long as it was
+watched.
+
+So the entry is written under a temporary name in the same directory and
+renamed over the old one. A rename removes and adds a directory entry,
+which is exactly what moves the mtime the cache watches.
+
+**Alternative rejected: run `update-desktop-database` or
+`kbuildsycoca6`.** Both would work where they exist, and both are the
+wrong shape for this: one external process per desktop family, spawned
+from a tray app at startup, to produce a side effect a rename produces
+for free. It would also leave every desktop we did not name — and every
+machine missing the tool — with the original bug.
+
+**Alternative rejected: touch the directory.** Same effect in one call,
+but it says nothing about why, and it would have to be remembered
+alongside every future write into that directory. The rename carries the
+property with the write.
+
 ## 2026-08-29 — A deletion is the one shortcut whose effect we can trust
 
 `Ctrl+Backspace` used to leave PolterType refusing the next word typed,

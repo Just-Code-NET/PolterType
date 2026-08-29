@@ -1,4 +1,4 @@
-# Known gaps (as of v0.25.4)
+# Known gaps (as of v0.25.5)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,30 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.25.5 pass actually checked (2026-08-30).** One report, and
+one desktop can even have it: KDE Plasma Wayland, where it was reported
+from. `ksycoca` is the only on-disk menu cache among the sessions this
+guest offers — GTK and Qt-without-Plasma read a `.desktop` entry per
+process and cannot go stale this way — so a sixteen-session sweep would
+be fifteen rows of "not applicable".
+
+Measured with `menu-probe.sh`, which asks the *desktop* what it would
+launch rather than reading the file, and never refreshes anything: an
+entry the session has already indexed, then the AppImage replaced by a
+differently-named one, then two minutes of watching. Both builds, same
+session, same hour:
+
+| build | `applications/` mtime | what the menu would launch |
+|---|---|---|
+| 0.25.4, entry rewritten in place | unchanged | the old path, still, after 120 s |
+| 0.25.5, entry renamed into place | moves | the new path, within 5 s |
+
+The rest of the release is a rename where there was a write, so nothing
+in the correction path moved and the 0.25.3 desktop sweep stands. The
+property the fix rests on — that replacing the file, rather than its
+contents, is what a menu cache can see — is a unit test now, and that
+one runs on every platform CI builds.
 
 **What the 0.25.4 pass actually checked (2026-08-29).** One report on
 0.25.3, and no desktop dimension to it: whether the force-switch plays a
