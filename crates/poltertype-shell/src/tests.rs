@@ -210,6 +210,47 @@ mod desktop {
     }
 
     #[test]
+    fn rewriting_the_entry_replaces_the_file_rather_than_its_contents() {
+        use std::os::unix::fs::MetadataExt;
+
+        let root = std::env::temp_dir().join(format!("pt-desktop-menu-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let apps = root.join("applications");
+        let entry = apps.join("poltertype.desktop");
+
+        let old = PathBuf::from("/opt/PolterType/poltertype-0.25.3-x86_64.AppImage");
+        assert!(crate::desktop::install_into(&root, &old));
+        let before = std::fs::metadata(&entry).expect("entry not written").ino();
+
+        // A menu cache decides it is fresh from the *directory's*
+        // mtime, which rewriting a file inside it does not move: KDE
+        // went on launching the old `Exec` (issue #48). A new inode is
+        // that mtime moving — the name was unlinked and created again.
+        let new = PathBuf::from("/opt/PolterType/poltertype-0.25.4-x86_64.AppImage");
+        assert!(crate::desktop::install_into(&root, &new));
+        let after = std::fs::metadata(&entry)
+            .expect("entry not rewritten")
+            .ino();
+        assert_ne!(
+            before, after,
+            "the entry was rewritten in place, so no menu cache will notice it"
+        );
+
+        let left: Vec<_> = std::fs::read_dir(&apps)
+            .expect("applications directory")
+            .filter_map(Result::ok)
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(
+            left,
+            vec![std::ffi::OsString::from("poltertype.desktop")],
+            "the file the rename went through must not be left behind"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn the_body_carries_the_version_that_makes_an_upgrade_refresh_it() {
         // Without this key an installed entry never changes, and a
         // redrawn mark would reach new users only.

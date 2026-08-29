@@ -235,10 +235,29 @@ fn write_icons(data_home: &Path) {
     }
 }
 
+/// Write the file by creating a sibling and renaming it into place.
+///
+/// Not for atomicity — a torn `.desktop` file would only cost an icon
+/// — but to be *noticed*. A desktop's menu cache is keyed on the mtime
+/// of the `applications` directory, and rewriting a file inside it
+/// leaves that untouched: KDE went on launching the `Exec` it had
+/// cached, so a hand-installed AppImage replaced by a differently-named
+/// one left a menu entry that read correctly and started a file that no
+/// longer existed (issue #48). Adding and removing a directory entry is
+/// what moves the directory's mtime.
 #[cfg(target_os = "linux")]
 fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+    let parent = path.parent().unwrap_or(Path::new("."));
+    std::fs::create_dir_all(parent)?;
+
+    // Hidden and pid-stamped: two instances starting at once must not
+    // write the same temporary file, and a desktop reading the
+    // directory mid-write must not take it for an entry of its own.
+    let temp = parent.join(format!(".{DESKTOP_ID}.{}.tmp", std::process::id()));
+    std::fs::write(&temp, bytes)?;
+    if let Err(e) = std::fs::rename(&temp, path) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(e);
     }
-    std::fs::write(path, bytes)
+    Ok(())
 }
