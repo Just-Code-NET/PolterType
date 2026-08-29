@@ -9,7 +9,7 @@
 
 pkgname=poltertype-bin
 _pkgname=poltertype
-pkgver=0.25.2
+pkgver=0.25.3
 pkgrel=1
 pkgdesc="Detects text typed in the wrong keyboard layout, switches the layout and fixes the word (binary release)"
 arch=('x86_64')
@@ -43,7 +43,7 @@ source=(
   'uinput.conf'
 )
 sha256sums=(
-  '6ce9738f3d42801409dcf326acb10fd85236112e0e65bc51b13f4a5b6c0f90e8'
+  '4befea71185396507e32795a2fa71d21ba6240daa7b3e18a66a748f8311cd0a9'
   'SKIP'
   'SKIP'
 )
