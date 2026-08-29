@@ -2707,6 +2707,113 @@ mod engine_integration_tests {
         );
     }
 
+    /// Issue #44: clearing the line with `Ctrl+Backspace` left the
+    /// force-switch dead for every word typed afterwards.
+    ///
+    /// A shortcut taints the word in flight, and the taint outlives it
+    /// — it is cleared only at the next boundary, so the word typed
+    /// *next*, watched from its first key, was refused too. A leftward
+    /// word-delete is the one shortcut that cannot leave an unrecorded
+    /// remainder behind: it erases the very text the taint exists to
+    /// protect.
+    #[test]
+    fn the_hotkey_survives_a_line_cleared_with_ctrl_backspace() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        // "Manually switching several times" — out and back.
+        for _ in 0..2 {
+            h.cmd_tx
+                .send(EngineCommand::SwitchLastForcefully)
+                .expect("engine alive");
+            h.settle();
+        }
+        ctrl_backspace(&h);
+        let second = [0x32u32, 0x18, 0x18];
+        for sc in second {
+            h.tap(sc);
+        }
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            erase_counts(&h).last(),
+            Some(&second.len()),
+            "the word typed after a word-delete is watched from its first key: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The other way the report's line gets cleared: select the lot,
+    /// then rub it out with a plain Backspace. The taint is set by
+    /// `Ctrl+A` and survives the deletion that makes it meaningless.
+    #[test]
+    fn the_hotkey_survives_a_line_cleared_with_select_all_and_backspace() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x1E, KeyDirection::Press, ctrl); // A
+        h.key_mods(0x1E, KeyDirection::Release, ctrl);
+        h.key_mods(0x1D, KeyDirection::Release, none);
+        h.tap(BACKSPACE);
+        let second = [0x32u32, 0x18, 0x18];
+        for sc in second {
+            h.tap(sc);
+        }
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            erase_counts(&h).last(),
+            Some(&second.len()),
+            "backspacing past everything we track leaves nothing to splice into: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The same root, on the automatic path: auto-switch went quiet for
+    /// the first word typed after a line was cleared with the shortcut.
+    #[test]
+    fn auto_switch_still_fires_on_the_word_after_ctrl_backspace() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        ctrl_backspace(&h);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+    }
+
+    /// One `Ctrl+Backspace`, modifier edges included — the shape the
+    /// listener reports it in.
+    fn ctrl_backspace(h: &Harness) {
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(BACKSPACE, KeyDirection::Press, ctrl);
+        h.key_mods(BACKSPACE, KeyDirection::Release, ctrl);
+        h.key_mods(0x1D, KeyDirection::Release, none);
+        h.settle();
+    }
+
     /// Two taps of the chord, one after the other, must be two
     /// corrections.
     #[test]

@@ -16,7 +16,8 @@
 //! * **Poisoning.** When the buffer *knows* it lost track — backspace
 //!   into text it never saw, caret moved mid-word, idle gap, a shortcut
 //!   — it taints the in-progress word, and a tainted completion is
-//!   never auto-corrected. The taint clears at the next boundary.
+//!   never auto-corrected. The taint clears at the next boundary, and
+//!   at any deletion that rubs out the remainder it stands for.
 
 mod classify;
 mod consts;

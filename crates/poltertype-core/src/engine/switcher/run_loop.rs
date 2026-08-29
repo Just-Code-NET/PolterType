@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{WordBoundary, WordBuffer};
-use crate::engine::consts::{FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD};
+use crate::engine::consts::{FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD, SC_BACKSPACE};
 use crate::engine::enums::{Either, EngineCommand, SwitcherEvent};
 use crate::engine::heuristics::{is_modifier_scancode, is_paste_shortcut};
 
@@ -320,6 +320,18 @@ impl SwitcherEngine {
             // all: the classifier reads a bare function key as the
             // caret moving, so the press threw away the very word it
             // had switched and the next press found nothing.
+            self.dismiss_suggestions(None);
+            return;
+        }
+        if ev.scancode == SC_BACKSPACE && ev.modifiers.is_command() {
+            // A word- or line-delete to the left, and the one shortcut
+            // whose effect on the text we know: it erases what sat left
+            // of the caret. Reading it as an arbitrary edit taints the
+            // *next* word too, and that is what read as the hotkey
+            // dying after a line was cleared (issue #44). The stash
+            // goes with it — the word it names is off the screen now.
+            buffer.delete_word_left();
+            *self.last_word.write() = None;
             self.dismiss_suggestions(None);
             return;
         }

@@ -147,6 +147,22 @@ impl WordBuffer {
         self.prev_lead = None;
     }
 
+    /// A whole word or line was deleted to the *left* of the caret
+    /// (`Ctrl`/`Alt`/`Cmd`+Backspace).
+    ///
+    /// Like [`Self::abandon`], except that it must not taint: the taint
+    /// exists to protect the next word from being spliced into an
+    /// unrecorded remainder, and this is the one shortcut that erases
+    /// that remainder rather than leaving it on screen. Tainting anyway
+    /// left the force-switch — and auto-correction — dead for every
+    /// word typed after a line was cleared, until the next space
+    /// (issue #44).
+    pub fn delete_word_left(&mut self) {
+        self.abandon();
+        self.poisoned = false;
+        self.mark_context_unclean();
+    }
+
     /// The caret may now be anywhere — including mid-word in text the
     /// buffer never saw. The next word starts unclean (no suggestion
     /// tooltip) until a boundary is observed again.
@@ -266,6 +282,11 @@ impl WordBuffer {
                 // and the flag could only reach the *next* word — which
                 // is watched from its first key. Poisoning it left every
                 // word typed after a rubbed-out line uncorrectable.
+                //
+                // An *inherited* taint goes for the same reason: the
+                // remainder it stands for sat left of the caret, and
+                // the user has just rubbed out past it (issue #44).
+                self.poisoned = false;
                 self.context_clean = false;
                 self.lead = None;
                 WordBoundary::Abandoned

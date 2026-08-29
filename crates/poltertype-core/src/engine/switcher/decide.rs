@@ -55,6 +55,10 @@ impl SwitcherEngine {
     /// actually under it.
     pub(super) fn word_in_progress(&self, buffer: &WordBuffer) -> Option<LastWord> {
         if buffer.poisoned() {
+            // Its own line: lumped in with the empty-buffer case, a
+            // decline here reads in a log exactly like a hotkey that
+            // never fired (issue #44).
+            debug!("manual switch-last declined: the word under the caret was only half-observed");
             return None;
         }
         let keys = buffer.keys().to_vec();
