@@ -1,4 +1,4 @@
-# Known gaps (as of v0.25.1)
+# Known gaps (as of v0.25.2)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
