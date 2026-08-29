@@ -166,8 +166,10 @@ pub(crate) const CONFIG_WATCH_INTERVAL: std::time::Duration = std::time::Duratio
 pub(crate) const STUCK_HOTKEY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// Tray submenu holding words a tooltip offered "Add to dictionary" for
-/// and lost to the next keystroke (issue #38).
-pub(crate) const DEFERRED_MENU_LABEL: &str = "Add a missed word…";
+/// and lost to the next keystroke (issue #38). Names the dictionary,
+/// because picking a row writes to a user wordlist and the menu was the
+/// only place that never said so.
+pub(crate) const DEFERRED_MENU_LABEL: &str = "Add a missed word to the dictionary…";
 
 /// The one row that submenu carries while nothing has been missed.
 /// Disabled, and there so the entry can be opened at all: an empty
