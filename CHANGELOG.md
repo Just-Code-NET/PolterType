@@ -4,6 +4,31 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.25.5] — after you swap the file yourself
+
+### Fixed
+
+- **A hand-installed AppImage no longer leaves the menu pointing at the
+  file you replaced**
+  ([#48](https://github.com/Just-Code-NET/PolterType/issues/48)). Put a
+  new AppImage where the old one was, under its own version-stamped
+  name, and start it: the menu entry PolterType keeps up to date read
+  the new path, while clicking it still ran the old one — "Unable to
+  find a program".
+
+  A desktop's menu cache is keyed on the modification time of the
+  directory the entry sits in, not on the entry itself, and rewriting a
+  file in place does not move that. Measured on Plasma Wayland: the
+  directory's timestamp stayed put and the session's menu cache went on
+  holding the old `Exec` for as long as it was watched. The entry is now
+  written beside itself and renamed into place, which is what moves that
+  timestamp — the same session then picks the new path up within
+  seconds, with nothing asked of it.
+
+  Only ever visible to an install that changes the file name by hand.
+  The in-app updater replaces the AppImage under its existing name, on
+  purpose — every dock pin and shell alias points at that path.
+
 ## [0.25.4] — the chime you turned off
 
 ### Fixed
