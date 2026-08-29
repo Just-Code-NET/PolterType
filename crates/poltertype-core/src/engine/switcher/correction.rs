@@ -1156,7 +1156,7 @@ impl SwitcherEngine {
                 } else {
                     "manual switch-last hotkey"
                 },
-                play_sound: true,
+                play_sound: self.settings.snapshot().general.sound_on_correct,
                 replay_keys: Some(&replay),
                 pointer_click_allowance: 0,
             },

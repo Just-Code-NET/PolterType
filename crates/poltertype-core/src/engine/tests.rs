@@ -226,6 +226,9 @@ mod engine_integration_tests {
         emitter: Arc<MockEmitter>,
         switcher: Arc<MockSwitcher>,
         engine_thread: JoinHandle<()>,
+        /// What the engine would have played. Nothing drains it, so a
+        /// test reads the whole run at once.
+        audio_rx: Receiver<crate::audio::AudioCmd>,
     }
 
     impl Harness {
@@ -318,6 +321,7 @@ mod engine_integration_tests {
                     LayoutId::from("uk-UA"),
                 ))]
             });
+            let (audio, audio_rx) = crate::audio::AudioPlayer::for_tests();
             let (key_tx, key_rx) = crossbeam_channel::bounded::<KeyEvent>(1024);
             let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<EngineCommand>();
             let (out_tx, out_rx) = crossbeam_channel::unbounded::<SwitcherEvent>();
@@ -337,7 +341,7 @@ mod engine_integration_tests {
                 // path taken when keystrokes cannot be held back.
                 key_gate: poltertype_input::KeyGate::disabled(),
                 focus_tracker: Arc::new(NoopFocusTracker),
-                audio: Arc::new(crate::audio::AudioPlayer::for_tests()),
+                audio: Arc::new(audio),
                 out_tx,
                 suggester,
             });
@@ -349,7 +353,19 @@ mod engine_integration_tests {
                 emitter,
                 switcher,
                 engine_thread,
+                audio_rx,
             }
+        }
+
+        /// Every sound the engine asked for, in order.
+        fn sounds(&self) -> Vec<crate::audio::SoundEvent> {
+            self.audio_rx
+                .try_iter()
+                .filter_map(|c| match c {
+                    crate::audio::AudioCmd::Play(e) => Some(e),
+                    _ => None,
+                })
+                .collect()
         }
 
         fn press(&self, sc: u32) {
@@ -2851,6 +2867,57 @@ mod engine_integration_tests {
         h.key_mods(BACKSPACE, KeyDirection::Release, ctrl);
         h.key_mods(0x1D, KeyDirection::Release, none);
         h.settle();
+    }
+
+    /// Issue #47: the force-switch chimed whatever the setting said.
+    ///
+    /// Every other path builds its `Correction` with
+    /// `general.sound_on_correct`; this one carried a literal `true`,
+    /// so "Play a soft chime on correction" turned off the automatic
+    /// chime and left the manual one ringing.
+    #[test]
+    fn the_force_switch_obeys_the_chime_setting() {
+        let quiet = Harness::start_configured(
+            60_000,
+            MockEmitter::default(),
+            false,
+            None,
+            None,
+            None,
+            |s| s.general.sound_on_correct = false,
+        );
+        type_word(&quiet, &GHBDSN);
+        quiet.settle();
+        quiet
+            .cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        quiet.settle();
+        assert!(
+            !erase_counts(&quiet).is_empty(),
+            "the switch itself must still happen"
+        );
+        assert!(
+            quiet.sounds().is_empty(),
+            "chime off means no chime: {:?}",
+            quiet.sounds()
+        );
+
+        let loud = Harness::start(60_000);
+        type_word(&loud, &GHBDSN);
+        loud.settle();
+        loud.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        loud.settle();
+        assert!(
+            matches!(
+                loud.sounds().as_slice(),
+                [crate::audio::SoundEvent::Correct, ..]
+            ),
+            "chime on means a chime: {:?}",
+            loud.sounds()
+        );
     }
 
     /// Two taps of the chord, one after the other, must be two

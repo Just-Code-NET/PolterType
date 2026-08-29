@@ -19,17 +19,20 @@ impl AudioPlayer {
         Self { cmd_tx: tx }
     }
 
-    /// Player for engine tests: no worker thread, no output stream —
-    /// every command is dropped on the floor. A real worker opens the
-    /// default device, which on the Windows CI runner faulted inside
-    /// WASAPI (`STATUS_ACCESS_VIOLATION`) and took the whole test binary
-    /// with it. Nothing asserts on sound.
+    /// Player for engine tests: no worker thread, no output stream. A
+    /// real worker opens the default device, which on the Windows CI
+    /// runner faulted inside WASAPI (`STATUS_ACCESS_VIOLATION`) and took
+    /// the whole test binary with it.
+    ///
+    /// The receiver comes back rather than being dropped, so a test can
+    /// read what *would* have been played. Sound used to be the one
+    /// thing nothing asserted on, and the force-switch spent five
+    /// releases chiming for people who had turned the chime off
+    /// (issue #47).
     #[cfg(test)]
-    pub(crate) fn for_tests() -> Self {
-        // Receiver dropped immediately: every `send` below fails, and
-        // every call site already ignores the result.
-        let (cmd_tx, _rx) = unbounded::<AudioCmd>();
-        Self { cmd_tx }
+    pub(crate) fn for_tests() -> (Self, crossbeam_channel::Receiver<AudioCmd>) {
+        let (cmd_tx, rx) = unbounded::<AudioCmd>();
+        (Self { cmd_tx }, rx)
     }
 
     pub fn refresh_from(&self, settings: &SettingsStore) {

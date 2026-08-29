@@ -4,6 +4,21 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.25.3
+
+### Fixed
+
+- **The force-switch stops chiming when you turn the chime off**
+  ([#47](https://github.com/Just-Code-NET/PolterType/issues/47)).
+  "Play a soft chime on correction" silenced the automatic pass and left
+  the manual one ringing. Every other path that corrects a word reads
+  that setting; the force-switch built its correction with the sound
+  flag set to a literal `true`, and had done since the gesture existed.
+
+  The test harness now records what would have been played, which it
+  never did before — sound was the one thing nothing asserted on, which
+  is how a hardcoded flag sat there unnoticed.
+
 ## [0.25.3] — after the line was cleared
 
 One bug, and it took the reporter naming the exact key to find. Clearing
