@@ -6,9 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [0.25.2] — what the file says
 
-Two more from the reporter of #44, both the same shape: PolterType knew
-something and the file did not, or the file knew something and
-PolterType did not.
+Three more from the same reporter, and two of them are the same shape:
+PolterType knew something and the file did not, or the file knew
+something and PolterType did not. The third is a menu that could not
+say it was empty.
+
+It also closes what was left of #34, which was closed too early at
+0.21.0: the reporter said then that swapping the two chords still
+needed a restart, and that was true.
 
 ### Fixed
 
