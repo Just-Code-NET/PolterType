@@ -14,8 +14,8 @@ sentence above exists to prevent.
 ## What each release pass actually checked
 
 **What the 0.25.5 pass actually checked (2026-08-30).** One report, and
-one desktop can even have it: KDE Plasma Wayland, where it was reported
-from. `ksycoca` is the only on-disk menu cache among the sessions this
+only one desktop here can even have it: KDE Plasma Wayland, which is
+where it was reported from. `ksycoca` is the only on-disk menu cache among the sessions this
 guest offers — GTK and Qt-without-Plasma read a `.desktop` entry per
 process and cannot go stale this way — so a sixteen-session sweep would
 be fifteen rows of "not applicable".
