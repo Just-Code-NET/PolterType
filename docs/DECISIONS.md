@@ -6,6 +6,49 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-29 — A deletion is the one shortcut whose effect we can trust
+
+`Ctrl+Backspace` used to leave PolterType refusing the next word typed,
+silently, until a space went by (issue #44). The buffer marks the word
+in flight as one it can no longer account for whenever a shortcut fires,
+because a shortcut can edit text arbitrarily and a correction deletes a
+counted number of characters. That mark was lifted only at a word
+boundary, so it also covered the *next* word — which is observed from
+its first keystroke and is exactly as trustworthy as any other.
+
+**What the mark actually protects.** Not the word it is set on: that one
+is already out of the buffer. It protects the word *after* it, from
+being spliced into an unrecorded remainder still sitting left of the
+caret. `hel` abandoned mid-word, `lo` typed on top, and a correction
+counting two characters turns `hello` into `helло`.
+
+So the only question is whether that remainder is still on screen, and
+for one class of shortcut it provably is not: a backwards word- or
+line-delete erases it. `Ctrl`/`Alt`/`Cmd`+Backspace is read as a
+deletion rather than an arbitrary edit now, and a plain Backspace run
+that goes past everything we track — which is what `Ctrl+A` then
+Backspace comes to — clears an inherited mark for the same reason.
+
+**Alternative rejected: clear the mark whenever a new word starts.** It
+answers every reported shape at once and it is one line, but it also
+lifts the protection where it is load-bearing. An idle gap abandons the
+word in flight without the caret moving, so the remainder really is
+still there, and the automatic pass would then correct the fragment
+typed after it. The narrower rule leaves that case exactly as it was.
+
+**Alternative rejected: read `Delete` after a selection as a deletion
+too.** From the outside, `Delete` with a leftward selection and `Delete`
+with nothing selected are the same event, and the second leaves the text
+left of the caret untouched. Guessing wrong there corrupts a word rather
+than declining one, so `Shift+Home` then `Delete` still declines and
+`docs/KNOWN-GAPS.md` says so. `Ctrl+A` could in principle be read as
+"the left context is empty now" under both of its common meanings —
+select-all, and beginning-of-line — but that is an assumption about an
+application's keymap, and this project takes a runtime signal over an
+assumption wherever one exists.
+
+---
+
 ## 2026-08-29 — `config.toml` is watched, and the pause state lives in it
 
 Two reports from one user on the same build, and the same sentence

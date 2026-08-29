@@ -1,4 +1,4 @@
-# Known gaps (as of v0.25.2)
+# Known gaps (as of v0.25.3)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,74 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.25.3 pass actually checked (2026-08-29).** The one thing
+this release changes, on every session the guest offers, plus a re-run
+of the three the 0.25.2 pass covered. `edit-probe.py` clears a line —
+once with `Ctrl+Backspace`, once with `Ctrl+A` and a plain Backspace —
+and then asks both the force-switch and the automatic pass for the word
+typed straight afterwards.
+
+Each phase is measured against its own **reference line**: the same word
+typed and closed with Enter, which is a submission boundary and so
+switches nothing and corrects nothing. The measured line then has to
+come back as something else. The first version of this probe counted
+switches instead and expected an even number to land back where it
+started — and one correction abandoned because the chord still looked
+held, which is 0.25.1 behaviour and not a fault, shifted every line
+after it and reported GNOME as broken while the app's own log carried
+no refusal at all. The last two columns exist so that those two can
+never be read as each other again: `refusals` counts the decline this
+release is about, `applied/tried` shows a correction that started and
+stood down.
+
+| session          | corrects at all | chord | after Ctrl+Backspace | after Ctrl+A + BS | auto after the delete | refusals | applied/tried |
+|------------------|-----------------|-------|----------------------|-------------------|-----------------------|----------|---------------|
+| budgie-desktop   | **no**          | n/a   | n/a                  | n/a               | n/a                   | 0        | 0/0           |
+| cinnamon         | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| cinnamon-wayland | **no**          | n/a   | n/a                  | n/a               | n/a                   | 0        | 0/0           |
+| cinnamon2d       | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| fluxbox          | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| i3               | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| icewm-session    | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| labwc            | **no**          | n/a   | n/a                  | n/a               | n/a                   | 0        | 0/0           |
+| lxqt             | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| mate             | **no**          | n/a   | n/a                  | n/a               | n/a                   | 0        | 0/0           |
+| openbox          | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| plasma           | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| sway             | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| ubuntu           | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| xfce             | yes             | yes   | yes                  | yes               | yes                   | 0        | 3/3           |
+| xfce-wayland     | **no**          | n/a   | n/a                  | n/a               | n/a                   | 0        | 0/0           |
+
+Eleven of sixteen sessions can be read at all, and all eleven are green
+in every column: no refusal anywhere in the sweep, and every correction
+the gesture started also finished. KDE Plasma Wayland, which is where
+#44 was reported from, is one of them.
+
+The five that cannot be read are the rows this matrix has always called
+unmeasurable, and none of them are about this release. Budgie, labwc and
+Xfce's Wayland session have no layout backend, so nothing is ever
+corrected and "the gesture answered" and "nothing happened" put the same
+bytes in the terminal. cinnamon-wayland delivers no injected key to the
+application at all. **MATE** is the interesting one: the X11 backend
+stands down there by design — that desktop's settings daemon owns the
+xkb group and its state does not track what the keyboard produces, so a
+correction would delete a word and retype it unchanged — and pinning the
+gsettings backend instead gets four gestures that start a correction and
+stand down, with no refusal logged. Its row read `no` at 0.25.1 for the
+same reason.
+
+`config-probe.py` re-ran unchanged and every session that delivers our
+injected keys is green on all six of its columns — the chord bound, the
+old one retired, the new one live, pause written, read back at startup,
+and resumed — with cinnamon-wayland the only `n/a`, for the reason
+above. `tray-probe.py` likewise: every session with a StatusNotifier
+host that lists our item shows the missed-word submenu holding the word.
+It now reads the submenu's own **label** off D-Bus as well, because
+naming the dictionary there is the other half of what this release does
+for #38; on KDE Plasma Wayland it comes back as `Add a missed word to
+the dictionary…`, which is the string the app was built with.
 
 **What the 0.25.2 pass actually checked (2026-08-29).** Two settings
 that only exist between a file and a running app, so neither can be
@@ -662,18 +730,26 @@ move too fast to be true.
   real and is the design: **lean on the key for more than five seconds
   and that press does nothing at all.**
 
-- **A shortcut that clears the line leaves the force-switch declining
-  the next word, and saying so only in a debug line.** A press carrying
-  Ctrl/Alt/Meta can edit the text arbitrarily, so the buffer stops
-  vouching for what is on screen; the manual switch then refuses the
-  word typed straight afterwards, because a word half-switched in place
-  is worse than one left alone. The refusal is deliberate. What is not
-  is that it is silent: clearing a line with `Ctrl+A`, `Ctrl+Backspace`
-  or `Shift+Home` and typing again reads as a hotkey that stopped
-  working, until the next space re-syncs the buffer and it answers
-  again. Reproduced here on 2026-08-29 against 0.25.1, following up on
-  #44. Plain Backspace does not do this, however far past the buffer it
-  goes — that path is measured and green.
+- **A shortcut that edits the line without a backwards deletion we can
+  see still leaves the force-switch declining the next word** (#44). A
+  press carrying Ctrl/Alt/Meta can edit the text arbitrarily, so the
+  buffer stops vouching for what is on screen, and both the manual
+  switch and the automatic pass then refuse the word typed straight
+  afterwards — a word half-switched in place is worse than one left
+  alone. The refusal is deliberate; how far it reached was not. From
+  0.25.3 a deletion lifts it, because a deletion erases the very text
+  the refusal protects: `Ctrl+Backspace`, `Cmd`/`Alt+Backspace`, and any
+  plain Backspace run that goes past everything we track — which is what
+  `Ctrl+A` or `Shift+Home` followed by Backspace comes to.
+
+  What still declines is a selection removed with **Delete** rather than
+  Backspace — from the outside that is indistinguishable from a Delete
+  with no selection, which leaves the text to the left exactly where it
+  was — and any shortcut that edits nothing at all (`Ctrl+C`, `Ctrl+S`,
+  `Ctrl+Z`) pressed in the middle of a word. A space re-syncs the buffer
+  in every case, and the refusal now has its own debug line rather than
+  sharing one with "the hotkey fired and there was nothing to switch".
+  Measured across the desktop matrix, 2026-08-29.
 
 - **A shortcut pressed mid-correction while keys are held is lost.**
   Backspace, arrows and Esc are re-emitted behind the correction, but
