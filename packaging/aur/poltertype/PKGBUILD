@@ -6,7 +6,7 @@
 # See ../README.md for how this file gets published and updated.
 
 pkgname=poltertype
-pkgver=0.27.0
+pkgver=0.28.0
 pkgrel=1
 pkgdesc="Detects text typed in the wrong keyboard layout, switches the layout and fixes the word"
 arch=('x86_64' 'aarch64')
