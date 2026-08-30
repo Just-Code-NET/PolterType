@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.27.0**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.28.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -187,7 +187,7 @@ the Settings window:
 | Default                | Action                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `Ctrl+Shift+Space`     | Pause / resume auto-switching.                                                                    |
-| `Ctrl+Shift+Backspace` | Force-switch a word — the one you are still typing, or the most recent finished one if you have moved past it. Ignores every filter, including the dev-friendly skips below, and works while auto-switching is paused. On a word PolterType *just corrected* it undoes that correction, and learns the word so it won't happen again — unless the correction rested on a real word of the other language, in which case putting it back is a one-off rather than a new dictionary entry. Press it again and the word moves on to the next layout, wrapping: with two layouts that is simply back again, so a press made in error costs one more press. Only that first undo teaches anything. |
+| `Ctrl+Shift+Backspace` | Force-switch a word — the one you are still typing, or the most recent finished one if you have moved past it. Ignores every filter, including the dev-friendly skips below, and works while auto-switching is paused. On a word PolterType *just corrected* it undoes that correction, and learns the word so it won't happen again — unless the correction rested on a real word of the other language, in which case putting it back is a one-off rather than a new dictionary entry. Press it again and the word moves on to the next layout, wrapping: with two layouts that is simply back again, so a press made in error costs one more press. Only that first undo teaches anything. With no word to act on it converts the separator the caret is sitting after instead — `№` ↔ `#` — leaving alone the ones that read the same under both layouts, and `Enter` and `Tab`. |
 
 > **On macOS the pause default is `Ctrl+Shift+P`.** `Ctrl+Space` and
 > `Ctrl+Shift+Space` are macOS's own "previous / next input source"

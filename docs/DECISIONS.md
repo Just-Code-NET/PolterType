@@ -6,6 +6,43 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-30 — The force-switch falls back to one separator
+
+The whole engine is built around words: the buffer collects letters,
+the boundary closes them, the detector judges them, and the stash the
+manual hotkey acts on is written per completed word. `№` is none of
+that — `Shift+3`, a symbol in every layout that has it — so it fell
+through every one of those steps and the hotkey did nothing (issue
+#52). The key that produced it was never in doubt.
+
+So the gesture gets a fallback, reached only when there is no word:
+re-render the last separator's own key under the next layout and, if
+that reads differently, backspace one character and replay the key.
+The buffer already carries the separators left of the caret with their
+shift level; the only change there is that it now records them when
+there is no word in front of them at all, which is precisely the
+reported case.
+
+**One character, not the run.** A run of separators is as likely to be
+`-----` or `>>>` as a mistake, and converting a divider line because
+the user pressed the hotkey once is a worse failure than doing
+nothing.
+
+**Alternative rejected: make `№` a word character.** It would reach the
+stash and the whole word machinery for free — and it would also
+attach `№` to the word beside it, split `#foo` differently, and put a
+symbol through a dictionary that has no opinion about symbols. The
+classifier's job is to say what a word is; this is not one.
+
+**Cost accepted: the fallback runs before selection conversion.** A
+selection is a guess about a screen we cannot see, and a separator is
+something the buffer watched being typed — but a user with
+`[selection] enabled` who selects text *and* has a live separator run
+now gets the separator. Any gesture that makes a selection moves the
+caret, which empties the run, so the overlap is narrow.
+
+---
+
 ## 2026-08-30 — Manual-only mode is the pause, under its own name
 
 Issue #51 asked for a manual-only conversion mode: keep tracking the

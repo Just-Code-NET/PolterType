@@ -1,4 +1,4 @@
-# Known gaps (as of v0.27.0)
+# Known gaps (as of v0.28.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,34 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.28.0 pass actually checked (2026-08-30).** One report
+(#52): `№` could not be switched, because a symbol is not a word.
+Measured in the guest on **Cinnamon X11** with
+`separator-switch-probe.py`, again on the default
+`Ctrl+Shift+Backspace`, each line read against a reference line of the
+same keys ended with Enter.
+
+| what was typed | what the hotkey did |
+|---|---|
+| `Shift+3` alone | switched it to the other layout's character |
+| a word, a pause, then `Shift+3` | switched the separator, and left the word behind it alone |
+| a word and two spaces | nothing — a space is every layout's space |
+
+That middle row is a bug the probe found rather than one the report
+named: the stash outlives an idle abandon by design, the buffer's own
+copy of the word does not, and the hotkey used to splice seven
+characters from a caret that was one further right — `привет №` came
+back as `пghbdtn `. Fixed in the same release.
+
+**What is still not switchable this way:** anything more than the one
+character left of the caret; `Enter` and `Tab`, whose replay would
+submit the line or move focus; and a separator whose two renderings
+agree. **Not measured on the reporter's own desktop** — KDE Wayland
+with keyd and InputActions — because what this changes is the engine's
+own model rather than anything a compositor answers, and the one
+desktop-shaped part of it (the grab that delivers the chord) was
+already measured for #51.
 
 **What the 0.27.0 pass actually checked (2026-08-30).** One report
 (#51), asking for a manual-only conversion mode and saying the pause is
