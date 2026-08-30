@@ -2869,6 +2869,27 @@ mod engine_integration_tests {
         h.settle();
     }
 
+    /// Wait until the engine has taken every key sent so far.
+    ///
+    /// What a chord test actually needs before pressing the chord's own
+    /// key is that the *modifiers have been observed*. A fixed sleep is
+    /// a guess about someone else's CPU, and a guess that is wrong
+    /// reads as a product failure — the correction finds a bare
+    /// modifier press still queued and aborts as though the user had
+    /// typed a shortcut.
+    fn wait_until_taken(h: &Harness) {
+        for _ in 0..500 {
+            if h.key_tx.is_empty() {
+                // Taken off the channel is not yet handled; one more
+                // beat covers the run loop's own dispatch.
+                std::thread::sleep(Duration::from_millis(50));
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("engine never drained the key channel");
+    }
+
     /// Announce the default switch-last chord as an OS-level grab —
     /// what every backend but Wayland does with it.
     fn grab_default_switch_chord(h: &Harness, sc: u32) {
@@ -2912,7 +2933,7 @@ mod engine_integration_tests {
         // modifier press still queued reads as a shortcut the
         // correction cannot reconstruct. See
         // `a_grabbed_chord_held_down_is_waited_out_rather_than_typed_over`.
-        std::thread::sleep(Duration::from_millis(200));
+        wait_until_taken(h);
         h.key_mods(sc, KeyDirection::Press, both);
         h.cmd_tx
             .send(EngineCommand::SwitchLastForcefully)
@@ -3765,7 +3786,7 @@ mod engine_integration_tests {
         // a person's fingers arrive in that order, and a correction
         // that finds a bare Ctrl press still queued reads it as a
         // shortcut it cannot reconstruct — which is a different bug.
-        std::thread::sleep(Duration::from_millis(200));
+        wait_until_taken(&h);
         h.key_mods(0x43, KeyDirection::Press, both);
         // The grab delivered the chord; the key events reach us too.
         h.cmd_tx
@@ -3773,8 +3794,14 @@ mod engine_integration_tests {
             .expect("engine alive");
         // Long enough to outlast the absorb window the correction
         // waits on anyway — otherwise "nothing emitted yet" is true
-        // whether or not the chord is being waited for.
-        for _ in 0..40 {
+        // whether or not the chord is being waited for. Held to a
+        // wall-clock deadline rather than a count of sleeps: the sleeps
+        // stretch on a loaded machine, and a hold that stretches past
+        // `CHORD_RELEASE_WAIT` gives up on the correction — which is
+        // correct behaviour reported as a failed assertion (macOS CI,
+        // 2026-08-30).
+        let held_until = Instant::now() + Duration::from_millis(900);
+        while Instant::now() < held_until {
             h.key_mods(0x43, KeyDirection::Press, both);
             std::thread::sleep(Duration::from_millis(30));
         }
