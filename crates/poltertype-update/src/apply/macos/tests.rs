@@ -6,7 +6,7 @@
 use super::*;
 
 const BUNDLE: &str = "/Applications/PolterType.app";
-const RELAUNCH: &str = "open '/Applications/PolterType.app' || true";
+const RELAUNCH: &str = "open '/Applications/PolterType.app' ||";
 
 fn body(relaunch: bool) -> String {
     body_signed(relaunch, "")

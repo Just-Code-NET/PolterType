@@ -85,8 +85,17 @@ fn script_body(
     // Unconditional, like the other two backends: an update that could
     // not be unpacked leaves the installed bundle exactly as it was, so
     // the user who asked for a restart still gets one.
+    // With one retry: measured 2026-08-30, a single `open` straight
+    // after the swap-and-resign sometimes starts nothing — same
+    // command by hand a moment later works. Two seconds and a second
+    // try cost nobody anything; the exit codes go to installer.log
+    // either way.
     let relaunch_line = if relaunch {
-        format!("open {} || true\n", sh_quote(bundle))
+        format!(
+            "open {b} || {{ echo \"open failed ($?), retrying\"; sleep 2; open {b} || echo \"open failed again ($?)\"; }}
+",
+            b = sh_quote(bundle)
+        )
     } else {
         String::new()
     };
