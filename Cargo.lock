@@ -3818,7 +3818,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-ai"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "keyring",
  "poltertype-detect",
@@ -3832,7 +3832,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-app"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -3863,14 +3863,14 @@ dependencies = [
 
 [[package]]
 name = "poltertype-autostart"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "poltertype-core"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "crossbeam-channel",
  "directories",
@@ -3892,7 +3892,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-detect"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "fst",
  "levenshtein_automata",
@@ -3905,7 +3905,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-icon"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "png",
  "thiserror 1.0.69",
@@ -3913,7 +3913,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-input"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "arboard",
  "core-foundation 0.10.1",
@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-layout"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "core-foundation 0.10.1",
  "poltertype-types",
@@ -3947,7 +3947,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-popup"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "core-graphics 0.25.0",
  "cosmic-text 0.12.1",
@@ -3969,7 +3969,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-shell"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "iced",
  "poltertype-icon",
@@ -3980,7 +3980,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-tray"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "glib",
  "libloading 0.8.9",
@@ -3989,7 +3989,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-types"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
@@ -3997,7 +3997,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-update"
-version = "0.25.5"
+version = "0.26.0"
 dependencies = [
  "base64",
  "directories",
