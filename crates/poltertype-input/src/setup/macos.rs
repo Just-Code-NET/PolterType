@@ -61,7 +61,9 @@ pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
                 title: "Grant Accessibility".to_owned(),
                 detail: "System Settings → Privacy & Security → Accessibility, then switch \
                          PolterType on. This is what lets the app watch for a wrong-layout \
-                         word and type the corrected one back."
+                         word and type the corrected one back. If PolterType is not in the \
+                         list at all, press \u{201c}+\u{201d} under the list and add it from \
+                         Applications."
                     .to_owned(),
                 action: Some(step_action(accessibility, Permission::Accessibility)),
                 state: accessibility,
@@ -70,7 +72,9 @@ pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
                 title: "Grant Input Monitoring".to_owned(),
                 detail: "System Settings → Privacy & Security → Input Monitoring, then switch \
                          PolterType on. Separate from Accessibility and easy to miss — with \
-                         only one of the two granted the app starts but never sees a keystroke."
+                         only one of the two granted the app starts but never sees a \
+                         keystroke. If PolterType is not in the list at all, press \u{201c}+\u{201d} \
+                         under the list and add it from Applications."
                     .to_owned(),
                 action: Some(step_action(listen, Permission::InputMonitoring)),
                 state: listen,

@@ -612,6 +612,14 @@ impl SettingsApp {
                 // return value is not an answer — re-probe instead of
                 // believing it.
                 poltertype_input::setup::request_permission(permission);
+                // And open the pane regardless: when TCC has no record
+                // the dialog appears over it, and when the app is not
+                // in the list at all the user is already where the
+                // "+" button lives — never a silent no-op
+                // in front of an empty list.
+                if let Some(url) = poltertype_input::setup::permission_settings_url(permission) {
+                    let _ = opener::open(url);
+                }
                 self.setup = poltertype_input::setup::probe_setup(
                     &self.store.snapshot().updates.local_signing_identity,
                 );
