@@ -47,6 +47,11 @@ desktop did about it, read off a screenshot of the session.
 | `mono` | Active | the same `EN`, slate |
 | `hidden` | Passive | nothing; the panel closed the gap |
 
+And the way back was measured too, because with the icon hidden there is
+no menu to undo it from: an app started `hidden` and then pointed at
+`tray_icon = "color"` by an edit to `config.toml` went Active and
+reappeared in the panel without being restarted.
+
 **`hidden` is a request, not a guarantee, and only Cinnamon has
 answered it.** `Passive` is what the StatusNotifier spec offers, and a
 host may draw a passive item anyway. Windows and macOS hide the icon
