@@ -449,6 +449,10 @@ impl SettingsApp {
                 self.settings.general.ui_theme = choice.config_value().to_owned();
             }
 
+            Message::TrayIconChoiceChanged(choice) => {
+                self.settings.general.tray_icon = choice.config_value().to_owned();
+            }
+
             Message::ResetDefaults => self.settings = Settings::default(),
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {

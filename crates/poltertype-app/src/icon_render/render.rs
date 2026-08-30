@@ -2,14 +2,28 @@
 
 use super::*;
 use anyhow::{Context, Result};
+use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
 use tray_icon::Icon;
 
 /// Build a tray icon for `layout`: its two-letter short code over a
 /// colour derived from the id, grey with a pause mark when `paused`.
-pub fn for_layout(layout: &LayoutId, paused: bool, waiting: bool) -> Result<Icon> {
+///
+/// A `Hidden` style still renders one. The icon is built and then
+/// hidden, so turning it back on is a config change rather than a
+/// restart.
+pub fn for_layout(
+    layout: &LayoutId,
+    paused: bool,
+    waiting: bool,
+    style: TrayIconStyle,
+) -> Result<Icon> {
     let code = layout_short_code(layout);
-    let bg = if paused { PAUSED_BG } else { color_for(layout) };
+    let bg = match (paused, style) {
+        (true, _) => PAUSED_BG,
+        (false, TrayIconStyle::Color) => color_for(layout),
+        (false, _) => MONO_BG,
+    };
     let mut buf = render(code.as_bytes(), bg);
     if paused {
         draw_pause_indicator(&mut buf);

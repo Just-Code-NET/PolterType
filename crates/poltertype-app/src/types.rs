@@ -11,7 +11,7 @@ use anyhow::Result;
 use crossbeam_channel::Sender;
 use poltertype_core::engine::EngineCommand;
 use poltertype_core::layouts::LayoutDb;
-use poltertype_core::settings::SettingsStore;
+use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_types::LayoutId;
 use tao::event_loop::EventLoopProxy;
 use tracing::debug;
@@ -30,6 +30,10 @@ pub(crate) struct TrayState {
     /// behind the mark on the tray icon. Zero draws nothing at all: the
     /// icon's job is to say what layout is in force.
     pub(crate) attention: u32,
+    /// `[general].tray_icon`. Kept here so a redraw uses the same style
+    /// the last config reload settled on, and so the event loop can see
+    /// that the style changed at all.
+    pub(crate) style: TrayIconStyle,
 }
 
 /// Words a tooltip offered "Add to dictionary" for and that went away

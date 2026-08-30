@@ -1,3 +1,4 @@
+use poltertype_core::settings::TrayIconStyle;
 use poltertype_layout::LayoutId;
 
 use super::*;
@@ -22,8 +23,29 @@ fn render_produces_expected_buffer_size() {
 
 #[test]
 fn icon_is_buildable_for_known_layouts() {
-    assert!(for_layout(&LayoutId::from("en-US"), false, false).is_ok());
-    assert!(for_layout(&LayoutId::from("uk-UA"), false, true).is_ok());
+    assert!(for_layout(&LayoutId::from("en-US"), false, false, TrayIconStyle::Color).is_ok());
+    assert!(for_layout(&LayoutId::from("uk-UA"), false, true, TrayIconStyle::Color).is_ok());
+}
+
+/// `mono` drops the per-layout hue and keeps everything else: the two
+/// letters still say which layout it is, and pausing still greys the
+/// badge. A `mono` icon that answered the same as a paused one would
+/// leave the pause state readable only from three pixels of bar.
+#[test]
+fn mono_is_one_badge_for_every_layout_and_still_not_the_paused_one() {
+    let mono = |id: &str| {
+        let l = LayoutId::from(id);
+        render(layout_short_code(&l).as_bytes(), MONO_BG)
+    };
+    assert_ne!(
+        mono("en-US"),
+        mono("uk-UA"),
+        "the code on the badge still names the layout"
+    );
+
+    let bg = |buf: &[u8]| [buf[0], buf[1], buf[2], buf[3]];
+    assert_eq!(bg(&mono("en-US")), bg(&mono("uk-UA")));
+    assert_ne!(bg(&mono("en-US")), PAUSED_BG);
 }
 
 #[test]

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use iced::widget::text_editor;
 use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_core::plugins::SettingValue;
+use poltertype_core::settings::TrayIconStyle;
 use poltertype_layout::LayoutId;
 
 use super::plugin_pane::Slot;
@@ -279,6 +280,10 @@ pub enum Message {
     /// Segmented theme picker on the General pane. Applies to the
     /// window immediately; persisted via the normal footer Save.
     ThemeChoiceChanged(ThemeChoice),
+
+    /// Segmented tray-icon picker beside it. Nothing to apply here —
+    /// the tray is another process, and it re-reads `config.toml`.
+    TrayIconChoiceChanged(TrayIconStyle),
 
     ResetDefaults,
     Save,

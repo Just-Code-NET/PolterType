@@ -1,4 +1,4 @@
-# Known gaps (as of v0.25.5)
+# Known gaps (as of v0.26.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,39 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.26.0 pass actually checked (2026-08-30).** Two reports,
+each about something on a screen, so each was checked by looking at
+one. Nothing in the correction path moved, and the 0.25.3 desktop
+sweep stands.
+
+The Settings window (#49) was shot on this machine before and after the
+change: the mark in the sidebar drew as a fragment and the larger one on
+the About card drew not at all, and both draw whole now. That is the
+only way this class of bug is visible at all — the fault is in the
+renderer, and the full test suite passed through all four releases that
+shipped it. Windows and macOS were not opened: they compile the same
+renderer and the same widget, and the mark now arrives by the same
+rasteriser that already draws the window icon on all three.
+
+The tray icon (#50) was measured in the guest on **Cinnamon X11** — the
+desktop it was asked from — with `tray-visibility-probe.py`, which asks
+two questions per value and does not conflate them: what the app told
+the desktop, read off its own `org.kde.StatusNotifierItem`, and what the
+desktop did about it, read off a screenshot of the session.
+
+| `[general] tray_icon` | item `Status` | what the panel drew |
+|---|---|---|
+| `color` | Active | the green `EN` badge |
+| `mono` | Active | the same `EN`, slate |
+| `hidden` | Passive | nothing; the panel closed the gap |
+
+**`hidden` is a request, not a guarantee, and only Cinnamon has
+answered it.** `Passive` is what the StatusNotifier spec offers, and a
+host may draw a passive item anyway. Windows and macOS hide the icon
+through their own APIs and were not checked; the other fifteen sessions
+in the guest were not either — this row is about a desktop's own policy,
+so a sweep would measure fifteen policies nobody asked about.
 
 **What the 0.25.5 pass actually checked (2026-08-30).** One report, and
 only one desktop here can even have it: KDE Plasma Wayland, which is

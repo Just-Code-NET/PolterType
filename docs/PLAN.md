@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-30 (v0.25.5).
+> Created: 2026-05-02. Last updated: 2026-08-30 (v0.26.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -344,6 +344,10 @@ sound_on_correct = true
 show_notifications = false
 ui_language = "system"     # or "en", "uk"
 ui_theme = "system"        # Settings window theme: "system", "light", "dark"
+tray_icon = "color"        # tray icon: "color" (a hue per layout),
+                           # "mono" (one neutral badge), "hidden" (no
+                           # icon and no tray menu — the window still
+                           # opens with `poltertype --settings`)
 log_level = "info"
 paused = false             # auto-switch off. Written by the app itself
                            # every time you pause or resume, and read

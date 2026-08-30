@@ -141,14 +141,16 @@ base64        = "0.22"
 # renderer (no wgpu / GPU stack) — keeps the binary small and the
 # build snappy, which matters because we open this window rarely.
 # `advanced` exposes the lower-level layout/widget API used for the
-# custom side-nav. `canvas` draws the vector brand mark in the
-# Settings sidebar — far lighter than pulling an SVG renderer
-# (resvg) in for one static logo.
+# custom side-nav. `image-without-codecs` is the image widget with no
+# decoders compiled in: the brand mark arrives as an RGBA buffer from
+# `poltertype-icon`, and nothing in this window ever loads an image
+# file. It replaced `canvas`, which drew the mark as vectors until its
+# tiny-skia backend masked it away — see DECISIONS, 2026-08-30.
 iced = { version = "0.14", default-features = false, features = [
     "tiny-skia",
     "advanced",
     "linux-theme-detection",
-    "canvas",
+    "image-without-codecs",
     "wayland",
     "x11",
     "thread-pool",

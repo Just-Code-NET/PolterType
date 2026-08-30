@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.25.5**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.26.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch

@@ -63,7 +63,7 @@ use poltertype_core::engine::{
     DictionaryAddOrigin, EngineCommand, EngineDeps, SwitcherEngine, SwitcherEvent,
 };
 use poltertype_core::layouts::LayoutDb;
-use poltertype_core::settings::SettingsStore;
+use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_detect::Detector;
 use poltertype_input::{
     KeyEvent, create_emitter, create_focus_tracker, create_key_gate, create_listener,
@@ -519,6 +519,7 @@ fn main() -> Result<()> {
     let item_reload = MenuItem::new("Reload Settings", true, None);
     // Auto-switching may have been left off in a previous run.
     let start_paused = settings.snapshot().general.paused;
+    let mut tray_style = TrayIconStyle::from_config(&settings.snapshot().general.tray_icon);
     if start_paused {
         // Said out loud: an app that does nothing because of a state it
         // remembered is the hardest kind to diagnose from a log.
@@ -600,7 +601,7 @@ fn main() -> Result<()> {
     // flash a "??" before the first LayoutChanged event arrives.
     let initial_layout: Option<LayoutId> = layout_switcher.current().ok();
     let initial_icon = match initial_layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, start_paused, false)?,
+        Some(l) => icon_render::for_layout(l, start_paused, false, tray_style)?,
         None => icon_render::unknown(false)?,
     };
 
@@ -628,6 +629,7 @@ fn main() -> Result<()> {
         .with_icon(initial_icon)
         .build()
         .context("build tray icon")?;
+    apply_tray_visibility(&tray, tray_style);
 
     // Deliberately on the error path, not gated by
     // `show_notifications`: without hooks the app silently does nothing.
@@ -731,6 +733,7 @@ fn main() -> Result<()> {
         paused: start_paused,
         input_alert: input_alert.is_some(),
         attention: 0,
+        style: tray_style,
     };
     let mut deferred = DeferredWords::new();
     // The rows currently in the submenu, so a click can be turned back
@@ -766,6 +769,17 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::SettingsChanged) => {
+                // The tray icon's style, which nothing else re-reads:
+                // the icon is redrawn from `TrayState`, and the state
+                // is where the old style is still remembered.
+                let style =
+                    TrayIconStyle::from_config(&settings_for_loop.snapshot().general.tray_icon);
+                if style != tray_style {
+                    tray_style = style;
+                    tray_state.style = style;
+                    apply_tray_visibility(&tray, style);
+                    refresh_tray(&tray, &item_pause, &tray_state);
+                }
                 // The chords, and only the chords: whoever sent this —
                 // the window's close handler, or the config watcher —
                 // re-read the file and refreshed the rest first.

@@ -122,6 +122,13 @@ pub struct GeneralSettings {
     /// values fall back to `"system"` at read time — same forgiving
     /// posture as `ui_language`.
     pub ui_theme: String,
+    /// How the tray icon is drawn: `"color"` (a hue per layout),
+    /// `"mono"` (one neutral badge) or `"hidden"` (no tray icon and no
+    /// tray menu — the Settings window still opens with
+    /// `poltertype --settings`). Read through
+    /// [`TrayIconStyle`](crate::settings::TrayIconStyle), which falls
+    /// back to `"color"` on anything else.
+    pub tray_icon: String,
     pub log_level: String,
     /// Auto-switching is off. Written by the app itself every time the
     /// pause hotkey or the tray item is used, so the state the user
@@ -138,6 +145,7 @@ impl Default for GeneralSettings {
             show_notifications: false,
             ui_language: "system".into(),
             ui_theme: "system".into(),
+            tray_icon: "color".into(),
             log_level: "info".into(),
             paused: false,
         }

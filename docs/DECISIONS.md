@@ -6,6 +6,69 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-30 — The brand mark is an image, not a canvas
+
+The mark in the Settings window was an `iced::canvas` program: the
+site's SVG re-authored as fills and strokes, so it would stay sharp at
+any scale without an SVG renderer in the binary. It drew as a fragment
+in the sidebar and as nothing at all on the About card (issue #49) —
+and had, in every build shipped since the window moved to iced 0.14.
+
+The renderer is `tiny-skia`, the only one this app compiles in, and it
+applies a canvas frame's clip in the wrong coordinate space: the further
+a canvas sits from the window's origin, the more of it is masked away.
+That was already worked around once under iced 0.13, and the workaround
+was dropped when 0.14 was said to have fixed it. It had not.
+
+So the mark is now an image: `poltertype-icon` rasterises it to RGBA and
+an `iced::widget::image` draws that. The same rasteriser already draws
+the window icon and the `hicolor` theme entry — the path that, in the
+reporter's own screenshot, was the one thing on screen showing the logo
+correctly. It also removes the second transcription of the same artwork:
+the geometry now lives in one crate rather than two, and the `canvas`
+feature (and `lyon`) leaves the build.
+
+**Alternative rejected: work around the mask again.** Three spellings of
+the raw frame were tried the last time; each drew the mark somewhere it
+did not belong. Pinning the third one for a second time buys a logo that
+breaks on the next renderer change, in a window nobody looks at often
+enough to notice — which is exactly how this shipped for four releases.
+
+**Cost accepted: the mark is rasterised, so it has a resolution.** It is
+built at twice its on-screen size, because `view` is not told the
+window's scale factor. Soft on a 3× display; it was invisible before.
+
+---
+
+## 2026-08-30 — One `tray_icon` knob, and it may be `hidden`
+
+The tray icon's colour is hashed from the layout id, so the eye learns
+"pink means Ukrainian" before the two letters are legible. On a panel
+whose theme it clashes with, that meaning is worth less than the clash
+costs — and Cinnamon offers no way to hide one tray item (issue #50).
+
+`[general].tray_icon` takes `color` (the default, unchanged), `mono`
+(one slate badge for every layout) and `hidden`. One key with three
+values rather than a visibility toggle plus a palette: the three are
+mutually exclusive answers to one question, and two independent knobs
+would allow "hidden, in slate".
+
+**Alternative rejected: configurable colours per layout.** A map of
+layout id to hex in `config.toml` answers the same complaint with a
+schema to migrate, a colour picker to build, and contrast to police
+against a panel we cannot see. `mono` is the whole of what the
+complaint asked for.
+
+**`hidden` is honest about what it removes.** The tray menu is this
+app's only UI, so hiding the icon takes Pause, Settings and Quit with
+it; what is left is `poltertype --settings`, which is what the report
+proposed. The Settings window says so at the choice. On Linux this asks
+the desktop for `AppIndicatorStatus::Passive`, and a StatusNotifier host
+is free to go on drawing a passive item — measured hidden on Cinnamon,
+which is where it was asked for.
+
+---
+
 ## 2026-08-30 — The desktop entry is renamed into place, not rewritten
 
 A menu cache is keyed on the modification time of the `applications`

@@ -4,6 +4,47 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.26.0] — two reports about one picture each
+
+### Added
+
+- **The tray icon can be neutral, or absent**
+  ([#50](https://github.com/Just-Code-NET/PolterType/issues/50)).
+  `[general] tray_icon`, and the second row of the General pane's
+  Appearance card, now takes three values. `color` is what it has always
+  done: a hue per layout, so the eye learns which colour means which
+  language before the two letters on it are legible. `mono` keeps the
+  letters and drops the hue — one slate badge, whatever the layout — for
+  panels the hue clashed with. `hidden` removes the icon.
+
+  Hiding it removes the tray menu with it, and that menu is the whole of
+  this app's UI: Pause, Settings, Quit. What is left is
+  `poltertype --settings`, which is what the report proposed; the window
+  says so where the choice is made. On Linux, hiding asks the desktop to
+  make the icon passive — a panel is allowed to draw a passive item
+  anyway, so this is a request rather than a guarantee. Checked on
+  Cinnamon, which is where it was asked for.
+
+### Fixed
+
+- **The logo in the Settings window draws again**
+  ([#49](https://github.com/Just-Code-NET/PolterType/issues/49)). The
+  mark beside "PolterType" in the sidebar came out as a fragment, and
+  the larger one on the About card as nothing at all. Not a font and not
+  a theme: the mark was drawn as vectors on a `canvas`, and the pure-CPU
+  renderer this window uses applies a canvas's clip in the wrong
+  coordinate space — so the further the mark sits from the window's
+  top-left corner, the more of it is masked away.
+
+  It is now drawn from the same rasteriser that produces the window's
+  own icon and the icon your desktop shows, which is why that one was
+  correct in the reporter's screenshot while the one inside the window
+  was not. Same artwork, one copy of it, no clip to get wrong.
+
+  Every build since 0.23.0 had it. Nothing in the test suite could see
+  it — a renderer bug is only visible on screen, which is now a step in
+  the release checklist rather than a habit.
+
 ## [0.25.5] — after you swap the file yourself
 
 ### Fixed

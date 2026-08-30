@@ -244,6 +244,31 @@ fn theme_choice_round_trips_and_tolerates_garbage() {
     }
 }
 
+/// The same for `tray_icon` (issue #50). `hidden` is the value that
+/// matters here: mis-parsed as `color` it leaves an icon the user asked
+/// to be rid of, and a `Default` that is not `Color` would hide the
+/// icon for everyone who never set the key.
+#[test]
+fn tray_icon_style_round_trips_and_tolerates_garbage() {
+    use poltertype_core::settings::TrayIconStyle;
+
+    for style in [
+        TrayIconStyle::Color,
+        TrayIconStyle::Mono,
+        TrayIconStyle::Hidden,
+    ] {
+        assert_eq!(TrayIconStyle::from_config(style.config_value()), style);
+    }
+    assert_eq!(
+        TrayIconStyle::from_config(" Hidden "),
+        TrayIconStyle::Hidden
+    );
+    for garbage in ["", "colour", "none", "off"] {
+        assert_eq!(TrayIconStyle::from_config(garbage), TrayIconStyle::Color);
+    }
+    assert_eq!(TrayIconStyle::default(), TrayIconStyle::Color);
+}
+
 /// The probe parsers must map the documented color-scheme values and
 /// treat everything else — "no preference", truncated output, errors on
 /// stdout — as "no answer", so the caller falls through to the next

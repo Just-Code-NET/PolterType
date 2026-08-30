@@ -43,6 +43,13 @@ If any of those fail, fix them in a normal commit BEFORE the
 release commit. The release commit itself should only contain
 the version bump + changelog entry — nothing else.
 
+Then **open the Settings window and look at it** — `poltertype
+--settings`, one pass over the panes. Nothing above this line can
+see the window: the brand mark was drawn as a fragment in the
+sidebar and not at all on the About card for four releases, with
+every test passing, because a renderer bug is only visible on
+screen (issue #49).
+
 ## 2. Sync the docs — MANDATORY (~10 min)
 
 **No tag ships while the docs still describe the previous

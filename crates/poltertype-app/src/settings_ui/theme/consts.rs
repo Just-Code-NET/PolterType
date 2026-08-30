@@ -52,19 +52,6 @@ pub const DARK: BrandPalette = BrandPalette {
     keycap_side: rgb8(0x0E, 0x0C, 0x1F),
 };
 
-// ── GhostMark colours (GhostMark.astro) ─────────────────────────────
-// Fixed across themes, exactly like the site: the mark is always an
-// indigo keycap with a pale ghost, whatever the page theme.
-
-/// Top face of the keycap (`#6D65F2`).
-pub const MARK_KEYCAP_TOP: Color = rgb8(0x6D, 0x65, 0xF2);
-/// Keycap side + inner face (`#4F46E5`).
-pub const MARK_KEYCAP_FACE: Color = rgb8(0x4F, 0x46, 0xE5);
-/// The ghost's body (`#F7F6FD`).
-pub const MARK_GHOST: Color = rgb8(0xF7, 0xF6, 0xFD);
-/// Eyes and smile (`#17143A`).
-pub const MARK_FACE: Color = rgb8(0x17, 0x14, 0x3A);
-
 /// The family every label in this window is drawn in, resolved once
 /// against what the machine actually has.
 ///

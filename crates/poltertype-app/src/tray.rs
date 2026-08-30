@@ -1,5 +1,6 @@
 //! Tray icon state rendering.
 
+use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
 use tracing::warn;
 use tray_icon::TrayIcon;
@@ -41,7 +42,7 @@ pub(crate) fn tooltip_for(
 pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayState) {
     let waiting = state.attention > 0;
     let icon_result = match state.layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, state.paused, waiting),
+        Some(l) => icon_render::for_layout(l, state.paused, waiting, state.style),
         None => icon_render::unknown(waiting),
     };
     match icon_result {
@@ -61,6 +62,19 @@ pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayS
         warn!(?e, "could not update tray tooltip");
     }
     item_pause.set_text(pause_item_label(state.paused));
+}
+
+/// Show or hide the tray icon, per `[general].tray_icon`.
+///
+/// Hiding it takes the menu with it, and the menu is the whole of this
+/// app's UI — what is left is `poltertype --settings`, which is what
+/// issue #50 asked for. On Linux this asks the desktop for
+/// `AppIndicatorStatus::Passive`, and a StatusNotifier host is allowed
+/// to go on drawing a passive item: a request, not a guarantee.
+pub(crate) fn apply_tray_visibility(tray: &TrayIcon, style: TrayIconStyle) {
+    if let Err(e) = tray.set_visible(style != TrayIconStyle::Hidden) {
+        warn!(?e, "could not change the tray icon's visibility");
+    }
 }
 
 /// The pause item's own text. Shared with the menu's construction: the

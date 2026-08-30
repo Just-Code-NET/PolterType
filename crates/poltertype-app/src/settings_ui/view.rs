@@ -6,12 +6,13 @@
 //! via `self.brand()`, so every pane re-themes with the window.
 
 use iced::widget::{
-    Button, Canvas, Checkbox, Column, Container, Row, Scrollable, Space, Text, TextInput,
-    container, rule, text_editor,
+    Button, Checkbox, Column, Container, Row, Scrollable, Space, Text, TextInput, container, rule,
+    text_editor,
 };
 use iced::{Alignment, Element, Font, Length, Padding};
 
 use poltertype_core::i18n::{tr, tr_args};
+use poltertype_core::settings::TrayIconStyle;
 
 use crate::consts::{
     DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
@@ -21,7 +22,7 @@ use super::consts::*;
 use super::enums::*;
 use super::helpers::*;
 use super::state::*;
-use super::theme::{self, GhostMark, font_bold};
+use super::theme::{self, font_bold};
 
 impl SettingsApp {
     pub(super) fn view(&self) -> Element<'_, Message> {
@@ -103,7 +104,7 @@ impl SettingsApp {
         let brand_row = Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
-            .push(Canvas::new(GhostMark).width(32).height(32))
+            .push(theme::mark(32))
             .push(
                 Column::new()
                     .push(
@@ -987,14 +988,49 @@ impl SettingsApp {
                     }),
             );
         }
+        // Takes effect where the tray reads it, so unlike the theme
+        // above there is nothing to preview here.
+        let tray_choice = TrayIconStyle::from_config(&self.settings.general.tray_icon);
+        let mut tray_row = Row::new().spacing(6);
+        for (choice, label) in [
+            (TrayIconStyle::Color, tr("general.tray_color", "Colour")),
+            (TrayIconStyle::Mono, tr("general.tray_mono", "Mono")),
+            (TrayIconStyle::Hidden, tr("general.tray_hidden", "Hidden")),
+        ] {
+            tray_row = tray_row.push(
+                Button::new(Text::new(label).size(12))
+                    .on_press(Message::TrayIconChoiceChanged(choice))
+                    .style(theme::chip(tray_choice == choice))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 12.0,
+                        bottom: 5.0,
+                        left: 12.0,
+                    }),
+            );
+        }
+
         let appearance = Column::new()
             .spacing(12)
             .push(section_title(b, tr("general.appearance", "Appearance")))
+            .push(Text::new(tr("general.theme", "Theme")).size(12))
             .push(theme_row)
             .push(
                 Text::new(tr(
                     "general.system_follows_os_light",
                     "System follows the OS light/dark preference. Save to persist.",
+                ))
+                .size(11)
+                .color(b.muted),
+            )
+            .push(Text::new(tr("general.tray_icon", "Tray icon")).size(12))
+            .push(tray_row)
+            .push(
+                Text::new(tr(
+                    "general.tray_icon_hint",
+                    "Colour gives every layout its own; Mono keeps one neutral badge. \
+                     Hidden removes the icon and its menu — reopen this window by \
+                     running poltertype --settings.",
                 ))
                 .size(11)
                 .color(b.muted),
@@ -1267,7 +1303,7 @@ impl SettingsApp {
             .width(Length::Fill)
             .align_x(Alignment::Center)
             .push(Space::new().height(10))
-            .push(Canvas::new(GhostMark).width(64).height(64))
+            .push(theme::mark(64))
             .push(Space::new().height(4))
             .push(
                 Text::new("PolterType")
