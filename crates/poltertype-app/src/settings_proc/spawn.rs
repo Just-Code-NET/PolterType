@@ -2,7 +2,7 @@
 //! when it closes.
 
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use poltertype_core::engine::EngineCommand;
 use tracing::{info, warn};
@@ -36,8 +36,24 @@ pub(crate) fn spawn_setup_ui(deps: SettingsCloseDeps) {
     spawn_settings_ui_on(deps, SettingsEntry::Setup)
 }
 
+/// Whether a Settings child is running right now.
+///
+/// The window is a subprocess and the tray had no memory of it, so
+/// every click on the menu item started another one — three clicks,
+/// three windows, each writing `config.toml` on Save and the last one
+/// winning (issue #53).
+static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
+
 fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
+    // Claimed before the spawn and released by the waiter below, so a
+    // second click during the seconds the window takes to appear is
+    // refused too — that is exactly when a user clicks again.
+    if SETTINGS_OPEN.swap(true, Ordering::AcqRel) {
+        info!("settings UI is already open; not opening a second window");
+        return;
+    }
     let Some(exe) = settings_ui_exe() else {
+        SETTINGS_OPEN.store(false, Ordering::Release);
         return;
     };
     info!(?exe, ?entry, "launching settings UI");
@@ -45,6 +61,7 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
         Ok(c) => c,
         Err(e) => {
             warn!(?e, ?exe, "settings UI subprocess failed to start");
+            SETTINGS_OPEN.store(false, Ordering::Release);
             spawn_error_notification(format!(
                 "Couldn't open Settings: {e}.\nRestarting {app} should fix it.",
                 app = crate::consts::APP_NAME,
@@ -64,6 +81,10 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
                 Ok(status) => info!(?status, "settings UI exited"),
                 Err(e) => warn!(?e, "could not wait on settings UI child"),
             }
+            // Released here rather than at the end: everything below is
+            // reloading files, and a user who closes the window and
+            // immediately reopens it must not be told to wait for that.
+            SETTINGS_OPEN.store(false, Ordering::Release);
 
             match deps.settings.reload() {
                 Ok(changed) => info!(changed, "config.toml reloaded after settings UI exit"),
