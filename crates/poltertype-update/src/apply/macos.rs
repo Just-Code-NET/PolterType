@@ -47,7 +47,11 @@ fn running_bundle() -> Result<PathBuf, UpdateError> {
 }
 
 #[cfg(target_os = "macos")]
-pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<(), UpdateError> {
+pub(super) fn apply(
+    pending: &PendingUpdate,
+    relaunch: bool,
+    sign_identity: &str,
+) -> Result<(), UpdateError> {
     let bundle = running_bundle()?;
     let staging = crate::staging::staging_dir()?;
 
@@ -58,6 +62,7 @@ pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<(), Updat
         &staging,
         std::process::id(),
         relaunch,
+        sign_identity,
     );
 
     let script = write_script("install.sh", &body)?;
@@ -75,6 +80,7 @@ fn script_body(
     staging: &Path,
     pid: u32,
     relaunch: bool,
+    sign_identity: &str,
 ) -> String {
     // Unconditional, like the other two backends: an update that could
     // not be unpacked leaves the installed bundle exactly as it was, so
@@ -83,6 +89,61 @@ fn script_body(
         format!("open {} || true\n", sh_quote(bundle))
     } else {
         String::new()
+    };
+
+    // What happens to the TCC grants after the swap. An ad-hoc bundle's
+    // grants key on the hash of its bytes, so every update leaves both
+    // permissions dead while the toggles still read "on" — and, worse,
+    // with a stale record on file macOS refuses to show the permission
+    // dialog again, which is what made the Setup pane's Ask buttons
+    // dead after updates. Two ways out, chosen by config:
+    //
+    // * `[updates].local_signing_identity` set — re-sign the swapped
+    //   bundle with that keychain identity. TCC then keys the grants on
+    //   certificate + identifier, and they survive this and every later
+    //   update. Proven on this machine: a dev bundle signed with a
+    //   self-made identity kept both grants across repeated rebuilds.
+    //   The reset still runs on the *first* signed update, because the
+    //   grants on file belong to the old ad-hoc hash.
+    // * empty — drop the two stale records (`tccutil reset` needs no
+    //   privileges), so the app comes back in the "never asked" state
+    //   where the Ask buttons genuinely raise the system prompts. Two
+    //   prompts instead of the remove-and-re-add hunt.
+    let sq = |s: &str| format!("'{}'", s.replace('\'', r"'\''"));
+    let tcc_block = if sign_identity.is_empty() {
+        "\ttccutil reset Accessibility \"$BID\" || true\n\
+         \ttccutil reset ListenEvent \"$BID\" || true\n"
+            .to_string()
+    } else {
+        format!(
+            "\tif codesign --force --sign {ident} --identifier \"$BID\" {bundle}; then\n\
+             \t\tif [ \"$SIGNED_SAME\" = 0 ]; then\n\
+             \t\t\ttccutil reset Accessibility \"$BID\" || true\n\
+             \t\t\ttccutil reset ListenEvent \"$BID\" || true\n\
+             \t\tfi\n\
+             \telse\n\
+             \t\ttccutil reset Accessibility \"$BID\" || true\n\
+             \t\ttccutil reset ListenEvent \"$BID\" || true\n\
+             \tfi\n",
+            ident = sq(sign_identity),
+            bundle = sh_quote(bundle),
+        )
+    };
+    // Whether the outgoing bundle already carries the same identity —
+    // decided before the swap, on the old bundle: if it does, the
+    // grants on file already match the certificate and must be left
+    // alone.
+    let signed_same_line = if sign_identity.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "SIGNED_SAME=0\n\
+             if codesign -dvv {bundle} 2>&1 | grep -q \"Authority={ident_raw}\"; then\n\
+             \tSIGNED_SAME=1\n\
+             fi\n",
+            bundle = sh_quote(bundle),
+            ident_raw = sign_identity,
+        )
     };
 
     // `ditto` rather than `cp -R`: it is Apple's own bundle-aware copy
@@ -114,6 +175,7 @@ fn script_body(
          # abort the script, and the abort would take the relaunch with\n\
          # it — leaving a user who clicked \"Restart to update\" with no\n\
          # running app and no reason why.\n\
+         {signed_same_line}\
          ok=0\n\
          MNT=$(mktemp -d /tmp/poltertype-update.XXXXXX)\n\
          NEW={bundle}.new\n\
@@ -141,6 +203,15 @@ fn script_body(
          \trm -rf \"$NEW\"\n\
          fi\n\
          \n\
+         # See the TCC comment in script_body: re-sign with the local\n\
+         # identity so the grants survive, or drop the stale records so\n\
+         # the Ask buttons work. Only after a successful swap — the old\n\
+         # bundle keeps its grants when nothing changed.\n\
+         if [ \"$ok\" = 1 ]; then\n\
+         \tBID=$(/usr/libexec/PlistBuddy -c \"Print :CFBundleIdentifier\" {bundle}/Contents/Info.plist)\n\
+         {tcc_block}\
+         fi\n\
+         \n\
          {relaunch_line}\
          if [ \"$ok\" = 1 ]; then\n\
          \trm -rf {staging}\n\
@@ -149,6 +220,8 @@ fn script_body(
          fi\n",
         version = crate::current_version(),
         hello = HELLO,
+        signed_same_line = signed_same_line,
+        tcc_block = tcc_block,
         dmg = sh_quote(artifact),
         bundle = sh_quote(bundle),
         staging = sh_quote(staging),

@@ -335,6 +335,15 @@ pub struct UpdateSettings {
     /// (see [`UpdateSettings::interval`]) so a hand-edited `0` cannot
     /// turn the updater into a request loop against GitHub.
     pub check_interval_hours: u64,
+    /// macOS: common name of a codesign identity in the login keychain.
+    /// Non-empty, and the updater re-signs every swapped bundle with it,
+    /// so TCC keeps the Accessibility / Input Monitoring grants across
+    /// updates (they key on certificate + identifier instead of the
+    /// bundle hash). Empty — ad-hoc updates as before, and the installer
+    /// resets the two stale TCC records instead, so the Ask buttons
+    /// work right after the swap. Set up once with
+    /// `poltertype --setup-local-signing`.
+    pub local_signing_identity: String,
 }
 
 impl Default for UpdateSettings {
@@ -342,6 +351,7 @@ impl Default for UpdateSettings {
         Self {
             enabled: true,
             check_interval_hours: 24,
+            local_signing_identity: String::new(),
         }
     }
 }
