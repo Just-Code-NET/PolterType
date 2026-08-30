@@ -222,7 +222,7 @@ fn signing_step(identity: &str) -> SetupStep {
 /// `None` when `security` itself failed — an answer we must not guess.
 fn identity_in_keychain(name: &str) -> Option<bool> {
     let out = std::process::Command::new("/usr/bin/security")
-        .args(["find-identity", "-v", "-p", "codesigning"])
+        .args(["find-identity", "-p", "codesigning"])
         .output()
         .ok()?;
     let listing = String::from_utf8_lossy(&out.stdout);
