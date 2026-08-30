@@ -234,6 +234,14 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
             }
 
             if let Some(ev_out) = to_key_event(ev_type, event) {
+                // Every injected key-down that made it back through the
+                // window server bumps the counter the emitter paces
+                // its backspace burst against — see
+                // `INJECTED_KEYDOWN_ECHOES`.
+                if ev_out.injected && ev_out.direction == KeyDirection::Press {
+                    super::consts::INJECTED_KEYDOWN_ECHOES
+                        .fetch_add(1, std::sync::atomic::Ordering::Release);
+                }
                 if let Some(slot) = EVENT_SINK.get() {
                     if let Some(sink) = slot.read().as_ref() {
                         if !FIRST_EVENT_LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {

@@ -39,6 +39,15 @@ const MODIFIER_SETTLE: Duration = Duration::from_millis(4);
 /// before the word). 2 ms matches the X11 emitter's `KEY_STEP`.
 const KEY_STEP: Duration = Duration::from_millis(2);
 
+/// How long a backspace waits for its own tap echo before giving up
+/// and falling back to timer pacing. Generous against a busy window
+/// server, negligible against a human: even all-timeouts on a
+/// ten-letter word is a quarter second.
+const ECHO_WAIT: Duration = Duration::from_millis(25);
+
+/// Poll step while waiting for the echo.
+const ECHO_POLL: Duration = Duration::from_micros(500);
+
 pub struct MacosEmitter;
 
 impl MacosEmitter {
@@ -80,7 +89,29 @@ impl KeyEmitter for MacosEmitter {
         }
         let src = event_source()?;
         for _ in 0..n {
+            // Paced against the tap echo, not the clock. A fixed
+            // KEY_STEP was measured enough for ordinary fields, but a
+            // field that re-queries on every keystroke — Spotlight —
+            // still dropped deletes posted on a timer, leaving the
+            // word's first letter standing with the correction glued
+            // to it (`ьmahou`, 2026-08-30). The echo of our own
+            // key-down arriving back at the session tap is the one
+            // in-process proof the window server has sequenced the
+            // event; waiting for it spaces the burst by how fast the
+            // system actually drains it. The timeout covers a dead or
+            // listen-degraded tap: pacing falls back to the old sleep
+            // and the burst still completes.
+            let seen = super::consts::INJECTED_KEYDOWN_ECHOES
+                .load(std::sync::atomic::Ordering::Acquire);
             keyboard_event(&src, KVK_DELETE, true)?.post(CGEventTapLocation::HID);
+            let deadline = std::time::Instant::now() + ECHO_WAIT;
+            while super::consts::INJECTED_KEYDOWN_ECHOES
+                .load(std::sync::atomic::Ordering::Acquire)
+                <= seen
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(ECHO_POLL);
+            }
             std::thread::sleep(KEY_STEP);
             keyboard_event(&src, KVK_DELETE, false)?.post(CGEventTapLocation::HID);
             std::thread::sleep(KEY_STEP);
