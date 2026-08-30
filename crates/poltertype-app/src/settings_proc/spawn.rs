@@ -211,17 +211,30 @@ static SETTINGS_CHILD_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::Ato
 /// same leak without the relaunch twist.
 pub(crate) fn kill_settings_ui() {
     let pid = SETTINGS_CHILD_PID.swap(0, Ordering::AcqRel);
-    if pid == 0 {
-        return;
+    if pid != 0 {
+        info!(pid, "closing the settings window before exit");
     }
-    info!(pid, "closing the settings window before exit");
     #[cfg(unix)]
     {
-        // SIGTERM via /bin/kill: the child is ours, and the waiter
-        // thread reaps it as usual.
-        let _ = std::process::Command::new("kill")
-            .arg(pid.to_string())
-            .status();
+        if pid != 0 {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+        // And every other window of this executable, tracked or not:
+        // this base has no second-window guard, so a Settings window
+        // and a Setup-alert window can coexist while one pid slot
+        // remembers only the latest. The one that survived the main
+        // process is what made LaunchServices treat the app as still
+        // running and turned the updater relaunch into a no-op that
+        // merely raised an orphaned old-version window (measured:
+        // `poltertype --setup`, 2026-08-31).
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new("pkill")
+                .arg("-f")
+                .arg(format!("{} --", exe.display()))
+                .status();
+        }
     }
     #[cfg(windows)]
     {
