@@ -589,7 +589,7 @@ fn saving_the_window_cannot_resume_an_app_paused_since_it_opened() {
     let mut on_disk = poltertype_core::settings::Settings::default();
     on_disk.general.paused = true;
 
-    let merged = with_runtime_state(staged, &on_disk);
+    let merged = with_runtime_state(staged, &on_disk, false);
     assert!(
         merged.general.paused,
         "the tray's state must survive a Save"
@@ -597,5 +597,23 @@ fn saving_the_window_cannot_resume_an_app_paused_since_it_opened() {
     assert!(
         merged.general.show_notifications,
         "and everything the window does own must still be written"
+    );
+}
+
+/// And the one case that is not the tray's: the General pane's
+/// conversion chips write that same flag, so a mode the user picked
+/// here has to reach the file rather than be folded back (issue #51).
+#[test]
+fn a_conversion_mode_picked_in_the_window_is_the_one_that_is_saved() {
+    let mut staged = poltertype_core::settings::Settings::default();
+    staged.general.paused = true;
+
+    let mut on_disk = poltertype_core::settings::Settings::default();
+    on_disk.general.paused = false;
+
+    let merged = with_runtime_state(staged, &on_disk, true);
+    assert!(
+        merged.general.paused,
+        "a mode chosen in this window must not be overwritten by the file"
     );
 }

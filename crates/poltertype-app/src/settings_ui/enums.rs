@@ -285,6 +285,11 @@ pub enum Message {
     /// the tray is another process, and it re-reads `config.toml`.
     TrayIconChoiceChanged(TrayIconStyle),
 
+    /// Automatic or manual-only conversion — the same `[general].paused`
+    /// the tray's pause item writes, named here as the mode it is
+    /// (issue #51). `true` means manual only.
+    ManualOnlyChosen(bool),
+
     ResetDefaults,
     Save,
     /// Reverts the staged edits back to the on-disk values.

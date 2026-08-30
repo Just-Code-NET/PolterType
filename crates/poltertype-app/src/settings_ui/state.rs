@@ -36,6 +36,14 @@ pub struct SettingsApp {
     /// actually advertises, and a name is a guess about that. `Err`
     /// carries the sentence the pane shows instead of the toggle.
     pub(super) selection_support: Result<(), String>,
+    /// Whether the user has picked a conversion mode *in this window*.
+    ///
+    /// `[general].paused` belongs to the tray, which rewrites it every
+    /// time auto-switch is paused — so a save normally folds the
+    /// on-disk value back in rather than the one this window opened
+    /// with (issue #46). Clicking the chips is the one case where the
+    /// window means it, and this is what tells the two apart.
+    pub(super) conversion_chosen_here: bool,
     pub(super) save_banner: Option<SaveBanner>,
     /// `Some(kind)` while the user is in "press a combination…" mode;
     /// the keyboard subscription consults this to decide whether key
@@ -168,6 +176,7 @@ impl SettingsApp {
             system_prefers_dark: super::system_theme::system_prefers_dark(),
             bg_jitter: std::cell::Cell::new(0),
             selection_support: poltertype_input::selection_support().map_err(|gap| gap.to_string()),
+            conversion_chosen_here: false,
             save_banner: None,
             capturing: None,
             mod_capture: ModCapture::default(),

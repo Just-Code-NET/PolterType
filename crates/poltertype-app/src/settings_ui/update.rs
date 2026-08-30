@@ -453,6 +453,11 @@ impl SettingsApp {
                 self.settings.general.tray_icon = choice.config_value().to_owned();
             }
 
+            Message::ManualOnlyChosen(manual) => {
+                self.settings.general.paused = manual;
+                self.conversion_chosen_here = true;
+            }
+
             Message::ResetDefaults => self.settings = Settings::default(),
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
@@ -498,7 +503,11 @@ impl SettingsApp {
                 if let Err(e) = self.store.reload() {
                     warn!(?e, "could not re-read config.toml before saving");
                 }
-                let staged = with_runtime_state(self.settings.clone(), &self.store.snapshot());
+                let staged = with_runtime_state(
+                    self.settings.clone(),
+                    &self.store.snapshot(),
+                    self.conversion_chosen_here,
+                );
                 match self.store.update(|s| *s = staged) {
                     Ok(()) => {
                         info!(path = ?self.config_path, "settings saved from UI");

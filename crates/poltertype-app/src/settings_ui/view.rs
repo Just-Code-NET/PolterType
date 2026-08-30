@@ -892,9 +892,43 @@ impl SettingsApp {
         let g = &self.settings.general;
         let e = &self.settings.engine;
 
+        // The same flag the tray's pause item writes, named as the mode
+        // it is: the request behind it was for manual-only conversion,
+        // from someone who had found the pause and read it as the app
+        // being off (issue #51).
+        let mut conversion_row = Row::new().spacing(6);
+        for (manual, label) in [
+            (false, tr("general.conversion_auto", "Automatic")),
+            (true, tr("general.conversion_manual", "Manual only")),
+        ] {
+            conversion_row = conversion_row.push(
+                Button::new(Text::new(label).size(12))
+                    .on_press(Message::ManualOnlyChosen(manual))
+                    .style(theme::chip(g.paused == manual))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 12.0,
+                        bottom: 5.0,
+                        left: 12.0,
+                    }),
+            );
+        }
+
         let behaviour = Column::new()
             .spacing(12)
             .push(section_title(b, tr("general.behaviour", "Behaviour")))
+            .push(Text::new(tr("general.conversion", "Conversion")).size(12))
+            .push(conversion_row)
+            .push(
+                Text::new(tr(
+                    "general.conversion_hint",
+                    "Manual only watches what you type but corrects nothing on its own — \
+                     the last word is converted when you press the manual hotkey. Same \
+                     switch as the tray's Pause auto-switch, so the tray icon shows it too.",
+                ))
+                .size(11)
+                .color(b.muted),
+            )
             .push(
                 Checkbox::new(g.autostart)
                     .label(tr(

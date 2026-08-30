@@ -2869,6 +2869,111 @@ mod engine_integration_tests {
         h.settle();
     }
 
+    /// Announce the default switch-last chord as an OS-level grab —
+    /// what every backend but Wayland does with it.
+    fn grab_default_switch_chord(h: &Harness, sc: u32) {
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                pause: None,
+                switch_last: None,
+                grabbed: [
+                    None,
+                    Some(Chord {
+                        ctrl: true,
+                        shift: true,
+                        alt: false,
+                        meta: false,
+                        scancode: sc,
+                    }),
+                ],
+            }))
+            .expect("engine alive");
+        h.settle();
+    }
+
+    /// One press of that chord, then the grab's command, then the
+    /// modifiers coming back up — the order the machine reports it in.
+    /// The grabbed key's own release never arrives (see
+    /// `a_grabbed_chord_held_down_is_waited_out_rather_than_typed_over`).
+    fn press_grabbed_switch_chord(h: &Harness, sc: u32) {
+        let none = poltertype_types::Modifiers::NONE;
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..none
+        };
+        let both = poltertype_types::Modifiers {
+            shift: true,
+            ..ctrl
+        };
+        h.key_mods(0x1D, KeyDirection::Press, ctrl);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        // The run loop has to take the modifiers before the chord
+        // fires — a person's fingers arrive in that order, and a bare
+        // modifier press still queued reads as a shortcut the
+        // correction cannot reconstruct. See
+        // `a_grabbed_chord_held_down_is_waited_out_rather_than_typed_over`.
+        std::thread::sleep(Duration::from_millis(200));
+        h.key_mods(sc, KeyDirection::Press, both);
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.key_mods(0x2A, KeyDirection::Release, ctrl);
+        h.key_mods(0x1D, KeyDirection::Release, none);
+    }
+
+    /// The default switch-last chord is `Ctrl+Shift+Backspace`, and
+    /// outside Wayland an OS grab owns it — which hides the chord from
+    /// our matcher but not the key from our listener. Its own press
+    /// therefore arrives here in the exact shape of the word-delete
+    /// below it in `handle_key`, and reaches us *before* the desktop
+    /// delivers the hotkey. Read that way it would drop the stash the
+    /// command right behind it is about to switch, which with
+    /// auto-switch paused is the only conversion there is (issue #51).
+    #[test]
+    fn the_default_grabbed_chord_is_not_read_as_a_word_delete() {
+        let h = Harness::start(60_000);
+        h.cmd_tx
+            .send(EngineCommand::TogglePause)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::PausedChanged(true)));
+        grab_default_switch_chord(&h, BACKSPACE);
+
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        press_grabbed_switch_chord(&h, BACKSPACE);
+
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        assert_eq!(
+            erase_counts(&h).last(),
+            Some(&(GHBDSN.len() + 1)),
+            "the word and its boundary, not a word-delete: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The same press with no separator typed yet: there the
+    /// word-delete reading would empty the buffer the hotkey falls
+    /// back to, leaving nothing to switch by either route.
+    #[test]
+    fn the_default_grabbed_chord_switches_a_word_still_being_typed() {
+        let h = Harness::start(60_000);
+        grab_default_switch_chord(&h, BACKSPACE);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        press_grabbed_switch_chord(&h, BACKSPACE);
+
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        assert_eq!(
+            erase_counts(&h).last(),
+            Some(&GHBDSN.len()),
+            "an unfinished word has no boundary to put back: {:?}",
+            h.emitter.ops()
+        );
+    }
+
     /// Issue #47: the force-switch chimed whatever the setting said.
     ///
     /// Every other path builds its `Correction` with

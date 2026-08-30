@@ -591,12 +591,19 @@ pub fn first_lines(text: &str, n: usize) -> String {
 /// writes the file.
 ///
 /// `[general].paused` belongs to the tray: it is rewritten every time
-/// auto-switch is paused or resumed, and this window neither shows the
-/// field nor hears about it moving. Saving the whole struct would put
-/// back the value the file carried when the window opened, silently
-/// resuming an app the user had paused since (issue #46).
-pub fn with_runtime_state(mut staged: Settings, on_disk: &Settings) -> Settings {
-    staged.general.paused = on_disk.general.paused;
+/// auto-switch is paused or resumed, and this window does not hear
+/// about it moving. Saving the whole struct would put back the value
+/// the file carried when the window opened, silently resuming an app
+/// the user had paused since (issue #46).
+///
+/// `chosen_here` is the exception, and the only one: the General pane's
+/// conversion chips write that same flag, and a mode the user just
+/// picked has to reach the file. Anything else the window saves leaves
+/// the tray's value alone.
+pub fn with_runtime_state(mut staged: Settings, on_disk: &Settings, chosen_here: bool) -> Settings {
+    if !chosen_here {
+        staged.general.paused = on_disk.general.paused;
+    }
     staged
 }
 
