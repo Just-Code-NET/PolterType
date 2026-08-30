@@ -103,7 +103,10 @@ fn notification_sender_ready() -> bool {
             return false;
         };
         match notify_rust::set_application(&bundle_id) {
-            Ok(()) => true,
+            Ok(()) => {
+                info!(bundle = %bundle_id, "registered as notification sender");
+                true
+            }
             Err(e) => {
                 warn!(?e, bundle = %bundle_id, "could not register as notification sender");
                 false
