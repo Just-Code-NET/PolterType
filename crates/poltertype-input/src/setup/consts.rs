@@ -27,3 +27,7 @@ pub(super) const ACCESSIBILITY_PANE_URL: &str =
 #[cfg(target_os = "macos")]
 pub(super) const INPUT_MONITORING_PANE_URL: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
+
+/// System Settings → Notifications (the app list lives inside).
+pub(super) const NOTIFICATIONS_PANE_URL: &str =
+    "x-apple.systempreferences:com.apple.Notifications-Settings.extension";

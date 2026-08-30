@@ -564,7 +564,9 @@ impl SettingsApp {
             // ── Setup pane ─────────────────────────────────────────
             Message::SetupRecheck => {
                 let before = self.setup.clone();
-                self.setup = poltertype_input::setup::probe_setup();
+                self.setup = poltertype_input::setup::probe_setup(
+                    &self.store.snapshot().updates.local_signing_identity,
+                );
                 // Say something either way: a button that silently
                 // redraws the same screen reads as broken, and "still
                 // not granted" is what the user most needs to hear.
@@ -610,11 +612,53 @@ impl SettingsApp {
                 // return value is not an answer — re-probe instead of
                 // believing it.
                 poltertype_input::setup::request_permission(permission);
-                self.setup = poltertype_input::setup::probe_setup();
+                self.setup = poltertype_input::setup::probe_setup(
+                    &self.store.snapshot().updates.local_signing_identity,
+                );
                 self.setup_status = Some(SaveBanner {
                     text: "Asked the system. Approve it there, then press Check again.".to_owned(),
                     is_error: false,
                 });
+            }
+
+            Message::SetupLocalSigning => {
+                // Adopt-or-create in the keychain, then remember the name:
+                // the updater reads it at swap time, and the re-probe below
+                // is what flips the step to Done.
+                let name = {
+                    let configured = self.store.snapshot().updates.local_signing_identity;
+                    if configured.is_empty() {
+                        poltertype_input::setup::DEFAULT_LOCAL_SIGNING_IDENTITY.to_owned()
+                    } else {
+                        configured
+                    }
+                };
+                match poltertype_input::setup::setup_local_signing(&name) {
+                    Ok(()) => {
+                        if let Err(e) =
+                            self.store.update(|s| s.updates.local_signing_identity = name.clone())
+                        {
+                            warn!(?e, "could not remember the signing identity");
+                        }
+                        self.setup_status = Some(SaveBanner {
+                            text: format!(
+                                "Identity “{name}” is in your keychain — updates will keep \
+                                 the permissions from now on."
+                            ),
+                            is_error: false,
+                        });
+                    }
+                    Err(e) => {
+                        warn!(%e, "local signing setup failed");
+                        self.setup_status = Some(SaveBanner {
+                            text: format!("Could not set up signing: {e}"),
+                            is_error: true,
+                        });
+                    }
+                }
+                self.setup = poltertype_input::setup::probe_setup(
+                    &self.store.snapshot().updates.local_signing_identity,
+                );
             }
 
             Message::WindowCloseRequested(id) => {

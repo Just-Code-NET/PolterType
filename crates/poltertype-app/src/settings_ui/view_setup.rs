@@ -232,6 +232,10 @@ fn action_button(action: &StepAction) -> Element<'static, Message> {
         ),
         StepAction::Open(url) => ("Read the guide".to_owned(), Message::SetupOpen(url.clone())),
         StepAction::Copy(cmd) => (format!("Copy `{cmd}`"), Message::SetupCopy(cmd.clone())),
+        StepAction::SetupLocalSigning => (
+            "Create signing identity".to_owned(),
+            Message::SetupLocalSigning,
+        ),
         StepAction::RequestPermission(p) => (
             "Ask macOS now".to_owned(),
             Message::SetupRequestPermission(*p),
