@@ -66,3 +66,8 @@ iced            = { workspace = true }
 # default). Cross-platform: Win10+ Toast, macOS NSUserNotification,
 # Linux Desktop Notifications spec via DBus.
 notify-rust     = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# To read our own CFBundleIdentifier: the notification bridge must be
+# told who is sending before the first toast (see bridges.rs).
+core-foundation = "0.10"
