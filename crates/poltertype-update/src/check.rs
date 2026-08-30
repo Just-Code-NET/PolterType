@@ -55,12 +55,30 @@ pub fn check_and_stage() -> Result<Option<PendingUpdate>, UpdateError> {
             debug!(version = %pending.version, "update already staged");
             return Ok(Some(pending));
         }
-        info!(
-            staged = %pending.version,
-            available = %manifest.version,
-            "a newer release superseded the staged update; re-staging"
-        );
-        staging::clear_pending();
+        // Replace the staged artifact only when the feed moved *ahead*
+        // of it. A staged version the feed does not know — a local
+        // build, a rollback, a pre-release — is not the feed's to
+        // discard: re-staging over it silently replaced a hand-staged
+        // build with whatever GitHub served, and the next
+        // "Restart to update" installed something the user never staged.
+        match crate::is_newer(&manifest.version, &pending.version) {
+            Ok(true) => {
+                info!(
+                    staged = %pending.version,
+                    available = %manifest.version,
+                    "a newer release superseded the staged update; re-staging"
+                );
+                staging::clear_pending();
+            }
+            _ => {
+                info!(
+                    staged = %pending.version,
+                    available = %manifest.version,
+                    "the staged update is ahead of the feed; keeping it"
+                );
+                return Ok(Some(pending));
+            }
+        }
     }
 
     let key = manifest::platform_key();
