@@ -184,7 +184,10 @@ fn signing_step(identity: &str) -> SetupStep {
             "Every update currently costs both permissions above, because macOS ties them \
              to the exact copy of the app. One click creates a private signing identity in \
              your keychain; every update is then re-signed with it and the permissions \
-             survive. Nothing leaves your machine."
+             survive. Nothing leaves your machine. macOS will show one password prompt — \
+             \u{201c}codesign wants to access key\u{201d}: that is your new key being used for \
+             the first time. Enter your login password and press \u{201c}Always Allow\u{201d}, \
+             and it never appears again."
                 .to_owned(),
         )
     } else {
@@ -296,6 +299,24 @@ pub(super) fn setup_local_signing(name: &str) -> Result<(), String> {
         if identity_in_keychain(name) != Some(true) {
             return Err("imported, but the identity did not appear in the keychain".to_owned());
         }
+        // Use the key once, right now, on a scratch copy of a system
+        // binary. The keychain confirms first use of a fresh key with
+        // its "codesign wants to access key" password prompt, and the
+        // moment for that dialog is HERE — the user just pressed the
+        // button and is told to expect it — not in the middle of the
+        // first background update, where it reads as malware. After
+        // "Always Allow" it never returns.
+        let scratch = dir.join("scratch-sign");
+        std::fs::copy("/usr/bin/true", &scratch).map_err(|e| e.to_string())?;
+        run(
+            "/usr/bin/codesign",
+            &[
+                "--force",
+                "--sign",
+                name,
+                scratch.to_str().ok_or("bad tmp path")?,
+            ],
+        )?;
         Ok(())
     })();
 
