@@ -1,4 +1,4 @@
-# Known gaps (as of v0.28.0)
+# Known gaps (as of v0.29.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,36 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.29.0 pass actually checked (2026-08-30).** Two reports,
+one of them a photograph — so the check is a photograph too, taken on
+**KDE Plasma Wayland**, the session both were filed from.
+
+The tray icon (#54) was run in the guest at both styles and the panel
+photographed each time: `color` is the green `EN` tile it has always
+been, now crisp; `mono` is two flat letters with nothing behind them,
+sitting in the row with the volume, brightness and display icons and
+no longer the one object with a background. The frame is off the
+VirtualBox framebuffer, which this file elsewhere warns against for
+window contents — two frames ten seconds apart were compared, and the
+panel clock read the minute the app was running.
+
+Its **polarity is a guess**: the letters are drawn light or dark from
+the *desktop's* dark/light preference, sampled once at startup, and a
+panel is free to use neither. The halo around each letter is what makes
+a wrong guess cost contrast instead of the icon, and a desktop whose
+theme flips mid-session keeps the old polarity until PolterType is
+restarted. Windows and macOS were not photographed: the change is the
+buffer handed to `tray-icon`, and both take the same one.
+
+**"Settings…" while the window is open does nothing, and does not raise
+it** (#53). The window is a separate process; raising one process's
+window from another is not something a Wayland session offers, and
+there is no IPC between the two to ask it to raise itself. So a window
+that is open but buried answers a click with silence. The duplicate
+windows it replaces were worse — each had its own copy of the settings
+and the last one saved won — but this is not the whole of what a user
+expects from the menu item.
 
 **What the 0.28.0 pass actually checked (2026-08-30).** One report
 (#52): `№` could not be switched, because a symbol is not a word.
@@ -440,6 +470,19 @@ of it is unit-tested through a fake emitter, but no test and no person
 has exercised the `SendInput` path on a Windows machine. macOS is not
 a gap here for once: it has no `send_chord` at all, so the toggle
 reports itself unavailable rather than half-working.
+
+> **Windows is no longer unrun** (reported on #32, 2026-08-30, against
+> 0.28.0 on Windows Server 2025). A selection typed in the wrong layout
+> converts, the `SendInput` copy and paste chords land, and the
+> clipboard is restored afterwards. Two things came with that report
+> and belong here rather than in a release note: the direction is taken
+> from the **active OS layout** and not from the text, so converting a
+> selection twice in a row does nothing the second time until the OS
+> layout is switched back — the same rule the force-switch applies to a
+> word; and on **Server editions the per-user MSI cannot be installed
+> by an unelevated user at all** (`DisableMsi` defaults to 1, msiexec
+> answers 1625), so "no admin rights needed" holds for Windows 10/11
+> and not for Server.
 
 **What the 0.23.0 pass actually checked (2026-08-27).** One machine —
 this Hyprland laptop — and the Settings window, because the release
