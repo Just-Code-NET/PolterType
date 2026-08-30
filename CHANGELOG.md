@@ -4,6 +4,37 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.29.0] — one window, and an icon that fits the panel
+
+### Changed
+
+- **The tray icon is drawn four times larger, and `mono` has lost its
+  tile** ([#54](https://github.com/Just-Code-NET/PolterType/issues/54)).
+  The icon was a 16×16 bitmap, which is what every panel above scale 1
+  then had to enlarge — the fuzzy, pixelated badge in the report's
+  screenshot. It is now handed over at 64×64, so the panel scales it
+  *down*, which every toolkit does with filtering.
+
+  `mono` also drops the slate background it shipped with in 0.26.0. A
+  panel's other icons are flat glyphs on the panel itself, and a filled
+  tile was what made ours the one foreign object in the row; `mono` is
+  now the two letters and nothing else, drawn light or dark according
+  to the desktop's own preference. A panel is free to disagree with
+  that preference, so each letter carries a thin halo in the other
+  polarity — a wrong guess costs contrast rather than the whole icon.
+  `color` is unchanged apart from the resolution.
+
+### Fixed
+
+- **"Settings…" no longer opens a second window**
+  ([#53](https://github.com/Just-Code-NET/PolterType/issues/53)). The
+  window is a subprocess and the tray had no memory of it, so every
+  click started another one — each with its own copy of your settings,
+  and the last one saved winning. The menu item now does nothing while
+  a window is already open. It does not *raise* that window: the two
+  are separate processes, and raising one from the other is not
+  something a Wayland session offers.
+
 ## [0.28.0] — the character that was never a word
 
 ### Added
