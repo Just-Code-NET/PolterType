@@ -4,6 +4,32 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.27.0] — the mode that was already there
+
+### Added
+
+- **Manual-only conversion, named as a mode**
+  ([#51](https://github.com/Just-Code-NET/PolterType/issues/51)). The
+  General pane opens on a Conversion choice — *Automatic* or *Manual
+  only*. Manual only keeps watching what you type and corrects nothing
+  on its own; the last word is converted when you press the manual
+  hotkey, which is what a Punto Switcher user means by manual mode.
+
+  It writes the same `[general] paused` the tray's **Pause auto-switch**
+  has always written, and the two names now sit next to each other in
+  the window that explains them, because the request that asked for this
+  mode came from someone who had found the pause and read it as the app
+  being switched off. Nothing about the behaviour changed: the engine
+  has stashed every completed word while paused since 0.22.0, precisely
+  so the hotkey has something to convert.
+
+  Measured on Cinnamon X11 — the session the report came from — with the
+  default `Ctrl+Shift+Backspace`: paused by the tray chord and paused
+  from the config file, on a finished word, on a word still being typed,
+  and on the second word of a line. All four convert, and nothing
+  converts on its own. The probe is `manual-mode-probe.py` in the
+  desktop-matrix rig.
+
 ## [0.26.0] — two reports about one picture each
 
 ### Added
