@@ -4,6 +4,44 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.28.0] — the character that was never a word
+
+### Added
+
+- **The manual hotkey now converts a separator, when there is no word
+  to convert** ([#52](https://github.com/Just-Code-NET/PolterType/issues/52)).
+  `№` is `Shift+3` on the Russian and Ukrainian layouts and `#` on the
+  US one — and it is not a letter in any of them, so it never joined a
+  word, never reached the stash the force-switch acts on, and pressing
+  the hotkey did nothing at all. The key that produced it was known the
+  whole time.
+
+  One character, and only the one immediately left of the caret: a run
+  of separators is as likely to be a divider line as a mistake. Two
+  cases are deliberately left alone — a key that reads the same under
+  both layouts (every space is a space, and retyping it would move the
+  caret for nothing), and `Enter` or `Tab`, whose replay would submit
+  the line or move focus instead of typing a character. A word still
+  wins where there is one, so nothing about the existing gesture
+  changes.
+
+  Measured on Cinnamon X11 with the default `Ctrl+Shift+Backspace`:
+  the separator alone, the separator typed after a word, and a space
+  left exactly where it was.
+
+### Fixed
+
+- **A separator typed after a pause no longer mangles the line.** Found
+  while measuring the above, and older than it. The word the hotkey
+  acts on outlives a typing pause on purpose — that is what keeps the
+  gesture working when you stop to look at what you typed — but the
+  buffer that counts characters does not, and anything typed in between
+  left the two disagreeing. Type a word, pause a couple of seconds,
+  type `№`, press the hotkey: the correction was spliced one character
+  too far right and `привет №` came back as `пghbdtn `. The word behind
+  a separator is now left alone, and the separator itself is what the
+  press converts.
+
 ## [0.27.0] — the mode that was already there
 
 ### Added
