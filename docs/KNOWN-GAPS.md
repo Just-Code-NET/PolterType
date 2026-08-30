@@ -23,7 +23,15 @@ change: the mark in the sidebar drew as a fragment and the larger one on
 the About card drew not at all, and both draw whole now. That is the
 only way this class of bug is visible at all — the fault is in the
 renderer, and the full test suite passed through all four releases that
-shipped it. Windows and macOS were not opened: they compile the same
+shipped it.
+
+**And the 0.23.0 entry below is wrong.** It says the mark "rendered
+whole" after the iced 0.14 migration; the drawing code has not been
+touched since, and the *published* 0.23.0 AppImage, run in the guest for
+this pass, draws the same fragment. The photograph that pass rested on
+was misread. Which is the argument for shooting the window at every
+release rather than at the one where it changed — now step 1 of
+`RELEASING.md`. Windows and macOS were not opened: they compile the same
 renderer and the same widget, and the mark now arrives by the same
 rasteriser that already draws the window icon on all three.
 

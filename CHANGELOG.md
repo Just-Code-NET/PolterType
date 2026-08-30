@@ -41,9 +41,10 @@ and the project follows [Semantic Versioning](https://semver.org/).
   correct in the reporter's screenshot while the one inside the window
   was not. Same artwork, one copy of it, no clip to get wrong.
 
-  Every build since 0.23.0 had it. Nothing in the test suite could see
-  it — a renderer bug is only visible on screen, which is now a step in
-  the release checklist rather than a habit.
+  Every build since 0.23.0 had it — the published 0.23.0 was run to
+  check. Nothing in the test suite could see it: a renderer bug is only
+  visible on screen, which is now a step in the release checklist rather
+  than a habit.
 
 ## [0.25.5] — after you swap the file yourself
 
