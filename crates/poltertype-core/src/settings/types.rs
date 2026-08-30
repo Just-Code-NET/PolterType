@@ -187,9 +187,10 @@ pub struct EngineSettings {
     /// the wire, and replay them after it — the deterministic guard
     /// against a letter typed mid-correction landing inside the
     /// corrected word. Costs a small input delay right after each
-    /// correction. Default: on in this fork. `POLTERTYPE_HOLD_KEYS`
-    /// (`1`/`0`) still overrides for emergencies; the gate is built at
-    /// startup, so changing this needs a restart.
+    /// correction, which is why it defaults off — see the trade in
+    /// docs/PERMISSIONS.md. `POLTERTYPE_HOLD_KEYS` (`1`/`0`) overrides
+    /// in either direction; the gate is built at startup, so changing
+    /// this needs a restart.
     pub hold_keys: bool,
 }
 
@@ -202,7 +203,7 @@ impl Default for EngineSettings {
             idle_timeout_ms: 2000,
             suppress_in_identifiers: true,
             suppress_for_all_caps: true,
-            hold_keys: true,
+            hold_keys: false,
         }
     }
 }
