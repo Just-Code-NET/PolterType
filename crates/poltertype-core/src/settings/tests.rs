@@ -72,6 +72,7 @@ fn a_sane_check_interval_is_honoured() {
     let s = UpdateSettings {
         enabled: true,
         check_interval_hours: 12,
+        local_signing_identity: String::new(),
     };
     assert_eq!(s.interval(), std::time::Duration::from_secs(12 * 3600));
 }
