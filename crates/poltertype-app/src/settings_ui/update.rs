@@ -669,6 +669,46 @@ impl SettingsApp {
                 );
             }
 
+            Message::RestartApp => {
+                // The settings window is a child of the tray process:
+                // terminate the parent, start the bundle afresh, and
+                // leave — keeping this window alive past the parent is
+                // exactly the ghost that broke the updater relaunch.
+                #[cfg(unix)]
+                {
+                    let parent = std::os::unix::process::parent_id();
+                    if parent > 1 {
+                        let _ = std::process::Command::new("kill")
+                            .arg(parent.to_string())
+                            .status();
+                    }
+                    if let Some(bundle) = std::env::current_exe().ok().and_then(|e| {
+                        e.parent()?.parent()?.parent().map(std::path::Path::to_path_buf)
+                    }) {
+                        if bundle.extension().is_some_and(|x| x == "app") {
+                            // Detached, and the open happens after WE
+                            // are gone: while this settings process
+                            // lives, LaunchServices reads the app as
+                            // already running and open() merely
+                            // activates this window — the exact ghost
+                            // that used to eat the updater relaunch.
+                            let _ = std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(format!(
+                                    "sleep 2; open '{}'",
+                                    bundle.display().to_string().replace('\'', "'\\''")
+                                ))
+                                .spawn();
+                        }
+                    }
+                    std::process::exit(0);
+                }
+                #[cfg(not(unix))]
+                {
+                    warn!("restart from the pane is wired for unix only so far");
+                }
+            }
+
             Message::WindowCloseRequested(id) => {
                 // Last chance to flush an unsaved wordlist edit.
                 // Failures are logged but do not block the close: a
