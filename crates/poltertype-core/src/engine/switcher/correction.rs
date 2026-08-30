@@ -1192,6 +1192,76 @@ impl SwitcherEngine {
         true
     }
 
+    /// Convert the separator the caret is sitting after, when there is
+    /// no word to convert (issue #52).
+    ///
+    /// `№` is `Shift+3` on the Russian and Ukrainian layouts and `#` on
+    /// the US one. It is not a letter, so it never joins a word, never
+    /// reaches the stash, and the manual hotkey had nothing to act on —
+    /// while the key that produced it is perfectly well known. One
+    /// character only: what the report asked for is the separator
+    /// immediately left of the caret, and a run of them is as likely to
+    /// be a divider line as a mistake.
+    ///
+    /// Returns `false` — leaving the text alone — whenever the switch
+    /// would be pointless or destructive rather than wrong: a key that
+    /// reads the same under both layouts (every space is a space), and
+    /// the submission keys, whose replay would send the line or move
+    /// focus instead of typing a character.
+    pub(super) fn force_switch_separator(
+        &self,
+        buffer: &mut WordBuffer,
+        key_rx: &Receiver<KeyEvent>,
+    ) -> bool {
+        let Some(&(scancode, shift)) = buffer.boundary_run().last() else {
+            return false;
+        };
+        if is_submission_scancode(scancode) || scancode == SC_SPACE {
+            return false;
+        }
+        let Ok(from) = self.layout_switcher.current() else {
+            return false;
+        };
+        let Some(to) = self.next_layout_after(&from) else {
+            debug!("only one layout known; can't switch a separator");
+            return false;
+        };
+        let render = |id: &LayoutId| {
+            self.layouts.get(id).and_then(|m| {
+                m.translate_key(poltertype_types::WordKey {
+                    scancode,
+                    shift,
+                    caps: false,
+                    timestamp_ms: 0,
+                })
+            })
+        };
+        let (Some(original), Some(corrected)) = (render(&from), render(&to)) else {
+            return false;
+        };
+        if original == corrected {
+            debug!(%from, %to, "the separator under the caret reads the same in both layouts");
+            return false;
+        }
+        self.apply_correction(
+            &Correction {
+                from: &from,
+                to: &to,
+                original: &original.to_string(),
+                corrected: &corrected.to_string(),
+                backspaces: 1,
+                reason: "manual switch-last hotkey (separator)",
+                play_sound: self.settings.snapshot().general.sound_on_correct,
+                // The same physical key, retyped under the layout we
+                // have just switched to — which is the whole of what
+                // turns `№` into `#`.
+                replay_keys: Some(&[ReplayKey { scancode, shift }]),
+                pointer_click_allowance: 0,
+            },
+            Some((key_rx, buffer)),
+        )
+    }
+
     /// Remember a word the user just rescued from a correction — the
     /// auto-correction path's only escape hatch, since "Add to
     /// dictionary" lives on a tooltip that appears only for words the

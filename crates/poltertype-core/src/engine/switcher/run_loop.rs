@@ -166,9 +166,7 @@ impl SwitcherEngine {
                 let in_progress = !buffer.keys().is_empty();
                 let taken = if in_progress {
                     self.word_in_progress(buffer)
-                } else if buffer.boundary_run().len() <= 1 {
-                    self.last_word.write().take()
-                } else {
+                } else if buffer.boundary_run().len() > 1 {
                     // More separators than the one that closed the
                     // word: the caret is past them, and we cannot put
                     // back what we never measured.
@@ -177,6 +175,25 @@ impl SwitcherEngine {
                         "manual switch-last: the caret has moved past the stashed word"
                     );
                     None
+                } else if !buffer.boundary_run().is_empty() && buffer.completed().is_empty() {
+                    // A separator typed since the buffer stopped
+                    // vouching for the word the stash names. The stash
+                    // deliberately outlives an idle abandon — that is
+                    // what keeps the hotkey working after a pause
+                    // (issue #44) — but the buffer dropped the word
+                    // with it, so the count of characters between the
+                    // caret and that word is no longer known. Measured
+                    // on Cinnamon X11, 2026-08-30: `привет` + a pause
+                    // + `№` + the hotkey deleted seven characters from
+                    // a caret that was one further right and left the
+                    // line as `пghbdtn `.
+                    debug!(
+                        "manual switch-last: a separator was typed after the stash; the word \
+                         behind it is no longer measurable"
+                    );
+                    None
+                } else {
+                    self.last_word.write().take()
                 };
                 if let Some(word) = taken {
                     // The force-switch replays the same scancodes, so
@@ -215,6 +232,16 @@ impl SwitcherEngine {
                         // (issue #40).
                         buffer.settle();
                     }
+                } else if self.force_switch_separator(buffer, key_rx) {
+                    // Before the selection below, and only because it
+                    // is the narrower reading: a separator under the
+                    // caret is something the buffer watched being
+                    // typed, while a selection is a guess about a
+                    // screen we cannot see (issue #52). A gesture that
+                    // moves the caret to make a selection empties the
+                    // separator run on its way, so the two rarely both
+                    // apply.
+                    *self.last_force_switch.write() = Some(Instant::now());
                 } else if self.settings.snapshot().selection.enabled {
                     // No word to act on is exactly the shape of "the
                     // user selected something instead", and the only

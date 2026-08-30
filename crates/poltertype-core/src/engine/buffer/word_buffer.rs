@@ -227,16 +227,26 @@ impl WordBuffer {
                 // that word opened after it.
                 let lead = self.lead.replace((ev.scancode, ev.modifiers.shift));
                 if self.keys.is_empty() {
-                    // A consecutive boundary (double space, ". "):
-                    // extend the run guarding the stashed word.
-                    if !self.prev_word.is_empty() {
-                        if tainted {
-                            self.forget_completed();
-                        } else if self.boundary_run.len() < MAX_BOUNDARY_RUN {
-                            self.boundary_run.push((ev.scancode, ev.modifiers.shift));
-                        } else {
-                            self.forget_completed();
-                        }
+                    // A consecutive boundary (double space, ". ") — or
+                    // one with no word in front of it at all, like a
+                    // lone `№`. Recorded either way: the run is the
+                    // screen model left of the caret, and the manual
+                    // hotkey converts its last key when there is no
+                    // word to convert (issue #52). While it also guards
+                    // a stashed word, a taint or an overlong run means
+                    // that word can no longer be trusted.
+                    if tainted && !self.prev_word.is_empty() {
+                        self.forget_completed();
+                    } else if self.boundary_run.len() < MAX_BOUNDARY_RUN {
+                        self.boundary_run.push((ev.scancode, ev.modifiers.shift));
+                    } else if self.prev_word.is_empty() {
+                        // Nothing to guard, so the cap is only about
+                        // memory: keep the newest, since the last
+                        // separator is the one the hotkey acts on.
+                        self.boundary_run.remove(0);
+                        self.boundary_run.push((ev.scancode, ev.modifiers.shift));
+                    } else {
+                        self.forget_completed();
                     }
                     return WordBoundary::InProgress;
                 }

@@ -28,6 +28,37 @@ fn backspace(b: &mut WordBuffer) -> WordBoundary {
     b.feed(press(0x0E), None, false)
 }
 
+/// The run used to be recorded only where it guarded a completed
+/// word, so a separator typed with nothing in front of it left no
+/// trace at all — and the manual hotkey, which acts on what the buffer
+/// knows, could not reach it (issue #52).
+#[test]
+fn a_separator_with_no_word_before_it_is_still_recorded() {
+    let mut b = WordBuffer::new();
+    assert_eq!(
+        b.feed(press(0x04), Some('#'), false),
+        WordBoundary::InProgress
+    );
+    assert_eq!(b.boundary_run(), [(0x04, false)]);
+    assert!(
+        b.completed().is_empty(),
+        "there is no word here, and the separator is not one"
+    );
+}
+
+/// And the run stays bounded when nothing but separators is typed —
+/// keeping the newest, since the last one is what the hotkey converts.
+#[test]
+fn a_run_of_separators_with_no_word_keeps_its_newest_key() {
+    let mut b = WordBuffer::new();
+    for _ in 0..(MAX_BOUNDARY_RUN + 3) {
+        space(&mut b);
+    }
+    b.feed(press(0x04), Some('#'), false);
+    assert_eq!(b.boundary_run().len(), MAX_BOUNDARY_RUN);
+    assert_eq!(b.boundary_run().last(), Some(&(0x04, false)));
+}
+
 #[test]
 fn space_completes_word() {
     let mut b = WordBuffer::new();

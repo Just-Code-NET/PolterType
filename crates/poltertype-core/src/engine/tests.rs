@@ -2995,6 +2995,147 @@ mod engine_integration_tests {
         );
     }
 
+    /// `Shift+3`, with its modifier edges — `№` under uk-UA and `#`
+    /// under en-US, and a separator under both.
+    fn type_shifted(h: &Harness, sc: u32) {
+        let shifted = poltertype_types::Modifiers {
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x2A, KeyDirection::Press, shifted);
+        h.key_mods(sc, KeyDirection::Press, shifted);
+        h.key_mods(sc, KeyDirection::Release, shifted);
+        h.key_mods(
+            0x2A,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+    }
+
+    /// Issue #52: `№` is `Shift+3`, which is not a letter in any
+    /// layout — so it never joins a word, never reaches the stash, and
+    /// the hotkey found nothing to switch. The key is known all the
+    /// same, and one character is exactly what the report asked for.
+    #[test]
+    fn the_hotkey_switches_a_separator_when_there_is_no_word() {
+        let h = Harness::start(60_000);
+        type_shifted(&h, 0x04);
+        h.settle();
+        assert!(
+            h.emitter.ops().is_empty(),
+            "a separator on its own decides nothing automatically: {:?}",
+            h.emitter.ops()
+        );
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        assert_eq!(
+            h.emitter.ops(),
+            vec![EmitOp::Backspaces(1), EmitOp::Keys(vec![0x04])],
+            "one character erased and the same key retyped under the other layout"
+        );
+    }
+
+    /// The same key after a word that has already been converted: the
+    /// stash is gone, the separator is not.
+    #[test]
+    fn the_hotkey_reaches_the_separator_typed_after_a_word() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        type_shifted(&h, 0x04);
+        h.settle();
+        let before = h.emitter.ops().len();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert_eq!(
+            h.emitter.ops()[before..],
+            [EmitOp::Backspaces(1), EmitOp::Keys(vec![0x04])],
+            "the caret is after the separator, not after the word: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The stash outlives an idle abandon on purpose — that is what
+    /// keeps the hotkey working after a pause (issue #44) — but the
+    /// buffer drops the word with it. A separator typed in between
+    /// therefore leaves nobody counting the characters between the
+    /// caret and that word, and switching it anyway spliced the
+    /// replacement one character too far right: `привет` + a pause +
+    /// `№` came back as `пghbdtn `. Measured on Cinnamon X11.
+    #[test]
+    fn a_separator_typed_after_an_idle_pause_protects_the_word_behind_it() {
+        let h = Harness::start(200);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let before = h.emitter.ops().len();
+        // Past the idle timeout: the buffer abandons the word, the
+        // stash outlives it.
+        std::thread::sleep(Duration::from_millis(400));
+        type_shifted(&h, 0x04);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert_eq!(
+            h.emitter.ops()[before..],
+            [EmitOp::Backspaces(1), EmitOp::Keys(vec![0x04])],
+            "the separator is switchable; the word behind it is not measurable: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// The fence. A separator that reads the same under both layouts
+    /// has nothing to switch, and retyping it would move the caret for
+    /// no reason — a space most of all, which is every layout's space.
+    #[test]
+    fn the_hotkey_leaves_a_separator_that_means_the_same_thing_alone() {
+        let h = Harness::start(60_000);
+        h.tap(SPACE);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert!(
+            h.emitter.ops().is_empty(),
+            "nothing to switch about a space: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// And Enter is never replayed: pressing it again submits the line
+    /// the user is looking at rather than typing a character.
+    #[test]
+    fn the_hotkey_never_replays_a_submission_key() {
+        let h = Harness::start(60_000);
+        h.tap(0x1C);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert!(
+            h.emitter.ops().is_empty(),
+            "Enter must not be retyped: {:?}",
+            h.emitter.ops()
+        );
+    }
+
     /// Issue #47: the force-switch chimed whatever the setting said.
     ///
     /// Every other path builds its `Correction` with
