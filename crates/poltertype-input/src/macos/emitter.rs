@@ -13,10 +13,10 @@ use tracing::debug;
 
 use super::codes::{
     FLAG_ALTERNATE, FLAG_COMMAND, FLAG_CONTROL, FLAG_SHIFT, KVK_COMMAND, KVK_CONTROL, KVK_DELETE,
-    KVK_OPTION, KVK_SHIFT,
+    KVK_OPTION, KVK_SHIFT, sc1_to_mac_keycode,
 };
 use super::consts::{EMITTER_TAG, K_CG_EVENT_SOURCE_USER_DATA};
-use crate::{InputError, KeyEmitter, Modifiers};
+use crate::{InputError, KeyEmitter, Modifiers, SwitchChord};
 
 /// Gap between the modifier releases and whatever we type next.
 ///
@@ -102,6 +102,49 @@ impl KeyEmitter for MacosEmitter {
                 std::thread::sleep(KEY_STEP);
             }
         }
+        Ok(())
+    }
+
+    fn send_chord(&self, chord: SwitchChord) -> Result<(), InputError> {
+        // The chord arrives in SC-1 space, like everything the engine
+        // says; the reverse table answers `None` for a key it cannot
+        // name, and pressing a *wrong* key with Cmd held is a real
+        // action in someone's application — so refuse, loudly.
+        let Some(kvk) = sc1_to_mac_keycode(chord.scancode) else {
+            return Err(InputError::Unsupported(format!(
+                "no Apple keycode for SC-1 {:#04x}",
+                chord.scancode
+            )));
+        };
+
+        let mut flags = 0u64;
+        for (on, bit) in [
+            (chord.ctrl, FLAG_CONTROL),
+            (chord.shift, FLAG_SHIFT),
+            (chord.alt, FLAG_ALTERNATE),
+            (chord.meta, FLAG_COMMAND),
+        ] {
+            if on {
+                flags |= bit;
+            }
+        }
+
+        // The modifiers travel as flags *on the key events* rather than
+        // as their own press/release pair. That is how macOS itself
+        // matches menu shortcuts — the receiver reads the event's
+        // flags, not the modifier keys' physical state — and it leaves
+        // nothing to get stuck: no down was posted, so no up is owed.
+        // `keyboard_event` has already stripped the hardware flags, so
+        // what the app sees is exactly the chord and not the chord plus
+        // whatever the user's fingers are doing.
+        let src = event_source()?;
+        for key_down in [true, false] {
+            let ev = keyboard_event(&src, CGKeyCode::from(kvk), key_down)?;
+            ev.set_flags(CGEventFlags::from_bits_truncate(flags));
+            ev.post(CGEventTapLocation::HID);
+            std::thread::sleep(KEY_STEP);
+        }
+        debug!(scancode = chord.scancode, kvk, flags, "posted macOS chord");
         Ok(())
     }
 
