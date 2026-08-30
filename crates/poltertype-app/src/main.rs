@@ -846,6 +846,7 @@ fn main() -> Result<()> {
                     // service still running through an update would be
                     // a process whose binary moved under it.
                     supervisor.stop_all();
+                    settings_proc::kill_settings_ui();
                     // The one safe moment: the user is done typing, the
                     // hook is down, and nothing we replace is in use. No
                     // relaunch — they asked for the app to go away.
@@ -863,6 +864,7 @@ fn main() -> Result<()> {
                             // started, and quitting anyway is what
                             // turned a failed update into a machine
                             // with no PolterType running on it.
+                            settings_proc::kill_settings_ui();
                             if apply_now(pending, true, &settings.snapshot().updates.local_signing_identity) {
                                 if let Some(mut listener) = input_listener.take() {
                                     listener.stop();

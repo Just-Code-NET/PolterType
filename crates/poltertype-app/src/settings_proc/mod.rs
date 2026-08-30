@@ -10,7 +10,7 @@ mod enums;
 mod exe;
 mod spawn;
 
-pub(crate) use spawn::{spawn_settings_ui, spawn_setup_ui};
+pub(crate) use spawn::{kill_settings_ui, spawn_settings_ui, spawn_setup_ui};
 
 #[cfg(test)]
 mod tests;
