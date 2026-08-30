@@ -38,14 +38,14 @@ fn the_installed_bundle_is_only_touched_once_a_replacement_exists() {
     let s = body(true);
     let copied = s.find("ditto").unwrap_or(usize::MAX);
     let removed = s
-        .find("rm -rf '/Applications/PolterType.app'.old")
+        .find("rm -rf '/Applications/PolterType.app'/Contents.old")
         .unwrap_or(0);
 
     assert!(copied < removed, "the app is deleted before it is replaced");
     // Moved aside, not deleted outright, so a swap that fails half way
     // can put back something that runs.
-    assert!(s.contains("mv '/Applications/PolterType.app' '/Applications/PolterType.app'.old"));
-    assert!(s.contains("mv '/Applications/PolterType.app'.old '/Applications/PolterType.app'"));
+    assert!(s.contains("mv '/Applications/PolterType.app'/Contents '/Applications/PolterType.app'/Contents.old"));
+    assert!(s.contains("mv '/Applications/PolterType.app'/Contents.old '/Applications/PolterType.app'/Contents"));
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn without_an_identity_the_stale_grants_are_dropped_after_the_swap() {
     assert!(s.contains("tccutil reset Accessibility \"$BID\""));
     assert!(s.contains("tccutil reset ListenEvent \"$BID\""));
     assert!(!s.contains("codesign --force"), "nothing to sign with");
-    let swap = s.find("mv \"$NEW\"").expect("swap present");
+    let swap = s.find("ditto \"$NEW/Contents\"").expect("swap present");
     let reset = s.find("tccutil reset").expect("reset present");
     assert!(swap < reset, "grants die only after the bundle changed");
     let guard = s.find("if [ \"$ok\" = 1 ]; then\n\tBID=").expect("ok guard");
@@ -102,7 +102,7 @@ fn with_an_identity_the_bundle_is_resigned_and_reset_is_conditional() {
         "reset must be gated on the signature transition"
     );
     let probe = s.find("SIGNED_SAME=0").expect("probe present");
-    let swap = s.find("mv \"$NEW\"").expect("swap present");
+    let swap = s.find("ditto \"$NEW/Contents\"").expect("swap present");
     assert!(probe < swap, "the old signature is read before the swap");
     // A failed codesign still clears the records — a bundle that
     // changed hash with no working signature must not keep dead grants.

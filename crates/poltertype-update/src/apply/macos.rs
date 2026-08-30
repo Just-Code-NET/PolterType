@@ -195,17 +195,22 @@ fn script_body(
          fi\n\
          rmdir \"$MNT\" 2>/dev/null || true\n\
          \n\
-         # The installed bundle is moved aside rather than deleted, so a\n\
-         # swap that fails half way can put back something that works\n\
-         # instead of leaving an empty /Applications entry.\n\
+         # The bundle directory itself is never moved or replaced — its\n\
+         # CONTENTS are. Swapping the whole .app (mv aside, mv new in)\n\
+         # cost the TCC grants on every update even under a stable\n\
+         # signature, while an in-place content change plus re-sign\n\
+         # keeps them — measured on macOS 26, 2026-08-31. The outgoing\n\
+         # Contents goes aside inside the bundle, for the same rollback\n\
+         # guarantee as before.\n\
          if [ \"$ok\" = 1 ]; then\n\
-         \trm -rf {bundle}.old\n\
-         \tmv {bundle} {bundle}.old\n\
-         \tif mv \"$NEW\" {bundle}; then\n\
-         \t\trm -rf {bundle}.old\n\
+         \trm -rf {bundle}/Contents.old\n\
+         \tmv {bundle}/Contents {bundle}/Contents.old\n\
+         \tif ditto \"$NEW/Contents\" {bundle}/Contents; then\n\
+         \t\trm -rf {bundle}/Contents.old \"$NEW\"\n\
          \t\txattr -dr com.apple.quarantine {bundle} || true\n\
          \telse\n\
-         \t\tmv {bundle}.old {bundle}\n\
+         \t\trm -rf {bundle}/Contents\n\
+         \t\tmv {bundle}/Contents.old {bundle}/Contents\n\
          \t\tok=0\n\
          \tfi\n\
          else\n\
