@@ -1,10 +1,12 @@
-//! Tray icon rendering: a 16×16 RGBA icon showing a 2-letter layout
-//! code on a tinted background.
+//! Tray icon rendering: a 2-letter layout code on a tinted background,
+//! or — in `mono` — on nothing at all.
 //!
-//! The font is a built-in 4×6-pixel bitmap covering A–Z and 0–9 — ~340
-//! bytes, small enough to embed inline and big enough to read at 16×16.
-//! No font crate and no `tiny-skia`, so the icon can be redrawn on
-//! every layout change without GPU round-trips.
+//! Everything is drawn on a 16-unit design grid and emitted at
+//! [`SCALE`]× that, so a panel scales the icon *down* rather than up;
+//! an upscaled 16×16 bitmap is what issue #54 photographed. The font is
+//! a built-in 4×6-unit bitmap covering A–Z and 0–9 — ~340 bytes, small
+//! enough to embed inline. No font crate and no `tiny-skia`, so the
+//! icon can be redrawn on every layout change without GPU round-trips.
 
 mod consts;
 mod render;

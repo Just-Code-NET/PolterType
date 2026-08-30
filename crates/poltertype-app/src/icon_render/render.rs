@@ -1,4 +1,5 @@
-//! 16×16 tray-icon rasteriser: layout code on colored square.
+//! Tray-icon rasteriser: layout code on a coloured square, or on
+//! nothing at all.
 
 use super::*;
 use anyhow::{Context, Result};
@@ -6,8 +7,43 @@ use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
 use tray_icon::Icon;
 
+/// Which way round a `mono` icon has to read.
+///
+/// Sampled once, from the desktop's own dark/light preference — a
+/// panel is free to disagree, which is what the halo is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelPolarity {
+    Dark,
+    Light,
+}
+
+impl PanelPolarity {
+    pub fn from_prefers_dark(dark: bool) -> Self {
+        if dark { Self::Dark } else { Self::Light }
+    }
+
+    fn letters(self) -> [u8; 4] {
+        match self {
+            Self::Dark => MONO_ON_DARK,
+            Self::Light => MONO_ON_LIGHT,
+        }
+    }
+
+    fn halo(self) -> [u8; 4] {
+        match self {
+            Self::Dark => MONO_HALO_ON_DARK,
+            Self::Light => MONO_HALO_ON_LIGHT,
+        }
+    }
+}
+
 /// Build a tray icon for `layout`: its two-letter short code over a
 /// colour derived from the id, grey with a pause mark when `paused`.
+///
+/// `mono` is the exception and draws no background at all — see
+/// [`TRANSPARENT`]. Pausing still greys a `color` badge; on `mono`,
+/// where there is nothing to grey, the pause bars are the whole of the
+/// signal.
 ///
 /// A `Hidden` style still renders one. The icon is built and then
 /// hidden, so turning it back on is a config change rather than a
@@ -17,17 +53,23 @@ pub fn for_layout(
     paused: bool,
     waiting: bool,
     style: TrayIconStyle,
+    polarity: PanelPolarity,
 ) -> Result<Icon> {
     let code = layout_short_code(layout);
-    let bg = match (paused, style) {
-        (true, _) => PAUSED_BG,
-        (false, TrayIconStyle::Color) => color_for(layout),
-        (false, _) => MONO_BG,
+    let mut buf = if style == TrayIconStyle::Color {
+        let bg = if paused { PAUSED_BG } else { color_for(layout) };
+        let mut buf = render(code.as_bytes(), bg);
+        if paused {
+            draw_pause_indicator(&mut buf, glyph_colour(bg));
+        }
+        buf
+    } else {
+        let mut buf = render_bare(code.as_bytes(), polarity);
+        if paused {
+            draw_pause_indicator(&mut buf, polarity.letters());
+        }
+        buf
     };
-    let mut buf = render(code.as_bytes(), bg);
-    if paused {
-        draw_pause_indicator(&mut buf);
-    }
     if waiting {
         draw_waiting_badge(&mut buf);
     }
@@ -88,23 +130,50 @@ pub(crate) fn color_for(id: &LayoutId) -> [u8; 4] {
 pub(crate) fn render(text: &[u8], bg: [u8; 4]) -> Vec<u8> {
     let mut buf = vec![0u8; (W * H * 4) as usize];
     fill(&mut buf, bg);
+    let fg = glyph_colour(bg);
+    let (g0, g1) = two_glyphs(text);
+    draw_glyph(&mut buf, g0, GLYPH_X, GLYPH_Y, fg);
+    draw_glyph(&mut buf, g1, GLYPH_X + 5, GLYPH_Y, fg);
+    buf
+}
 
-    let fg = if luminance(bg) > 0.55 {
+/// The same two letters with nothing behind them — the `mono` style.
+///
+/// Every glyph pixel is haloed first, in the other polarity, so the
+/// letters keep an edge on a panel whose colour we guessed wrong.
+pub(crate) fn render_bare(text: &[u8], polarity: PanelPolarity) -> Vec<u8> {
+    let mut buf = vec![0u8; (W * H * 4) as usize];
+    fill(&mut buf, TRANSPARENT);
+    let (g0, g1) = two_glyphs(text);
+    for (ch, x) in [(g0, GLYPH_X), (g1, GLYPH_X + 5)] {
+        draw_glyph_halo(&mut buf, ch, x, GLYPH_Y, polarity.halo());
+    }
+    for (ch, x) in [(g0, GLYPH_X), (g1, GLYPH_X + 5)] {
+        draw_glyph(&mut buf, ch, x, GLYPH_Y, polarity.letters());
+    }
+    buf
+}
+
+/// Centred on the design grid: content is 4 + 1 + 4 units wide, so
+/// `(16 - 9) / 2` across; the glyphs are 6 tall, so `(16 - 6) / 2` down.
+const GLYPH_X: i32 = 3;
+const GLYPH_Y: i32 = 5;
+
+fn two_glyphs(text: &[u8]) -> (u8, u8) {
+    let chars: Vec<u8> = text.iter().take(2).copied().collect();
+    (
+        chars.first().copied().unwrap_or(b'?'),
+        chars.get(1).copied().unwrap_or(b'?'),
+    )
+}
+
+/// Which letter colour reads on `bg`.
+pub(crate) fn glyph_colour(bg: [u8; 4]) -> [u8; 4] {
+    if luminance(bg) > 0.55 {
         [0x10, 0x10, 0x10, 0xFF]
     } else {
         [0xFF, 0xFF, 0xFF, 0xFF]
-    };
-
-    let chars: Vec<u8> = text.iter().take(2).copied().collect();
-    let g0 = chars.first().copied().unwrap_or(b'?');
-    let g1 = chars.get(1).copied().unwrap_or(b'?');
-
-    // Centred: total content width = 4 + 1 + 4 = 9 px → x_start = (16-9)/2 = 3 px (rounded).
-    // Vertical: 6 px tall → y_start = (16-6)/2 = 5 px.
-    draw_glyph(&mut buf, g0, 3, 5, fg);
-    draw_glyph(&mut buf, g1, 3 + 4 + 1, 5, fg);
-
-    buf
+    }
 }
 
 pub(crate) fn fill(buf: &mut [u8], rgba: [u8; 4]) {
@@ -120,21 +189,30 @@ pub(crate) fn luminance(rgba: [u8; 4]) -> f32 {
     0.299 * r + 0.587 * g + 0.114 * b
 }
 
+/// Set one **design unit**, which is [`SCALE`]² real pixels.
+///
+/// Every caller works in the 16-unit grid the glyph font and the badges
+/// were drawn on; this is the only place that knows the icon is bigger
+/// than that.
 pub(crate) fn put_pixel(buf: &mut [u8], x: i32, y: i32, rgba: [u8; 4]) {
-    if x < 0 || y < 0 || x >= W as i32 || y >= H as i32 {
+    if x < 0 || y < 0 || x >= UNITS as i32 || y >= UNITS as i32 {
         return;
     }
-    let i = ((y as u32 * W + x as u32) * 4) as usize;
-    buf[i..i + 4].copy_from_slice(&rgba);
+    let (x0, y0) = (x as u32 * SCALE, y as u32 * SCALE);
+    for row in y0..y0 + SCALE {
+        let start = ((row * W + x0) * 4) as usize;
+        for px in buf[start..start + (SCALE * 4) as usize].chunks_exact_mut(4) {
+            px.copy_from_slice(&rgba);
+        }
+    }
 }
 
 /// Two thin vertical bars in the bottom-right corner — the canonical
 /// "paused" glyph squashed into 3x4 px so it doesn't crowd the
 /// 2-letter layout code.
-pub(crate) fn draw_pause_indicator(buf: &mut [u8]) {
-    let bar = [0xFF, 0xFF, 0xFF, 0xFF];
-    let x0 = (W as i32) - 4;
-    let y0 = (H as i32) - 5;
+pub(crate) fn draw_pause_indicator(buf: &mut [u8], bar: [u8; 4]) {
+    let x0 = (UNITS as i32) - 4;
+    let y0 = (UNITS as i32) - 5;
     for dy in 0..4i32 {
         put_pixel(buf, x0, y0 + dy, bar);
         put_pixel(buf, x0 + 2, y0 + dy, bar);
@@ -151,7 +229,7 @@ pub(crate) fn draw_pause_indicator(buf: &mut [u8]) {
 pub(crate) fn draw_waiting_badge(buf: &mut [u8]) {
     let dot = [0xFF, 0x3B, 0x30, 0xFF];
     let ring = [0xFF, 0xFF, 0xFF, 0xFF];
-    let cx = (W as i32) - 4;
+    let cx = (UNITS as i32) - 4;
     // Rows 0..4. The glyphs start at row 5, and the ring has to clear
     // them: at row 3 its bottom edge sat on the second glyph's top-right
     // corner, which on a two-letter code reads as part of the letter.
@@ -167,6 +245,25 @@ pub(crate) fn draw_waiting_badge(buf: &mut [u8]) {
     for dy in -1..=1i32 {
         for dx in -1..=1i32 {
             put_pixel(buf, cx + dx, cy + dy, dot);
+        }
+    }
+}
+
+/// One design unit around every pixel of the glyph, orthogonally.
+///
+/// Drawn before the letter itself, so the letter always sits on top of
+/// its own halo rather than beside it.
+pub(crate) fn draw_glyph_halo(buf: &mut [u8], ch: u8, x: i32, y: i32, halo: [u8; 4]) {
+    let bits = glyph_bits(ch);
+    for (row, &row_bits) in bits.iter().enumerate() {
+        for col in 0..4i32 {
+            if row_bits & (1 << (3 - col)) == 0 {
+                continue;
+            }
+            let (gx, gy) = (x + col, y + row as i32);
+            for (dx, dy) in [(0, -1), (0, 1), (-1, 0), (1, 0)] {
+                put_pixel(buf, gx + dx, gy + dy, halo);
+            }
         }
     }
 }

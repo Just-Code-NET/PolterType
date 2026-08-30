@@ -42,7 +42,7 @@ pub(crate) fn tooltip_for(
 pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayState) {
     let waiting = state.attention > 0;
     let icon_result = match state.layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, state.paused, waiting, state.style),
+        Some(l) => icon_render::for_layout(l, state.paused, waiting, state.style, state.polarity),
         None => icon_render::unknown(waiting),
     };
     match icon_result {

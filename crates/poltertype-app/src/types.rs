@@ -26,6 +26,10 @@ pub(crate) struct TrayState {
     /// recovery is fixing permissions and relaunching, so this never
     /// flips back at runtime.
     pub(crate) input_alert: bool,
+    /// Which way round a `mono` icon has to read. Sampled once at
+    /// startup: the probe shells out to a CLI tool, and the icon is
+    /// redrawn on every layout change.
+    pub(crate) polarity: crate::icon_render::PanelPolarity,
     /// How many things a plug-in is waiting on the user for — the count
     /// behind the mark on the tray icon. Zero draws nothing at all: the
     /// icon's job is to say what layout is in force.

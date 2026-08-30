@@ -13,7 +13,9 @@ pub use enums::Pane;
 mod helpers;
 mod plugin_pane;
 mod state;
-mod system_theme;
+// Also the tray's: a `mono` icon has to be drawn in the polarity the
+// desktop prefers, and this is the probe that knows it.
+pub(crate) mod system_theme;
 mod theme;
 mod update;
 mod view;

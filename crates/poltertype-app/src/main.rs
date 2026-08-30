@@ -600,8 +600,15 @@ fn main() -> Result<()> {
     // Initial icon: query the OS for the current layout so we don't
     // flash a "??" before the first LayoutChanged event arrives.
     let initial_layout: Option<LayoutId> = layout_switcher.current().ok();
+    // Sampled once: the probe shells out, and the icon is rebuilt on
+    // every layout change. A desktop whose theme flips mid-session gets
+    // the right letters at the next restart — and the halo in the
+    // meantime.
+    let polarity = icon_render::PanelPolarity::from_prefers_dark(
+        crate::settings_ui::system_theme::system_prefers_dark(),
+    );
     let initial_icon = match initial_layout.as_ref() {
-        Some(l) => icon_render::for_layout(l, start_paused, false, tray_style)?,
+        Some(l) => icon_render::for_layout(l, start_paused, false, tray_style, polarity)?,
         None => icon_render::unknown(false)?,
     };
 
@@ -734,6 +741,7 @@ fn main() -> Result<()> {
         input_alert: input_alert.is_some(),
         attention: 0,
         style: tray_style,
+        polarity,
     };
     let mut deferred = DeferredWords::new();
     // The rows currently in the submenu, so a click can be turned back
