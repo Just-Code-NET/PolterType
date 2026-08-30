@@ -70,13 +70,29 @@ pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
             },
             SetupStep {
                 title: "Grant Input Monitoring".to_owned(),
-                detail: "System Settings → Privacy & Security → Input Monitoring, then switch \
-                         PolterType on. Separate from Accessibility and easy to miss — with \
-                         only one of the two granted the app starts but never sees a \
-                         keystroke. If PolterType is not in the list at all, press \u{201c}+\u{201d} \
-                         under the list and add it from Applications."
-                    .to_owned(),
-                action: Some(step_action(listen, Permission::InputMonitoring)),
+                // On current macOS the Accessibility grant covers this
+                // too — measured on 26: one system prompt, and both
+                // probes answer granted. Two Ask buttons for one
+                // decision read as two decisions, so the button shows
+                // only when Accessibility is done and this is somehow
+                // still not — the older-macOS case this project also
+                // supports.
+                detail: if listen == StepState::Done {
+                    "Granted — on current macOS this comes with the Accessibility grant above."
+                        .to_owned()
+                } else if accessibility == StepState::Done {
+                    "Usually granted together with Accessibility, but this system still says \
+                     no. Use the button; if PolterType is not in the list at all, press \
+                     \u{201c}+\u{201d} under the list and add it from Applications."
+                        .to_owned()
+                } else {
+                    "Covered by the Accessibility grant above on current macOS — do that one \
+                     first and this row turns Ready by itself. A separate switch exists only \
+                     on older systems."
+                        .to_owned()
+                },
+                action: (accessibility == StepState::Done && listen != StepState::Done)
+                    .then(|| step_action(listen, Permission::InputMonitoring)),
                 state: listen,
             },
             SetupStep {
