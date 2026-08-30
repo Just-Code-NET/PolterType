@@ -19,9 +19,13 @@ use crossbeam_channel::Sender;
 use tracing::{debug, info, trace};
 
 use super::codes::{flags_changed_direction, mac_keycode_to_sc1};
-use super::consts::{EMITTER_TAG, K_CG_EVENT_SOURCE_USER_DATA, K_CG_KEYBOARD_EVENT_KEYCODE};
+use super::consts::{
+    EMITTER_TAG, K_CG_EVENT_SOURCE_USER_DATA, K_CG_KEYBOARD_EVENT_KEYCODE,
+    K_CG_MOUSE_EVENT_BUTTON_NUMBER,
+};
 use super::gate::MacosGate;
 use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
+use poltertype_types::SC_POINTER_BUTTON;
 
 // ─── Accessibility permission prompt ─────────────────────────────────
 //
@@ -129,10 +133,39 @@ impl InputListener for MacosListener {
 /// the engine has no use for. Runs inside the tap callback, which must
 /// do nothing but this and a `try_send` — see [`TAP_PORT`].
 fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
+    let flags = event.get_flags();
+
+    // A click usually moves the caret — same contract as the X11 and
+    // Wayland listeners, which report every caret-moving button as the
+    // pointer marker so the engine abandons a word the user has
+    // clicked away from (and drops the switch-last stash with it —
+    // without this, a Mac kept the stash for its full TTL and the
+    // hotkey kept correcting a word the caret left a click ago).
+    // Down only, releases are noise; the scroll wheel is a different
+    // event type here and stays untapped, so no filtering is needed.
+    if matches!(
+        ev_type,
+        CGEventType::LeftMouseDown | CGEventType::RightMouseDown | CGEventType::OtherMouseDown
+    ) {
+        return Some(KeyEvent {
+            vk: event.get_integer_value_field(K_CG_MOUSE_EVENT_BUTTON_NUMBER) as u32,
+            scancode: SC_POINTER_BUTTON,
+            direction: KeyDirection::Press,
+            modifiers: Modifiers {
+                shift: flags.contains(CGEventFlags::CGEventFlagShift),
+                control: flags.contains(CGEventFlags::CGEventFlagControl),
+                alt: flags.contains(CGEventFlags::CGEventFlagAlternate),
+                meta: flags.contains(CGEventFlags::CGEventFlagCommand),
+                caps: flags.contains(CGEventFlags::CGEventFlagAlphaShift),
+            },
+            injected: event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA) != 0,
+            timestamp_ms: 0,
+        });
+    }
+
     // `CGEventField` is a `u32` type-alias in core-graphics 0.24, so the
     // documented Apple constants go straight through.
     let vk = event.get_integer_value_field(K_CG_KEYBOARD_EVENT_KEYCODE) as u32;
-    let flags = event.get_flags();
 
     let direction = match ev_type {
         CGEventType::KeyDown => KeyDirection::Press,
@@ -259,6 +292,13 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
             CGEventType::KeyDown,
             CGEventType::KeyUp,
             CGEventType::FlagsChanged,
+            // Caret-moving clicks, translated to the pointer marker in
+            // `to_key_event`. Down only — releases are noise — and the
+            // scroll wheel is deliberately not tapped: scrolling moves
+            // no caret, same reasoning as X11's button filter.
+            CGEventType::LeftMouseDown,
+            CGEventType::RightMouseDown,
+            CGEventType::OtherMouseDown,
         ],
         callback,
     ) {

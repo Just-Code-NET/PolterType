@@ -18,3 +18,7 @@ pub(super) const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 /// "real" input: the backspace burst poisons the word buffer right
 /// after a correction, and every second word gets skipped as tainted.
 pub(super) const EMITTER_TAG: i64 = 0x504F_4C54; // "POLT"
+
+/// `kCGMouseEventButtonNumber` — which button a mouse event is about
+/// (0 = left, 1 = right, 2+ = the extras).
+pub(super) const K_CG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 23;
