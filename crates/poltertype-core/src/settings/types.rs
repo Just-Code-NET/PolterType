@@ -183,6 +183,14 @@ pub struct EngineSettings {
     /// deliberately. The manual hotkey still works, since `last_word` is
     /// stashed before any filter. Default: on.
     pub suppress_for_all_caps: bool,
+    /// Hold the user's keystrokes back while a correction burst is on
+    /// the wire, and replay them after it — the deterministic guard
+    /// against a letter typed mid-correction landing inside the
+    /// corrected word. Costs a small input delay right after each
+    /// correction. Default: on in this fork. `POLTERTYPE_HOLD_KEYS`
+    /// (`1`/`0`) still overrides for emergencies; the gate is built at
+    /// startup, so changing this needs a restart.
+    pub hold_keys: bool,
 }
 
 impl Default for EngineSettings {
@@ -194,6 +202,7 @@ impl Default for EngineSettings {
             idle_timeout_ms: 2000,
             suppress_in_identifiers: true,
             suppress_for_all_caps: true,
+            hold_keys: true,
         }
     }
 }

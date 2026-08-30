@@ -320,7 +320,7 @@ fn main() -> Result<()> {
     // Created before the listener because on Linux/evdev the two share
     // the thread that owns the devices. Whether it can do anything is
     // decided once the listener starts — see `KeyGate::available`.
-    let key_gate = create_key_gate();
+    let key_gate = create_key_gate(settings.snapshot().engine.hold_keys);
 
     let audio = Arc::new(AudioPlayer::new());
     audio.refresh_from(&settings);
