@@ -1,4 +1,4 @@
-# Known gaps (as of v0.26.0)
+# Known gaps (as of v0.27.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,35 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.27.0 pass actually checked (2026-08-30).** One report
+(#51), asking for a manual-only conversion mode and saying the pause is
+not one — that pausing auto-switch leaves the manual hotkey with
+nothing to convert. Nothing in the correction path was changed, so what
+this pass owed was a measurement of the claim rather than of a fix.
+
+Measured in the guest on **Cinnamon X11**, the session the report came
+from, with `manual-mode-probe.py` — and with the **default**
+`Ctrl+Shift+Backspace`, not the modifier-only chord the other probes
+bind, because the default is what a reporter has, and it is the one
+chord an OS grab owns whose key the engine would otherwise read as a
+word-delete.
+Every measured line is read against a reference line of the same word
+ended with Enter.
+
+| the run | what converted |
+|---|---|
+| auto-switch on | the boundary converted it; the chord then put it back |
+| `paused = true` in `config.toml` | the chord converted a finished word, an unfinished one, and the second word of a line |
+| paused at runtime by `Ctrl+Shift+Space` | the same three, and nothing converted on its own |
+
+So the mode already existed and worked here; what was missing was a
+name for it, which is what 0.27.0 adds to the General pane. **The report
+is not reproduced, and that is a reading with a limit**: one desktop,
+one distribution, a stock configuration and a chord the app succeeded in
+grabbing. A chord some other application already owns is registered by
+nobody, and PolterType says so only in its log — that gap is real and
+open, listed under hotkeys below.
 
 **What the 0.26.0 pass actually checked (2026-08-30).** Two reports,
 each about something on a screen, so each was checked by looking at
@@ -814,6 +843,20 @@ move too fast to be true.
   and the gesture stays live for the next press. What this costs is
   real and is the design: **lean on the key for more than five seconds
   and that press does nothing at all.**
+
+- **A hotkey another application already owns is silently dead.** The
+  OS-level grab is taken once at startup and again on every config
+  reload; when the desktop refuses it — because something else holds
+  that chord — the app writes one `could not register hotkey` line to
+  its log and carries on. Nothing else says so: the Settings window
+  renders the chord exactly as it would if it had been taken, the
+  Setup pane probes permissions rather than hotkeys, and the tray shows
+  no alert. Pressing the chord then does nothing at all, which is
+  indistinguishable from the gesture being broken — and on the
+  automatic path nobody notices, because auto-switch is doing the same
+  job. Rebinding in Settings → Hotkeys is the cure once you know; the
+  gap is that nothing tells you. Not measured against a real conflict,
+  and no platform is exempt.
 
 - **A shortcut that edits the line without a backwards deletion we can
   see still leaves the force-switch declining the next word** (#44). A

@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.26.0**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.27.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -193,6 +193,14 @@ the Settings window:
 > `Ctrl+Shift+Space` are macOS's own "previous / next input source"
 > shortcuts, so claiming them globally would take your layout
 > switching away — the very thing PolterType is there to complement.
+
+### Manual-only mode
+
+If you would rather fix wrong-layout words yourself, set **Conversion**
+to *Manual only* on the General pane — the same switch as the tray's
+**Pause auto-switch**, and `[general] paused` in `config.toml`.
+PolterType goes on following what you type and corrects nothing on its
+own; the force-switch key converts the last word when you ask it to.
 
 ### Converting a selection
 

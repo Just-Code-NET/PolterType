@@ -6,6 +6,36 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-08-30 — Manual-only mode is the pause, under its own name
+
+Issue #51 asked for a manual-only conversion mode: keep tracking the
+last word, correct nothing automatically, convert on the manual hotkey.
+That is exactly what `[general].paused` has done since 0.22.0 — pause
+stops the engine *deciding*, not the engine *watching* — and it was
+measured doing it, on the reporter's own desktop, before anything was
+written.
+
+So no second key. `paused` is one piece of state and a `mode` beside it
+would be two names for it, with a migration and a rule for which wins.
+What was missing is that nothing in the app ever called it a mode: the
+tray says **Pause auto-switch**, which reads as switching the app off,
+and the Settings window did not mention it at all. The General pane now
+opens on a Conversion choice — *Automatic* / *Manual only* — writing
+that same flag, and its hint names the tray item so the two are visibly
+one switch.
+
+**Cost accepted: the window may now write a field the tray owns.**
+`with_runtime_state` folds the on-disk `paused` back over whatever the
+window staged, so a Save cannot resume an app paused since the window
+opened (issue #46). The chips are the one exception, and only after the
+user has clicked them — a flag the pane sets, not a value it read.
+
+**Alternative rejected: a separate `[general].mode` key.** It would let
+`mode = "manual"` and `paused = false` disagree, and the tray would have
+to pick a winner every time either changed.
+
+---
+
 ## 2026-08-30 — The brand mark is an image, not a canvas
 
 The mark in the Settings window was an `iced::canvas` program: the
