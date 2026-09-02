@@ -1,5 +1,6 @@
 //! Tray icon rendering: a 2-letter layout code on a tinted background,
-//! or — in `mono` — on nothing at all.
+//! on nothing at all in `mono`, or the layout's country flag in
+//! `flag`.
 //!
 //! Everything is drawn on a 16-unit design grid and emitted at
 //! [`SCALE`]× that, so a panel scales the icon *down* rather than up;
@@ -9,6 +10,7 @@
 //! icon can be redrawn on every layout change without GPU round-trips.
 
 mod consts;
+pub(crate) mod flag;
 mod render;
 
 pub(crate) use consts::*;

@@ -52,6 +52,7 @@ fn icon_is_buildable_for_known_layouts() {
     for style in [
         TrayIconStyle::Color,
         TrayIconStyle::Mono,
+        TrayIconStyle::Flag,
         TrayIconStyle::Hidden,
     ] {
         assert!(
@@ -124,6 +125,26 @@ fn mono_letters_are_haloed_in_the_other_polarity() {
     }
     assert!(letters > 0, "the letters are drawn");
     assert!(halo > 0, "and so is an edge around them");
+}
+
+/// A layout whose country has no drawing must still name itself. The
+/// fallback is the `color` badge rather than an empty icon or a
+/// placeholder flag — nothing about "flag" was a request to stop
+/// saying which layout is in force.
+#[test]
+fn flag_falls_back_to_the_lettered_badge() {
+    let opaque = LayoutId::from("hkl:00000409");
+    assert!(flag::render(&opaque, false, PanelPolarity::Dark).is_none());
+    assert!(
+        for_layout(
+            &opaque,
+            false,
+            false,
+            TrayIconStyle::Flag,
+            PanelPolarity::Dark
+        )
+        .is_ok()
+    );
 }
 
 #[test]

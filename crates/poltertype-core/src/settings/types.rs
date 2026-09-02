@@ -123,9 +123,11 @@ pub struct GeneralSettings {
     /// posture as `ui_language`.
     pub ui_theme: String,
     /// How the tray icon is drawn: `"color"` (a hue per layout),
-    /// `"mono"` (one neutral badge) or `"hidden"` (no tray icon and no
-    /// tray menu — the Settings window still opens with
-    /// `poltertype --settings`). Read through
+    /// `"mono"` (one neutral badge), `"flag"` (the layout's country,
+    /// falling back to `"color"` for a country the app has no drawing
+    /// for) or `"hidden"` (no tray icon and no tray menu — the
+    /// Settings window still opens with `poltertype --settings`).
+    /// Read through
     /// [`TrayIconStyle`](crate::settings::TrayIconStyle), which falls
     /// back to `"color"` on anything else.
     pub tray_icon: String,

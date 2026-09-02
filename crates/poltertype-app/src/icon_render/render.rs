@@ -45,6 +45,10 @@ impl PanelPolarity {
 /// where there is nothing to grey, the pause bars are the whole of the
 /// signal.
 ///
+/// `flag` draws the layout's country instead of naming it, and falls
+/// back to the `color` badge for a country [`flag`](super::flag) has
+/// no drawing for.
+///
 /// A `Hidden` style still renders one. The icon is built and then
 /// hidden, so turning it back on is a config change rather than a
 /// restart.
@@ -55,25 +59,42 @@ pub fn for_layout(
     style: TrayIconStyle,
     polarity: PanelPolarity,
 ) -> Result<Icon> {
-    let code = layout_short_code(layout);
-    let mut buf = if style == TrayIconStyle::Color {
-        let bg = if paused { PAUSED_BG } else { color_for(layout) };
-        let mut buf = render(code.as_bytes(), bg);
-        if paused {
-            draw_pause_indicator(&mut buf, glyph_colour(bg));
-        }
-        buf
-    } else {
-        let mut buf = render_bare(code.as_bytes(), polarity);
-        if paused {
-            draw_pause_indicator(&mut buf, polarity.letters());
-        }
-        buf
+    let mut buf = match style {
+        TrayIconStyle::Flag => match flag::render(layout, paused, polarity) {
+            Some(mut buf) => {
+                // The flag is greyed rather than replaced, so the bars
+                // take the colour they take on any greyed badge.
+                if paused {
+                    draw_pause_indicator(&mut buf, glyph_colour(PAUSED_BG));
+                }
+                buf
+            }
+            None => colour_badge(layout, paused),
+        },
+        TrayIconStyle::Color => colour_badge(layout, paused),
+        TrayIconStyle::Mono | TrayIconStyle::Hidden => mono_badge(layout, paused, polarity),
     };
     if waiting {
         draw_waiting_badge(&mut buf);
     }
     Icon::from_rgba(buf, W, H).context("build tray icon")
+}
+
+fn colour_badge(layout: &LayoutId, paused: bool) -> Vec<u8> {
+    let bg = if paused { PAUSED_BG } else { color_for(layout) };
+    let mut buf = render(layout_short_code(layout).as_bytes(), bg);
+    if paused {
+        draw_pause_indicator(&mut buf, glyph_colour(bg));
+    }
+    buf
+}
+
+fn mono_badge(layout: &LayoutId, paused: bool, polarity: PanelPolarity) -> Vec<u8> {
+    let mut buf = render_bare(layout_short_code(layout).as_bytes(), polarity);
+    if paused {
+        draw_pause_indicator(&mut buf, polarity.letters());
+    }
+    buf
 }
 
 /// Generic boot-time icon for "no layout known yet".

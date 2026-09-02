@@ -255,6 +255,7 @@ fn tray_icon_style_round_trips_and_tolerates_garbage() {
     for style in [
         TrayIconStyle::Color,
         TrayIconStyle::Mono,
+        TrayIconStyle::Flag,
         TrayIconStyle::Hidden,
     ] {
         assert_eq!(TrayIconStyle::from_config(style.config_value()), style);

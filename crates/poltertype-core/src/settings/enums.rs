@@ -29,6 +29,8 @@ pub enum TrayIconStyle {
     Color,
     /// One neutral badge, whatever the layout.
     Mono,
+    /// The layout's country flag, where the app has a drawing for it.
+    Flag,
     /// No tray icon, and so no tray menu.
     Hidden,
 }
@@ -40,6 +42,7 @@ impl TrayIconStyle {
     pub fn from_config(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
             "mono" => Self::Mono,
+            "flag" => Self::Flag,
             "hidden" => Self::Hidden,
             _ => Self::Color,
         }
@@ -50,6 +53,7 @@ impl TrayIconStyle {
         match self {
             Self::Color => "color",
             Self::Mono => "mono",
+            Self::Flag => "flag",
             Self::Hidden => "hidden",
         }
     }

@@ -4,6 +4,28 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **The tray icon can be the layout's flag.** `[general] tray_icon`
+  takes a fourth value, `flag`, and the General pane a fourth chip: the
+  icon becomes the country of the layout in force — Ukraine, Spain,
+  Japan — instead of its two-letter code. The flags are drawn by the
+  same arithmetic that draws the lettered badge, so nothing new is
+  downloaded, embedded or rasterised by a font.
+
+  Thirty-nine countries have a drawing. A layout whose country has none
+  — or that names no country at all, like Windows' opaque layout ids —
+  keeps the lettered `color` badge, so the icon never stops saying
+  which layout is in force. Countries whose flags differ only by an
+  emblem too small to draw at this size (Slovakia, Slovenia, Serbia,
+  Croatia, Mexico) are deliberately left to the letters rather than
+  drawn as a flag that would be wrong.
+
+  Pausing dims the flag rather than flattening it, so the bands, cross
+  or disc still name the country while the icon reads as inactive.
+
 ## [0.29.0] — one window, and an icon that fits the panel
 
 ### Changed

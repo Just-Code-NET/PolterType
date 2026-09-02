@@ -1028,6 +1028,7 @@ impl SettingsApp {
         let mut tray_row = Row::new().spacing(6);
         for (choice, label) in [
             (TrayIconStyle::Color, tr("general.tray_color", "Colour")),
+            (TrayIconStyle::Flag, tr("general.tray_flag", "Flag")),
             (TrayIconStyle::Mono, tr("general.tray_mono", "Mono")),
             (TrayIconStyle::Hidden, tr("general.tray_hidden", "Hidden")),
         ] {
@@ -1062,9 +1063,10 @@ impl SettingsApp {
             .push(
                 Text::new(tr(
                     "general.tray_icon_hint",
-                    "Colour gives every layout its own; Mono keeps one neutral badge. \
-                     Hidden removes the icon and its menu — reopen this window by \
-                     running poltertype --settings.",
+                    "Colour gives every layout its own; Flag draws its country, and \
+                     falls back to Colour where there is no drawing for one; Mono \
+                     keeps one neutral badge. Hidden removes the icon and its menu — \
+                     reopen this window by running poltertype --settings.",
                 ))
                 .size(11)
                 .color(b.muted),
