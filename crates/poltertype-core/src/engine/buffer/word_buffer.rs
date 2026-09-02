@@ -24,6 +24,20 @@ pub struct WordBuffer {
     /// Set when the current word's tracking is known-unreliable;
     /// cleared at the next boundary. See module docs.
     poisoned: bool,
+    /// A word the buffer stopped recording is still on screen
+    /// immediately left of the caret, so what gets typed next
+    /// continues it. Converting only the part we watched would split
+    /// one on-screen word across two layouts — which is why the
+    /// manual hotkey refuses while this stands.
+    ///
+    /// Narrower than `poisoned`, which the same interruption also
+    /// sets and which nothing but a boundary clears. A gesture that
+    /// moves the caret *away* from that remainder ends it: the next
+    /// word then starts under the caret and every key of it is ours,
+    /// and refusing those left the hotkey dead after an arrow key
+    /// (issue #57), and after clicking away from a window and back
+    /// (issue #56).
+    remainder_at_caret: bool,
     /// The user settled this word's layout by hand — the force-switch
     /// hotkey. Its completion must not get a second opinion, but unlike
     /// `poisoned` the caret is exactly where we typed it, so the word
@@ -49,6 +63,7 @@ impl Default for WordBuffer {
             lead: None,
             prev_lead: None,
             poisoned: false,
+            remainder_at_caret: false,
             settled: false,
             // Fresh tracking starts trusted: nothing is left of the
             // caret that we could be splitting.
@@ -105,10 +120,19 @@ impl WordBuffer {
         self.poisoned
     }
 
+    /// See [`Self::remainder_at_caret`] — the manual hotkey's
+    /// question, where [`Self::poisoned`] is the automatic decision's.
+    pub fn remainder_at_caret(&self) -> bool {
+        self.remainder_at_caret
+    }
+
     /// Explicitly taint the in-progress word — the engine's route for
     /// keystrokes racing a correction that it could not attribute.
+    /// Those keystrokes are on screen at the caret and are seeded into
+    /// the buffer unplaced, which is the same hazard.
     pub fn poison(&mut self) {
         self.poisoned = true;
+        self.remainder_at_caret = true;
     }
 
     /// The user has just placed this word's layout by hand. Skips the
@@ -138,6 +162,9 @@ impl WordBuffer {
     pub fn abandon(&mut self) {
         if !self.keys.is_empty() {
             self.poisoned = true;
+            // Its head stays on screen at the caret, so the next keys
+            // extend it rather than start a word of their own.
+            self.remainder_at_caret = true;
         }
         self.settled = false;
         self.keys.clear();
@@ -160,6 +187,7 @@ impl WordBuffer {
     pub fn delete_word_left(&mut self) {
         self.abandon();
         self.poisoned = false;
+        self.remainder_at_caret = false;
         self.mark_context_unclean();
     }
 
@@ -222,6 +250,7 @@ impl WordBuffer {
                 // observed from its first key and starts right after a
                 // separator we saw, so the caret cannot be mid-word.
                 self.poisoned = false;
+                self.remainder_at_caret = false;
                 self.context_clean = true;
                 // Whatever the last separator before the next word is,
                 // that word opened after it.
@@ -297,6 +326,7 @@ impl WordBuffer {
                 // remainder it stands for sat left of the caret, and
                 // the user has just rubbed out past it (issue #44).
                 self.poisoned = false;
+                self.remainder_at_caret = false;
                 self.context_clean = false;
                 self.lead = None;
                 WordBoundary::Abandoned
@@ -306,6 +336,12 @@ impl WordBuffer {
                 // Click / nav / Esc — the caret genuinely moved, and
                 // may now sit mid-word in text we never observed.
                 self.abandon();
+                // Away from the remainder `abandon` just left behind,
+                // which is the whole difference from a shortcut or an
+                // idle gap: what gets typed next is a word of its own,
+                // wherever the caret landed, and the manual hotkey can
+                // measure it (issues #56, #57).
+                self.remainder_at_caret = false;
                 self.mark_context_unclean();
                 WordBoundary::Abandoned
             }

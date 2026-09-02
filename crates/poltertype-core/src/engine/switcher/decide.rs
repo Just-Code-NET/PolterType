@@ -50,11 +50,14 @@ impl SwitcherEngine {
     /// before any space is involved. Measured on KDE Plasma Wayland
     /// against 0.19.0 (issues #34, #32).
     ///
-    /// `None` on a poisoned buffer: the caret is somewhere we did not
-    /// see it move to, and a correction there would eat whatever is
-    /// actually under it.
+    /// `None` while an unrecorded remainder sits at the caret: these
+    /// keys then continue a word already on screen, and converting
+    /// only them would split it across two layouts. A taint left by an
+    /// interruption the caret has since *moved away from* is not that
+    /// — see
+    /// [`WordBuffer::remainder_at_caret`](crate::engine::buffer::WordBuffer::remainder_at_caret).
     pub(super) fn word_in_progress(&self, buffer: &WordBuffer) -> Option<LastWord> {
-        if buffer.poisoned() {
+        if buffer.remainder_at_caret() {
             // Its own line: lumped in with the empty-buffer case, a
             // decline here reads in a log exactly like a hotkey that
             // never fired (issue #44).

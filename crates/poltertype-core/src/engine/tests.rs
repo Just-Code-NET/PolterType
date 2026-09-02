@@ -1417,6 +1417,74 @@ mod engine_integration_tests {
         );
     }
 
+    /// Issue #57: an arrow key, then a whole word typed after it, then
+    /// the manual hotkey — and nothing happened.
+    ///
+    /// `abandon` poisons the buffer so the *interrupted* word is never
+    /// corrected from the tail it saw. Nav clears the buffer with it,
+    /// so the poison could only ever reach the *next* word — one
+    /// watched from its first key, at a caret that is exactly where we
+    /// put it. `word_in_progress` refuses a poisoned buffer, so the
+    /// gesture stayed dead until a separator was typed. Same shape as
+    /// issues #40 and #44, one trigger further along.
+    #[test]
+    fn the_manual_hotkey_reaches_a_word_typed_after_a_caret_move() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN[..3]);
+        h.tap(105); // KEY_LEFT — the caret goes somewhere we can't see
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len()],
+            "the hotkey must convert the word typed after the arrow: {:?}",
+            h.emitter.ops()
+        );
+    }
+
+    /// Issue #56: after a manual switch, clicking away and back left
+    /// the hotkey dead for the next word.
+    ///
+    /// The switched word stays in the buffer (`settle`), so the click
+    /// that leaves the window abandons a non-empty buffer and poisons
+    /// it — and the poison outlived the click back, the new window and
+    /// a word typed entirely under our own eyes.
+    #[test]
+    fn the_manual_hotkey_survives_leaving_a_window_and_coming_back() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len()],
+            "precondition: the first press converts the word in progress"
+        );
+
+        h.press(poltertype_types::SC_POINTER_BUTTON); // click another window
+        h.press(poltertype_types::SC_POINTER_BUTTON); // and click back
+        type_word(&h, &GHBDSN);
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len(), GHBDSN.len()],
+            "the second press must convert the word typed after the clicks: {:?}",
+            h.emitter.ops()
+        );
+    }
+
     // ─── Spelling suggestions ────────────────────────────────────────
 
     /// Leaves every word as typed, so the suggestions gate is reached on
