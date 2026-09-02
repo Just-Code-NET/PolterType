@@ -34,20 +34,11 @@ pub const PASTE_GUARD: Duration = Duration::from_millis(1200);
 pub const LAST_WORD_TTL: Duration = Duration::from_secs(60);
 
 /// The copy chord selection conversion presses into the focused
-/// application: `Ctrl+C` everywhere except macOS, which wants `Cmd+C`.
-///
-/// The platform split lives here, in the one constant, rather than in
-/// the emitters: an emitter that quietly rewrote Ctrl into Cmd would
-/// also rewrite a user's explicit Ctrl hotkey, and that is not its
-/// call to make.
-pub const COPY_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchChord {
-    // `C` in Win SC Set-1, which coincides with evdev's `KEY_C`.
-    scancode: 0x2E,
-    ctrl: cfg!(not(target_os = "macos")),
-    shift: false,
-    alt: false,
-    meta: cfg!(target_os = "macos"),
-};
+/// application. Defined in `poltertype-input`, which is a crate
+/// allowed to know that macOS wants `Cmd` where everything else wants
+/// `Ctrl`; re-exported here so the engine's constants still read as
+/// one set.
+pub use poltertype_input::COPY_CHORD;
 
 /// Pause between releasing the hotkey's own modifiers and pressing the
 /// copy chord, so the compositor does not read both in one frame.
@@ -77,15 +68,8 @@ pub const CHORD_RELEASE_SETTLE: Duration = Duration::from_millis(40);
 pub const CHORD_RELEASE_WAIT: Duration = Duration::from_millis(5000);
 
 /// The paste chord that puts the converted selection back. Same
-/// platform split as [`COPY_CHORD`], for the same reason.
-pub const PASTE_CHORD: poltertype_types::SwitchChord = poltertype_types::SwitchChord {
-    // `V` in Win SC Set-1, which coincides with evdev's `KEY_V`.
-    scancode: 0x2F,
-    ctrl: cfg!(not(target_os = "macos")),
-    shift: false,
-    alt: false,
-    meta: cfg!(target_os = "macos"),
-};
+/// origin as [`COPY_CHORD`], for the same reason.
+pub use poltertype_input::PASTE_CHORD;
 
 /// How long the converted text stays on the clipboard after the paste
 /// chord goes out, before the user's own clipboard is put back.
