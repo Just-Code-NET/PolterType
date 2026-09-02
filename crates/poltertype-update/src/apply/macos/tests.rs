@@ -121,3 +121,32 @@ fn a_hostile_identity_name_stays_quoted() {
     let s = body_signed(true, "x' ; rm -rf / ; '");
     assert!(s.contains(r"'x'\'' ; rm -rf / ; '\'''"));
 }
+
+/// …at **every** place the identity is interpolated, not just the
+/// `codesign` line.
+///
+/// The test above used a single-quote payload, which the `codesign`
+/// line's quoting already stopped — so it passed while the signature
+/// probe a few lines down was interpolating the same value raw inside
+/// *double* quotes, where `$`, a backtick and `"` are all still live.
+/// A payload that cannot escape single quotes but walks straight out of
+/// double ones is what tells the two apart.
+#[test]
+fn a_hostile_identity_name_cannot_escape_the_signature_probe() {
+    let s = body_signed(true, "x\" ; touch /tmp/pwned ; echo \"$(id)`id`");
+    // The payload inside single quotes is inert, so its presence proves
+    // nothing either way. What the old shape produced, and what must
+    // not come back, is the pattern in *double* quotes — where the
+    // first `"` of the identity closed the string and the rest became
+    // script.
+    assert!(
+        !s.contains("\"Authority="),
+        "the probe must not interpolate the identity into double quotes:\n{s}"
+    );
+    // And the whole payload survives as one shell word, so a real name
+    // containing punctuation still matches what `codesign` prints.
+    assert!(
+        s.contains(r#"'Authority=x" ; touch /tmp/pwned ; echo "$(id)`id`'"#),
+        "the probe must carry the identity as a single quoted string:\n{s}"
+    );
+}

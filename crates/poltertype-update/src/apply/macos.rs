@@ -145,13 +145,24 @@ fn script_body(
     let signed_same_line = if sign_identity.is_empty() {
         String::new()
     } else {
+        // Quoted with `sq` like the `codesign` line above, and matched
+        // with `-F` as a fixed string. Interpolated raw inside double
+        // quotes — which is what stood here — the identity is still
+        // live shell: `$`, a backtick or a `"` in a name taken verbatim
+        // from `config.toml` ends the string and runs whatever follows,
+        // in a script the updater executes. Nothing reaches this
+        // without the user configuring an identity, so it was never
+        // remotely triggerable, but the line three above it was already
+        // quoting the same value and this one simply was not. `-F` also
+        // retires a quieter bug: a `.` or `*` in a certificate's common
+        // name was being read as a regular expression.
         format!(
             "SIGNED_SAME=0\n\
-             if codesign -dvv {bundle} 2>&1 | grep -q \"Authority={ident_raw}\"; then\n\
+             if codesign -dvv {bundle} 2>&1 | grep -qF -- {pattern}; then\n\
              \tSIGNED_SAME=1\n\
              fi\n",
             bundle = sh_quote(bundle),
-            ident_raw = sign_identity,
+            pattern = sq(&format!("Authority={sign_identity}")),
         )
     };
 
