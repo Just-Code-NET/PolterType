@@ -139,6 +139,21 @@ no menu to undo it from: an app started `hidden` and then pointed at
 `tray_icon = "color"` by an edit to `config.toml` went Active and
 reappeared in the panel without being restarted.
 
+**`flag` was checked as pixels, not in a panel.** It adds a fourth
+value and no new mechanism — the same `set_icon` with the same 64×64
+RGBA buffer the two rows above were measured through — so what was
+verified is the drawing: every flag in the table rendered, box-filtered
+down to the 16 pixels a panel shows, and read on a dark and a light
+panel colour. No session in the guest has been photographed wearing
+one. Two honest limits inside that: **thirty-nine countries have a
+drawing** and everything else — including every layout id Windows and
+macOS cannot resolve to a locale — falls back to the lettered `color`
+badge; and the flags that *are* drawn are simplifications, so the
+United States has twenty stars and Portugal's armillary sphere is three
+rings. Countries whose flags differ only by an emblem this size cannot
+carry (Slovakia, Slovenia, Serbia, Croatia, Mexico) are left to the
+letters on purpose.
+
 **`hidden` is a request, not a guarantee, and only Cinnamon has
 answered it.** `Passive` is what the StatusNotifier spec offers, and a
 host may draw a passive item anyway. Windows and macOS hide the icon

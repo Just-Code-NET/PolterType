@@ -345,9 +345,11 @@ show_notifications = false
 ui_language = "system"     # or "en", "uk"
 ui_theme = "system"        # Settings window theme: "system", "light", "dark"
 tray_icon = "color"        # tray icon: "color" (a hue per layout),
-                           # "mono" (one neutral badge), "hidden" (no
-                           # icon and no tray menu — the window still
-                           # opens with `poltertype --settings`)
+                           # "mono" (one neutral badge), "flag" (the
+                           # layout's country, falling back to "color"
+                           # for a country with no drawing), "hidden"
+                           # (no icon and no tray menu — the window
+                           # still opens with `poltertype --settings`)
 log_level = "info"
 paused = false             # auto-switch off — the General pane's
                            # "Manual only". Written by the app itself

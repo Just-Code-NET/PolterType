@@ -6,6 +6,57 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-02 — `tray_icon = "flag"`, drawn rather than shipped
+
+A fourth value for the one `tray_icon` key: the layout's country flag
+instead of its two letters. The letters are a code the user has to
+read; a flag is recognised before it is read, which is the whole point
+of a 16-pixel badge in a panel.
+
+**Drawn procedurally, like the app icon.** No PNG set, no emoji font,
+no image crate: each flag is a function of one point on a 56×40 box —
+bands, a cross, a disc, an even-odd polygon test for Turkey's star and
+Israel's hexagram — rendered by the same arithmetic that already draws
+the lettered badge. Shipping ~40 flag images would put the repository's
+first binary assets in it (see 2026-08-15) and cost more bytes than the
+whole icon module; rendering through a colour-emoji font would need a
+font stack the tray path deliberately does not have.
+
+**The flag comes from the region subtag, never from the language.** A
+flag stands for a country, and `en-GB` and `en-US` are one language
+under two of them. `region_of` reads the last two-letter uppercase
+subtag, so `kk-Cyrl-KZ` is Kazakhstan and `es-419` — half a continent —
+is nothing.
+
+**A country with no drawing keeps the letters.** Nothing about asking
+for flags was a request to stop saying which layout is in force, so
+`flag` falls back to the `color` badge rather than to a blank or a
+placeholder. That fallback is what makes the next rule affordable.
+
+**Only flags that can be told apart at 16 pixels are in the table.**
+Slovakia, Slovenia, Serbia and Croatia are white-blue-red bands plus an
+emblem no 40-pixel drawing carries, and Mexico is Italy plus one: drawn
+as bands they would each be a confident lie about the layout in force.
+They are absent, and their layouts wear `SK`, `SI`, `RS`, `HR`. The
+emblems that *are* drawn are simplified to what survives the size —
+twenty stars rather than fifty, a straight line where the taegeuk
+curves — and a test asserts no two drawings in the table are the same
+buffer, so a copy-paste cannot quietly make two countries one.
+
+**Paused dims the flag instead of greying it flat.** The `color` badge
+turns one uniform grey and keeps its letters; a flag greyed to one tone
+keeps nothing. The flag is flattened into a dark grey *band* instead,
+so the bands, the cross or the disc still name the country while the
+icon plainly reads as inactive.
+
+**An edge, one design unit thick, drawn beside the flag rather than
+over it.** Half these flags end in white and several end in black, and
+a panel of that colour swallows that side. The edge takes the panel's
+polarity like the `mono` letters do — and, like them, that polarity is
+a guess a panel is free to disagree with.
+
+---
+
 ## 2026-08-30 — The force-switch falls back to one separator
 
 The whole engine is built around words: the buffer collects letters,
