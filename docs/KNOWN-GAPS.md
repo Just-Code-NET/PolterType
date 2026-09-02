@@ -499,6 +499,33 @@ reports itself unavailable rather than half-working.
 > answers 1625), so "no admin rights needed" holds for Windows 10/11
 > and not for Server.
 
+> **And the Linux half of that pass was resting on Klipper** (measured
+> 2026-09-02, from #51 on Cinnamon X11). X11 and Wayland both serve the
+> clipboard from the process that owns it, and `arboard` tears its
+> serving window down with the last handle — so the writes this feature
+> makes were destroyed the moment `set_text` returned. A marker written
+> through a dropped handle and read back through a fresh one is gone on
+> a nested X server, on XWayland and on Hyprland's data-control, and
+> survives on all three when the handle is kept. The KDE Plasma run
+> above passed because KDE ships a clipboard manager that adopts an
+> orphaned selection; Cinnamon and the bare sessions ship none, and
+> there the converted text was never on the clipboard when the paste
+> asked for it — and the restore wiped the user's own clipboard instead
+> of putting it back. The writing handle is now held for the life of
+> the process. Windows was never affected: its clipboard is owned by
+> the OS rather than served by the writer, which is why the report
+> above could pass there.
+>
+> The same issue carried a second fault, and it is the one that reaches
+> **every X11 session**: the copy chord was pressed while the hotkey
+> that asked for it was still held, where a passive `XGrabKey` is an
+> *active* grab and everything emitted goes to the client holding it.
+> Every other force-switch path already waited for the key to come up;
+> this one now does too. Neither fix has been run on Cinnamon X11 —
+> the matrix guest would not start on this laptop — so both are
+> **measured in their mechanism and unrun end to end on the reporter's
+> session**.
+
 **What the 0.23.0 pass actually checked (2026-08-27).** One machine —
 this Hyprland laptop — and the Settings window, because the release
 moves it to iced 0.14 and that touches every pane. The window was
