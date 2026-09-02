@@ -1,4 +1,4 @@
-# Known gaps (as of v0.29.0)
+# Known gaps (as of v0.30.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,34 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.30.0 pass actually checked (2026-09-02).** Three reports
+that all name the same session, so the pass was run on that session:
+**Cinnamon X11**, in the matrix guest, against the built binary.
+
+Selection conversion (#51) end to end, with the **default**
+`Ctrl+Shift+Backspace` rather than a modifier-only stand-in — which
+matters, because on X11 that is a real `XGrabKey` and the grab is half
+of what was broken. Two words of wrong-layout text in a Pluma
+document, selected, the hotkey pressed: the document came back
+converted, the log said `selection converted from=en-US to=ru-RU`, and
+the marker that was on the clipboard beforehand was there again
+afterwards — read while the app was still running, since an
+owner-served clipboard empties when its owner dies and reading after
+the teardown measures the teardown.
+
+The manual hotkey after a caret move (#56, #57), in the same session,
+each phase measured against a reference line: an arrow key then a
+word, and a pointer button then a word, both converted the word that
+followed, and the log carried no refusal at all.
+
+What this pass did **not** check: every other session. The two engine
+fixes are session-independent in a way the clipboard is not — they are
+about what the buffer does with a nav key or a click, and both
+triggers arrive through the listener, which is per-session code. Read
+them as measured on X11 and reasoned elsewhere. The macOS half of this
+release (#42, #55) was measured by its contributor on an M1 Pro and by
+nobody here; there is still no Mac on this team.
 
 **What the 0.29.0 pass actually checked (2026-08-30).** Two reports,
 one of them a photograph — so the check is a photograph too, taken on
@@ -486,6 +514,12 @@ has exercised the `SendInput` path on a Windows machine. macOS is not
 a gap here for once: it has no `send_chord` at all, so the toggle
 reports itself unavailable rather than half-working.
 
+> **macOS has a `send_chord` since v0.30.0** and the toggle is offered
+> there — so the sentence above is history, not the current state. It
+> posts the chord as `Cmd`-flagged key events and was measured by the
+> contributor on an M1 Pro (#55); nobody on this team has a Mac to
+> confirm it independently.
+
 > **Windows is no longer unrun** (reported on #32, 2026-08-30, against
 > 0.28.0 on Windows Server 2025). A selection typed in the wrong layout
 > converts, the `SendInput` copy and paste chords land, and the
@@ -521,10 +555,9 @@ reports itself unavailable rather than half-working.
 > that asked for it was still held, where a passive `XGrabKey` is an
 > *active* grab and everything emitted goes to the client holding it.
 > Every other force-switch path already waited for the key to come up;
-> this one now does too. Neither fix has been run on Cinnamon X11 —
-> the matrix guest would not start on this laptop — so both are
-> **measured in their mechanism and unrun end to end on the reporter's
-> session**.
+> this one now does too. Both fixes were then run end to end on
+> Cinnamon X11 for the 0.30.0 pass above, under the default grabbed
+> chord — converted document, restored clipboard.
 
 **What the 0.23.0 pass actually checked (2026-08-27).** One machine —
 this Hyprland laptop — and the Settings window, because the release

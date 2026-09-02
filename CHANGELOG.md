@@ -26,6 +26,90 @@ and the project follows [Semantic Versioning](https://semver.org/).
   Pausing dims the flag rather than flattening it, so the bands, cross
   or disc still name the country while the icon reads as inactive.
 
+- **Selection conversion works on macOS**, and the toggle is no longer
+  refused there. The emitter can send a chord now — modifiers travel as
+  flags on the key events, the way macOS matches menu shortcuts, with
+  an SC-1 → Apple keycode table that refuses what it cannot name — so
+  `Cmd+C` and `Cmd+V` reach the focused application and the
+  `NoCopyChord` gap closes. Contributed on
+  [#55](https://github.com/Just-Code-NET/PolterType/pull/55), measured
+  on an M1 Pro.
+
+- **Updates can keep their macOS permissions.** `[updates]
+  local_signing_identity` names a codesign identity in the login
+  keychain; the installer re-signs the swapped bundle with it, and TCC
+  then keys Accessibility and Input Monitoring to certificate plus
+  identifier instead of to the hash of the bundle's own bytes — which
+  is what made every previous update look like new software. A Setup
+  step creates the identity in one click. Left empty, updates stay
+  ad-hoc as before, and the installer clears the two stale TCC records
+  after a successful swap so the *Ask* buttons can raise the system
+  prompt again. Groundwork for
+  [#42](https://github.com/Just-Code-NET/PolterType/issues/42); the
+  real fix is still a Developer ID.
+
+- **`[engine] hold_keys`** exposes the key gate as a setting. Off by
+  default, which is unchanged behaviour and the project's documented
+  latency stance; on, a keystroke landing mid-correction is held and
+  replayed after it rather than racing the burst.
+
+### Fixed
+
+- **The manual hotkey answers again after the caret moves**
+  ([#57](https://github.com/Just-Code-NET/PolterType/issues/57),
+  [#56](https://github.com/Just-Code-NET/PolterType/issues/56)). Press
+  an arrow key, or click away from a window and back, then type a word
+  and press the hotkey: nothing happened, and nothing kept happening
+  until a space was typed.
+
+  One cause under both. Interrupting a word marks the buffer, so the
+  half-seen word is never corrected from the tail we watched — but the
+  same interruption also clears the buffer, so that mark could only
+  ever land on the *next* word, one seen from its first key at a caret
+  nothing had moved since. The mark now says the narrower thing it
+  always meant for this gesture: *a word we stopped recording is still
+  on screen at the caret*. A shortcut and an idle gap leave exactly
+  that and are still refused; an arrow key and a click move the caret
+  off it and are not. Automatic switching is unchanged — a word typed
+  after an arrow key mid-word is still left alone.
+
+- **Selection conversion works on Linux**
+  ([#51](https://github.com/Just-Code-NET/PolterType/issues/51)). It
+  never had, on any Linux session without a clipboard manager, and two
+  separate faults were each enough on their own.
+
+  X11 and Wayland both serve the clipboard from the process that owns
+  it, and the handle PolterType wrote through was closed as soon as the
+  write returned — so the converted text was destroyed before the paste
+  could ask for it, and the restore afterwards wiped the user's own
+  clipboard instead of putting it back. KDE hid this because it ships a
+  clipboard manager, which adopts an orphaned selection; Cinnamon and
+  the bare sessions ship none. The writing handle is now held for the
+  life of the process, which is the lifetime the protocols ask for.
+
+  And the copy chord went out while the hotkey was still held, where an
+  X11 passive grab has become an *active* one and everything the app
+  emits goes to the client holding the grab rather than to the focused
+  window. Every other force-switch path already waited for the key to
+  come up; this one now does too.
+
+- **A wrong-direction press no longer mangles punctuation.** Converting
+  a selection whose text holds no letter of the layout it would be read
+  from is refused outright: `проверяю` converted to `ghjdthz.` and
+  pressed again put the `.` — which exists on the Russian layout, on
+  its own key — through to `/`, and nothing later brought the letter
+  back. Contributed on #55.
+
+- **macOS: an update no longer relaunches the version it replaced.**
+  The Settings window is a subprocess of the same executable and
+  outlived the swap, so `open` found the app already running and merely
+  activated the old window. Child windows now come along on the update
+  hand-off and on Quit, and the installer swaps `Contents` inside the
+  bundle instead of moving the `.app` aside — which also retires the
+  `poltertype.app.new` that Spotlight used to surface mid-install.
+  Reported on
+  [#42](https://github.com/Just-Code-NET/PolterType/issues/42).
+
 ## [0.29.0] — one window, and an icon that fits the panel
 
 ### Changed
