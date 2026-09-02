@@ -44,8 +44,12 @@ fn the_installed_bundle_is_only_touched_once_a_replacement_exists() {
     assert!(copied < removed, "the app is deleted before it is replaced");
     // Moved aside, not deleted outright, so a swap that fails half way
     // can put back something that runs.
-    assert!(s.contains("mv '/Applications/PolterType.app'/Contents '/Applications/PolterType.app'/Contents.old"));
-    assert!(s.contains("mv '/Applications/PolterType.app'/Contents.old '/Applications/PolterType.app'/Contents"));
+    assert!(s.contains(
+        "mv '/Applications/PolterType.app'/Contents '/Applications/PolterType.app'/Contents.old"
+    ));
+    assert!(s.contains(
+        "mv '/Applications/PolterType.app'/Contents.old '/Applications/PolterType.app'/Contents"
+    ));
 }
 
 #[test]
@@ -85,7 +89,9 @@ fn without_an_identity_the_stale_grants_are_dropped_after_the_swap() {
     let swap = s.find("ditto \"$NEW/Contents\"").expect("swap present");
     let reset = s.find("tccutil reset").expect("reset present");
     assert!(swap < reset, "grants die only after the bundle changed");
-    let guard = s.find("if [ \"$ok\" = 1 ]; then\n\tBID=").expect("ok guard");
+    let guard = s
+        .find("if [ \"$ok\" = 1 ]; then\n\tBID=")
+        .expect("ok guard");
     assert!(guard < reset, "reset sits inside the ok guard");
 }
 

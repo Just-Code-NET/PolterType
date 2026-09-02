@@ -851,7 +851,11 @@ fn main() -> Result<()> {
                     // hook is down, and nothing we replace is in use. No
                     // relaunch — they asked for the app to go away.
                     if let Some(pending) = update_pending.as_ref() {
-                        apply_now(pending, false, &settings.snapshot().updates.local_signing_identity);
+                        apply_now(
+                            pending,
+                            false,
+                            &settings.snapshot().updates.local_signing_identity,
+                        );
                     }
                     *control_flow = ControlFlow::Exit;
                 } else if Some(&id) == update_id.as_ref() {
@@ -865,7 +869,11 @@ fn main() -> Result<()> {
                             // turned a failed update into a machine
                             // with no PolterType running on it.
                             settings_proc::kill_settings_ui();
-                            if apply_now(pending, true, &settings.snapshot().updates.local_signing_identity) {
+                            if apply_now(
+                                pending,
+                                true,
+                                &settings.snapshot().updates.local_signing_identity,
+                            ) {
                                 if let Some(mut listener) = input_listener.take() {
                                     listener.stop();
                                 }

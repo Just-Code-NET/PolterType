@@ -164,9 +164,8 @@ impl SettingsApp {
             .map(std::path::Path::to_path_buf)
             .unwrap_or_default();
 
-        let setup = poltertype_input::setup::probe_setup(
-            &store.snapshot().updates.local_signing_identity,
-        );
+        let setup =
+            poltertype_input::setup::probe_setup(&store.snapshot().updates.local_signing_identity);
         Self {
             settings,
             os_layouts,

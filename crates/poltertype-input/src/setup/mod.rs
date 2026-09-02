@@ -101,7 +101,6 @@ pub fn permission_settings_url(permission: Permission) -> Option<&'static str> {
     }
 }
 
-
 /// The identity name [`setup_local_signing`] creates when the config
 /// does not name one.
 pub const DEFAULT_LOCAL_SIGNING_IDENTITY: &str = "PolterType Local Signing";
@@ -123,7 +122,6 @@ pub fn setup_local_signing(name: &str) -> Result<(), String> {
         Err("local update signing is a macOS mechanism".to_owned())
     }
 }
-
 
 #[cfg(test)]
 mod tests;

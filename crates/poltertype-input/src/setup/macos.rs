@@ -292,14 +292,25 @@ pub(super) fn setup_local_signing(name: &str) -> Result<(), String> {
         run(
             "/usr/bin/openssl",
             &[
-                "req", "-x509", "-newkey", "rsa:2048",
-                "-keyout", key.to_str().ok_or("bad tmp path")?,
-                "-out", cert.to_str().ok_or("bad tmp path")?,
-                "-days", "3650", "-nodes",
-                "-subj", &format!("/CN={name}"),
-                "-addext", "keyUsage=critical,digitalSignature",
-                "-addext", "extendedKeyUsage=critical,codeSigning",
-                "-addext", "basicConstraints=critical,CA:FALSE",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-keyout",
+                key.to_str().ok_or("bad tmp path")?,
+                "-out",
+                cert.to_str().ok_or("bad tmp path")?,
+                "-days",
+                "3650",
+                "-nodes",
+                "-subj",
+                &format!("/CN={name}"),
+                "-addext",
+                "keyUsage=critical,digitalSignature",
+                "-addext",
+                "extendedKeyUsage=critical,codeSigning",
+                "-addext",
+                "basicConstraints=critical,CA:FALSE",
             ],
         )?;
         // Two imports, PEM by PEM: LibreSSL's PKCS#12 defaults are not
@@ -308,8 +319,10 @@ pub(super) fn setup_local_signing(name: &str) -> Result<(), String> {
         run(
             "/usr/bin/security",
             &[
-                "import", key.to_str().ok_or("bad tmp path")?,
-                "-T", "/usr/bin/codesign",
+                "import",
+                key.to_str().ok_or("bad tmp path")?,
+                "-T",
+                "/usr/bin/codesign",
             ],
         )?;
         run(

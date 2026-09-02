@@ -643,8 +643,9 @@ impl SettingsApp {
                 };
                 match poltertype_input::setup::setup_local_signing(&name) {
                     Ok(()) => {
-                        if let Err(e) =
-                            self.store.update(|s| s.updates.local_signing_identity = name.clone())
+                        if let Err(e) = self
+                            .store
+                            .update(|s| s.updates.local_signing_identity = name.clone())
                         {
                             warn!(?e, "could not remember the signing identity");
                         }
@@ -683,7 +684,10 @@ impl SettingsApp {
                             .status();
                     }
                     if let Some(bundle) = std::env::current_exe().ok().and_then(|e| {
-                        e.parent()?.parent()?.parent().map(std::path::Path::to_path_buf)
+                        e.parent()?
+                            .parent()?
+                            .parent()
+                            .map(std::path::Path::to_path_buf)
                     }) {
                         if bundle.extension().is_some_and(|x| x == "app") {
                             // Detached, and the open happens after WE

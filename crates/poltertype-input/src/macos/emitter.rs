@@ -101,12 +101,11 @@ impl KeyEmitter for MacosEmitter {
             // system actually drains it. The timeout covers a dead or
             // listen-degraded tap: pacing falls back to the old sleep
             // and the burst still completes.
-            let seen = super::consts::INJECTED_KEYDOWN_ECHOES
-                .load(std::sync::atomic::Ordering::Acquire);
+            let seen =
+                super::consts::INJECTED_KEYDOWN_ECHOES.load(std::sync::atomic::Ordering::Acquire);
             keyboard_event(&src, KVK_DELETE, true)?.post(CGEventTapLocation::HID);
             let deadline = std::time::Instant::now() + ECHO_WAIT;
-            while super::consts::INJECTED_KEYDOWN_ECHOES
-                .load(std::sync::atomic::Ordering::Acquire)
+            while super::consts::INJECTED_KEYDOWN_ECHOES.load(std::sync::atomic::Ordering::Acquire)
                 <= seen
                 && std::time::Instant::now() < deadline
             {
