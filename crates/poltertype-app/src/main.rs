@@ -320,7 +320,7 @@ fn main() -> Result<()> {
     // Created before the listener because on Linux/evdev the two share
     // the thread that owns the devices. Whether it can do anything is
     // decided once the listener starts — see `KeyGate::available`.
-    let key_gate = create_key_gate();
+    let key_gate = create_key_gate(settings.snapshot().engine.hold_keys);
 
     let audio = Arc::new(AudioPlayer::new());
     audio.refresh_from(&settings);
@@ -846,11 +846,16 @@ fn main() -> Result<()> {
                     // service still running through an update would be
                     // a process whose binary moved under it.
                     supervisor.stop_all();
+                    settings_proc::kill_settings_ui();
                     // The one safe moment: the user is done typing, the
                     // hook is down, and nothing we replace is in use. No
                     // relaunch — they asked for the app to go away.
                     if let Some(pending) = update_pending.as_ref() {
-                        apply_now(pending, false);
+                        apply_now(
+                            pending,
+                            false,
+                            &settings.snapshot().updates.local_signing_identity,
+                        );
                     }
                     *control_flow = ControlFlow::Exit;
                 } else if Some(&id) == update_id.as_ref() {
@@ -863,7 +868,12 @@ fn main() -> Result<()> {
                             // started, and quitting anyway is what
                             // turned a failed update into a machine
                             // with no PolterType running on it.
-                            if apply_now(pending, true) {
+                            settings_proc::kill_settings_ui();
+                            if apply_now(
+                                pending,
+                                true,
+                                &settings.snapshot().updates.local_signing_identity,
+                            ) {
                                 if let Some(mut listener) = input_listener.take() {
                                     listener.stop();
                                 }

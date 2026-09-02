@@ -185,6 +185,15 @@ pub struct EngineSettings {
     /// deliberately. The manual hotkey still works, since `last_word` is
     /// stashed before any filter. Default: on.
     pub suppress_for_all_caps: bool,
+    /// Hold the user's keystrokes back while a correction burst is on
+    /// the wire, and replay them after it — the deterministic guard
+    /// against a letter typed mid-correction landing inside the
+    /// corrected word. Costs a small input delay right after each
+    /// correction, which is why it defaults off — see the trade in
+    /// docs/PERMISSIONS.md. `POLTERTYPE_HOLD_KEYS` (`1`/`0`) overrides
+    /// in either direction; the gate is built at startup, so changing
+    /// this needs a restart.
+    pub hold_keys: bool,
 }
 
 impl Default for EngineSettings {
@@ -196,6 +205,7 @@ impl Default for EngineSettings {
             idle_timeout_ms: 2000,
             suppress_in_identifiers: true,
             suppress_for_all_caps: true,
+            hold_keys: false,
         }
     }
 }
@@ -337,6 +347,15 @@ pub struct UpdateSettings {
     /// (see [`UpdateSettings::interval`]) so a hand-edited `0` cannot
     /// turn the updater into a request loop against GitHub.
     pub check_interval_hours: u64,
+    /// macOS: common name of a codesign identity in the login keychain.
+    /// Non-empty, and the updater re-signs every swapped bundle with it,
+    /// so TCC keeps the Accessibility / Input Monitoring grants across
+    /// updates (they key on certificate + identifier instead of the
+    /// bundle hash). Empty — ad-hoc updates as before, and the installer
+    /// resets the two stale TCC records instead, so the Ask buttons
+    /// work right after the swap. Set up once with
+    /// `poltertype --setup-local-signing`.
+    pub local_signing_identity: String,
 }
 
 impl Default for UpdateSettings {
@@ -344,6 +363,7 @@ impl Default for UpdateSettings {
         Self {
             enabled: true,
             check_interval_hours: 24,
+            local_signing_identity: String::new(),
         }
     }
 }

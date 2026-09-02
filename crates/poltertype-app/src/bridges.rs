@@ -79,6 +79,58 @@ pub(crate) fn handle_engine_event(
     }
 }
 
+/// macOS: register who is sending, once, before the first notification.
+///
+/// `mac-notification-sys` needs a sender bundle id. When nobody set
+/// one, its `ensure_application_set` asks LaunchServices for an app
+/// literally named `use_default` (lib.rs:116 in 0.6.12) — and macOS
+/// answers an unresolvable name with a modal **"Where is use_default?"
+/// application chooser** over whatever the user was doing. Observed
+/// live; and because the updater's error toasts bypass the
+/// `show_notifications` gate, the dialog can appear even with
+/// notifications switched off in the config.
+///
+/// `false` means there is no bundle to speak as — a bare binary run
+/// from `cargo run` — and the caller skips its toast: a missing
+/// notification is cheaper than that dialog.
+#[cfg(target_os = "macos")]
+fn notification_sender_ready() -> bool {
+    use std::sync::OnceLock;
+    static READY: OnceLock<bool> = OnceLock::new();
+    *READY.get_or_init(|| {
+        let Some(bundle_id) = main_bundle_identifier() else {
+            info!("not running from an .app bundle; system notifications stay off");
+            return false;
+        };
+        match notify_rust::set_application(&bundle_id) {
+            Ok(()) => {
+                info!(bundle = %bundle_id, "registered as notification sender");
+                true
+            }
+            Err(e) => {
+                warn!(?e, bundle = %bundle_id, "could not register as notification sender");
+                false
+            }
+        }
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn notification_sender_ready() -> bool {
+    true
+}
+
+/// Our own `CFBundleIdentifier`, or `None` outside an `.app` bundle.
+#[cfg(target_os = "macos")]
+fn main_bundle_identifier() -> Option<String> {
+    use core_foundation::string::CFString;
+    let dict = core_foundation::bundle::CFBundle::main_bundle().info_dictionary();
+    let key = CFString::from_static_string("CFBundleIdentifier");
+    dict.find(&key)
+        .and_then(|v| v.downcast::<CFString>())
+        .map(|s| s.to_string())
+}
+
 /// Show a 2-second toast that the engine auto-switched layout.
 ///
 /// On a worker thread because `notify-rust`'s `show()` is synchronous:
@@ -86,6 +138,9 @@ pub(crate) fn handle_engine_event(
 /// are logged and swallowed — a missing notification daemon must not
 /// propagate up.
 pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layout: &LayoutId) {
+    if !notification_sender_ready() {
+        return;
+    }
     let pretty = layouts
         .get(to_layout)
         .map(|m| m.name.clone())
@@ -126,6 +181,9 @@ pub(crate) fn spawn_dictionary_add_notification(
     layout: &LayoutId,
     word: &str,
 ) {
+    if !notification_sender_ready() {
+        return;
+    }
     let pretty = layouts
         .get(layout)
         .map(|m| m.name.clone())
@@ -155,6 +213,9 @@ pub(crate) fn spawn_dictionary_add_notification(
 ///
 /// Longer timeout than the others, because this text has to be read.
 pub(crate) fn spawn_error_notification(body: String) {
+    if !notification_sender_ready() {
+        return;
+    }
     std::thread::Builder::new()
         .name("poltertype-notify-error".into())
         .spawn(move || {
@@ -178,6 +239,9 @@ pub(crate) fn spawn_error_notification(body: String) {
 /// version, and it is the only thing that tells a user who never opens
 /// the tray menu that an update is waiting.
 pub(crate) fn spawn_update_notification(version: &str) {
+    if !notification_sender_ready() {
+        return;
+    }
     let body = format!(
         "Version {version} is downloaded and ready.\n\
          It will be installed the next time you restart PolterType — \

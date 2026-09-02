@@ -13,13 +13,11 @@ use tracing::{debug, info};
 use crate::hold::HoldState;
 
 /// Environment override for the key gate, read once at startup:
-/// `POLTERTYPE_HOLD_KEYS=1` on, `=0` off.
-///
-/// **Default off on macOS, as on Windows, and for the same reason: not
-/// fear, but latency.** Held keys are withheld from the application for
-/// the length of the flush, which reads as the caret lagging behind
-/// your typing after every correction. Switch it on if you type fast
-/// enough to hit the race; `docs/PERMISSIONS.md` states the trade.
+/// `POLTERTYPE_HOLD_KEYS=1` forces it on, `=0` forces it off —
+/// overriding `[engine].hold_keys` in either direction. The trade is
+/// latency: held keys are withheld from the application for the length
+/// of the flush, which reads as the caret lagging right after a
+/// correction; `docs/PERMISSIONS.md` states it.
 pub(crate) const HOLD_KEYS_ENV: &str = "POLTERTYPE_HOLD_KEYS";
 
 pub struct MacosGate {
@@ -37,17 +35,28 @@ pub struct MacosGate {
 
 impl Default for MacosGate {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
 impl MacosGate {
-    pub(crate) fn new() -> Self {
-        let enabled = std::env::var(HOLD_KEYS_ENV).as_deref() == Ok("1");
+    pub(crate) fn new(config_hold_keys: bool) -> Self {
+        // `[engine].hold_keys` decides; the env var stays as an
+        // emergency override in either direction. Without the gate, a
+        // letter typed in the gap between the backspace burst and the
+        // retype lands in front of the corrected word (measured
+        // 2026-08-30), and the probe-and-repair fallback is
+        // probabilistic — see docs/PERMISSIONS.md for the latency
+        // trade that keeps the default off.
+        let enabled = match std::env::var(HOLD_KEYS_ENV).as_deref() {
+            Ok("1") => true,
+            Ok("0") => false,
+            _ => config_hold_keys,
+        };
         if enabled {
             info!(
-                "key gate enabled by {HOLD_KEYS_ENV}=1 — keystrokes are held back during \
-                 corrections, at a small delay after each one (see docs/PERMISSIONS.md)"
+                "key gate on ([engine].hold_keys / {HOLD_KEYS_ENV}) — keystrokes are held \
+                 back during corrections, at a small delay after each one"
             );
         }
         Self {
@@ -130,7 +139,7 @@ mod tests {
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         // Enabled via env so the test is independent of the default.
         unsafe { std::env::set_var(HOLD_KEYS_ENV, "1") };
-        let g = MacosGate::new();
+        let g = MacosGate::new(false);
         assert!(!g.available(), "no tap yet — must not claim to hold");
         assert!(!g.hold(), "hold without a tap reports unheld");
         g.set_tap_running(true);
@@ -145,7 +154,7 @@ mod tests {
     fn env_zero_disables_even_with_a_running_tap() {
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::set_var(HOLD_KEYS_ENV, "0") };
-        let g = MacosGate::new();
+        let g = MacosGate::new(true);
         g.set_tap_running(true);
         assert!(!g.available());
         assert!(!g.hold());
@@ -153,14 +162,14 @@ mod tests {
     }
 
     #[test]
-    fn default_is_opt_in() {
+    fn config_decides_when_env_is_unset() {
         let _env = ENV.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::remove_var(HOLD_KEYS_ENV) };
-        let g = MacosGate::new();
-        g.set_tap_running(true);
-        assert!(
-            !g.available(),
-            "default must be opt-in (latency trade — see docs/PERMISSIONS.md)"
-        );
+        let on = MacosGate::new(true);
+        on.set_tap_running(true);
+        assert!(on.available(), "config on, env unset — gate holds");
+        let off = MacosGate::new(false);
+        off.set_tap_running(true);
+        assert!(!off.available(), "config off, env unset — gate stays out");
     }
 }

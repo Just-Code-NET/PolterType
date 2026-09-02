@@ -145,6 +145,17 @@ impl SettingsApp {
                 }),
         );
         footer = footer.push(
+            Button::new(Text::new(tr("setup.restart_app", "Restart PolterType")).size(13))
+                .on_press(Message::RestartApp)
+                .style(theme::primary)
+                .padding(Padding {
+                    top: 7.0,
+                    right: 16.0,
+                    bottom: 7.0,
+                    left: 16.0,
+                }),
+        );
+        footer = footer.push(
             Button::new(Text::new(tr("setup.full_setup_guide", "Full setup guide")).size(12))
                 .on_press(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned()))
                 .style(theme::secondary)
@@ -232,6 +243,10 @@ fn action_button(action: &StepAction) -> Element<'static, Message> {
         ),
         StepAction::Open(url) => ("Read the guide".to_owned(), Message::SetupOpen(url.clone())),
         StepAction::Copy(cmd) => (format!("Copy `{cmd}`"), Message::SetupCopy(cmd.clone())),
+        StepAction::SetupLocalSigning => (
+            "Create signing identity".to_owned(),
+            Message::SetupLocalSigning,
+        ),
         StepAction::RequestPermission(p) => (
             "Ask macOS now".to_owned(),
             Message::SetupRequestPermission(*p),

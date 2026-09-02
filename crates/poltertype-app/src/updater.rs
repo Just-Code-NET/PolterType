@@ -119,8 +119,8 @@ pub(crate) fn report_previous_install_failure() {
 /// never happens is an app the user has to go and start by hand, which
 /// is precisely how a failing updater turned into a machine with no
 /// PolterType on it.
-pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool) -> bool {
-    match poltertype_update::apply(pending, relaunch) {
+pub(crate) fn apply_now(pending: &PendingUpdate, relaunch: bool, sign_identity: &str) -> bool {
+    match poltertype_update::apply(pending, relaunch, sign_identity) {
         Ok(Applied::HandedOff) => {
             info!(
                 version = %pending.version,

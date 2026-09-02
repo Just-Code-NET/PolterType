@@ -564,7 +564,9 @@ impl SettingsApp {
             // ── Setup pane ─────────────────────────────────────────
             Message::SetupRecheck => {
                 let before = self.setup.clone();
-                self.setup = poltertype_input::setup::probe_setup();
+                self.setup = poltertype_input::setup::probe_setup(
+                    &self.store.snapshot().updates.local_signing_identity,
+                );
                 // Say something either way: a button that silently
                 // redraws the same screen reads as broken, and "still
                 // not granted" is what the user most needs to hear.
@@ -610,11 +612,105 @@ impl SettingsApp {
                 // return value is not an answer — re-probe instead of
                 // believing it.
                 poltertype_input::setup::request_permission(permission);
-                self.setup = poltertype_input::setup::probe_setup();
+                // And open the pane regardless: when TCC has no record
+                // the dialog appears over it, and when the app is not
+                // in the list at all the user is already where the
+                // "+" button lives — never a silent no-op
+                // in front of an empty list.
+                if let Some(url) = poltertype_input::setup::permission_settings_url(permission) {
+                    let _ = opener::open(url);
+                }
+                self.setup = poltertype_input::setup::probe_setup(
+                    &self.store.snapshot().updates.local_signing_identity,
+                );
                 self.setup_status = Some(SaveBanner {
                     text: "Asked the system. Approve it there, then press Check again.".to_owned(),
                     is_error: false,
                 });
+            }
+
+            Message::SetupLocalSigning => {
+                // Adopt-or-create in the keychain, then remember the name:
+                // the updater reads it at swap time, and the re-probe below
+                // is what flips the step to Done.
+                let name = {
+                    let configured = self.store.snapshot().updates.local_signing_identity;
+                    if configured.is_empty() {
+                        poltertype_input::setup::DEFAULT_LOCAL_SIGNING_IDENTITY.to_owned()
+                    } else {
+                        configured
+                    }
+                };
+                match poltertype_input::setup::setup_local_signing(&name) {
+                    Ok(()) => {
+                        if let Err(e) = self
+                            .store
+                            .update(|s| s.updates.local_signing_identity = name.clone())
+                        {
+                            warn!(?e, "could not remember the signing identity");
+                        }
+                        self.setup_status = Some(SaveBanner {
+                            text: format!(
+                                "Identity “{name}” is in your keychain — updates will keep \
+                                 the permissions from now on."
+                            ),
+                            is_error: false,
+                        });
+                    }
+                    Err(e) => {
+                        warn!(%e, "local signing setup failed");
+                        self.setup_status = Some(SaveBanner {
+                            text: format!("Could not set up signing: {e}"),
+                            is_error: true,
+                        });
+                    }
+                }
+                self.setup = poltertype_input::setup::probe_setup(
+                    &self.store.snapshot().updates.local_signing_identity,
+                );
+            }
+
+            Message::RestartApp => {
+                // The settings window is a child of the tray process:
+                // terminate the parent, start the bundle afresh, and
+                // leave — keeping this window alive past the parent is
+                // exactly the ghost that broke the updater relaunch.
+                #[cfg(unix)]
+                {
+                    let parent = std::os::unix::process::parent_id();
+                    if parent > 1 {
+                        let _ = std::process::Command::new("kill")
+                            .arg(parent.to_string())
+                            .status();
+                    }
+                    if let Some(bundle) = std::env::current_exe().ok().and_then(|e| {
+                        e.parent()?
+                            .parent()?
+                            .parent()
+                            .map(std::path::Path::to_path_buf)
+                    }) {
+                        if bundle.extension().is_some_and(|x| x == "app") {
+                            // Detached, and the open happens after WE
+                            // are gone: while this settings process
+                            // lives, LaunchServices reads the app as
+                            // already running and open() merely
+                            // activates this window — the exact ghost
+                            // that used to eat the updater relaunch.
+                            let _ = std::process::Command::new("sh")
+                                .arg("-c")
+                                .arg(format!(
+                                    "sleep 2; open '{}'",
+                                    bundle.display().to_string().replace('\'', "'\\''")
+                                ))
+                                .spawn();
+                        }
+                    }
+                    std::process::exit(0);
+                }
+                #[cfg(not(unix))]
+                {
+                    warn!("restart from the pane is wired for unix only so far");
+                }
             }
 
             Message::WindowCloseRequested(id) => {

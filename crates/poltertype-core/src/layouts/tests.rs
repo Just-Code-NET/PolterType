@@ -1068,3 +1068,38 @@ fn transliterate_reports_no_change() {
     assert_eq!(en.transliterate_to("hello", en), None);
     assert_eq!(en.transliterate_to("   ", en), None);
 }
+
+/// The round-trip destroyer (found live, 2026-08-30): text with no
+/// letter the source layout owns was not typed under that layout, and
+/// converting it mangles exactly the characters that sit on different
+/// punctuation across the two layouts.
+///
+/// `проверяю` (ru→en) → `ghjdthz.` is correct: `ю` lives on the
+/// period key. But a second press with Russian still active used to
+/// convert that Latin string *from* ru — letters passed through, while
+/// `.` went through ru's own period key to `/`, cutting its link to
+/// `ю` for good. After a few round trips the user's `ю` was a period.
+#[test]
+fn transliterate_refuses_text_the_source_layout_never_typed() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US");
+    let ru = db.get(&LayoutId::from("ru-RU")).expect("ru-RU");
+
+    // The honest direction still works, punctuation keys included.
+    assert_eq!(
+        ru.transliterate_to("проверяю", en).as_deref(),
+        Some("ghjdthz.")
+    );
+    assert_eq!(
+        en.transliterate_to("ghjdthz.", ru).as_deref(),
+        Some("проверяю")
+    );
+
+    // The wrong-direction press is refused instead of eating the `.`:
+    // `ghjdthz.` holds no Cyrillic, so it was not typed under ru.
+    assert_eq!(ru.transliterate_to("ghjdthz.", en), None);
+    // And the mirror case: `проверя.` holds no Latin.
+    assert_eq!(en.transliterate_to("проверя.", ru), None);
+    // Pure punctuation travels with no letters at all — refused too.
+    assert_eq!(ru.transliterate_to(".,-!?", en), None);
+}

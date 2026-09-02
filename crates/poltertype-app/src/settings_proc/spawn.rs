@@ -70,6 +70,8 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
         }
     };
 
+    SETTINGS_CHILD_PID.store(child.id(), Ordering::Release);
+
     // Waited on in a worker thread so the tray does not block. The
     // refreshes run whether or not the user clicked Save — the GUI
     // writes files outside its own state too.
@@ -77,7 +79,9 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
         .name("poltertype-settings-waiter".into())
         .spawn(move || {
             let mut child = child;
-            match child.wait() {
+            let waited = child.wait();
+            SETTINGS_CHILD_PID.store(0, Ordering::Release);
+            match waited {
                 Ok(status) => info!(?status, "settings UI exited"),
                 Err(e) => warn!(?e, "could not wait on settings UI child"),
             }
@@ -188,5 +192,54 @@ fn settings_ui_exe() -> Option<PathBuf> {
             ));
             None
         }
+    }
+}
+
+/// Pid of the live Settings window, 0 when none. One window at a time
+/// is already the rule; this is how the main process can take it along
+/// when it exits.
+static SETTINGS_CHILD_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Close the Settings window before the main process exits.
+///
+/// The window is a subprocess running the same executable, and left
+/// alive it does worse than linger: on macOS the updater's relaunch
+/// `open` sees "this app is already running", reports success, and
+/// merely brings the ORPHANED OLD-VERSION settings window to the
+/// front — the updated app never starts and the user is looking at
+/// the previous version's Settings (measured, twice). Quit has the
+/// same leak without the relaunch twist.
+pub(crate) fn kill_settings_ui() {
+    let pid = SETTINGS_CHILD_PID.swap(0, Ordering::AcqRel);
+    if pid != 0 {
+        info!(pid, "closing the settings window before exit");
+    }
+    #[cfg(unix)]
+    {
+        if pid != 0 {
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+        }
+        // And every other window of this executable, tracked or not:
+        // this base has no second-window guard, so a Settings window
+        // and a Setup-alert window can coexist while one pid slot
+        // remembers only the latest. The one that survived the main
+        // process is what made LaunchServices treat the app as still
+        // running and turned the updater relaunch into a no-op that
+        // merely raised an orphaned old-version window (measured:
+        // `poltertype --setup`, 2026-08-31).
+        if let Ok(exe) = std::env::current_exe() {
+            let _ = std::process::Command::new("pkill")
+                .arg("-f")
+                .arg(format!("{} --", exe.display()))
+                .status();
+        }
+    }
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .status();
     }
 }

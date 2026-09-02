@@ -10,7 +10,13 @@ use crate::*;
 ///
 /// Whether it can actually hold anything is only known once the
 /// listener has started — see [`KeyGate::available`].
-pub fn create_key_gate() -> KeyGate {
+///
+/// `hold_keys` is the `[engine].hold_keys` config value. Wired to the
+/// macOS gate only for now: the Windows gate keeps its env-only switch
+/// until the change can go through a Windows test run, and Linux/evdev
+/// holds by construction.
+pub fn create_key_gate(hold_keys: bool) -> KeyGate {
+    let _ = hold_keys;
     #[cfg(target_os = "linux")]
     {
         linux::create_key_gate()
@@ -21,7 +27,7 @@ pub fn create_key_gate() -> KeyGate {
     }
     #[cfg(target_os = "macos")]
     {
-        KeyGate::macos(std::sync::Arc::new(macos::MacosGate::new()))
+        KeyGate::macos(std::sync::Arc::new(macos::MacosGate::new(hold_keys)))
     }
     #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     {

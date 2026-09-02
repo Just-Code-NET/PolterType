@@ -46,6 +46,10 @@ pub enum StepAction {
     /// Accessibility / Input Monitoring). Only ever the *system*
     /// dialog — we never imitate one.
     RequestPermission(Permission),
+    /// Create (or adopt) the local code-signing identity that lets
+    /// updates keep the TCC grants — see
+    /// [`setup_local_signing`](super::setup_local_signing).
+    SetupLocalSigning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

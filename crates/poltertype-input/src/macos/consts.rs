@@ -18,3 +18,19 @@ pub(super) const K_CG_EVENT_SOURCE_USER_DATA: u32 = 42;
 /// "real" input: the backspace burst poisons the word buffer right
 /// after a correction, and every second word gets skipped as tainted.
 pub(super) const EMITTER_TAG: i64 = 0x504F_4C54; // "POLT"
+
+/// `kCGMouseEventButtonNumber` — which button a mouse event is about
+/// (0 = left, 1 = right, 2+ = the extras).
+pub(super) const K_CG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 23;
+
+/// Count of our own injected key-downs seen back by the event tap.
+///
+/// `CGEventPost` is fire-and-forget; the only in-process proof that the
+/// window server accepted an event is its echo arriving at our own
+/// session tap (stamped with [`EMITTER_TAG`]). The emitter paces a
+/// backspace burst against this counter instead of a fixed sleep —
+/// fields that re-query on every keystroke (Spotlight) drop deletes
+/// posted on a timer, and a lost delete leaves the first letter of the
+/// word standing (`ьmahou`, measured 2026-08-30).
+pub(super) static INJECTED_KEYDOWN_ECHOES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);

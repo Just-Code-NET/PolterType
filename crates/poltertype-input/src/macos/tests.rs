@@ -158,3 +158,44 @@ fn flag_constants_match_core_graphics() {
     assert_eq!(FLAG_ALTERNATE, CGEventFlags::CGEventFlagAlternate.bits());
     assert_eq!(FLAG_COMMAND, CGEventFlags::CGEventFlagCommand.bits());
 }
+
+#[test]
+fn sc1_to_mac_keycode_round_trips_through_the_forward_table() {
+    // The reverse table exists for `send_chord`; a mismatch with the
+    // forward table means the chord we post is not the key the engine
+    // named. Walk the whole SC-1 main block: wherever the reverse map
+    // answers, the forward map must take that keycode straight back.
+    let mut covered = 0;
+    for sc1 in 0x01..=0x39u32 {
+        if let Some(kvk) = sc1_to_mac_keycode(sc1) {
+            assert_eq!(
+                mac_keycode_to_sc1(kvk),
+                sc1,
+                "SC-1 {sc1:#04x} → Apple {kvk:#04x} does not round-trip"
+            );
+            covered += 1;
+        }
+    }
+    // The main block minus the keys a chord cannot name (modifiers,
+    // Caps Lock): the count catches a silently shrunken table.
+    assert_eq!(covered, 52);
+}
+
+#[test]
+fn chord_keys_the_engine_actually_presses_are_mapped() {
+    // The two chords the engine sends today. If either ever answers
+    // `None`, selection conversion dies at runtime with an
+    // `Unsupported` — this pins it at test time instead.
+    assert_eq!(sc1_to_mac_keycode(0x2E), Some(0x08)); // C — the copy chord
+    assert_eq!(sc1_to_mac_keycode(0x2F), Some(0x09)); // V — the paste chord
+}
+
+#[test]
+fn sc1_to_mac_keycode_refuses_what_it_cannot_name() {
+    // No identity fallback: SC-1 and Apple keycodes overlap with
+    // different meanings, and a wrong key pressed with Cmd held is a
+    // real action in someone's application.
+    for sc1 in [0x1D, 0x2A, 0x36, 0x38, 0x3A, 0x3B, 0x48, 0x5B, 0xFF] {
+        assert_eq!(sc1_to_mac_keycode(sc1), None, "SC-1 {sc1:#04x}");
+    }
+}

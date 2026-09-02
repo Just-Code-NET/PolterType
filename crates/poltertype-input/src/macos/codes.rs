@@ -185,3 +185,79 @@ pub(crate) fn mac_keycode_to_sc1(kvk: u16) -> u32 {
         _ => kvk as u32,
     }
 }
+
+// ─── Win SC Set-1 → Apple keycode, for chords we *press* ─────────────
+//
+// The inverse of [`mac_keycode_to_sc1`], for the emitter's
+// `send_chord`: the engine hands it a chord in SC-1 space (the
+// engine's only keycode space) and the `CGEvent` it must post wants an
+// Apple virtual keycode. Covers the main block a chord's key can
+// realistically be — letters, digits, punctuation, the boundary keys —
+// and answers `None` past it, so an unmappable chord fails loudly in
+// the emitter instead of posting a wrong key.
+//
+// No identity fallback on purpose: the two spaces overlap with
+// different meanings (SC-1 0x2E is `C`, Apple 0x2E is `M`), and a
+// chord pressed on the wrong key is exactly the silent failure this
+// module's tables exist to prevent.
+
+pub(crate) fn sc1_to_mac_keycode(sc1: u32) -> Option<u16> {
+    Some(match sc1 {
+        // Letters
+        0x1E => 0x00, // A
+        0x1F => 0x01, // S
+        0x20 => 0x02, // D
+        0x21 => 0x03, // F
+        0x23 => 0x04, // H
+        0x22 => 0x05, // G
+        0x2C => 0x06, // Z
+        0x2D => 0x07, // X
+        0x2E => 0x08, // C
+        0x2F => 0x09, // V
+        0x30 => 0x0B, // B
+        0x10 => 0x0C, // Q
+        0x11 => 0x0D, // W
+        0x12 => 0x0E, // E
+        0x13 => 0x0F, // R
+        0x15 => 0x10, // Y
+        0x14 => 0x11, // T
+        0x18 => 0x1F, // O
+        0x16 => 0x20, // U
+        0x17 => 0x22, // I
+        0x19 => 0x23, // P
+        0x26 => 0x25, // L
+        0x24 => 0x26, // J
+        0x25 => 0x28, // K
+        0x31 => 0x2D, // N
+        0x32 => 0x2E, // M
+        // Numbers
+        0x02 => 0x12, // 1
+        0x03 => 0x13, // 2
+        0x04 => 0x14, // 3
+        0x05 => 0x15, // 4
+        0x06 => 0x17, // 5
+        0x07 => 0x16, // 6
+        0x08 => 0x1A, // 7
+        0x09 => 0x1C, // 8
+        0x0A => 0x19, // 9
+        0x0B => 0x1D, // 0
+        // Boundaries / punctuation
+        0x1C => 0x24,       // Return
+        0x0F => 0x30,       // Tab
+        0x39 => 0x31,       // Space
+        0x0E => KVK_DELETE, // Backspace
+        0x01 => 0x35,       // Esc
+        0x33 => 0x2B,       // Comma
+        0x34 => 0x2F,       // Period
+        0x35 => 0x2C,       // Slash
+        0x27 => 0x29,       // ;
+        0x28 => 0x27,       // '
+        0x1A => 0x21,       // [
+        0x1B => 0x1E,       // ]
+        0x2B => 0x2A,       // backslash
+        0x29 => 0x32,       // backtick
+        0x0D => 0x18,       // =
+        0x0C => 0x1B,       // -
+        _ => return None,
+    })
+}

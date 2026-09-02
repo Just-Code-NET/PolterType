@@ -320,6 +320,14 @@ pub enum Message {
     /// Ask the OS for a permission — macOS only, and always the
     /// system's own dialog.
     SetupRequestPermission(poltertype_input::setup::Permission),
+    /// Create/adopt the local signing identity and write its name into
+    /// `[updates].local_signing_identity` — the Setup pane answer to
+    /// permissions dying on every update.
+    SetupLocalSigning,
+    /// Quit the main tray process and relaunch the bundle: permissions
+    /// are read at startup, and sending the user to hunt Quit in the
+    /// tray after every grant was the complaint.
+    RestartApp,
 
     /// Intercepted so an unsaved wordlist edit is auto-saved before the
     /// window closes. Carries the `window::Id` to close the right one.

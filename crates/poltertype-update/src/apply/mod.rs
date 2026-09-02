@@ -50,7 +50,18 @@ use crate::types::PendingUpdate;
 /// other two outcomes both mean *keep running*, and are the difference
 /// between an update that is not coming and one that has arrived but
 /// cannot restart us.
-pub fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<Applied, UpdateError> {
+///
+/// `macos_sign_identity` is `[updates].local_signing_identity`: on
+/// macOS the installer re-signs the swapped bundle with it (TCC grants
+/// then survive the update), or, when empty, resets the two stale TCC
+/// records so the Setup pane can re-ask cleanly. The other platforms
+/// ignore it.
+pub fn apply(
+    pending: &PendingUpdate,
+    relaunch: bool,
+    macos_sign_identity: &str,
+) -> Result<Applied, UpdateError> {
+    let _ = macos_sign_identity;
     if !staging::attempts_left(pending) {
         return Ok(Applied::Discarded);
     }
@@ -72,7 +83,7 @@ pub fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<Applied, UpdateE
     #[cfg(not(target_os = "linux"))]
     let applied = {
         #[cfg(target_os = "macos")]
-        macos::apply(pending, relaunch)?;
+        macos::apply(pending, relaunch, macos_sign_identity)?;
         #[cfg(target_os = "windows")]
         windows::apply(pending, relaunch)?;
 

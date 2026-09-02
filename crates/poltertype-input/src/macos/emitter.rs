@@ -13,10 +13,10 @@ use tracing::debug;
 
 use super::codes::{
     FLAG_ALTERNATE, FLAG_COMMAND, FLAG_CONTROL, FLAG_SHIFT, KVK_COMMAND, KVK_CONTROL, KVK_DELETE,
-    KVK_OPTION, KVK_SHIFT,
+    KVK_OPTION, KVK_SHIFT, sc1_to_mac_keycode,
 };
 use super::consts::{EMITTER_TAG, K_CG_EVENT_SOURCE_USER_DATA};
-use crate::{InputError, KeyEmitter, Modifiers};
+use crate::{InputError, KeyEmitter, Modifiers, SwitchChord};
 
 /// Gap between the modifier releases and whatever we type next.
 ///
@@ -38,6 +38,15 @@ const MODIFIER_SETTLE: Duration = Duration::from_millis(4);
 /// replacement (and one *extra* landing delete ate the separator
 /// before the word). 2 ms matches the X11 emitter's `KEY_STEP`.
 const KEY_STEP: Duration = Duration::from_millis(2);
+
+/// How long a backspace waits for its own tap echo before giving up
+/// and falling back to timer pacing. Generous against a busy window
+/// server, negligible against a human: even all-timeouts on a
+/// ten-letter word is a quarter second.
+const ECHO_WAIT: Duration = Duration::from_millis(25);
+
+/// Poll step while waiting for the echo.
+const ECHO_POLL: Duration = Duration::from_micros(500);
 
 pub struct MacosEmitter;
 
@@ -80,7 +89,28 @@ impl KeyEmitter for MacosEmitter {
         }
         let src = event_source()?;
         for _ in 0..n {
+            // Paced against the tap echo, not the clock. A fixed
+            // KEY_STEP was measured enough for ordinary fields, but a
+            // field that re-queries on every keystroke — Spotlight —
+            // still dropped deletes posted on a timer, leaving the
+            // word's first letter standing with the correction glued
+            // to it (`ьmahou`, 2026-08-30). The echo of our own
+            // key-down arriving back at the session tap is the one
+            // in-process proof the window server has sequenced the
+            // event; waiting for it spaces the burst by how fast the
+            // system actually drains it. The timeout covers a dead or
+            // listen-degraded tap: pacing falls back to the old sleep
+            // and the burst still completes.
+            let seen =
+                super::consts::INJECTED_KEYDOWN_ECHOES.load(std::sync::atomic::Ordering::Acquire);
             keyboard_event(&src, KVK_DELETE, true)?.post(CGEventTapLocation::HID);
+            let deadline = std::time::Instant::now() + ECHO_WAIT;
+            while super::consts::INJECTED_KEYDOWN_ECHOES.load(std::sync::atomic::Ordering::Acquire)
+                <= seen
+                && std::time::Instant::now() < deadline
+            {
+                std::thread::sleep(ECHO_POLL);
+            }
             std::thread::sleep(KEY_STEP);
             keyboard_event(&src, KVK_DELETE, false)?.post(CGEventTapLocation::HID);
             std::thread::sleep(KEY_STEP);
@@ -102,6 +132,49 @@ impl KeyEmitter for MacosEmitter {
                 std::thread::sleep(KEY_STEP);
             }
         }
+        Ok(())
+    }
+
+    fn send_chord(&self, chord: SwitchChord) -> Result<(), InputError> {
+        // The chord arrives in SC-1 space, like everything the engine
+        // says; the reverse table answers `None` for a key it cannot
+        // name, and pressing a *wrong* key with Cmd held is a real
+        // action in someone's application — so refuse, loudly.
+        let Some(kvk) = sc1_to_mac_keycode(chord.scancode) else {
+            return Err(InputError::Unsupported(format!(
+                "no Apple keycode for SC-1 {:#04x}",
+                chord.scancode
+            )));
+        };
+
+        let mut flags = 0u64;
+        for (on, bit) in [
+            (chord.ctrl, FLAG_CONTROL),
+            (chord.shift, FLAG_SHIFT),
+            (chord.alt, FLAG_ALTERNATE),
+            (chord.meta, FLAG_COMMAND),
+        ] {
+            if on {
+                flags |= bit;
+            }
+        }
+
+        // The modifiers travel as flags *on the key events* rather than
+        // as their own press/release pair. That is how macOS itself
+        // matches menu shortcuts — the receiver reads the event's
+        // flags, not the modifier keys' physical state — and it leaves
+        // nothing to get stuck: no down was posted, so no up is owed.
+        // `keyboard_event` has already stripped the hardware flags, so
+        // what the app sees is exactly the chord and not the chord plus
+        // whatever the user's fingers are doing.
+        let src = event_source()?;
+        for key_down in [true, false] {
+            let ev = keyboard_event(&src, CGKeyCode::from(kvk), key_down)?;
+            ev.set_flags(CGEventFlags::from_bits_truncate(flags));
+            ev.post(CGEventTapLocation::HID);
+            std::thread::sleep(KEY_STEP);
+        }
+        debug!(scancode = chord.scancode, kvk, flags, "posted macOS chord");
         Ok(())
     }
 

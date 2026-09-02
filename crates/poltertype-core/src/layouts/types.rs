@@ -183,8 +183,29 @@ impl LayoutMapping {
     ///
     /// `None` when nothing at all changed, which is the caller's cue
     /// that this selection was not wrong-layout text and should be put
-    /// back untouched.
+    /// back untouched — and also when the text holds no letter this
+    /// layout owns, for the reason below.
     pub fn transliterate_to(&self, text: &str, to: &Self) -> Option<String> {
+        // At least one letter of this layout's own alphabet, or the
+        // text was not typed under this layout and mapping it would
+        // only corrupt it. The failure this prevents is one-way:
+        // convert `проверяю` (ru→en) and you get `ghjdthz.` — the `ю`
+        // correctly came out as `.` through its key. Press the hotkey
+        // again with Russian still active and the Latin letters pass
+        // through untouched (ru produces none of them), but `.` DOES
+        // exist on ru — on its own key — so it alone gets "converted",
+        // to `/`. The period's link to the `ю` key is gone, and no
+        // later pass brings the letter back: every character that
+        // sits on different punctuation across the two layouts drifts
+        // like this, one wrong-direction press at a time. Letters
+        // survive such a press; punctuation must not travel without
+        // them.
+        if !text
+            .chars()
+            .any(|ch| ch.is_alphabetic() && self.key_for_char(ch).is_some())
+        {
+            return None;
+        }
         let mut out = String::with_capacity(text.len());
         let mut changed = false;
         for ch in text.chars() {

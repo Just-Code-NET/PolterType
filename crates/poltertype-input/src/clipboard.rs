@@ -174,17 +174,14 @@ pub fn clipboard() -> Result<Box<dyn Clipboard>, ClipboardGap> {
 /// has to be reachable without taking focus, which is a property of the
 /// session and is probed. And the emitter has to be able to hold
 /// modifiers around a key, to press the copy chord in the first place —
-/// which is a property of the platform, and on macOS is still false:
-/// `send_chord` there answers `Unsupported`, so a toggle offered on
-/// macOS would switch on a feature that then did nothing.
+/// which every desktop platform's emitter now can: macOS was the last
+/// holdout, gated here until its `send_chord` existed, and posts the
+/// chord as `Cmd`-flagged key events since it does.
 ///
 /// Kept beside the clipboard rather than in the Settings window so
 /// there is one answer, and the window and the engine cannot disagree
 /// about it.
 pub fn selection_support() -> Result<(), ClipboardGap> {
-    if cfg!(target_os = "macos") {
-        return Err(ClipboardGap::NoCopyChord);
-    }
     clipboard().map(|_| ())
 }
 

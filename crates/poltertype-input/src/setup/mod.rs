@@ -29,14 +29,19 @@ pub use types::{SetupReport, SetupStep};
 /// again* click — a handful of `stat`s and one framework call — and
 /// deliberately not cached, since the entire point is to notice that
 /// the user just flipped a switch.
-pub fn probe_setup() -> SetupReport {
+/// `local_signing_identity` is `[updates].local_signing_identity` — the
+/// macOS pane adds a step about keeping permissions across updates and
+/// needs to know whether the machinery is already configured. The
+/// other platforms ignore it.
+pub fn probe_setup(local_signing_identity: &str) -> SetupReport {
+    let _ = local_signing_identity;
     #[cfg(target_os = "linux")]
     {
         linux::probe()
     }
     #[cfg(target_os = "macos")]
     {
-        macos::probe()
+        macos::probe(local_signing_identity)
     }
     #[cfg(windows)]
     {
@@ -93,6 +98,28 @@ pub fn permission_settings_url(permission: Permission) -> Option<&'static str> {
     {
         let _ = permission;
         None
+    }
+}
+
+/// The identity name [`setup_local_signing`] creates when the config
+/// does not name one.
+pub const DEFAULT_LOCAL_SIGNING_IDENTITY: &str = "PolterType Local Signing";
+
+/// Create (or adopt) the local code-signing identity the updater
+/// re-signs swapped bundles with, so the TCC grants survive updates.
+///
+/// macOS only. Idempotent: an identity of that name already in the
+/// keychain is adopted rather than duplicated. The caller writes the
+/// name into `[updates].local_signing_identity` on `Ok`.
+pub fn setup_local_signing(name: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::setup_local_signing(name)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = name;
+        Err("local update signing is a macOS mechanism".to_owned())
     }
 }
 
