@@ -46,6 +46,44 @@ mod engine_integration_tests {
     /// Fires from inside a replay burst — see `MockEmitter::during_replay`.
     type ReplayHook = Box<dyn Fn() + Send>;
 
+    /// Fires as a chord goes out — see `MockEmitter::on_chord`. The
+    /// stand-in for the focused application, which is what actually
+    /// answers a copy chord by filling the clipboard.
+    type ChordHook = Box<dyn Fn(poltertype_types::SwitchChord) + Send>;
+
+    /// A clipboard that behaves like a desktop's: what is written stays
+    /// readable until something else is written.
+    ///
+    /// The engine never puts a *selection* here itself — it presses
+    /// copy and waits to see whether anything arrives, so the
+    /// application's half of that is `MockEmitter::on_chord`.
+    #[derive(Default)]
+    struct MockClipboard {
+        text: Mutex<Option<String>>,
+        /// Every value written, in order. The restore is as much of
+        /// this feature's contract as the staging is: the user's
+        /// clipboard has to come back.
+        writes: Mutex<Vec<String>>,
+    }
+
+    impl MockClipboard {
+        fn writes(&self) -> Vec<String> {
+            self.writes.lock().clone()
+        }
+    }
+
+    impl poltertype_input::Clipboard for MockClipboard {
+        fn text(&self) -> Result<Option<String>, InputError> {
+            Ok(self.text.lock().clone())
+        }
+
+        fn set_text(&self, text: &str) -> Result<(), InputError> {
+            *self.text.lock() = Some(text.to_owned());
+            self.writes.lock().push(text.to_owned());
+            Ok(())
+        }
+    }
+
     /// Records every operation and mimics the uinput emitter's echo log
     /// (press+release per backspace / replay key, shift presses
     /// included) so tests can replay realistic keyd-style echoes.
@@ -67,6 +105,9 @@ mod engine_integration_tests {
         during_replay: Mutex<Option<ReplayHook>>,
         /// Every desktop switch chord this emitter was asked to send.
         chords: Mutex<Vec<poltertype_types::SwitchChord>>,
+        /// Called as a chord goes out — the focused application's half
+        /// of a copy. See `ChordHook`.
+        on_chord: Mutex<Option<ChordHook>>,
     }
 
     impl MockEmitter {
@@ -86,6 +127,9 @@ mod engine_integration_tests {
     impl KeyEmitter for MockEmitter {
         fn send_chord(&self, chord: poltertype_types::SwitchChord) -> Result<(), InputError> {
             self.chords.lock().push(chord);
+            if let Some(hook) = self.on_chord.lock().as_ref() {
+                hook(chord);
+            }
             Ok(())
         }
 
@@ -275,12 +319,18 @@ mod engine_integration_tests {
                 detectors_override,
                 accept_modifiers,
                 |_| {},
+                None,
             )
         }
 
         /// The widest constructor: `tweak` gets the whole `Settings`
         /// before the engine starts, for anything no narrower parameter
-        /// covers.
+        /// covers, and `clipboard` installs one for the selection path.
+        ///
+        /// One argument over the lint's limit, and the narrower
+        /// constructors above are exactly what keeps that from
+        /// reaching the tests.
+        #[allow(clippy::too_many_arguments)]
         fn start_configured(
             idle_timeout_ms: u64,
             emitter: MockEmitter,
@@ -289,6 +339,7 @@ mod engine_integration_tests {
             detectors_override: Option<Vec<Box<dyn Detector>>>,
             accept_modifiers: Option<&str>,
             tweak: impl FnOnce(&mut crate::settings::Settings),
+            clipboard: Option<Arc<dyn poltertype_input::Clipboard>>,
         ) -> Self {
             let mut settings = crate::settings::Settings::default();
             settings.engine.idle_timeout_ms = idle_timeout_ms;
@@ -332,11 +383,10 @@ mod engine_integration_tests {
                 layout_switcher: Arc::<MockSwitcher>::clone(&switcher)
                     as Arc<dyn poltertype_layout::LayoutSwitcher>,
                 key_emitter: Arc::<MockEmitter>::clone(&emitter) as Arc<dyn KeyEmitter>,
-                // Selection conversion is off in these tests, which is
-                // also its shipped default. It reaches into another
-                // application's clipboard and cannot be exercised
-                // against a mock emitter that types into nothing.
-                clipboard: None,
+                // `None` unless a test asked for one: selection
+                // conversion is off by default, which is also its
+                // shipped default.
+                clipboard,
                 // The gate is a no-op in tests: these exercise the
                 // path taken when keystrokes cannot be held back.
                 key_gate: poltertype_input::KeyGate::disabled(),
@@ -1417,6 +1467,138 @@ mod engine_integration_tests {
         );
     }
 
+    // ─── Selection conversion ────────────────────────────────────────
+
+    /// A harness whose force-switch has no word to act on and a
+    /// clipboard to fall back to, with the focused application's half
+    /// of a copy wired to the emitter: press copy, and `selection`
+    /// appears on the clipboard, exactly as an application answers
+    /// `Ctrl+C`.
+    fn selection_harness(selection: &str) -> (Harness, Arc<MockClipboard>) {
+        let clipboard = Arc::new(MockClipboard::default());
+        let emitter = MockEmitter::default();
+        let cb = Arc::clone(&clipboard);
+        let text = selection.to_owned();
+        *emitter.on_chord.lock() = Some(Box::new(move |chord| {
+            if chord == crate::engine::consts::COPY_CHORD {
+                use poltertype_input::Clipboard as _;
+                let _ = cb.set_text(&text);
+            }
+        }));
+        let h = Harness::start_configured(
+            60_000,
+            emitter,
+            false,
+            None,
+            None,
+            None,
+            |s| s.selection.enabled = true,
+            Some(Arc::clone(&clipboard) as Arc<dyn poltertype_input::Clipboard>),
+        );
+        (h, clipboard)
+    }
+
+    /// The feature's own shape, and its first end-to-end test: nothing
+    /// to switch, so the hotkey copies, converts and pastes — then puts
+    /// the user's clipboard back.
+    #[test]
+    fn a_selection_is_converted_and_the_clipboard_restored() {
+        // `ghbdsn` is `привіт` typed under en-US.
+        let (h, clipboard) = selection_harness("ghbdsn");
+        {
+            use poltertype_input::Clipboard as _;
+            clipboard
+                .set_text("something the user copied earlier")
+                .expect("mock clipboard");
+        }
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        let writes = clipboard.writes();
+        assert!(
+            writes.iter().any(|w| w == "привіт"),
+            "the converted text must be staged for the paste: {writes:?}"
+        );
+        assert_eq!(
+            writes.last().map(String::as_str),
+            Some("something the user copied earlier"),
+            "and the user's own clipboard must be the last thing put back: {writes:?}"
+        );
+    }
+
+    /// Issue #51, the half that only X11 shows: while the chord that
+    /// asked for the conversion is still held, an `XGrabKey` passive
+    /// grab is an *active* one and everything we emit goes to the
+    /// client holding it — so the copy chord never reaches the window
+    /// the selection is in, and the gesture reads as "nothing was
+    /// selected". Every other force-switch path already waits for the
+    /// key to come up; this one did not.
+    #[test]
+    fn a_selection_is_left_alone_until_the_hotkey_comes_up() {
+        const KEY: u32 = 0x43; // F9
+        let (h, clipboard) = selection_harness("ghbdsn");
+        h.cmd_tx
+            .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
+                // *Grabbed*, which is what makes the key invisible to
+                // us on X11 and is how `trigger_key_down` reads it.
+                grabbed: [
+                    Some(Chord {
+                        ctrl: true,
+                        shift: true,
+                        alt: false,
+                        meta: false,
+                        scancode: KEY,
+                    }),
+                    None,
+                ],
+                pause: None,
+                switch_last: None,
+            }))
+            .expect("engine alive");
+
+        let both = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x1D, KeyDirection::Press, both);
+        h.key_mods(0x2A, KeyDirection::Press, both);
+        // Before the command: the run loop takes keys and commands off
+        // two channels, and the modifiers have to be on record as held
+        // by the time the force-switch is handled.
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(
+            clipboard.writes().is_empty(),
+            "nothing may be emitted at the clipboard while the chord is down: {:?}",
+            clipboard.writes()
+        );
+
+        // Finger off, and the same press finishes its work.
+        h.key_mods(
+            0x2A,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.key_mods(
+            0x1D,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+        h.settle();
+        assert!(
+            clipboard.writes().iter().any(|w| w == "привіт"),
+            "and once it is up, the selection converts: {:?}",
+            clipboard.writes()
+        );
+    }
+
     /// Issue #57: an arrow key, then a whole word typed after it, then
     /// the manual hotkey — and nothing happened.
     ///
@@ -2029,6 +2211,7 @@ mod engine_integration_tests {
             None,
             None,
             |s| s.exceptions.word_whitelist = vec!["GHBDSN".into()],
+            None,
         );
         type_word(&h, &GHBDSN);
         h.tap(SPACE);
@@ -2359,6 +2542,7 @@ mod engine_integration_tests {
             None,
             None,
             |s| s.general.paused = true,
+            None,
         );
         type_word(&h, &GHBDSN);
         h.tap(SPACE);
@@ -2391,6 +2575,7 @@ mod engine_integration_tests {
             None,
             None,
             |s| s.general.paused = true,
+            None,
         );
         h.cmd_tx
             .send(EngineCommand::SetKeystreamHotkeys(KeystreamHotkeys {
@@ -2438,6 +2623,7 @@ mod engine_integration_tests {
             None,
             None,
             |s| s.general.paused = true,
+            None,
         );
         h.cmd_tx
             .send(EngineCommand::SetPaused(true))
@@ -3220,6 +3406,7 @@ mod engine_integration_tests {
             None,
             None,
             |s| s.general.sound_on_correct = false,
+            None,
         );
         type_word(&quiet, &GHBDSN);
         quiet.settle();

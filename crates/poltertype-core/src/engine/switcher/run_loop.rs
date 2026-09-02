@@ -247,7 +247,7 @@ impl SwitcherEngine {
                     // user selected something instead", and the only
                     // moment worth spending a `Ctrl+C` on. Off by
                     // default; see `SelectionSettings`.
-                    if self.convert_selection() {
+                    if self.convert_selection(key_rx) {
                         *self.last_force_switch.write() = Some(Instant::now());
                     }
                 } else {

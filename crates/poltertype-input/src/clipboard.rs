@@ -74,12 +74,44 @@ impl std::fmt::Display for ClipboardGap {
 
 /// The system clipboard as `arboard` sees it.
 ///
-/// A fresh handle per call rather than one held open: on Wayland the
-/// handle owns a connection and, once we have written, the selection
-/// itself, and a long-lived one would keep serving stale data after
-/// the user copied something else. Opening costs a socket round trip,
-/// and this runs once per force-switch on a word that is not there.
-struct SystemClipboard;
+/// **Reads** open a fresh handle per call rather than one held open: on
+/// Wayland the handle owns a connection and, once we have written, the
+/// selection itself, and a long-lived one would keep serving stale data
+/// after the user copied something else. Opening costs a socket round
+/// trip, and this runs once per force-switch on a word that is not
+/// there.
+///
+/// **Writes** cannot do that, and doing it is why selection conversion
+/// never worked on Linux. Both X11 and Wayland serve the clipboard from
+/// the process that owns it, so a write is only as durable as the
+/// handle that made it — `arboard` tears its serving window down with
+/// the last one, and the text is gone before anything can paste it.
+/// Measured 2026-09-02 on a nested X server with no clipboard manager,
+/// on XWayland and on Hyprland's data-control protocol: a marker
+/// written through a dropped handle reads back as an *empty* clipboard
+/// on all three, and survives on all three when the handle is kept.
+///
+/// That destroyed the converted text before the paste chord went out,
+/// and took the user's own clipboard with it on the way back — the
+/// restore was written through a temporary handle too (issue #51).
+/// Windows is unaffected: its clipboard is owned by the OS, not served
+/// by the writer, which is why the same code was confirmed working
+/// there (issue #32).
+///
+/// So the writing handle stays. This is a tray app; it outlives the
+/// paste by design, which is exactly the lifetime the protocols ask
+/// for.
+struct SystemClipboard {
+    writer: parking_lot::Mutex<Option<arboard::Clipboard>>,
+}
+
+impl SystemClipboard {
+    fn new() -> Self {
+        Self {
+            writer: parking_lot::Mutex::new(None),
+        }
+    }
+}
 
 impl Clipboard for SystemClipboard {
     fn text(&self) -> Result<Option<String>, InputError> {
@@ -95,7 +127,11 @@ impl Clipboard for SystemClipboard {
     }
 
     fn set_text(&self, text: &str) -> Result<(), InputError> {
-        let mut cb = arboard::Clipboard::new().map_err(map_err)?;
+        let mut writer = self.writer.lock();
+        let cb = match writer.as_mut() {
+            Some(cb) => cb,
+            None => writer.insert(arboard::Clipboard::new().map_err(map_err)?),
+        };
         cb.set_text(text.to_owned()).map_err(map_err)
     }
 }
@@ -111,7 +147,7 @@ fn map_err(e: arboard::Error) -> InputError {
 /// honest answer and it is the one the library gives.
 pub fn clipboard() -> Result<Box<dyn Clipboard>, ClipboardGap> {
     match arboard::Clipboard::new() {
-        Ok(_) => Ok(Box::new(SystemClipboard)),
+        Ok(_) => Ok(Box::new(SystemClipboard::new())),
         Err(e) => {
             let why = e.to_string();
             // `wl-clipboard-rs` speaks only the data-control protocols
@@ -165,6 +201,49 @@ mod tests {
     /// the code — and it is the answer the desktop matrix collects, one
     /// session at a time. Asserting anything here would fail every run
     /// on GNOME, where the honest result is "unavailable".
+    /// A write has to outlive the call that made it.
+    ///
+    /// The one property selection conversion rests on, and the one it
+    /// was missing: the converted text is staged, a paste chord goes
+    /// out, and the focused application reads the clipboard some
+    /// milliseconds later — from whichever process still owns it. A
+    /// write that dies with its handle reads back as an empty
+    /// clipboard, which is what issue #51 was, on every Linux backend.
+    ///
+    /// `cargo test -p poltertype-input -- --ignored --nocapture a_write_outlives_the_call`
+    ///
+    /// Ignored because it needs a real session; there is no clipboard
+    /// on a CI runner, and a skip that passes would say nothing.
+    #[test]
+    #[ignore = "needs a real desktop session's clipboard"]
+    fn a_write_outlives_the_call() {
+        let Ok(cb) = clipboard() else {
+            println!("no windowless clipboard in this session — nothing measured");
+            return;
+        };
+        let before = cb.text().ok().flatten();
+        let marker = format!("poltertype-durability-{}", std::process::id());
+        let staged = cb.set_text(&marker);
+        assert!(staged.is_ok(), "could not stage the marker: {staged:?}");
+
+        // Read through a *fresh* handle, and after the pause a paste
+        // really takes: reading back through the one that wrote would
+        // prove nothing, since that handle is the thing under test.
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        let read = cb.text();
+
+        // Before the assertion, so a failure does not also walk off
+        // with the session's clipboard.
+        if let Some(prev) = before {
+            let _ = cb.set_text(&prev);
+        }
+        assert_eq!(
+            read.ok().flatten().as_deref(),
+            Some(marker.as_str()),
+            "the staged text must still be there when the paste asks for it"
+        );
+    }
+
     #[test]
     #[ignore = "reports this session's real clipboard access; nothing to assert"]
     fn clipboard_of_this_session() {

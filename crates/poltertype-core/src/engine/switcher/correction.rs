@@ -864,11 +864,18 @@ impl SwitcherEngine {
     ///
     /// Returns whether it converted anything. `false` means the caller
     /// should behave exactly as it did before this feature existed.
-    pub(super) fn convert_selection(&self) -> bool {
+    pub(super) fn convert_selection(&self, key_rx: &Receiver<KeyEvent>) -> bool {
         let Some(clipboard) = self.clipboard.as_ref() else {
             debug!("selection conversion: no windowless clipboard on this session");
             return false;
         };
+        if !self.wait_for_trigger_release(key_rx) {
+            debug!(
+                "selection conversion: the key that asked for it is still down; \
+                 leaving the selection alone"
+            );
+            return false;
+        }
         // What the clipboard held before we asked for a copy. `None` is
         // an ordinary answer — an empty clipboard, or one holding an
         // image — and *not* a reason to stop: refusing on `None` meant
@@ -944,6 +951,45 @@ impl SwitcherEngine {
 }
 
 impl SwitcherEngine {
+    /// Wait for the finger to come off the hotkey before anything is
+    /// emitted — the same fact `apply_correction` waits on, on the one
+    /// force-switch path that was not waiting on it.
+    ///
+    /// While a grabbed chord's key is down, X11's passive grab is an
+    /// *active* one, and everything we emit goes to the client holding
+    /// it rather than to the focused window. A `Ctrl+C` sent then never
+    /// reaches the application the selection is in, the clipboard never
+    /// changes, and the gesture reads as "nothing was selected" —
+    /// which is how issue #51 read on Cinnamon X11. Releasing the
+    /// modifiers we can see does not help: the grab is held by the
+    /// chord's own key, and that is still physically down.
+    ///
+    /// Waiting is possible here for the same reason it is there: the
+    /// wait runs on the thread that reads key events, so it has to
+    /// drain them itself, and `drain_correction_window` is what keeps
+    /// `trigger_key_down` answering honestly while it does.
+    ///
+    /// `false` — do nothing at all — when the key never comes up, or
+    /// when the user typed while we waited: what they typed replaced
+    /// the selection, so there is nothing left to convert.
+    fn wait_for_trigger_release(&self, key_rx: &Receiver<KeyEvent>) -> bool {
+        if !self.trigger_key_down() {
+            return true;
+        }
+        let deadline = Instant::now() + CHORD_RELEASE_WAIT;
+        let mut click_allowance = 0;
+        while self.trigger_key_down() && Instant::now() < deadline {
+            if self
+                .drain_correction_window(key_rx, &mut click_allowance)
+                .saw_user_press
+            {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        !self.trigger_key_down()
+    }
+
     /// Press the platform's copy chord and wait for the clipboard to
     /// stop reading as `previous`.
     ///
