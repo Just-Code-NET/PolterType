@@ -82,7 +82,7 @@ fn keygen(args: &[String]) -> Result<()> {
     let verifying = signing.verifying_key();
 
     std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
-    write_private(&secret_path, &format!("{}\n", BASE64.encode(seed)))?;
+    crate::private_file::write(&secret_path, &format!("{}\n", BASE64.encode(seed)))?;
     std::fs::write(
         &public_path,
         format!("{}\n", BASE64.encode(verifying.to_bytes())),
@@ -231,28 +231,4 @@ fn home() -> Result<PathBuf> {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or_else(|| anyhow::anyhow!("$HOME is not set; pass --dir"))
-}
-
-/// Create the file with owner-only permissions *before* the secret goes
-/// into it — writing first and chmod-ing after leaves a window where the
-/// key is world-readable.
-#[cfg(unix)]
-fn write_private(path: &Path, contents: &str) -> Result<()> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .open(path)
-        .with_context(|| format!("create {}", path.display()))?;
-    f.write_all(contents.as_bytes())?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn write_private(path: &Path, contents: &str) -> Result<()> {
-    // No mode bits to set; the file inherits the directory's ACL, and
-    // the recommended directory is under the user profile.
-    std::fs::write(path, contents).with_context(|| format!("create {}", path.display()))
 }

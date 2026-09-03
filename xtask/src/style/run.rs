@@ -48,7 +48,10 @@ pub(crate) fn run(args: &[String]) -> Result<()> {
     }
 
     if findings.is_empty() {
-        println!("style: {} files, no violations", files.len());
+        match &filter {
+            Some(prefix) => println!("style: no violations under {prefix}"),
+            None => println!("style: {} files, no violations", files.len()),
+        }
         return Ok(());
     }
     bail!(

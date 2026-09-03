@@ -3835,7 +3835,6 @@ name = "poltertype-app"
 version = "0.30.0"
 dependencies = [
  "anyhow",
- "core-foundation 0.10.1",
  "crossbeam-channel",
  "global-hotkey",
  "iced",
@@ -3972,7 +3971,9 @@ dependencies = [
 name = "poltertype-shell"
 version = "0.30.0"
 dependencies = [
+ "core-foundation 0.10.1",
  "iced",
+ "notify-rust",
  "poltertype-icon",
  "single-instance",
  "tao",
