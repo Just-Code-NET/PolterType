@@ -41,9 +41,10 @@ pub fn localise_with(manifest: &mut ExtensionManifest, id: &str, catalog: &Catal
     });
 }
 
-/// Every string of the pane a translation can reach, as key/English
-/// pairs in manifest order — the file a translator starts from, printed
-/// by `poltertype --plugin-strings <id>`.
+/// Every string a translation can reach — the settings pane and the
+/// tray entries — as key/English pairs in manifest order, the file a
+/// translator starts from. Printed by
+/// `poltertype --plugin-strings <id>`.
 ///
 /// Keys are relative to the plug-in's own namespace, which is how they
 /// are written in its catalog.
@@ -67,6 +68,27 @@ fn visit(manifest: &mut ExtensionManifest, f: &mut impl FnMut(&str, &str) -> Opt
     for control in &mut manifest.pane {
         let path = format!("pane.{}", control_id(control));
         visit_control(control, &path, f);
+    }
+    // Tray entries have no key or id of their own, so they are named
+    // after their English label. Reordering the menu therefore keeps
+    // every translation; rewording an entry asks for a new one, which
+    // is the right way round.
+    for item in &mut manifest.tray_items {
+        let key = format!("tray.{}", slug(&item.label));
+        replace(&mut item.label, &key, f);
+    }
+    for list in &mut manifest.tray_lists {
+        let path = format!("tray_list.{}", slug(&list.label));
+        replace(&mut list.label, &format!("{path}.label"), f);
+        replace(&mut list.empty_label, &format!("{path}.empty"), f);
+        for action in &mut list.actions {
+            let key = format!("{path}.action.{}", action.command.trim());
+            replace(&mut action.label, &key, f);
+        }
+        for action in &mut list.bulk {
+            let key = format!("{path}.bulk.{}", action.command.trim());
+            replace(&mut action.label, &key, f);
+        }
     }
 }
 

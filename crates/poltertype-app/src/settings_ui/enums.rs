@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use iced::widget::text_editor;
 use poltertype_core::engine::{ModRole, ModSet};
+use poltertype_core::i18n::tr;
 use poltertype_core::plugins::SettingValue;
 use poltertype_core::settings::TrayIconStyle;
 use poltertype_layout::LayoutId;
@@ -41,9 +42,9 @@ pub enum CommandActionKind {
 impl CommandActionKind {
     pub(super) fn label(self) -> &'static str {
         match self {
-            CommandActionKind::TypeText => "Type text (snippet)",
-            CommandActionKind::SwitchLayout => "Switch layout",
-            CommandActionKind::OpenPath => "Open file / URL",
+            CommandActionKind::TypeText => tr("commands.action_type", "Type text (snippet)"),
+            CommandActionKind::SwitchLayout => tr("commands.action_switch", "Switch layout"),
+            CommandActionKind::OpenPath => tr("commands.action_open", "Open file / URL"),
         }
     }
 
@@ -79,8 +80,8 @@ impl WordlistKind {
 
     pub(super) fn label(self) -> &'static str {
         match self {
-            WordlistKind::Extras => "Extras (full words)",
-            WordlistKind::Stop => "Stop list (short tokens)",
+            WordlistKind::Extras => tr("wordlists.kind_extras", "Extras (full words)"),
+            WordlistKind::Stop => tr("wordlists.kind_stop", "Stop list (short tokens)"),
         }
     }
 }
@@ -131,9 +132,9 @@ impl ThemeChoice {
 
     pub(super) fn label(self) -> &'static str {
         match self {
-            ThemeChoice::System => "System",
-            ThemeChoice::Light => "Light",
-            ThemeChoice::Dark => "Dark",
+            ThemeChoice::System => tr("general.theme_system", "System"),
+            ThemeChoice::Light => tr("general.theme_light", "Light"),
+            ThemeChoice::Dark => tr("general.theme_dark", "Dark"),
         }
     }
 }
@@ -284,6 +285,11 @@ pub enum Message {
     /// Segmented tray-icon picker beside it. Nothing to apply here —
     /// the tray is another process, and it re-reads `config.toml`.
     TrayIconChoiceChanged(TrayIconStyle),
+
+    /// The interface language, as a locale code (`"system"` to follow
+    /// the environment). Applied at the next open: the catalog is read
+    /// once, before the first widget exists.
+    UiLanguageChanged(String),
 
     /// Automatic or manual-only conversion — the same `[general].paused`
     /// the tray's pause item writes, named here as the mode it is

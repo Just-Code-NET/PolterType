@@ -72,6 +72,12 @@ pub struct SettingsApp {
     /// per frame would fight whoever else writes them.
     pub(super) plugins: Vec<super::plugin_pane::PluginPane>,
 
+    /// Languages the interface can actually be shown in — every locale
+    /// a catalog exists for, plug-ins' and the user's own included.
+    /// Read from disk once: the picker must offer what the loader would
+    /// read, and neither list changes while the window is open.
+    pub(super) ui_languages: Vec<(String, String)>,
+
     // ── Commands pane: draft of a new command ──────────────────────
     /// Free-form display name. Falls back to id if blank at Add time.
     pub(super) command_draft_name: String,
@@ -168,6 +174,13 @@ impl SettingsApp {
                     poltertype_core::plugins::extensions(&data_dir),
                     &plugin_config_root,
                 )
+            },
+            ui_languages: {
+                let data_dir = poltertype_core::resolve_data_dir().unwrap_or_default();
+                let plugins = poltertype_core::plugins::catalog_sources(&data_dir);
+                poltertype_core::i18n::installed_locales(&poltertype_core::i18n::sources(
+                    &data_dir, &plugins,
+                ))
             },
             command_draft_name: String::new(),
             command_draft_trigger: String::new(),

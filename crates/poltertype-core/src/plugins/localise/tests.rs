@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::i18n::Catalog;
-use crate::plugins::{ControlKind, TrayListAction};
+use crate::plugins::{ControlKind, TrayItem, TrayList, TrayListAction};
 
 fn manifest() -> ExtensionManifest {
     ExtensionManifest {
@@ -47,6 +47,24 @@ fn manifest() -> ExtensionManifest {
                 ..Default::default()
             },
         ],
+        tray_items: vec![TrayItem {
+            label: "Open the inbox".to_owned(),
+            command: "inbox".to_owned(),
+            ..Default::default()
+        }],
+        tray_lists: vec![TrayList {
+            label: "Drafts ({})".to_owned(),
+            empty_label: "No drafts".to_owned(),
+            command: "drafts".to_owned(),
+            actions: vec![TrayListAction {
+                label: "Send".to_owned(),
+                command: "send".to_owned(),
+            }],
+            bulk: vec![TrayListAction {
+                label: "Discard all".to_owned(),
+                command: "discard-all".to_owned(),
+            }],
+        }],
         ..Default::default()
     }
 }
@@ -72,8 +90,36 @@ fn keys_are_derived_from_the_manifests_own_structure() {
             "pane.schedule.sends.add",
             "pane.schedule.sends.action.send-now",
             "pane.schedule.sends.field.room.label",
+            "tray.open_the_inbox",
+            "tray_list.drafts.label",
+            "tray_list.drafts.empty",
+            "tray_list.drafts.action.send",
+            "tray_list.drafts.bulk.discard-all",
         ]
     );
+}
+
+/// A plug-in's tray entries are its own words too, and the tray now
+/// speaks the interface's language.
+#[test]
+fn tray_entries_are_translated_from_the_same_catalog() {
+    let mut m = manifest();
+    localise_with(
+        &mut m,
+        "acme",
+        &catalog(
+            r#"
+"plugin.acme.tray.open_the_inbox" = "Відкрити вхідні"
+"plugin.acme.tray_list.drafts.label" = "Чернетки ({})"
+"plugin.acme.tray_list.drafts.action.send" = "Надіслати"
+"#,
+        ),
+    );
+    assert_eq!(m.tray_items[0].label, "Відкрити вхідні");
+    assert_eq!(m.tray_items[0].command, "inbox", "routing is by id");
+    assert_eq!(m.tray_lists[0].label, "Чернетки ({})");
+    assert_eq!(m.tray_lists[0].actions[0].label, "Надіслати");
+    assert_eq!(m.tray_lists[0].empty_label, "No drafts");
 }
 
 /// The template is what a translator edits, so it has to arrive with

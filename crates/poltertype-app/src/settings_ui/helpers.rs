@@ -7,6 +7,7 @@ use anyhow::Result;
 use iced::keyboard::{Key, Modifiers, key::Code, key::Named, key::Physical};
 use poltertype_core::commands::{CommandAction, UserCommand};
 use poltertype_core::engine::{ModRole, ModSet};
+use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::settings::Settings;
 use poltertype_layout::LayoutId;
 use tracing::warn;
@@ -45,19 +46,31 @@ pub fn window_icon() -> Option<iced::window::Icon> {
 pub fn banner_for_wordlist_save(outcome: WordlistFlushOutcome) -> SaveBanner {
     match outcome {
         WordlistFlushOutcome::Nothing => SaveBanner {
-            text: "Nothing to save (buffer is unchanged).".into(),
+            text: tr(
+                "wordlists.nothing_to_save",
+                "Nothing to save (buffer is unchanged).",
+            )
+            .into(),
             is_error: false,
         },
         WordlistFlushOutcome::NoLayout => SaveBanner {
-            text: "No layout selected.".into(),
+            text: tr("wordlists.no_layout_selected", "No layout selected.").into(),
             is_error: true,
         },
         WordlistFlushOutcome::Saved(path) => SaveBanner {
-            text: format!("Saved to {}. Close this window to apply.", path.display()),
+            text: tr_args(
+                "wordlists.saved_to",
+                "Saved to {}. Close this window to apply.",
+                &[&path.display().to_string()],
+            ),
             is_error: false,
         },
         WordlistFlushOutcome::Failed(e) => SaveBanner {
-            text: format!("Save failed: {e}"),
+            text: tr_args(
+                "wordlists.save_failed",
+                "Save failed: {}",
+                &[&e.to_string()],
+            ),
             is_error: true,
         },
     }
@@ -71,11 +84,19 @@ pub fn banner_for_auto_save(outcome: WordlistFlushOutcome) -> Option<SaveBanner>
     match outcome {
         WordlistFlushOutcome::Nothing | WordlistFlushOutcome::NoLayout => None,
         WordlistFlushOutcome::Saved(path) => Some(SaveBanner {
-            text: format!("Auto-saved unsaved edit to {}.", path.display()),
+            text: tr_args(
+                "wordlists.auto_saved",
+                "Auto-saved unsaved edit to {}.",
+                &[&path.display().to_string()],
+            ),
             is_error: false,
         }),
         WordlistFlushOutcome::Failed(e) => Some(SaveBanner {
-            text: format!("Auto-save failed: {e}"),
+            text: tr_args(
+                "wordlists.auto_save_failed",
+                "Auto-save failed: {}",
+                &[&e.to_string()],
+            ),
             is_error: true,
         }),
     }
@@ -87,18 +108,23 @@ pub fn banner_for_auto_save(outcome: WordlistFlushOutcome) -> Option<SaveBanner>
 pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String> {
     let trigger = app.command_draft_trigger.trim().to_owned();
     if trigger.is_empty() {
-        return Err("Set a trigger first (e.g. `anrl`).".into());
+        return Err(tr(
+            "commands.err_no_trigger",
+            "Set a trigger first (e.g. `anrl`).",
+        )
+        .into());
     }
     if trigger.chars().any(char::is_whitespace) {
-        return Err(
+        return Err(tr(
+            "commands.err_trigger_spaces",
             "Trigger must be a single token — no spaces. The buffer resets at every \
-             word boundary, so a multi-word trigger can never match."
-                .into(),
-        );
+             word boundary, so a multi-word trigger can never match.",
+        )
+        .into());
     }
     let param = app.command_draft_param.trim().to_owned();
     if param.is_empty() {
-        return Err("Action parameter is empty.".into());
+        return Err(tr("commands.err_no_param", "Action parameter is empty.").into());
     }
     let action = match app.command_draft_action_kind {
         CommandActionKind::TypeText => CommandAction::TypeText { text: param },
@@ -106,8 +132,10 @@ pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String
             // Reject what obviously can't be a layout id, to save the
             // user a mystery silent no-op at switch time.
             if !looks_like_layout_id(&param) {
-                return Err(format!(
-                    "`{param}` doesn't look like a layout id (e.g. `en-US`)."
+                return Err(tr_args(
+                    "commands.err_not_layout_id",
+                    "`{}` doesn't look like a layout id (e.g. `en-US`).",
+                    &[&param],
                 ));
             }
             CommandAction::SwitchLayout {
@@ -120,8 +148,10 @@ pub fn build_command_from_draft(app: &SettingsApp) -> Result<UserCommand, String
     let name = app.command_draft_name.trim();
     let id = derive_command_id(name, &action, &app.settings.commands);
     if app.settings.commands.iter().any(|c| c.id == id) {
-        return Err(format!(
-            "A command with id `{id}` already exists — pick a different name."
+        return Err(tr_args(
+            "commands.err_duplicate_id",
+            "A command with id `{}` already exists — pick a different name.",
+            &[&id],
         ));
     }
 
@@ -205,12 +235,12 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
             // Truncate long snippets so one row stays one row.
             let preview = text.chars().take(40).collect::<String>();
             let suffix = if text.chars().count() > 40 { "…" } else { "" };
-            format!("type `{preview}{suffix}`")
+            tr_args("commands.summary_type", "type `{}{}`", &[&preview, suffix])
         }
         // ASCII arrow: the default UI font may lack U+2192 (renders
         // as tofu on a clean Linux install).
         CommandAction::SwitchLayout { layout } => format!("-> {layout}"),
-        CommandAction::OpenPath { path } => format!("open `{path}`"),
+        CommandAction::OpenPath { path } => tr_args("commands.summary_open", "open `{}`", &[path]),
         // Shown with its arguments: a reader of the list must be able
         // to see exactly what would run.
         CommandAction::RunShell(shell) => {
@@ -220,7 +250,7 @@ pub fn format_command_summary(cmd: &UserCommand) -> String {
                 .join(" ");
             let preview = argv.chars().take(40).collect::<String>();
             let suffix = if argv.chars().count() > 40 { "…" } else { "" };
-            format!("run `{preview}{suffix}`")
+            tr_args("commands.summary_run", "run `{}{}`", &[&preview, suffix])
         }
     };
     let apps_blurb = if cmd.apps.is_empty() {

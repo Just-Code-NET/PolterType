@@ -14,7 +14,7 @@
 
 use iced::widget::{Button, Column, Container, Row, Space, Text};
 use iced::{Alignment, Element, Length, Padding};
-use poltertype_core::i18n::tr;
+use poltertype_core::i18n::{tr, tr_args};
 use poltertype_input::setup::{StepAction, StepState};
 
 use super::consts::PERMISSIONS_DOC_URL;
@@ -29,9 +29,15 @@ impl SettingsApp {
         let report = &self.setup;
 
         let headline = if report.needs_attention() {
-            "PolterType needs one more permission before it can do anything."
+            tr(
+                "setup.headline_attention",
+                "PolterType needs one more permission before it can do anything.",
+            )
         } else {
-            "Everything PolterType needs is in place."
+            tr(
+                "setup.headline_ready",
+                "Everything PolterType needs is in place.",
+            )
         };
 
         let mut steps = Column::new().spacing(14);
@@ -52,11 +58,12 @@ impl SettingsApp {
         {
             steps = steps.push(Space::new().height(6));
             steps = steps.push(
-                Text::new(
+                Text::new(tr(
+                    "setup.relogin_note",
                     "Already set up — but this login session started before it, and a session \
                      keeps the group membership it was created with. Log out and back in (a \
                      reboot also does it). Re-running the setup script will not help.",
-                )
+                ))
                 .size(12)
                 .color(b.brand),
             );
@@ -71,14 +78,15 @@ impl SettingsApp {
         {
             steps = steps.push(Space::new().height(6));
             steps = steps.push(
-                Text::new(
+                Text::new(tr(
+                    "setup.macos_reset_note",
                     "macOS already has an answer on record for PolterType and it is \"no\", so \
                      its own permission dialog will not appear again — pressing Ask does \
                      nothing. Open the pane, select PolterType, remove it with the − button, \
                      then add it back with +. This is what an update costs on an unsigned \
                      build: the permission is tied to the exact copy of the app, and updating \
                      replaces it.",
-                )
+                ))
                 .size(12)
                 .color(b.brand),
             );
@@ -109,12 +117,13 @@ impl SettingsApp {
                         ),
                     ))
                     .push(
-                        Text::new(
+                        Text::new(tr(
+                            "setup.no_switcher_note",
                             "PolterType found no way to change the keyboard layout on this \
                              system. It can still detect a wrong-layout word and fix the \
                              letters, but the layout itself will not change — so the next \
                              word comes out wrong too.",
-                        )
+                        ))
                         .size(12)
                         .color(b.muted),
                     )
@@ -172,14 +181,21 @@ impl SettingsApp {
         // and a ten-second fix.
         body = body.push(tip(
             b,
-            "Granted something just now? Quit PolterType from the tray and start it again — \
-             permissions are read when the app starts, not while it runs.",
+            tr(
+                "setup.restart_note",
+                "Granted something just now? Quit PolterType from the tray and start it again — \
+                 permissions are read when the app starts, not while it runs.",
+            ),
         ));
 
         if let Some(backend) = &self.setup.backend {
             body = body.push(tip(
                 b,
-                format!("Keyboard backend for this session: {backend}"),
+                tr_args(
+                    "setup.backend_line",
+                    "Keyboard backend for this session: {}",
+                    &[backend],
+                ),
             ));
         }
 
@@ -192,11 +208,11 @@ impl SettingsApp {
         // boxes on this stack (× and → happen to survive). Words also
         // separate "not yet" from "can't tell", which a tick cannot.
         let (mark, mark_color) = match step.state {
-            StepState::Done => ("Ready", b.ecto),
-            StepState::Todo => ("Needs you", b.garble),
-            StepState::NeedsRelogin => ("Log out", b.brand),
-            StepState::NeedsReset => ("Re-add", b.garble),
-            StepState::Unknown => ("Unknown", b.muted),
+            StepState::Done => (tr("setup.state_ready", "Ready"), b.ecto),
+            StepState::Todo => (tr("setup.state_todo", "Needs you"), b.garble),
+            StepState::NeedsRelogin => (tr("setup.state_relogin", "Log out"), b.brand),
+            StepState::NeedsReset => (tr("setup.state_reset", "Re-add"), b.garble),
+            StepState::Unknown => (tr("setup.state_unknown", "Unknown"), b.muted),
         };
 
         let mut text_col = Column::new()
@@ -238,17 +254,23 @@ impl SettingsApp {
 fn action_button(action: &StepAction) -> Element<'static, Message> {
     let (label, msg): (String, Message) = match action {
         StepAction::Open(url) if url.starts_with("x-apple") => (
-            "Open System Settings".to_owned(),
+            tr("setup.open_system_settings", "Open System Settings").to_owned(),
             Message::SetupOpen(url.clone()),
         ),
-        StepAction::Open(url) => ("Read the guide".to_owned(), Message::SetupOpen(url.clone())),
-        StepAction::Copy(cmd) => (format!("Copy `{cmd}`"), Message::SetupCopy(cmd.clone())),
+        StepAction::Open(url) => (
+            tr("setup.read_the_guide", "Read the guide").to_owned(),
+            Message::SetupOpen(url.clone()),
+        ),
+        StepAction::Copy(cmd) => (
+            tr_args("setup.copy_command", "Copy `{}`", &[cmd]),
+            Message::SetupCopy(cmd.clone()),
+        ),
         StepAction::SetupLocalSigning => (
-            "Create signing identity".to_owned(),
+            tr("setup.create_signing_identity", "Create signing identity").to_owned(),
             Message::SetupLocalSigning,
         ),
         StepAction::RequestPermission(p) => (
-            "Ask macOS now".to_owned(),
+            tr("setup.ask_macos_now", "Ask macOS now").to_owned(),
             Message::SetupRequestPermission(*p),
         ),
     };

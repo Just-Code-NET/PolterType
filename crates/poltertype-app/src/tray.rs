@@ -1,5 +1,6 @@
 //! Tray icon state rendering.
 
+use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
@@ -18,14 +19,23 @@ pub(crate) fn tooltip_for(
     input_alert: bool,
     attention: u32,
 ) -> String {
+    // The product name and the layout id are not words to translate;
+    // everything the tooltip *says* around them is.
+    let idle = tr("tray.tooltip_paused", "(paused)");
     let base = match (layout, paused) {
         (Some(l), false) => format!("{APP_NAME} — {l}"),
-        (Some(l), true) => format!("{APP_NAME} — {l} (paused)"),
+        (Some(l), true) => format!("{APP_NAME} — {l} {idle}"),
         (None, false) => APP_NAME.to_owned(),
-        (None, true) => format!("{APP_NAME} (paused)"),
+        (None, true) => format!("{APP_NAME} {idle}"),
     };
     let base = if input_alert {
-        format!("{base} — ⚠ no keyboard access, see Setup Guide")
+        format!(
+            "{base} — {}",
+            tr(
+                "tray.tooltip_no_keyboard",
+                "⚠ no keyboard access, see Setup Guide",
+            )
+        )
     } else {
         base
     };
@@ -33,8 +43,15 @@ pub(crate) fn tooltip_for(
     // is the only place the count fits without opening anything.
     match attention {
         0 => base,
-        1 => format!("{base} — 1 draft waiting"),
-        n => format!("{base} — {n} drafts waiting"),
+        1 => format!("{base} — {}", tr("tray.tooltip_draft", "1 draft waiting")),
+        n => format!(
+            "{base} — {}",
+            tr_args(
+                "tray.tooltip_drafts",
+                "{} drafts waiting",
+                &[&n.to_string()]
+            )
+        ),
     }
 }
 
@@ -84,9 +101,9 @@ pub(crate) fn apply_tray_visibility(tray: &TrayIcon, style: TrayIconStyle) {
 /// offer to pause something that already is.
 pub(crate) fn pause_item_label(paused: bool) -> &'static str {
     if paused {
-        "▶ Resume auto-switch"
+        tr("tray.resume", "▶ Resume auto-switch")
     } else {
-        "⏸ Pause auto-switch"
+        tr("tray.pause", "⏸ Pause auto-switch")
     }
 }
 
@@ -113,7 +130,7 @@ pub(crate) fn rebuild_deferred_menu(
         // A submenu that is empty *and* disabled is indistinguishable
         // from one that is broken: reported as "I click it and nothing
         // happens" (issue #38). One disabled row says which it is.
-        let empty = MenuItem::new(DEFERRED_MENU_EMPTY, false, None);
+        let empty = MenuItem::new(tr("tray.deferred_empty", DEFERRED_MENU_EMPTY), false, None);
         if let Err(e) = submenu.append(&empty) {
             warn!(?e, "could not add the missed-word placeholder");
         }

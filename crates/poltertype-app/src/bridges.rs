@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use crossbeam_channel::Receiver;
 use global_hotkey::{GlobalHotKeyEvent, HotKeyState};
 use poltertype_core::engine::{EngineCommand, SwitcherEvent};
+use poltertype_core::i18n::tr_args;
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::SettingsStore;
 use poltertype_shell::notification_sender_ready;
@@ -102,7 +103,7 @@ pub(crate) fn spawn_layout_change_notification(layouts: &Arc<LayoutDb>, to_layou
         .spawn(move || {
             let mut n = notify_rust::Notification::new();
             n.summary("PolterType")
-                .body(&format!("Switched to {pretty}"))
+                .body(&tr_args("notify.switched", "Switched to {}", &[&pretty]))
                 .appname(APP_NAME)
                 .icon(poltertype_shell::DESKTOP_ID)
                 .timeout(notify_rust::Timeout::Milliseconds(2000));
@@ -138,7 +139,11 @@ pub(crate) fn spawn_dictionary_add_notification(
         .get(layout)
         .map(|m| m.name.clone())
         .unwrap_or_else(|| layout.as_str().to_owned());
-    let body = format!("Added “{word}” to your {pretty} dictionary — it won't be corrected again.");
+    let body = tr_args(
+        "notify.word_added",
+        "Added “{}” to your {} dictionary — it won't be corrected again.",
+        &[word, &pretty],
+    );
     std::thread::Builder::new()
         .name("poltertype-notify-dict".into())
         .spawn(move || {
@@ -210,10 +215,12 @@ pub(crate) fn spawn_update_notification(version: &str) {
     if !notification_sender_ready() {
         return;
     }
-    let body = format!(
-        "Version {version} is downloaded and ready.\n\
+    let body = tr_args(
+        "notify.update_ready",
+        "Version {} is downloaded and ready.\n\
          It will be installed the next time you restart PolterType — \
-         or click \"Restart to update\" in the tray menu."
+         or click \"Restart to update\" in the tray menu.",
+        &[version],
     );
     std::thread::Builder::new()
         .name("poltertype-notify-update".into())

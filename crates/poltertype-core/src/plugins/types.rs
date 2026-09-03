@@ -173,8 +173,11 @@ impl TrayItem {
             return self.label.clone();
         }
         let value = match state {
-            None => "not responding",
-            Some(s) => s.get(&self.state_key).map_or("unknown", String::as_str),
+            None => crate::i18n::tr("plugins.state_not_responding", "not responding"),
+            Some(s) => s.get(&self.state_key).map_or(
+                crate::i18n::tr("plugins.state_unknown", "unknown"),
+                String::as_str,
+            ),
         };
         if self.label.contains("{}") {
             self.label.replacen("{}", value, 1)

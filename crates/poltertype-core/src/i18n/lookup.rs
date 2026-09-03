@@ -28,15 +28,7 @@ pub fn init(data_dir: &Path, requested: Option<&str>, plugins: &[CatalogSource])
         return;
     }
     let locale = resolve_locale(requested);
-
-    let mut sources = Vec::with_capacity(plugins.len() + 2);
-    sources.push(CatalogSource::open(data_dir.join(I18N_DIR)));
-    sources.extend(plugins.iter().cloned());
-    if let Some(dir) = user_dir() {
-        sources.push(CatalogSource::open(dir));
-    }
-
-    let catalog = build(&locale, &sources);
+    let catalog = build(&locale, &sources(data_dir, plugins));
     if catalog.is_empty() {
         if locale.starts_with("en") {
             debug!(%locale, "UI language is English; no catalog needed");
@@ -50,6 +42,22 @@ pub fn init(data_dir: &Path, requested: Option<&str>, plugins: &[CatalogSource])
         info!(%locale, entries = catalog.len(), "UI translation loaded");
     }
     let _ = CATALOG.set(catalog);
+}
+
+/// Every catalog directory, in load order: what PolterType ships, the
+/// plug-ins', then the user's own.
+///
+/// Public because the language picker has to offer exactly what the
+/// loader would read — a list built from anywhere else would name a
+/// language nothing translates, or hide one that is right there.
+pub fn sources(data_dir: &Path, plugins: &[CatalogSource]) -> Vec<CatalogSource> {
+    let mut sources = Vec::with_capacity(plugins.len() + 2);
+    sources.push(CatalogSource::open(data_dir.join(I18N_DIR)));
+    sources.extend(plugins.iter().cloned());
+    if let Some(dir) = user_dir() {
+        sources.push(CatalogSource::open(dir));
+    }
+    sources
 }
 
 /// Fold `sources` into one catalog for `locale`, in order, later

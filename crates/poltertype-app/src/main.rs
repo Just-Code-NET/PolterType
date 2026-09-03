@@ -69,6 +69,7 @@ use poltertype_core::audio::AudioPlayer;
 use poltertype_core::engine::{
     DictionaryAddOrigin, EngineCommand, EngineDeps, SwitcherEngine, SwitcherEvent,
 };
+use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_detect::Detector;
@@ -191,6 +192,16 @@ fn main() -> Result<()> {
     // FST RAM and stops the detector picking an unreachable layout.
     let data_dir = poltertype_core::resolve_data_dir().context("resolve data directory")?;
     info!(?data_dir, "data directory resolved");
+
+    // Before the tray menu is built, and before any plug-in is asked
+    // for anything: every label below is looked up once, at
+    // construction, and a plug-in is handed this locale when it is
+    // spawned.
+    poltertype_core::i18n::init(
+        &data_dir,
+        Some(&settings.snapshot().general.ui_language),
+        &poltertype_core::plugins::catalog_sources(&data_dir),
+    );
 
     let active_os_layouts = match layout_switcher.list_active() {
         Ok(list) => {
@@ -443,9 +454,12 @@ fn main() -> Result<()> {
     // without them nothing is read at all, which is the worse of the
     // two and the one to name.
     let alert_label = if input_alert.is_some() {
-        "⚠ Keyboard hooks unavailable — Setup…"
+        tr("tray.alert_hooks", "⚠ Keyboard hooks unavailable — Setup…")
     } else {
-        "⚠ Layout switching unavailable — Setup…"
+        tr(
+            "tray.alert_switching",
+            "⚠ Layout switching unavailable — Setup…",
+        )
     };
     let item_setup = (input_alert.is_some() || switcher_alert.is_some())
         .then(|| MenuItem::new(alert_label, true, None));
@@ -453,12 +467,20 @@ fn main() -> Result<()> {
         menu.append_items(&[item, &PredefinedMenuItem::separator()])
             .context("populate tray alert entry")?;
     }
-    let item_settings_ui = MenuItem::new("Settings…", true, None);
-    let item_settings_file = MenuItem::new("Edit config.toml…", true, None);
-    let item_logs = MenuItem::new("Open Logs Folder…", true, None);
-    let item_wordlists = MenuItem::new("Open User Wordlists Folder…", true, None);
-    let item_layouts = MenuItem::new("Open User Layouts Folder…", true, None);
-    let item_reload = MenuItem::new("Reload Settings", true, None);
+    let item_settings_ui = MenuItem::new(tr("tray.settings", "Settings…"), true, None);
+    let item_settings_file = MenuItem::new(tr("tray.edit_config", "Edit config.toml…"), true, None);
+    let item_logs = MenuItem::new(tr("tray.open_logs", "Open Logs Folder…"), true, None);
+    let item_wordlists = MenuItem::new(
+        tr("tray.open_wordlists", "Open User Wordlists Folder…"),
+        true,
+        None,
+    );
+    let item_layouts = MenuItem::new(
+        tr("tray.open_layouts", "Open User Layouts Folder…"),
+        true,
+        None,
+    );
+    let item_reload = MenuItem::new(tr("tray.reload_settings", "Reload Settings"), true, None);
     // Auto-switching may have been left off in a previous run.
     let start_paused = settings.snapshot().general.paused;
     let mut tray_style = TrayIconStyle::from_config(&settings.snapshot().general.tray_icon);
@@ -482,16 +504,20 @@ fn main() -> Result<()> {
         updates_enabled.then(|| MenuItem::new(menu_label(update_pending.as_ref()), true, None));
 
     let item_about = MenuItem::new(
-        format!("About {APP_NAME} v{}", env!("CARGO_PKG_VERSION")),
+        tr_args(
+            "tray.about",
+            "About {} v{}",
+            &[APP_NAME, env!("CARGO_PKG_VERSION")],
+        ),
         false,
         None,
     );
-    let item_quit = MenuItem::new("Quit", true, None);
+    let item_quit = MenuItem::new(tr("tray.quit", "Quit"), true, None);
     // Words a tooltip offered and lost, so the offer can be taken up
     // later (issue #38). Always here and always openable: an entry that
     // comes and goes is harder to find than one that says it is empty,
     // and a disabled one answers a click with nothing at all.
-    let menu_deferred = Submenu::new(DEFERRED_MENU_LABEL, true);
+    let menu_deferred = Submenu::new(tr("tray.deferred", DEFERRED_MENU_LABEL), true);
     menu.append_items(&[
         &item_settings_ui,
         &item_settings_file,
@@ -514,14 +540,6 @@ fn main() -> Result<()> {
 
     // Plug-ins last, so the app's own entries keep their position and
     // a plug-in can never push Quit off the bottom of the menu.
-    // The tray menu is not translated yet; this is here so that the
-    // plug-ins started below are told which language the user reads,
-    // and so the settings window is not the only half that knows.
-    poltertype_core::i18n::init(
-        &data_dir,
-        Some(&settings.snapshot().general.ui_language),
-        &[],
-    );
     let discovered = poltertype_core::plugins::extensions(&data_dir);
     let mut plugin_menu = plugins::PluginMenu::build(discovered, &menu)?;
     let mut supervisor = plugins::Supervisor::new();

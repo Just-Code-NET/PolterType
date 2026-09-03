@@ -12,6 +12,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
 use crossbeam_channel::{Receiver, RecvTimeoutError};
+use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::settings::SettingsStore;
 use poltertype_update::{Applied, PendingUpdate, UpdateError};
 use tao::event_loop::EventLoopProxy;
@@ -75,8 +76,12 @@ pub(crate) fn pending_for_this_build() -> Option<PendingUpdate> {
 
 pub(crate) fn menu_label(pending: Option<&PendingUpdate>) -> String {
     match pending {
-        Some(p) => format!("⟳ Restart to update — v{}", p.version),
-        None => "Check for updates…".to_owned(),
+        Some(p) => tr_args(
+            "tray.restart_to_update",
+            "⟳ Restart to update — v{}",
+            &[&p.version],
+        ),
+        None => tr("tray.check_updates", "Check for updates…").to_owned(),
     }
 }
 

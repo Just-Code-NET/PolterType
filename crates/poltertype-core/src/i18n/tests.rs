@@ -211,6 +211,8 @@ fn the_shipped_ukrainian_catalog_is_usable() {
         "exceptions.exceptions",
         "setup.setup",
         "plugins.plugins",
+        "nav.general",
+        "tray.quit",
     ] {
         let value = c.get(key);
         assert!(value.is_some(), "missing translation for `{key}`");
@@ -317,6 +319,33 @@ fn a_key_that_already_carries_its_prefix_is_left_alone() {
     );
     assert_eq!(c.get("plugin.acme.summary"), Some("Опис"));
     assert_eq!(c.get("plugin.acme.plugin.acme.summary"), None);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// What the picker offers has to be what the loader would read — a
+/// list from anywhere else names languages nothing translates, or hides
+/// one that is sitting right there.
+#[test]
+fn every_catalog_on_disk_is_an_offered_language() {
+    let root = scratch("offered");
+    write(&root.join("shipped"), "uk.toml", "\"a\" = \"так\"\n");
+    write(&root.join("mine"), "pt_BR.toml", "\"a\" = \"sim\"\n");
+    // Not languages: a plug-in's own README, and a note beside it.
+    write(&root.join("mine"), "notes.toml", "\"a\" = \"x\"\n");
+    write(&root.join("mine"), "README.md", "not a catalog\n");
+
+    let offered = installed_locales(&[
+        CatalogSource::open(root.join("shipped")),
+        CatalogSource::open(root.join("mine")),
+    ]);
+    let codes: Vec<&str> = offered.iter().map(|(code, _)| code.as_str()).collect();
+    assert_eq!(codes, vec!["pt_BR", "uk"]);
+
+    // A locale PolterType has a name for is offered by name; one it
+    // does not is offered by its code rather than hidden.
+    assert_eq!(offered[1].1, "Українська");
+    assert_eq!(offered[0].1, "pt_BR");
 
     let _ = std::fs::remove_dir_all(&root);
 }

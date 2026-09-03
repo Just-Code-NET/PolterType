@@ -2,6 +2,7 @@
 
 use iced::Task;
 use iced::widget::text_editor;
+use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::plugins::SettingValue;
 use poltertype_core::settings::{MIN_UPDATE_INTERVAL_HOURS, Settings, SettingsStore};
 use tracing::{info, warn};
@@ -110,12 +111,16 @@ impl SettingsApp {
                 // named as the row's identity is empty.
                 let Some(id) = pane.record_id(index, row) else {
                     pane.status = Some(
-                        "This one has no name yet — give it one before acting on it.".to_owned(),
+                        tr(
+                            "plugins.row_unnamed",
+                            "This one has no name yet — give it one before acting on it.",
+                        )
+                        .to_owned(),
                     );
                     return Task::none();
                 };
                 pane.set_action_running(Some((index, row)));
-                pane.status = Some(format!("Running “{id}”…"));
+                pane.status = Some(tr_args("plugins.running", "Running “{}”…", &[&id]));
                 let ext = pane.ext.clone();
 
                 // Waited on off the UI thread: the action behind such a
@@ -147,12 +152,16 @@ impl SettingsApp {
                         // The plug-in's own words: it is the only thing
                         // here that knows whether the message went.
                         Ok(text) if !text.trim().is_empty() => first_lines(text, 3),
-                        Ok(_) => format!("“{id}” finished without saying anything."),
+                        Ok(_) => tr_args(
+                            "plugins.finished_silently",
+                            "“{}” finished without saying anything.",
+                            &[&id],
+                        ),
                         // The plug-in usually names the row itself —
                         // saying it twice reads as two different things
                         // having gone wrong.
                         Err(why) if why.contains(id.as_str()) => why.clone(),
-                        Err(why) => format!("“{id}”: {why}"),
+                        Err(why) => tr_args("plugins.action_failed", "“{}”: {}", &[&id, why]),
                     });
                     // The reports on this group are out of date — the
                     // action just changed them. Only the reports:
@@ -347,7 +356,11 @@ impl SettingsApp {
                     self.command_draft_param.clear();
                     self.command_draft_apps.clear();
                     self.command_status = Some(SaveBanner {
-                        text: "Added. Press Save to persist, then restart poltertype.".into(),
+                        text: tr(
+                            "commands.added",
+                            "Added. Press Save to persist, then restart poltertype.",
+                        )
+                        .into(),
                         is_error: false,
                     });
                 }
@@ -363,7 +376,7 @@ impl SettingsApp {
                     let removed = self.settings.commands.remove(idx);
                     info!(id = %removed.id, "removed user command from UI");
                     self.command_status = Some(SaveBanner {
-                        text: format!("Removed `{}`.", removed.id),
+                        text: tr_args("commands.removed", "Removed `{}`.", &[&removed.id]),
                         is_error: false,
                     });
                 }
@@ -453,6 +466,10 @@ impl SettingsApp {
                 self.settings.general.tray_icon = choice.config_value().to_owned();
             }
 
+            Message::UiLanguageChanged(code) => {
+                self.settings.general.ui_language = code;
+            }
+
             Message::ManualOnlyChosen(manual) => {
                 self.settings.general.paused = manual;
                 self.conversion_chosen_here = true;
@@ -476,13 +493,17 @@ impl SettingsApp {
                         self.wordlist_status = None;
                     }
                     self.save_banner = Some(SaveBanner {
-                        text: "Reloaded from disk.".into(),
+                        text: tr("footer.reloaded", "Reloaded from disk.").into(),
                         is_error: false,
                     });
                 }
                 Err(e) => {
                     self.save_banner = Some(SaveBanner {
-                        text: format!("Reload failed: {e}"),
+                        text: tr_args(
+                            "footer.reload_failed",
+                            "Reload failed: {}",
+                            &[&e.to_string()],
+                        ),
                         is_error: true,
                     });
                 }
@@ -512,14 +533,22 @@ impl SettingsApp {
                     Ok(()) => {
                         info!(path = ?self.config_path, "settings saved from UI");
                         self.save_banner = Some(SaveBanner {
-                            text: format!("Saved to {}.", self.config_path.display()),
+                            text: tr_args(
+                                "footer.saved_to",
+                                "Saved to {}.",
+                                &[&self.config_path.display().to_string()],
+                            ),
                             is_error: false,
                         });
                     }
                     Err(e) => {
                         warn!(?e, "settings save failed");
                         self.save_banner = Some(SaveBanner {
-                            text: format!("Save failed: {e}"),
+                            text: tr_args(
+                                "footer.save_failed",
+                                "Save failed: {}",
+                                &[&e.to_string()],
+                            ),
                             is_error: true,
                         });
                     }
@@ -573,16 +602,24 @@ impl SettingsApp {
                 self.setup_status = Some(if self.setup == before {
                     SaveBanner {
                         text: if self.setup.needs_attention() {
-                            "Checked — nothing has changed yet.".to_owned()
+                            tr(
+                                "setup.checked_unchanged",
+                                "Checked — nothing has changed yet.",
+                            )
+                            .to_owned()
                         } else {
-                            "Checked — everything is in place.".to_owned()
+                            tr("setup.checked_ready", "Checked — everything is in place.")
+                                .to_owned()
                         },
                         is_error: false,
                     }
                 } else {
                     SaveBanner {
-                        text: "Checked — something changed. Restart PolterType to pick it up."
-                            .to_owned(),
+                        text: tr(
+                            "setup.checked_changed",
+                            "Checked — something changed. Restart PolterType to pick it up.",
+                        )
+                        .to_owned(),
                         is_error: false,
                     }
                 });
@@ -594,14 +631,14 @@ impl SettingsApp {
                 if let Err(e) = opener::open(&url) {
                     warn!(?e, %url, "could not open setup link");
                     self.setup_status = Some(SaveBanner {
-                        text: format!("Couldn't open {url}"),
+                        text: tr_args("setup.open_failed", "Couldn't open {}", &[&url]),
                         is_error: true,
                     });
                 }
             }
             Message::SetupCopy(command) => {
                 self.setup_status = Some(SaveBanner {
-                    text: format!("Copied: {command}"),
+                    text: tr_args("setup.copied", "Copied: {}", &[&command]),
                     is_error: false,
                 });
                 return iced::clipboard::write(command);
@@ -624,7 +661,11 @@ impl SettingsApp {
                     &self.store.snapshot().updates.local_signing_identity,
                 );
                 self.setup_status = Some(SaveBanner {
-                    text: "Asked the system. Approve it there, then press Check again.".to_owned(),
+                    text: tr(
+                        "setup.asked_system",
+                        "Asked the system. Approve it there, then press Check again.",
+                    )
+                    .to_owned(),
                     is_error: false,
                 });
             }
@@ -660,7 +701,11 @@ impl SettingsApp {
                     Err(e) => {
                         warn!(%e, "local signing setup failed");
                         self.setup_status = Some(SaveBanner {
-                            text: format!("Could not set up signing: {e}"),
+                            text: tr_args(
+                                "setup.signing_failed",
+                                "Could not set up signing: {}",
+                                &[&e.to_string()],
+                            ),
                             is_error: true,
                         });
                     }

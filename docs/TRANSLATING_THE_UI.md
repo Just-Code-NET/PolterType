@@ -14,11 +14,15 @@ layouts: the things that vary between people live in data.
 
 1. Copy `data/i18n/uk.toml` to `data/i18n/<your-language>.toml`.
 2. Translate the right-hand side of each line.
-3. Set `[general].ui_language` in `config.toml` to your language code
-   and reopen the window.
+3. Pick your language under **General → Appearance → Interface
+   language** and reopen the window.
 
 That is the whole loop. To try it without touching the source tree,
-drop the file into `<config-dir>/poltertype/i18n/` instead.
+drop the file into `<config-dir>/poltertype/i18n/` instead — the picker
+offers whatever it finds on disk, so a file you dropped in yourself is
+listed beside the shipped ones (under its bare code if PolterType has
+no name for that language). `[general].ui_language` in `config.toml` is
+the same setting, if you would rather type it.
 
 ---
 
@@ -90,10 +94,10 @@ Yours winning is what makes the edit-and-reopen loop possible.
 
 ## Translating a plug-in
 
-A plug-in's settings pane is drawn by PolterType but **worded by the
-plug-in**: its labels, explanations and options come out of its
-`manifest.toml`. So a plug-in carries its own catalog, in its own
-directory:
+A plug-in's settings pane and its tray entries are drawn by PolterType
+but **worded by the plug-in**: their labels, explanations and options
+come out of its `manifest.toml`. So a plug-in carries its own catalog,
+in its own directory:
 
 ```
 <data_dir>/plugins/<id>/i18n/<lang>.toml
@@ -111,8 +115,9 @@ $ poltertype --plugin-strings <id>
 
 Keys are derived from the manifest's own structure — a control's config
 key (`act.mode`), or the command it runs, or a slug of its English label
-for a section that binds to neither. Translate the right-hand side, save
-as `i18n/uk.toml` next to the manifest, reopen the window.
+for a tray entry or a section, which bind to neither. Translate the
+right-hand side, save as `i18n/uk.toml` next to the manifest, reopen the
+window (the tray reads its own copy when PolterType next starts).
 
 Four things worth knowing:
 
@@ -121,9 +126,10 @@ Four things worth knowing:
   PolterType's own buttons. Writing the prefix out yourself is allowed
   and changes nothing.
 * **It works for a language PolterType has never been translated into.**
-  The catalogs are independent: set `[general].ui_language = "pl"` and a
-  plug-in shipping `pl.toml` is in Polish while the window around it
-  stays English. Nothing has to be added to the app first.
+  The catalogs are independent: pick `pl` — the picker lists it because
+  the plug-in's `pl.toml` is on disk — and that plug-in is in Polish
+  while the window around it stays English. Nothing has to be added to
+  the app first.
 * **Values are never translated.** An option's `value`, a control's key
   and a command's id are what reach the plug-in's config file and its
   program; only what is *read* changes. The drop-down shows the label
@@ -137,7 +143,16 @@ A *data pack* — `kind = "pack"`, no program — is the other way round: its
 `i18n/` is a translation of **PolterType itself**, taken as written, so
 a whole language can be distributed as a pack.
 
-The tray menu is not translated yet, a plug-in's entries there included.
+The tray menu is translated too, a plug-in's own entries included: the
+tray reads the same catalogs at startup, so a change of language takes
+effect there when PolterType is next started.
+
+Two things stay English on purpose. **Error notifications** carry the
+operating system's own message, which is not ours to translate. And the
+**Setup pane's step titles** come from the permission probe in
+`poltertype-input`, a crate with no dependency on the translation
+loader; everything the Settings window puts around them — the headline,
+the state badges, the buttons and the notes — is translated.
 
 ---
 

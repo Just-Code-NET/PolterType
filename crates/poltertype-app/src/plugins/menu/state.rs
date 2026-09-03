@@ -33,7 +33,14 @@ impl PluginMenu {
     ///
     /// A plug-in with nothing to contribute adds nothing — no empty
     /// section, no separator, no evidence it is there.
-    pub fn build(extensions: Vec<DiscoveredExtension>, menu: &Menu) -> Result<Self> {
+    pub fn build(mut extensions: Vec<DiscoveredExtension>, menu: &Menu) -> Result<Self> {
+        // Its entries are the plug-in's own words, so they come from
+        // the plug-in's own catalog — the same substitution the settings
+        // pane does, before a single label is read out of the manifest.
+        for ext in &mut extensions {
+            poltertype_core::plugins::localise(&mut ext.manifest, &ext.id);
+        }
+
         let mut routes = HashMap::new();
         let mut stateful: Vec<(usize, StateItem)> = Vec::new();
         let mut lists: Vec<ListMenu> = Vec::new();

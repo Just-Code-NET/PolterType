@@ -24,6 +24,27 @@ and the project follows [Semantic Versioning](https://semver.org/).
   only it can translate, so every plug-in process is handed
   `POLTERTYPE_LOCALE`.
 
+- **A language picker, in General → Appearance.** It lists what is
+  actually on disk — the shipped catalogs, one a plug-in brought, one
+  you dropped into `<config-dir>/poltertype/i18n/` yourself — so a
+  translation can be tried without hand-editing `config.toml`, and a
+  language PolterType has no name for is offered under its code rather
+  than hidden. It takes effect when the window is reopened, because the
+  catalog is read once, before the first widget exists.
+
+- **The whole window and the tray menu are translated, not just the
+  panes.** The side navigation, every pane's footnotes and form labels,
+  the save and status lines, the Setup pane's badges and notes, the
+  tray's own entries, its tooltip and the "switched", "word added" and
+  "update ready" notifications all go through the catalog now, with
+  Ukrainian shipped for every one of them. A plug-in's tray entries are
+  translated from its own catalog, exactly as its settings pane is.
+
+  Two things stay English by design: error notifications, which carry
+  the operating system's own message, and the Setup pane's step titles,
+  which come from the permission probe in a crate that does not depend
+  on the translation loader.
+
 - **The Plug-ins pane speaks the interface's language.** Everything
   PolterType draws around a plug-in — Add, Remove, Refresh, Select all,
   "Asking the plug-in…", the placeholders and the save line — goes
