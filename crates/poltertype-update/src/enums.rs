@@ -68,7 +68,7 @@ pub enum UpdateError {
     UnsupportedInstall(String),
     /// The OS created the installer process and it died without
     /// executing anything. Distinguishable only because every script
-    /// announces itself first — see `apply::HELLO`.
+    /// announces itself first — see `apply::consts::HELLO`.
     #[error("the installer process started and stopped without running: {0}")]
     InstallerSilent(String),
     /// The new build is installed and the app cannot bring itself

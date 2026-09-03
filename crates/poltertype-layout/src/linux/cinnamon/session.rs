@@ -8,13 +8,6 @@
 
 use super::*;
 
-/// Every variable a session manager might announce the desktop in.
-pub(crate) const DESKTOP_VARS: [&str; 3] = [
-    "XDG_CURRENT_DESKTOP",
-    "XDG_SESSION_DESKTOP",
-    "DESKTOP_SESSION",
-];
-
 /// Spellings of the session name, across the variables above and the
 /// distros that write them.
 const CINNAMON_NAMES: [&str; 4] = ["cinnamon", "x-cinnamon", "cinnamon2d", "x-cinnamon2d"];

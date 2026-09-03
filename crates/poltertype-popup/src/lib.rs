@@ -35,9 +35,13 @@ mod noop;
 // `-D dead_code` on that CI lane; add new targets here as backends
 // land.
 #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
+mod consts;
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 mod place;
 #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
 mod render;
+#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
+mod renderer;
 mod traits;
 mod types;
 

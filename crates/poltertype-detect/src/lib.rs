@@ -11,8 +11,11 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
+mod consts;
 mod dictionary;
+mod dictionary_detector;
 mod enums;
+mod geometry;
 mod plausibility;
 mod suggest;
 mod text;
@@ -21,13 +24,16 @@ mod types;
 
 pub use poltertype_types::{DetectionInput, DetectionVerdict, LayoutId};
 
-pub use dictionary::{DictionaryDetector, LayoutDictionary};
+pub use consts::COMPOUND_SEGMENT_MIN_LETTERS;
+pub use dictionary::LayoutDictionary;
+pub use dictionary_detector::DictionaryDetector;
 pub use enums::{RewriteVerdict, Script, Verdict};
+pub use geometry::KeyboardGeometry;
 pub use plausibility::WordPlausibilityDetector;
-pub use suggest::{KeyboardGeometry, Suggester};
+pub use suggest::Suggester;
 pub use text::{
-    COMPOUND_SEGMENT_MIN_LETTERS, compound_segments, letters_only_lower, looks_like_acronym,
-    looks_like_code_token, non_word_char_count, paired_segments, segment_vouches, surface_lower,
+    compound_segments, letters_only_lower, looks_like_acronym, looks_like_code_token,
+    non_word_char_count, paired_segments, segment_vouches, surface_lower,
 };
 pub use traits::{Detector, SuggestionProvider, WordRewriter};
 pub use types::{DetectionContext, LayoutProfile, RewriteRequest, Suggestion};

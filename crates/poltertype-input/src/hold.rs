@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 /// correction burst is milliseconds; this is loose enough never to cut
 /// a real one short and tight enough that a bug is a hiccup rather than
 /// a dead keyboard.
-pub(crate) const MAX_HOLD: Duration = Duration::from_millis(1200);
+const MAX_HOLD: Duration = Duration::from_millis(1200);
 
 pub(crate) struct HoldState {
     /// The engine wants the user's keys held right now.

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use super::window::PopupWindow;
 use crate::enums::PopupAnchor;
-use crate::render::Renderer;
+use crate::renderer::Renderer;
 use crate::types::{PopupEntry, PopupModel};
 
 fn model() -> PopupModel {

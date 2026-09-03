@@ -14,9 +14,6 @@
 use super::enums::{ControlKind, PluginError};
 use super::types::ExtensionManifest;
 
-/// Directory an extension's program must live in, inside the plug-in.
-pub const EXTENSION_BIN_DIR: &str = "bin";
-
 /// Refuse a manifest that would leave PolterType doing something
 /// unclear on the plug-in's behalf.
 pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
@@ -304,5 +301,4 @@ fn is_plain_file_name(name: &str) -> bool {
 }
 
 #[cfg(test)]
-#[path = "validate_tests.rs"]
 mod tests;

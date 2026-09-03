@@ -29,10 +29,12 @@
 
 mod consts;
 mod emitter;
+mod enums;
 mod session;
 
 pub use emitter::PortalEmitter;
-pub use session::{PortalError, PortalSession, portal_available};
+pub use enums::PortalError;
+pub use session::{PortalSession, portal_available};
 
 #[cfg(test)]
 mod tests;

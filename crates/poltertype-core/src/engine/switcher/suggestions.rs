@@ -18,11 +18,11 @@ use poltertype_types::WordKey;
 use tracing::{debug, warn};
 
 use crate::engine::buffer::WordBuffer;
-use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
+use crate::engine::enums::{DictionaryAddOrigin, SuggestionAction, SwitcherEvent};
 use crate::engine::heuristics::is_submission_scancode;
 use crate::engine::types::{
     AcceptModifiers, Correction, FrozenScreen, PendingSuggestion, PlannedReplacement,
-    SuggestionAction, SuggestionEntry,
+    SuggestionEntry,
 };
 use crate::settings::Settings;
 

@@ -7,6 +7,7 @@
 //! | File | Concern |
 //! |---|---|
 //! | [`engine`] | the struct, its fields, construction |
+//! | [`types`] | [`EngineDeps`], the struct's construction parameters |
 //! | [`run_loop`] | channel multiplexing, command + key dispatch |
 //! | [`echo`] | consuming echoes of our own injected keystrokes |
 //! | [`decide`] | per-word decision: filters + detector pipeline |
@@ -21,5 +22,7 @@ mod echo;
 mod engine;
 mod run_loop;
 mod suggestions;
+mod types;
 
-pub use engine::{EngineDeps, SwitcherEngine};
+pub use engine::SwitcherEngine;
+pub use types::EngineDeps;

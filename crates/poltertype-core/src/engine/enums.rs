@@ -1,10 +1,11 @@
-//! Engine message enums: outbound notifications and inbound commands.
+//! Engine message enums: outbound notifications, inbound commands, and
+//! the small enums plain data types are built from.
 
 use std::time::Duration;
 
 use poltertype_layout::LayoutId;
 
-use super::types::{KeystreamHotkeys, SuggestionEntry};
+use super::types::{Chord, KeystreamHotkeys, ModChord, SuggestionEntry};
 
 /// Outbound notifications the engine emits.
 #[derive(Debug, Clone)]
@@ -122,4 +123,31 @@ pub enum EngineCommand {
 pub enum Either<A, B> {
     Cmd(A),
     Key(B),
+}
+
+/// Which modifier a bare modifier key stands for. Left and right keys
+/// carry the same role: nobody binds "the left Shift".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModRole {
+    Ctrl,
+    Shift,
+    Alt,
+    Meta,
+}
+
+/// What a hotkey answers to on the key stream: an ordinary chord, or
+/// modifiers alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binding {
+    Key(Chord),
+    Mods(ModChord),
+}
+
+/// What accepting a suggestion entry does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SuggestionAction {
+    Replace,
+    /// No text change. The engine only emits the request; the app owns
+    /// the overlay file and the dictionary reload.
+    AddToDictionary,
 }

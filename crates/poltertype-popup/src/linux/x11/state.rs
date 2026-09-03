@@ -1,17 +1,12 @@
-//! X11 backend: an override-redirect window on the root. The WM never
-//! manages (or focuses) such windows, which gives us the "never steal
-//! keyboard focus" guarantee for free — and needs no permissions.
-//!
-//! One dedicated thread owns the connection and the window; the public
-//! handle only pushes commands into a channel. Parked on the channel
-//! while hidden; ~16 ms tick with `poll_for_event` while mapped.
+//! The X11 thread's state: the connection, the mapped window (if any)
+//! and the thread loop that drives them. One dedicated thread owns the
+//! connection and the window; parked on the command channel while
+//! hidden, ~16 ms tick with `poll_for_event` while mapped.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use thiserror::Error;
 use tracing::{debug, warn};
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyOrIdError;
@@ -24,10 +19,11 @@ use x11rb::protocol::xproto::{
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
+use super::enums::Cmd;
 use crate::enums::{PopupAnchor, PopupUiEvent};
-use crate::render::{RenderedPopup, Renderer, hit_row};
-use crate::traits::SuggestionPopup;
-use crate::types::PopupModel;
+use crate::render::hit_row;
+use crate::renderer::Renderer;
+use crate::types::{PopupModel, RenderedPopup};
 
 /// Popup bottom edge floats this many px above the anchor window's
 /// bottom edge (or the screen bottom).
@@ -36,60 +32,6 @@ const BOTTOM_OFFSET: i32 = 96;
 const TICK: Duration = Duration::from_millis(16);
 /// Opaque panel background for servers without a 32-bit ARGB visual.
 const OPAQUE_BG: (u8, u8, u8) = (0x16, 0x16, 0x1E);
-
-#[derive(Debug, Error)]
-pub enum X11PopupError {
-    #[error("x11 connect: {0}")]
-    Connect(#[from] x11rb::errors::ConnectError),
-    #[error("spawn popup thread: {0}")]
-    Spawn(std::io::Error),
-}
-
-enum Cmd {
-    Show(PopupModel),
-    Hide,
-}
-
-/// Channel-sending handle; the X11 thread owns everything else.
-pub struct X11Popup {
-    cmds: Sender<Cmd>,
-    send_failed: AtomicBool,
-}
-
-impl X11Popup {
-    pub fn try_new(events: Sender<PopupUiEvent>) -> Result<Self, X11PopupError> {
-        let (conn, screen_num) = x11rb::connect(None)?;
-        let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded();
-        thread::Builder::new()
-            .name("poltertype-popup-x11".into())
-            .spawn(move || run(conn, screen_num, cmd_rx, events))
-            .map_err(X11PopupError::Spawn)?;
-        Ok(Self {
-            cmds: cmd_tx,
-            send_failed: AtomicBool::new(false),
-        })
-    }
-
-    fn send(&self, cmd: Cmd) {
-        if self.cmds.send(cmd).is_err() && !self.send_failed.swap(true, Ordering::Relaxed) {
-            warn!("x11 popup thread is gone; suggestions will not be shown");
-        }
-    }
-}
-
-impl SuggestionPopup for X11Popup {
-    fn show(&self, model: PopupModel) {
-        self.send(Cmd::Show(model));
-    }
-
-    fn hide(&self) {
-        self.send(Cmd::Hide);
-    }
-
-    fn backend_name(&self) -> &'static str {
-        "linux-x11-override-redirect"
-    }
-}
 
 /// EWMH atoms, resolved once. Best-effort: a server without them just
 /// skips the hints (override-redirect works regardless).
@@ -133,7 +75,7 @@ struct X11State {
     win: Option<WinView>,
 }
 
-fn run(
+pub(super) fn run(
     conn: RustConnection,
     screen_num: usize,
     cmd_rx: Receiver<Cmd>,

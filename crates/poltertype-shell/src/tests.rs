@@ -40,7 +40,7 @@ fn macos_locks_an_absolute_path_rather_than_a_bare_name() {
     // process working directory — which is `/` under Finder and
     // launchd, and read-only. v0.5.0 aborted at startup there.
     let dir = std::path::Path::new("/tmp/pt-test-cfg");
-    let id = crate::instance::lock_id("dev.opensource.poltertype", dir);
+    let id = crate::instance::macos::lock_id("dev.opensource.poltertype", dir);
     assert!(std::path::Path::new(&id).is_absolute(), "{id}");
     assert!(id.ends_with("dev.opensource.poltertype.lock"), "{id}");
 }
@@ -99,7 +99,7 @@ mod desktop {
     use std::path::{Path, PathBuf};
 
     use crate::DESKTOP_ID;
-    use crate::desktop::{entry_body, exec_quote};
+    use crate::desktop::linux::{entry_body, exec_quote};
 
     /// The entry the AppImage and the AUR package install.
     fn packaged_entry() -> String {
@@ -175,7 +175,7 @@ mod desktop {
         let exec = PathBuf::from("/opt/poltertype/poltertype");
 
         assert!(
-            crate::desktop::install_into(&root, &exec),
+            crate::desktop::linux::install_into(&root, &exec),
             "the first install must write"
         );
 
@@ -184,7 +184,7 @@ mod desktop {
             std::fs::read_to_string(&entry).expect("entry not written"),
             entry_body(&exec)
         );
-        for &size in crate::desktop::HICOLOR_SIZES {
+        for &size in crate::consts::HICOLOR_SIZES {
             let icon = root
                 .join("icons/hicolor")
                 .join(format!("{size}x{size}"))
@@ -202,7 +202,7 @@ mod desktop {
         // read and a compare, not five rasterisations of an icon
         // already on disk.
         assert!(
-            !crate::desktop::install_into(&root, &exec),
+            !crate::desktop::linux::install_into(&root, &exec),
             "an up-to-date install must not rewrite anything"
         );
 
@@ -219,7 +219,7 @@ mod desktop {
         let entry = apps.join("poltertype.desktop");
 
         let old = PathBuf::from("/opt/PolterType/poltertype-0.25.3-x86_64.AppImage");
-        assert!(crate::desktop::install_into(&root, &old));
+        assert!(crate::desktop::linux::install_into(&root, &old));
         let before = std::fs::metadata(&entry).expect("entry not written").ino();
 
         // A menu cache decides it is fresh from the *directory's*
@@ -227,7 +227,7 @@ mod desktop {
         // went on launching the old `Exec` (issue #48). A new inode is
         // that mtime moving — the name was unlinked and created again.
         let new = PathBuf::from("/opt/PolterType/poltertype-0.25.4-x86_64.AppImage");
-        assert!(crate::desktop::install_into(&root, &new));
+        assert!(crate::desktop::linux::install_into(&root, &new));
         let after = std::fs::metadata(&entry)
             .expect("entry not rewritten")
             .ino();

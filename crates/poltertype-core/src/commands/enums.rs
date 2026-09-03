@@ -1,4 +1,4 @@
-//! What a matched command does.
+//! What a matched command does, and why one refuses to run.
 
 use super::shell::ShellCommand;
 
@@ -49,4 +49,26 @@ pub enum CommandAction {
     /// user typed as an argument. `crate::commands::shell` carries
     /// the threat model; read it before changing any of that.
     RunShell(ShellCommand),
+}
+
+/// Why a `run_shell` entry will not run.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ShellRefusal {
+    /// `[commands].allow_run_shell` is false.
+    NotEnabled,
+    /// The entry names no program.
+    EmptyProgram,
+}
+
+impl std::fmt::Display for ShellRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotEnabled => write!(
+                f,
+                "`run_shell` commands are disabled — set `[commands].allow_run_shell = true` \
+                 to enable them, and read docs/SMART_COMMANDS.md first"
+            ),
+            Self::EmptyProgram => write!(f, "`run_shell` needs a non-empty `program`"),
+        }
+    }
 }

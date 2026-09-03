@@ -60,6 +60,10 @@ const CHARACTER_SCANCODES: &[u32] = &[
 /// bits, which is why [`char_at`] drains dead keys by hand as well.
 const TOUNICODE_NO_STATE_CHANGE: u32 = 0x4;
 
+pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
+    Ok(Box::new(WindowsLayoutSwitcher::new()))
+}
+
 pub struct WindowsLayoutSwitcher;
 
 impl WindowsLayoutSwitcher {

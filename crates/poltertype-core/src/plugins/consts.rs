@@ -6,6 +6,13 @@ pub const PLUGINS_DIR: &str = "plugins";
 /// The manifest every pack must have.
 pub const MANIFEST_NAME: &str = "manifest.toml";
 
+/// Environment variable holding extra plug-in directories, separated
+/// the way `PATH` is on this platform.
+pub const PLUGIN_PATH_VAR: &str = "POLTERTYPE_PLUGIN_PATH";
+
+/// Directory an extension's program must live in, inside the plug-in.
+pub const EXTENSION_BIN_DIR: &str = "bin";
+
 /// Sub-directories a pack may populate, and the file extensions
 /// allowed in each.
 ///

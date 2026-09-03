@@ -21,7 +21,7 @@
 //! titles, no text.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use parking_lot::Mutex;
 use tracing::{debug, warn};
@@ -30,37 +30,13 @@ use zbus::blocking::{Connection, MessageIterator};
 use zbus::{MatchRule, Message, message};
 
 use super::atspi_owner::connection_pid;
+use super::enums::AtspiFocusError;
 use super::proc_exe::exe_basename_for_pid;
+use super::types::FocusSample;
 
 /// Per-iterator signal queue. Focus changes are rare next to caret
 /// motion, but the same burst-shedding logic applies.
 const SIGNAL_QUEUE: usize = 16;
-
-#[derive(Debug, Clone)]
-pub(crate) struct FocusSample {
-    pub(crate) exe: String,
-    pub(crate) at: Instant,
-}
-
-impl FocusSample {
-    pub(crate) fn age(&self) -> Duration {
-        self.at.elapsed()
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum AtspiFocusError {
-    #[error("session bus unavailable: {0}")]
-    SessionBus(zbus::Error),
-    #[error("a11y bus address lookup failed: {0}")]
-    A11yAddress(zbus::Error),
-    #[error("a11y bus connection failed: {0}")]
-    A11yConnect(zbus::Error),
-    #[error("signal subscription failed: {0}")]
-    Subscribe(zbus::Error),
-    #[error("watcher thread failed to start: {0}")]
-    Spawn(std::io::Error),
-}
 
 pub(crate) struct AtspiFocusWatcher {
     latest: Arc<Mutex<Option<FocusSample>>>,

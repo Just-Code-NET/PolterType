@@ -20,10 +20,12 @@ mod atspi_owner;
 mod cache;
 mod caret_only;
 mod consts;
+mod enums;
 mod hyprland;
 mod hyprland_ipc;
 mod pick;
 mod proc_exe;
+mod types;
 mod x11;
 
 pub(crate) use pick::*;

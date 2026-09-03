@@ -38,13 +38,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{debug, warn};
 
-/// Longest a triggered command may run before it is abandoned.
-pub const RUN_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Most stdout bytes kept when `insert_output` is set. A command that
-/// prints a megabyte should not have a megabyte typed into the user's
-/// editor one keystroke at a time.
-pub const MAX_OUTPUT_BYTES: usize = 4 * 1024;
+use super::{MAX_OUTPUT_BYTES, RUN_TIMEOUT, ShellRefusal};
 
 /// A program to run, already split — never a shell string.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -59,28 +53,6 @@ pub struct ShellCommand {
     /// Type the command's stdout at the cursor when it succeeds.
     #[serde(default)]
     pub insert_output: bool,
-}
-
-/// Why a `run_shell` entry will not run.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ShellRefusal {
-    /// `[commands].allow_run_shell` is false.
-    NotEnabled,
-    /// The entry names no program.
-    EmptyProgram,
-}
-
-impl std::fmt::Display for ShellRefusal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::NotEnabled => write!(
-                f,
-                "`run_shell` commands are disabled — set `[commands].allow_run_shell = true` \
-                 to enable them, and read docs/SMART_COMMANDS.md first"
-            ),
-            Self::EmptyProgram => write!(f, "`run_shell` needs a non-empty `program`"),
-        }
-    }
 }
 
 /// Check an entry before running it. Separated from execution so the

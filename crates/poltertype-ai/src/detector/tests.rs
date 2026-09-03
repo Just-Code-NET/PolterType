@@ -1,4 +1,5 @@
 use super::*;
+use crate::enums::WireFormat;
 use poltertype_types::LayoutId;
 
 fn settings(endpoint: &str, allow_remote: bool, mode: QueryMode) -> LlmSettings {

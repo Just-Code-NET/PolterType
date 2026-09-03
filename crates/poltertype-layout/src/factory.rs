@@ -1,25 +1,16 @@
 //! Per-OS constructor for the switcher.
 
+#[cfg(target_os = "linux")]
+use crate::linux as imp;
+#[cfg(target_os = "macos")]
+use crate::macos as imp;
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+use crate::unavailable as imp;
+#[cfg(windows)]
+use crate::windows as imp;
+
 use crate::*;
 
 pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
-    #[cfg(windows)]
-    {
-        Ok(Box::new(windows::WindowsLayoutSwitcher::new()))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Ok(Box::new(macos::MacosLayoutSwitcher::new()))
-    }
-    #[cfg(target_os = "linux")]
-    {
-        linux::create_switcher()
-    }
-    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
-    {
-        Err(LayoutError::Unsupported(format!(
-            "unsupported target_os = {}",
-            std::env::consts::OS
-        )))
-    }
+    imp::create_switcher()
 }

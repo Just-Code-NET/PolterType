@@ -23,6 +23,24 @@ pub trait InputListener: Send {
     fn backend_name(&self) -> &'static str;
 }
 
+/// The system clipboard, as much of it as this app has any business
+/// touching: text in, text out.
+pub trait Clipboard: Send + Sync {
+    /// The clipboard's current text, or `None` when it holds something
+    /// that is not text (an image, a file list). `None` is not an
+    /// error: it is the answer that stops a caller replacing an image
+    /// with a string.
+    fn text(&self) -> Result<Option<String>, InputError>;
+
+    /// Replace the clipboard's contents with `text`.
+    ///
+    /// On Wayland this makes *us* the owner of the selection, so the
+    /// data lives as long as this process does — fine for a tray app
+    /// that outlives the interaction, and the reason restoring what was
+    /// there is possible at all.
+    fn set_text(&self, text: &str) -> Result<(), InputError>;
+}
+
 /// Synthesises keystrokes — used by the corrector to delete the
 /// just-typed word and re-type it after switching layouts.
 ///

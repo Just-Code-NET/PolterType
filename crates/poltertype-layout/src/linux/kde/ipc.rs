@@ -6,9 +6,6 @@ use crate::{LayoutError, LayoutId, LayoutSwitcher};
 use std::process::Command;
 use tracing::{debug, warn};
 
-pub(crate) const SERVICE: &str = "org.kde.keyboard";
-pub(crate) const OBJECT: &str = "/Layouts";
-
 pub(crate) fn run(prog: &str, args: &[&str]) -> Result<String, LayoutError> {
     let out = Command::new(prog)
         .args(args)

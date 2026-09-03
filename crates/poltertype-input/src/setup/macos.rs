@@ -15,9 +15,16 @@ use core_foundation::base::TCFType;
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::string::CFStringRef;
 
-use super::consts::{ACCESSIBILITY_PANE_URL, INPUT_MONITORING_PANE_URL, NOTIFICATIONS_PANE_URL};
 use super::enums::{Permission, StepAction, StepState};
 use super::types::{SetupReport, SetupStep};
+
+mod consts;
+
+use consts::{
+    ACCESSIBILITY_PANE_URL, INPUT_MONITORING_PANE_URL, K_IOHID_ACCESS_TYPE_DENIED,
+    K_IOHID_ACCESS_TYPE_GRANTED, K_IOHID_ACCESS_TYPE_UNKNOWN, K_IOHID_REQUEST_TYPE_LISTEN_EVENT,
+    NOTIFICATIONS_PANE_URL,
+};
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
@@ -45,11 +52,6 @@ unsafe extern "C" {
     fn IOHIDCheckAccess(request: u32) -> u32;
     fn IOHIDRequestAccess(request: u32) -> bool;
 }
-
-const K_IOHID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
-const K_IOHID_ACCESS_TYPE_GRANTED: u32 = 0;
-const K_IOHID_ACCESS_TYPE_DENIED: u32 = 1;
-const K_IOHID_ACCESS_TYPE_UNKNOWN: u32 = 2;
 
 pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
     let listen = input_monitoring_state();
@@ -115,7 +117,7 @@ pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
 /// pane instead.
 fn step_action(state: StepState, permission: Permission) -> StepAction {
     if state == StepState::NeedsReset {
-        StepAction::Open(settings_pane_url(permission).to_owned())
+        StepAction::Open(pane_url(permission).to_owned())
     } else {
         StepAction::RequestPermission(permission)
     }
@@ -179,11 +181,15 @@ pub(super) fn request(permission: Permission) -> bool {
 /// The deep link for a permission, used when the system prompt has
 /// already been answered once — macOS then never shows it again, and
 /// the only way through is the Settings pane.
-pub(super) fn settings_pane_url(permission: Permission) -> &'static str {
+fn pane_url(permission: Permission) -> &'static str {
     match permission {
         Permission::Accessibility => ACCESSIBILITY_PANE_URL,
         Permission::InputMonitoring => INPUT_MONITORING_PANE_URL,
     }
+}
+
+pub(super) fn settings_pane_url(permission: Permission) -> Option<&'static str> {
+    Some(pane_url(permission))
 }
 
 // ─── Local update signing ─────────────────────────────────────────────

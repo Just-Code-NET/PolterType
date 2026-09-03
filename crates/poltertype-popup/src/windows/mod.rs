@@ -10,10 +10,11 @@
 //! [`window::PopupWindow::create`].
 
 mod consts;
+mod enums;
 mod popup;
 mod window;
 
 #[cfg(test)]
 mod tests;
 
-pub use popup::WindowsPopup;
+pub(crate) use popup::create_for_platform;

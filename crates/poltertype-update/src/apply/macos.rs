@@ -11,12 +11,13 @@ use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use tracing::info;
 
-use super::{HELLO, sh_quote};
+use super::consts::HELLO;
 #[cfg(target_os = "macos")]
-use super::{spawn_detached, write_script};
+use super::script::{spawn_detached, write_script};
+use super::unix::sh_quote;
 use crate::consts::FAILED_FILE;
 #[cfg(target_os = "macos")]
-use crate::enums::UpdateError;
+use crate::enums::{Applied, UpdateError};
 #[cfg(target_os = "macos")]
 use crate::types::PendingUpdate;
 
@@ -51,7 +52,7 @@ pub(super) fn apply(
     pending: &PendingUpdate,
     relaunch: bool,
     sign_identity: &str,
-) -> Result<(), UpdateError> {
+) -> Result<Applied, UpdateError> {
     let bundle = running_bundle()?;
     let staging = crate::staging::staging_dir()?;
 
@@ -67,7 +68,14 @@ pub(super) fn apply(
 
     let script = write_script("install.sh", &body)?;
     info!(?script, ?bundle, "spawning the .app bundle swap");
-    spawn_detached("sh", &[&script])
+    spawn_detached("sh", &[&script])?;
+
+    // Only now: the installer has spoken, so this artifact really did
+    // get a turn. Counting a spawn that never ran is what threw away
+    // three verified downloads on a machine where the installer could
+    // not start at all.
+    crate::staging::note_install_attempt(pending);
+    Ok(Applied::HandedOff)
 }
 
 /// The installer script, as text, so its shape can be asserted without

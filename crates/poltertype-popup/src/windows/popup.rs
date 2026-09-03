@@ -15,27 +15,37 @@ use std::thread;
 use std::time::Instant;
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use thiserror::Error;
 use tracing::{debug, warn};
 use windows::Win32::UI::WindowsAndMessaging::{
     MSG, PM_REMOVE, PeekMessageW, WM_LBUTTONUP, WM_MOUSEMOVE,
 };
 
 use super::consts::TICK;
+use super::enums::WindowsPopupError;
 use super::window::PopupWindow;
 use crate::enums::{PopupAnchor, PopupUiEvent};
-use crate::render::{RenderedPopup, Renderer, hit_row};
+use crate::noop::NoopPopup;
+use crate::render::hit_row;
+use crate::renderer::Renderer;
 use crate::traits::SuggestionPopup;
-use crate::types::PopupModel;
+use crate::types::{PopupModel, RenderedPopup};
 
 /// Popup bottom edge floats this many px above the anchor window's
 /// bottom edge (or the screen bottom). Matches the X11 backend.
 const BOTTOM_OFFSET: i32 = 96;
 
-#[derive(Debug, Error)]
-pub enum WindowsPopupError {
-    #[error("spawn popup thread: {0}")]
-    Spawn(std::io::Error),
+/// Windows needs nothing probed: a layered topmost window exists on
+/// every version we ship to. Creation can still fail — a session with
+/// no interactive window station, for one — and then the tooltip
+/// degrades to the keyboard accept chord as it does elsewhere.
+pub(crate) fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    match WindowsPopup::try_new(events) {
+        Ok(p) => Box::new(p),
+        Err(e) => {
+            warn!(err = %e, "layered popup unavailable");
+            Box::new(NoopPopup)
+        }
+    }
 }
 
 enum Cmd {

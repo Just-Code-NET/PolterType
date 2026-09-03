@@ -10,9 +10,9 @@ use tracing::{info, warn};
 
 use crate::commands::{CommandAction, UserCommand};
 use crate::engine::buffer::WordBuffer;
-use crate::engine::enums::EngineCommand;
+use crate::engine::enums::{Binding, EngineCommand};
 use crate::engine::heuristics::match_binding;
-use crate::engine::types::{Binding, BindingState};
+use crate::engine::types::BindingState;
 
 use super::engine::SwitcherEngine;
 

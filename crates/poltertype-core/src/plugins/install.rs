@@ -7,7 +7,7 @@ use tracing::{info, warn};
 use super::consts::*;
 use super::enums::{PluginError, PluginKind};
 use super::types::{InstalledPack, ManifestHeader};
-use super::validate::{EXTENSION_BIN_DIR, check_extension};
+use super::validate::check_extension;
 use crate::layouts::PluginManifest;
 
 /// Install the pack in `src` into `<data_dir>/plugins/<id>/`.

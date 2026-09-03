@@ -23,9 +23,10 @@ use std::process::Command;
 #[cfg(target_os = "linux")]
 use tracing::{info, warn};
 
-use super::{HELLO, sh_quote, sh_quote_str};
+use super::consts::HELLO;
 #[cfg(target_os = "linux")]
-use super::{spawn_detached, write_script};
+use super::script::{spawn_detached, write_script};
+use super::unix::{sh_quote, sh_quote_str};
 #[cfg(target_os = "linux")]
 use crate::enums::{Applied, UpdateError};
 #[cfg(target_os = "linux")]
@@ -68,7 +69,12 @@ fn running_appimage() -> Result<PathBuf, UpdateError> {
 }
 
 #[cfg(target_os = "linux")]
-pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<Applied, UpdateError> {
+pub(super) fn apply(
+    pending: &PendingUpdate,
+    relaunch: bool,
+    macos_sign_identity: &str,
+) -> Result<Applied, UpdateError> {
+    let _ = macos_sign_identity;
     let target = running_appimage()?;
 
     if let Err(e) = swap_in_place(&pending.artifact, &target) {

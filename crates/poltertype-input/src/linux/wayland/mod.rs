@@ -18,6 +18,7 @@ mod listener;
 mod own_nodes;
 #[cfg(test)]
 mod tests;
+mod traits;
 mod types;
 
 pub use consts::*;
@@ -26,4 +27,5 @@ pub use emit::*;
 pub use emitter::*;
 pub use gate::*;
 pub use listener::*;
+pub use traits::*;
 pub use types::*;

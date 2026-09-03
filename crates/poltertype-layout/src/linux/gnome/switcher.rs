@@ -131,38 +131,6 @@ impl LayoutSwitcher for GnomeSwitcher {
     }
 }
 
-/// Desktops whose own daemon applies `org.gnome.desktop.input-sources`.
-///
-/// A positive list, and that direction is the whole point. The negative
-/// one — stand down for Cinnamon, for MATE, for wlroots — only ever
-/// covered the desktops somebody had already been bitten by, and the
-/// schema outlives the desktop that wrote it: `dconf` is a file in the
-/// user's home, so a machine where GNOME once configured two layouts
-/// keeps that key for every later session, including the ones that
-/// never read it. Measured in the desktop matrix on 2026-08-27, on a
-/// guest where an earlier GNOME run had populated it: fluxbox, i3,
-/// icewm, LXQt, openbox and Xfce/X11 all took this backend, wrote the
-/// key, watched their own session put the layout straight back, and
-/// declined every correction — six sessions that had corrected fine on
-/// the same code with the key empty. Clearing it put them back on
-/// `linux-x11-xkb` and they worked.
-///
-/// So: name the desktops that *do* act on it, and let everything else
-/// fall through to the backend that drives that session for real.
-/// `POLTERTYPE_LAYOUT_BACKEND=gnome` overrides this for anyone whose
-/// desktop we have not heard of and whose gsettings switching works.
-///
-/// Cinnamon (#26) and MATE, which used to have a branch each here, are
-/// covered by this rule: neither names itself GNOME.
-const GNOME_FAMILY_NAMES: [&str; 6] = [
-    "gnome",
-    "gnome-classic",
-    "gnome-flashback",
-    "unity",
-    "budgie",
-    "pantheon",
-];
-
 fn session_reads_this_schema() -> bool {
     session_is_named(&GNOME_FAMILY_NAMES)
 }
@@ -187,11 +155,11 @@ fn session_is_wlroots() -> bool {
     named || wlroots_compositor_running()
 }
 
-fn is_wlroots_name(entry: &str) -> bool {
+pub(crate) fn is_wlroots_name(entry: &str) -> bool {
     names_any_of(entry, &WLROOTS_NAMES)
 }
 
-fn names_any_of(entry: &str, known: &[&str]) -> bool {
+pub(crate) fn names_any_of(entry: &str, known: &[&str]) -> bool {
     let entry = entry.trim().rsplit('/').next().unwrap_or_default();
     known.iter().any(|k| entry.eq_ignore_ascii_case(k))
 }
@@ -243,75 +211,4 @@ fn wlroots_compositor_running() -> bool {
         }
     }
     false
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The name half of the check, kept pure: `session_is_wlroots` also
-    /// scans `/proc`, so asserting on it would pass or fail depending
-    /// on what the machine running the tests happens to be.
-    ///
-    /// `XDG_CURRENT_DESKTOP` on the guest reads `labwc:wlroots`, so
-    /// either entry has to be enough — and entries are matched whole,
-    /// because `swaything` is a fork whose input stack nobody has seen.
-    #[test]
-    fn wlroots_sessions_are_recognised_by_either_half_of_the_name() {
-        for value in [
-            "labwc", "wlroots", "sway", "SWAY", "river", "niri", "wayfire",
-        ] {
-            assert!(is_wlroots_name(value), "{value} should read as wlroots");
-        }
-        for value in ["GNOME", "ubuntu", "KDE", "swaything", "Budgie", ""] {
-            assert!(
-                !is_wlroots_name(value),
-                "{value} should not read as wlroots"
-            );
-        }
-        // Display managers write whole paths into these variables.
-        assert!(is_wlroots_name("/usr/share/wayland-sessions/sway"));
-    }
-
-    /// The list that decides whether this backend claims a session at
-    /// all. Kept pure for the same reason as the one above: reading the
-    /// environment would assert on whatever desktop runs the suite.
-    #[test]
-    fn only_the_desktops_that_act_on_the_schema_are_named() {
-        let names = |value: &str| {
-            value
-                .split(':')
-                .any(|e| names_any_of(e, &GNOME_FAMILY_NAMES))
-        };
-
-        // Ubuntu's GNOME announces itself with two entries; either is
-        // enough.
-        for value in [
-            "GNOME",
-            "ubuntu:GNOME",
-            "gnome",
-            "GNOME-Flashback:GNOME",
-            "Unity",
-            "Budgie:GNOME",
-            "Pantheon",
-        ] {
-            assert!(names(value), "{value} should read as GNOME-family");
-        }
-        // The six that took this backend on a machine whose dconf had
-        // been populated by an earlier GNOME session, and could not
-        // switch a thing (2026-08-27), plus the two that had a branch
-        // of their own before.
-        for value in [
-            "i3",
-            "ICEWM",
-            "LXQt",
-            "XFCE",
-            "",
-            "X-Cinnamon",
-            "MATE",
-            "sway:wlroots",
-        ] {
-            assert!(!names(value), "{value} must not claim this backend");
-        }
-    }
 }

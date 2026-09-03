@@ -368,9 +368,6 @@ impl Default for UpdateSettings {
     }
 }
 
-/// Never check more often than this, whatever `config.toml` says.
-pub const MIN_UPDATE_INTERVAL_HOURS: u64 = 1;
-
 impl UpdateSettings {
     /// The check interval, with the hand-edit floor applied: a
     /// `check_interval_hours = 0` — a typo, or a user reasoning that

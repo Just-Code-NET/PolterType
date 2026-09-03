@@ -4,7 +4,8 @@ use std::sync::Mutex;
 
 use tracing::warn;
 
-use super::session::{PortalError, PortalSession};
+use super::enums::PortalError;
+use super::session::PortalSession;
 use crate::{EmittedKey, InputError, KeyDirection, KeyEmitter, Modifiers, ReplayKey};
 
 /// Evdev keycodes this backend needs by name. Same numbering the

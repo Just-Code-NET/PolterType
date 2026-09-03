@@ -6,4 +6,4 @@
 
 use crate::types::App;
 
-pub(crate) fn sync(_enabled: bool, _app: App<'_>) {}
+pub fn sync(_enabled: bool, _app: App<'_>) {}

@@ -25,10 +25,11 @@ use crate::consts::{
     DEFAULT_CACHE_SIZE, DEFAULT_MAX_LATENCY_MS, MAX_BLOCKING_LATENCY_MS, PRESETS, RETIRED_TYPES,
     TYPE_LLM,
 };
-use crate::detector::{LlmDetector, LlmSettings};
+use crate::detector::LlmDetector;
 use crate::enums::{Locality, QueryMode, WireFormat};
 use crate::keys::resolve_api_key;
 use crate::locality;
+use crate::types::LlmSettings;
 
 /// Build every detector the config asks for, skipping the ones that
 /// cannot be built, in configuration order. The caller appends these

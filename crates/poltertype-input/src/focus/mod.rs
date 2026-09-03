@@ -19,6 +19,9 @@ mod linux_impl;
 #[cfg(target_os = "macos")]
 mod macos_impl;
 
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+mod unsupported;
+
 mod factory;
 mod noop;
 mod traits;

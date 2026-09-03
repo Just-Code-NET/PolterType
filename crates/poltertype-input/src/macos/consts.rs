@@ -34,3 +34,11 @@ pub(super) const K_CG_MOUSE_EVENT_BUTTON_NUMBER: u32 = 23;
 /// word standing (`ьmahou`, measured 2026-08-30).
 pub(super) static INJECTED_KEYDOWN_ECHOES: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
+
+/// Environment override for the key gate, read once at startup:
+/// `POLTERTYPE_HOLD_KEYS=1` forces it on, `=0` forces it off —
+/// overriding `[engine].hold_keys` in either direction. The trade is
+/// latency: held keys are withheld from the application for the length
+/// of the flush, which reads as the caret lagging right after a
+/// correction; `docs/PERMISSIONS.md` states it.
+pub(super) const HOLD_KEYS_ENV: &str = "POLTERTYPE_HOLD_KEYS";

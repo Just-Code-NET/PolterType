@@ -85,7 +85,7 @@ fn is_registered(uid: &str, id: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn sync(enabled: bool, app: App<'_>) {
+pub fn sync(enabled: bool, app: App<'_>) {
     let Some(path) = plist_path(app.id) else {
         warn!("could not resolve ~/Library/LaunchAgents; autostart unchanged");
         return;

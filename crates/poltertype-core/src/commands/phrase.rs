@@ -12,12 +12,7 @@
 //! is never logged — every debug line goes through `redact_word` — and
 //! holds only words that ended at a boundary.
 
-use super::UserCommand;
-
-/// How many completed words to remember. Four covers `with best
-/// regards` and the like; a longer window would buy vanishingly rare
-/// triggers at the cost of holding more of the user's text in memory.
-pub const MAX_HISTORY_WORDS: usize = 4;
+use super::{MAX_HISTORY_WORDS, UserCommand};
 
 /// The most recent completed words, oldest first.
 #[derive(Debug, Default, Clone)]

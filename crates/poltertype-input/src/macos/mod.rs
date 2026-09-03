@@ -25,6 +25,8 @@ mod consts;
 #[cfg(target_os = "macos")]
 mod emitter;
 #[cfg(target_os = "macos")]
+pub(crate) mod factory;
+#[cfg(target_os = "macos")]
 mod gate;
 #[cfg(target_os = "macos")]
 mod listener;

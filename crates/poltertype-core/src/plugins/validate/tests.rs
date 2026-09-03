@@ -1,9 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
-use crate::plugins::enums::PluginKind;
+use crate::plugins::enums::{PaneOption, PluginKind};
 use crate::plugins::types::{
-    ExtensionManifest, PaneControl, PaneOption, PluginCommand, TrayItem, TrayListAction,
+    ExtensionManifest, PaneControl, PluginCommand, TrayItem, TrayListAction,
 };
 
 fn command(id: &str) -> PluginCommand {

@@ -1,5 +1,12 @@
 //! Where Cinnamon's input sources live, and what we call each route.
 
+/// Every variable a session manager might announce the desktop in.
+pub(crate) const DESKTOP_VARS: [&str; 3] = [
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_DESKTOP",
+    "DESKTOP_SESSION",
+];
+
 /// Cinnamon 6.6+, driven through `org.Cinnamon` on the session bus.
 pub const DBUS_BACKEND_NAME: &str = "linux-cinnamon-dbus";
 

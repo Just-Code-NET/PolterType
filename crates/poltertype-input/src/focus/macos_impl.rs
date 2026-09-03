@@ -29,33 +29,13 @@ use objc2_app_kit::NSWorkspace;
 use super::traits::FocusTracker;
 use super::types::{CaretHint, FocusedWindowGeometry};
 
-// AXValueType constants from HIServices/AXValue.h.
-const K_AXVALUE_TYPE_CGPOINT: u32 = 1;
-const K_AXVALUE_TYPE_CGSIZE: u32 = 2;
-const K_AXVALUE_TYPE_CGRECT: u32 = 3;
-const K_AXVALUE_TYPE_CFRANGE: u32 = 4;
+mod consts;
 
-/// Cap on how long one AX query may block the UI event loop. An app
-/// that cannot answer within this is treated as one without a11y.
-const AX_MSG_TIMEOUT_SECS: f32 = 0.3;
-
-/// A caret with zero height is no caret — it is the empty junk rect
-/// several apps hand back instead. The cap filters the other extreme
-/// (a whole-line "selection bounds" answer).
-const MIN_CARET_HEIGHT: f64 = 0.5;
-const MAX_CARET_HEIGHT: f64 = 120.0;
-
-/// Retry budget for the focused-element query: it can race the target
-/// app's own focus-change handling and answer `cannotComplete` /
-/// `noValue` transiently (SuperDictate's resolver does the same).
-const FOCUS_RETRY_ATTEMPTS: usize = 3;
-const FOCUS_RETRY_DELAY: Duration = Duration::from_millis(40);
-
-/// Slack for the "caret belongs to its element" check: real carets
-/// stick out of the field's frame by a few points (TextEdit's search
-/// field reports one 9 pt above its frame), Chrome's junk is hundreds
-/// of points away.
-const CARET_FRAME_SLACK: f64 = 24.0;
+use consts::{
+    AX_MSG_TIMEOUT_SECS, CARET_FRAME_SLACK, FOCUS_RETRY_ATTEMPTS, FOCUS_RETRY_DELAY,
+    K_AXVALUE_TYPE_CFRANGE, K_AXVALUE_TYPE_CGPOINT, K_AXVALUE_TYPE_CGRECT, K_AXVALUE_TYPE_CGSIZE,
+    MAX_CARET_HEIGHT, MIN_CARET_HEIGHT,
+};
 
 /// `CFRange` from CFBase — declared locally rather than pulling in
 /// `core-foundation-sys` for one struct.
@@ -390,6 +370,10 @@ impl FocusTracker for MacosFocusTracker {
     fn backend_name(&self) -> &'static str {
         "macos-ax"
     }
+}
+
+pub(crate) fn create_macos_focus_tracker() -> std::sync::Arc<dyn FocusTracker> {
+    std::sync::Arc::new(MacosFocusTracker)
 }
 
 #[cfg(test)]

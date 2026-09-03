@@ -27,8 +27,8 @@ tao = { workspace = true }
 iced = { workspace = true }
 
 # Only the platforms whose primitive is already close-on-exec. Linux
-# binds its own abstract socket with `std` instead — see src/instance.rs
-# for why that is not a preference but a bug fix.
+# binds its own abstract socket with `std` instead — see
+# src/instance/linux.rs for why that is not a preference but a bug fix.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 single-instance = { workspace = true }
 
@@ -37,3 +37,12 @@ single-instance = { workspace = true }
 # directory rather than out of the executable.
 [target.'cfg(target_os = "linux")'.dependencies]
 poltertype-icon = { workspace = true }
+
+# Naming the notification sender before the first toast, which only
+# macOS requires — and which costs a modal dialog when skipped, so it
+# cannot be left to the binary crate. `core-foundation` reads our own
+# `CFBundleIdentifier`; `notify-rust` is the same crate the binary
+# sends toasts with, here only for `set_application`.
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+notify-rust     = { workspace = true }

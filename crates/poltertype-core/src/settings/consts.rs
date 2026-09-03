@@ -1,7 +1,10 @@
-//! Schema versioning for `config.toml`, and the frozen historical
-//! defaults a migration has to recognise.
+//! Schema versioning for `config.toml`, the frozen historical defaults
+//! a migration has to recognise, and other fixed settings values.
 
 pub(crate) const SCHEMA_VERSION: u32 = 1;
+
+/// Never check more often than this, whatever `config.toml` says.
+pub const MIN_UPDATE_INTERVAL_HOURS: u64 = 1;
 
 /// The `[exceptions].disabled_apps` list PolterType shipped as a
 /// default up to and including v0.4.1, frozen verbatim.

@@ -11,8 +11,9 @@ use x11rb::rust_connection::RustConnection;
 
 use crate::focus::{CaretHint, FocusTracker, FocusedWindowGeometry};
 
-use super::atspi_caret::{AtspiCaretWatcher, CaretSample};
+use super::atspi_caret::AtspiCaretWatcher;
 use super::proc_exe::exe_basename_for_pid;
+use super::types::CaretSample;
 
 /// A live display connection plus the two EWMH atoms we query. Built
 /// lazily on the first `focused_exe()` call and dropped whenever the

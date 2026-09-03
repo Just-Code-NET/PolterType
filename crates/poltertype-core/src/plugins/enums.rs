@@ -112,6 +112,87 @@ pub enum ControlKind {
     Unknown,
 }
 
+/// One alternative offered by a [`ControlKind::Choice`].
+///
+/// Either a bare value — what every manifest wrote before an option could
+/// explain itself — or a table that adds a sentence and a link. Both
+/// forms live in the same `options` array, so a plug-in can describe the
+/// three choices that need it and leave the other two as strings:
+///
+/// ```toml
+/// options = [
+///   "off",
+///   { value = "qwen3:8b", label = "Qwen3 8B",
+///     detail = "Fits an 8 GB card whole.",
+///     link = "https://ollama.com/library/qwen3" },
+/// ]
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum PaneOption {
+    /// Just the value; it is its own label and says nothing more.
+    Value(String),
+    Described {
+        /// What is written into the plug-in's config when this is chosen.
+        value: String,
+        /// What to show instead of the raw value. Empty means the value.
+        #[serde(default)]
+        label: String,
+        /// A sentence about this alternative, shown under it.
+        #[serde(default)]
+        detail: String,
+        /// Where its makers describe it. `https` only — see
+        /// `validate::check_pane`.
+        #[serde(default)]
+        link: String,
+    },
+}
+
+impl PaneOption {
+    /// The string written into the config.
+    pub fn value(&self) -> &str {
+        match self {
+            Self::Value(v) => v,
+            Self::Described { value, .. } => value,
+        }
+    }
+
+    /// What the user reads. The value itself unless the plug-in named
+    /// something friendlier.
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Value(v) => v,
+            Self::Described { value, label, .. } => {
+                if label.trim().is_empty() {
+                    value
+                } else {
+                    label
+                }
+            }
+        }
+    }
+
+    pub fn detail(&self) -> &str {
+        match self {
+            Self::Value(_) => "",
+            Self::Described { detail, .. } => detail,
+        }
+    }
+
+    pub fn link(&self) -> &str {
+        match self {
+            Self::Value(_) => "",
+            Self::Described { link, .. } => link,
+        }
+    }
+
+    /// Does this option carry anything beyond its value? A choice where
+    /// none do is drawn as a drop-down, as it always was.
+    pub fn is_described(&self) -> bool {
+        !self.detail().trim().is_empty() || !self.link().trim().is_empty()
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum PluginError {
     #[error("{0} does not exist or is not a directory")]

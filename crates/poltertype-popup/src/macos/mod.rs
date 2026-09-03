@@ -14,4 +14,4 @@
 mod panel;
 mod popup;
 
-pub use popup::MacosPopup;
+pub(crate) use popup::create_for_platform;

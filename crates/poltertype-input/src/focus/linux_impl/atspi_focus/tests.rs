@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::*;
 
 /// A sample's age is what the caller uses to decide whether to trust

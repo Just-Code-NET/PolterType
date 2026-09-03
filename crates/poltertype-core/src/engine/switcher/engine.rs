@@ -20,6 +20,8 @@ use crate::engine::types::{ChordState, KeystreamHotkeys, LastWord, PendingSugges
 use crate::layouts::LayoutDb;
 use crate::settings::SettingsStore;
 
+use super::types::EngineDeps;
+
 pub struct SwitcherEngine {
     pub(super) settings: Arc<SettingsStore>,
     pub(super) layouts: Arc<LayoutDb>,
@@ -114,30 +116,6 @@ pub struct SwitcherEngine {
     /// The buffer keeps tracking, so correction resumes the moment it
     /// lapses.
     pub(super) paste_guard_until: RwLock<Instant>,
-}
-
-/// Everything the engine is built out of.
-///
-/// A struct rather than positional parameters because seven of these are
-/// `Arc<dyn …>` trait objects: any two of the same shape transpose at
-/// the call site and still compile. Named fields make the wiring in
-/// `main.rs` impossible to get wrong that way.
-pub struct EngineDeps {
-    pub settings: Arc<SettingsStore>,
-    pub layouts: Arc<LayoutDb>,
-    pub detectors: Vec<Box<dyn Detector>>,
-    pub layout_switcher: Arc<dyn LayoutSwitcher>,
-    pub key_emitter: Arc<dyn KeyEmitter>,
-    /// `None` where the session offers no windowless clipboard access,
-    /// which turns selection conversion off however the setting reads.
-    pub clipboard: Option<Arc<dyn Clipboard>>,
-    pub key_gate: KeyGate,
-    pub focus_tracker: Arc<dyn FocusTracker>,
-    pub audio: Arc<AudioPlayer>,
-    pub out_tx: Sender<SwitcherEvent>,
-    /// `None` when no suggestion provider is wired — the feature is
-    /// then inert, not merely disabled.
-    pub suggester: Option<Arc<dyn SuggestionProvider>>,
 }
 
 impl SwitcherEngine {

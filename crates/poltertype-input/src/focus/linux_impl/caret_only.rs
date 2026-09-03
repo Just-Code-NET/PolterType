@@ -22,8 +22,9 @@ use std::time::Duration;
 
 use crate::focus::{CaretHint, FocusTracker};
 
-use super::atspi_caret::{AtspiCaretWatcher, CaretSample};
+use super::atspi_caret::AtspiCaretWatcher;
 use super::atspi_focus::AtspiFocusWatcher;
+use super::types::CaretSample;
 
 /// How long a focus observation stays trustworthy.
 ///

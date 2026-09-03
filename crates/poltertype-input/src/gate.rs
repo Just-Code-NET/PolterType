@@ -1,9 +1,17 @@
 //! `KeyGate` — the "hold the user's keystrokes back while we type" seam.
 
-// Only the evdev, Windows and macOS backends have anything behind the
-// gate; elsewhere `KeyGate` is an empty struct and this import would
-// be dead.
-#[cfg(any(target_os = "linux", windows, target_os = "macos"))]
+#[cfg(target_os = "linux")]
+use crate::linux::wayland::EvdevGate as Backend;
+#[cfg(target_os = "macos")]
+use crate::macos::MacosGate as Backend;
+#[cfg(windows)]
+use crate::windows::WindowsGate as Backend;
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+use disabled::DisabledGate as Backend;
+
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+mod disabled;
+
 use std::sync::Arc;
 
 /// Holds physical keystrokes back from applications for the duration of
@@ -21,12 +29,7 @@ use std::sync::Arc;
 /// `false` as normal and stay correct without it.
 #[derive(Clone, Default)]
 pub struct KeyGate {
-    #[cfg(target_os = "linux")]
-    inner: Option<Arc<crate::linux::wayland::EvdevGate>>,
-    #[cfg(windows)]
-    inner: Option<Arc<crate::windows::WindowsGate>>,
-    #[cfg(target_os = "macos")]
-    inner: Option<Arc<crate::macos::MacosGate>>,
+    inner: Option<Arc<Backend>>,
 }
 
 impl KeyGate {
@@ -36,33 +39,16 @@ impl KeyGate {
         Self::default()
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn evdev(inner: Arc<crate::linux::wayland::EvdevGate>) -> Self {
+    /// Wrap an already-built per-OS backend. Every backend answers the
+    /// same `available` / `hold` / `release` shape — duck-typed rather
+    /// than a trait, since the Linux device thread's `service<D:
+    /// GateDevice>` needs a concrete device type a `dyn` backend would
+    /// lose.
+    pub(crate) fn with_backend(inner: Arc<Backend>) -> Self {
         Self { inner: Some(inner) }
     }
 
-    #[cfg(target_os = "linux")]
-    pub(crate) fn evdev_inner(&self) -> Option<&Arc<crate::linux::wayland::EvdevGate>> {
-        self.inner.as_ref()
-    }
-
-    #[cfg(windows)]
-    pub(crate) fn windows(inner: Arc<crate::windows::WindowsGate>) -> Self {
-        Self { inner: Some(inner) }
-    }
-
-    #[cfg(windows)]
-    pub(crate) fn windows_inner(&self) -> Option<&Arc<crate::windows::WindowsGate>> {
-        self.inner.as_ref()
-    }
-
-    #[cfg(target_os = "macos")]
-    pub(crate) fn macos(inner: Arc<crate::macos::MacosGate>) -> Self {
-        Self { inner: Some(inner) }
-    }
-
-    #[cfg(target_os = "macos")]
-    pub(crate) fn macos_inner(&self) -> Option<&Arc<crate::macos::MacosGate>> {
+    pub(crate) fn backend(&self) -> Option<&Arc<Backend>> {
         self.inner.as_ref()
     }
 
@@ -70,14 +56,7 @@ impl KeyGate {
     /// the input stack is up, so it is only meaningful after the
     /// listener has started.
     pub fn available(&self) -> bool {
-        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
-        {
-            self.inner.as_ref().is_some_and(|g| g.available())
-        }
-        #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
-        {
-            false
-        }
+        self.inner.as_ref().is_some_and(|g| g.available())
     }
 
     /// Hold the user's keystrokes back. Returns whether the hold is
@@ -87,19 +66,11 @@ impl KeyGate {
     /// the backend also enforces its own ceiling: a caller that dies
     /// mid-correction cannot leave the keyboard dead.
     pub fn hold(&self) -> bool {
-        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
-        {
-            self.inner.as_ref().is_some_and(|g| g.hold())
-        }
-        #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
-        {
-            false
-        }
+        self.inner.as_ref().is_some_and(|g| g.hold())
     }
 
     /// Let the user's keystrokes through again. Idempotent.
     pub fn release(&self) {
-        #[cfg(any(target_os = "linux", windows, target_os = "macos"))]
         if let Some(g) = self.inner.as_ref() {
             g.release();
         }

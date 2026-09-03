@@ -118,6 +118,10 @@ where
     }
 }
 
+pub fn create_switcher() -> Result<Box<dyn LayoutSwitcher>, LayoutError> {
+    Ok(Box::new(MacosLayoutSwitcher::new()))
+}
+
 // ─── Switcher impl ───────────────────────────────────────────────────
 
 pub struct MacosLayoutSwitcher;

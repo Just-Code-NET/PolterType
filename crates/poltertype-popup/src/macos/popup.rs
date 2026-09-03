@@ -10,6 +10,12 @@ use crate::enums::PopupUiEvent;
 use crate::traits::SuggestionPopup;
 use crate::types::PopupModel;
 
+/// macOS gets the `NSPanel` backend, which cannot fail at construction
+/// — see [`MacosPopup::new`].
+pub(crate) fn create_for_platform(events: Sender<PopupUiEvent>) -> Box<dyn SuggestionPopup> {
+    Box::new(MacosPopup::new(events))
+}
+
 /// Dispatching handle; the panel and all state live on the main
 /// thread inside [`panel`].
 pub struct MacosPopup;

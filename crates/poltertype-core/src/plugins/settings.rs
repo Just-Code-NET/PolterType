@@ -362,5 +362,4 @@ fn reach_mut<'a>(
 }
 
 #[cfg(test)]
-#[path = "settings_tests.rs"]
 mod tests;

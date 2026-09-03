@@ -27,6 +27,8 @@ mod macos;
 #[cfg(any(windows, test))]
 mod windows;
 
+mod chords;
+mod consts;
 mod enums;
 mod factory;
 mod gate;
@@ -41,6 +43,7 @@ mod traits;
 mod types;
 
 pub use clipboard::{Clipboard, ClipboardGap, clipboard, selection_support};
+pub use consts::*;
 pub use enums::*;
 pub use factory::*;
 pub use gate::*;

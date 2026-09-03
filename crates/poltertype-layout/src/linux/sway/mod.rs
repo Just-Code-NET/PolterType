@@ -26,3 +26,6 @@ mod switcher;
 
 pub(crate) use parse::*;
 pub use switcher::*;
+
+#[cfg(test)]
+mod tests;

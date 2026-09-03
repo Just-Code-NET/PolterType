@@ -16,6 +16,9 @@ mod store;
 mod types;
 
 pub(crate) use consts::*;
+// `consts` is otherwise crate-internal, but this one constant is part
+// of the public API other crates already depend on.
+pub use consts::MIN_UPDATE_INTERVAL_HOURS;
 pub use enums::*;
 pub(crate) use files::*;
 pub(crate) use migrate::*;

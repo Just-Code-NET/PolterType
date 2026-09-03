@@ -15,102 +15,15 @@ use fst::{IntoStreamer, Streamer};
 use levenshtein_automata::{DFA, Distance, LevenshteinAutomatonBuilder, SINK_STATE};
 use poltertype_types::LayoutId;
 
-use crate::dictionary::DictionaryDetector;
+use crate::consts::{
+    FIRST_CHAR_PENALTY, LAST_CHAR_PENALTY, MAX_RAW_CANDIDATES, MAX_SCORE, MIN_LETTERS_FOR_D2,
+    MIN_TOKEN_LETTERS, PREFIX_BONUS, PREFIX_BONUS_CAP, TRANSPOSITION_COST, WEAK_PENALTY,
+};
+use crate::dictionary_detector::DictionaryDetector;
+use crate::geometry::KeyboardGeometry;
 use crate::text::{letters_only_lower, surface_lower};
 use crate::traits::SuggestionProvider;
 use crate::types::Suggestion;
-
-/// Cap on raw candidates pulled off the FST stream before ranking —
-/// a d=2 automaton over a short token can match thousands of words,
-/// and ranking more than this many never changes the visible top-N.
-const MAX_RAW_CANDIDATES: usize = 500;
-
-/// Minimum alphabetic length of a token we suggest for. Below this
-/// the candidate space is all noise (`cat` is distance 2 from `a`).
-const MIN_TOKEN_LETTERS: usize = 3;
-
-/// Minimum alphabetic length for the distance-2 pass.
-const MIN_LETTERS_FOR_D2: usize = 5;
-
-/// Ranking scores above this are dropped even if we found nothing
-/// better: suggesting a far-away word is worse than staying quiet.
-const MAX_SCORE: f32 = 2.6;
-
-/// Transposition cost (`тичба` → `тиба`… `таби`) — swapped fingers.
-const TRANSPOSITION_COST: f32 = 0.6;
-
-/// Penalty when the first letters differ (typos rarely start a word)
-/// and a smaller one for the last letter.
-const FIRST_CHAR_PENALTY: f32 = 0.3;
-const LAST_CHAR_PENALTY: f32 = 0.15;
-
-/// Penalty for words on the curated weak list (archaic vocatives,
-/// dead inflections) — valid, but almost never what the user meant.
-const WEAK_PENALTY: f32 = 0.6;
-
-/// Reward per shared leading character, capped — breaks ties towards
-/// candidates that start the way the user actually typed.
-const PREFIX_BONUS: f32 = 0.08;
-const PREFIX_BONUS_CAP: usize = 4;
-
-/// Physical position of a key on the standard staggered board, in key
-/// units: `(row, column)`. Derived purely from the Win SC Set-1
-/// scancode — physical geometry is layout-independent, which is the
-/// whole point of using scancodes as the canonical key identity.
-fn scancode_grid_pos(sc: u32) -> Option<(f32, f32)> {
-    match sc {
-        // Digits row `1`..`=`.
-        0x02..=0x0D => Some((0.0, (sc - 0x02) as f32)),
-        // Top letter row `q`..`]`, staggered half a key right.
-        0x10..=0x1B => Some((1.0, (sc - 0x10) as f32 + 0.5)),
-        // Home row `a`..`'`.
-        0x1E..=0x28 => Some((2.0, (sc - 0x1E) as f32 + 0.75)),
-        // ANSI backslash / ISO extra home-row key next to Enter.
-        0x2B => Some((2.0, 11.75)),
-        // Bottom row `z`..`/`.
-        0x2C..=0x35 => Some((3.0, (sc - 0x2C) as f32 + 1.25)),
-        // ISO 102nd key (`<>|`, left of Z on European boards).
-        0x56 => Some((3.0, 0.25)),
-        _ => None,
-    }
-}
-
-/// Per-layout map from produced character to physical key position —
-/// what lets the ranking metric see that `слоао` is one finger-slip
-/// (`а` sits next to `в`) away from `слово`.
-#[derive(Debug, Default, Clone)]
-pub struct KeyboardGeometry {
-    pos: HashMap<char, (f32, f32)>,
-}
-
-impl KeyboardGeometry {
-    /// Build from `(scancode, produced char)` pairs — callers feed
-    /// both the plain and the shifted character of every mapped key
-    /// (lowercased; ranking runs on canonicalised tokens).
-    pub fn from_scancode_chars<I>(pairs: I) -> Self
-    where
-        I: IntoIterator<Item = (u32, char)>,
-    {
-        let mut pos = HashMap::new();
-        for (sc, ch) in pairs {
-            if let Some(p) = scancode_grid_pos(sc) {
-                for low in ch.to_lowercase() {
-                    pos.entry(low).or_insert(p);
-                }
-            }
-        }
-        Self { pos }
-    }
-
-    /// Squared physical distance between the keys producing `a` and
-    /// `b`, in key units. `None` when either char isn't on the grid.
-    fn proximity_sq(&self, a: char, b: char) -> Option<f32> {
-        let (&(ra, ca), &(rb, cb)) = (self.pos.get(&a)?, self.pos.get(&b)?);
-        let dr = ra - rb;
-        let dc = ca - cb;
-        Some(dr * dr + dc * dc)
-    }
-}
 
 /// Substitution cost for `a` → `b`: graded by physical key distance,
 /// so `hwllo` prefers `hello` (w↔e are direct neighbours) over

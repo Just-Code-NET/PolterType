@@ -11,6 +11,8 @@ mod consts;
 #[cfg(windows)]
 mod emitter;
 #[cfg(windows)]
+pub(crate) mod factory;
+#[cfg(windows)]
 mod gate;
 #[cfg(windows)]
 mod listener;

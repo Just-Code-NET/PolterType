@@ -65,7 +65,7 @@ fn value_matches(name: &str, want: &str) -> bool {
     String::from_utf8_lossy(&out.stdout).contains(want)
 }
 
-pub(crate) fn sync(enabled: bool, app: App<'_>) {
+pub fn sync(enabled: bool, app: App<'_>) {
     if !enabled {
         // `/f` so reg.exe does not prompt; a missing value exits
         // non-zero, which is the state we wanted anyway.

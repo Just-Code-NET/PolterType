@@ -13,6 +13,16 @@
 //! backend names: what a caller needs to know is why a chord is
 //! unusable here, not which module answers.
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(not(target_os = "linux"))]
+mod unsupported;
+
+#[cfg(target_os = "linux")]
+use linux as imp;
+#[cfg(not(target_os = "linux"))]
+use unsupported as imp;
+
 /// The two properties of this session that can make a default hotkey
 /// the wrong choice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,11 +43,7 @@ pub struct HotkeyEnvironment {
 /// most — so callers may treat it as free.
 pub fn hotkey_environment() -> HotkeyEnvironment {
     HotkeyEnvironment {
-        #[cfg(target_os = "linux")]
-        observed_not_consumed: crate::linux::session_kind() != crate::linux::SessionKind::X11,
-        #[cfg(not(target_os = "linux"))]
-        observed_not_consumed: false,
-
+        observed_not_consumed: imp::observed_not_consumed(),
         system_owns_ctrl_shift_space: cfg!(target_os = "macos"),
     }
 }
@@ -45,34 +51,11 @@ pub fn hotkey_environment() -> HotkeyEnvironment {
 /// Wait until the OS-level hotkey backend has something to grab
 /// against, up to `window`. `true` once it has.
 ///
-/// Only Linux can come up without one, and it does not come up
-/// gracefully: `global-hotkey`'s X11 backend opens a display on a
-/// thread of its own and uses the handle without checking it, so with
-/// no display its first act is `XDefaultRootWindow(NULL)` — SIGSEGV
-/// inside libX11, under our name, three log lines into startup.
-///
 /// A wait rather than a refusal because the usual way to have no
 /// display is to be early: an autostarted process can beat Xwayland to
 /// the session by a second or two. Callers that come back `false`
 /// should carry on without OS hotkeys — the app corrects text either
 /// way — rather than not start.
 pub fn wait_for_hotkey_backend(window: std::time::Duration) -> bool {
-    #[cfg(target_os = "linux")]
-    {
-        let deadline = std::time::Instant::now() + window;
-        loop {
-            if x11rb::connect(None).is_ok() {
-                return true;
-            }
-            if std::time::Instant::now() >= deadline {
-                return false;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(250));
-        }
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = window;
-        true
-    }
+    imp::wait_for_hotkey_backend(window)
 }

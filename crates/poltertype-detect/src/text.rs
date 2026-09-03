@@ -1,6 +1,8 @@
 //! Token-shape helpers: canonicalisation and "is this even
 //! prose?" guards shared by detectors and the engine.
 
+use crate::consts::COMPOUND_SEGMENT_MIN_LETTERS;
+
 /// Strip every non-letter (`char::is_alphabetic`) from `s` and
 /// lowercase it, for the Hunspell-derived dictionaries that hold only
 /// pure-letter entries.
@@ -79,13 +81,6 @@ pub fn looks_like_acronym(text: &str) -> bool {
     }
     letters.iter().all(|c| c.is_uppercase())
 }
-
-/// Minimum letters a compound segment needs before it may speak for its
-/// whole token. Two-letter segments are the noisy end of both the FST
-/// and the shape scorer, and real hyphenated prose leaves exactly such
-/// stubs — `будь-що` renders as `,elm-oj`, whose `oj` scores a perfect
-/// en-US fit.
-pub const COMPOUND_SEGMENT_MIN_LETTERS: usize = 3;
 
 /// Split a hyphen- or dot-joined token into its segments, or `None`
 /// when it is not a compound — including on an empty segment, so a

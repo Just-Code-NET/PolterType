@@ -7,13 +7,17 @@
 
 use std::path::Path;
 
-use super::consts::{EVENT_DEVICE_DIR, PERMISSIONS_URL, UINPUT_DEVICE, setup_script_command};
-use super::enums::{StepAction, StepState};
+use super::enums::{Permission, StepAction, StepState};
 use super::types::{SetupReport, SetupStep};
-use crate::linux::access::{GroupState, group_state};
+use crate::linux::access::{
+    EVENT_DEVICE_DIR, GroupState, PERMISSIONS_URL, group_state, setup_script_command,
+};
 use crate::linux::{SessionKind, session_kind};
 
-pub(super) fn probe() -> SetupReport {
+/// Where `create_key_gate`'s evdev backend opens its virtual keyboard.
+const UINPUT_DEVICE: &str = "/dev/uinput";
+
+pub(super) fn probe(_local_signing_identity: &str) -> SetupReport {
     match session_kind() {
         SessionKind::X11 => SetupReport {
             backend: Some("linux-x11-xinput2".to_owned()),
@@ -28,6 +32,21 @@ pub(super) fn probe() -> SetupReport {
         },
         SessionKind::Wayland | SessionKind::Unknown => wayland_report(),
     }
+}
+
+/// No system dialog exists here — Linux permissions are group
+/// membership and udev rules, granted with the copyable command the
+/// probe above already offers.
+pub(super) fn request(_permission: Permission) -> bool {
+    false
+}
+
+pub(super) fn settings_pane_url(_permission: Permission) -> Option<&'static str> {
+    None
+}
+
+pub(super) fn setup_local_signing(_name: &str) -> Result<(), String> {
+    Err("local update signing is a macOS mechanism".to_owned())
 }
 
 fn wayland_report() -> SetupReport {

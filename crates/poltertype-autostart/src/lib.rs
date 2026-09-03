@@ -56,6 +56,4 @@ pub use types::App;
 /// Idempotent and safe to call often. Never fails the caller — a home
 /// directory we cannot write to is no reason to refuse to run, so
 /// problems are logged and swallowed.
-pub fn sync(enabled: bool, app: App<'_>) {
-    imp::sync(enabled, app);
-}
+pub use imp::sync;

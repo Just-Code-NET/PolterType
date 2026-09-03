@@ -8,8 +8,9 @@
 use std::time::Duration;
 
 use crate::enums::PopupAnchor;
-use crate::render::{Renderer, RowRect, hit_row};
-use crate::types::{PopupEntry, PopupModel};
+use crate::render::hit_row;
+use crate::renderer::Renderer;
+use crate::types::{PopupEntry, PopupModel, RowRect};
 
 fn entry(text: &str, badge: Option<&str>) -> PopupEntry {
     PopupEntry {

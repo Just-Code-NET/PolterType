@@ -3,16 +3,18 @@
 use std::path::Path;
 #[cfg(target_os = "windows")]
 use std::path::PathBuf;
+#[cfg(windows)]
+use std::process::Command;
 
 #[cfg(target_os = "windows")]
 use tracing::info;
 
-use super::{HELLO, ps_quote};
+use super::consts::HELLO;
 #[cfg(target_os = "windows")]
-use super::{spawn_detached, write_script};
+use super::script::{spawn_detached, write_script};
 use crate::consts::FAILED_FILE;
 #[cfg(target_os = "windows")]
-use crate::enums::UpdateError;
+use crate::enums::{Applied, UpdateError};
 #[cfg(target_os = "windows")]
 use crate::types::PendingUpdate;
 
@@ -40,7 +42,12 @@ fn running_exe() -> Result<PathBuf, UpdateError> {
 }
 
 #[cfg(target_os = "windows")]
-pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<(), UpdateError> {
+pub(super) fn apply(
+    pending: &PendingUpdate,
+    relaunch: bool,
+    macos_sign_identity: &str,
+) -> Result<Applied, UpdateError> {
+    let _ = macos_sign_identity;
     let exe = running_exe()?;
     let staging = crate::staging::staging_dir()?;
 
@@ -73,7 +80,14 @@ pub(super) fn apply(pending: &PendingUpdate, relaunch: bool) -> Result<(), Updat
             Path::new("-File"),
             &script,
         ],
-    )
+    )?;
+
+    // Only now: the installer has spoken, so this artifact really did
+    // get a turn. Counting a spawn that never ran is what threw away
+    // three verified downloads on a machine where the installer could
+    // not start at all.
+    crate::staging::note_install_attempt(pending);
+    Ok(Applied::HandedOff)
 }
 
 /// The installer script, as text, so its shape can be asserted without
@@ -175,6 +189,27 @@ fn script_body(
         msi_log = MSI_LOG,
         failed = FAILED_FILE,
     )
+}
+
+/// Quote a path for PowerShell: single-quoted string, `'` doubled.
+/// Inside single quotes PowerShell performs no expansion at all, so
+/// `$`, backticks and `%` in a path are literals.
+fn ps_quote(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "''"))
+}
+
+/// Give the installer `CREATE_NO_WINDOW` and nothing else.
+///
+/// `DETACHED_PROCESS` looks like the obvious partner — full detachment
+/// — but it strips the child's console entirely, and Windows
+/// PowerShell 5.1 cannot start without one: three releases of this
+/// updater died there before ever reaching msiexec. See
+/// `docs/DECISIONS.md`, 2026-08-26.
+#[cfg(windows)]
+pub(super) fn detach(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
 }
 
 #[cfg(test)]

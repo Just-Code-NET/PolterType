@@ -1,6 +1,18 @@
 //! Per-OS constructors for the listener and emitter.
 
-use crate::*;
+#[cfg(target_os = "linux")]
+use crate::linux::factory as imp;
+#[cfg(target_os = "macos")]
+use crate::macos::factory as imp;
+#[cfg(windows)]
+use crate::windows::factory as imp;
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+use unsupported as imp;
+
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+mod unsupported;
+
+use crate::{InputError, InputListener, KeyEmitter, KeyGate};
 
 /// A gate that can hold the user's keystrokes back while a correction
 /// is being typed, paired with the listener [`create_listener`]
@@ -16,78 +28,15 @@ use crate::*;
 /// until the change can go through a Windows test run, and Linux/evdev
 /// holds by construction.
 pub fn create_key_gate(hold_keys: bool) -> KeyGate {
-    let _ = hold_keys;
-    #[cfg(target_os = "linux")]
-    {
-        linux::create_key_gate()
-    }
-    #[cfg(windows)]
-    {
-        KeyGate::windows(std::sync::Arc::new(windows::WindowsGate::new()))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        KeyGate::macos(std::sync::Arc::new(macos::MacosGate::new(hold_keys)))
-    }
-    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
-    {
-        KeyGate::disabled()
-    }
+    imp::create_key_gate(hold_keys)
 }
 
 /// Construct the listener appropriate for the current OS, wired to
 /// `gate` where the backend supports one.
 pub fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputError> {
-    let _ = gate;
-    #[cfg(windows)]
-    {
-        // The hook callback needs the gate to decide what to swallow;
-        // without it the listener observes and never blocks.
-        Ok(Box::new(match gate.windows_inner() {
-            Some(g) => windows::WindowsListener::with_gate(std::sync::Arc::clone(g)),
-            None => windows::WindowsListener::new(),
-        }))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        // Same wiring as Windows: the tap callback consults the gate
-        // on every keystroke.
-        Ok(Box::new(match gate.macos_inner() {
-            Some(g) => macos::MacosListener::with_gate(std::sync::Arc::clone(g)),
-            None => macos::MacosListener::new(),
-        }))
-    }
-    #[cfg(target_os = "linux")]
-    {
-        linux::create_listener(gate)
-    }
-    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
-    {
-        Err(InputError::Unsupported(format!(
-            "unsupported target_os = {}",
-            std::env::consts::OS
-        )))
-    }
+    imp::create_listener(gate)
 }
 
 pub fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
-    #[cfg(windows)]
-    {
-        Ok(Box::new(windows::WindowsEmitter::new()))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Ok(Box::new(macos::MacosEmitter::new()))
-    }
-    #[cfg(target_os = "linux")]
-    {
-        linux::create_emitter()
-    }
-    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
-    {
-        Err(InputError::Unsupported(format!(
-            "unsupported target_os = {}",
-            std::env::consts::OS
-        )))
-    }
+    imp::create_emitter()
 }

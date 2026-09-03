@@ -28,10 +28,10 @@ use zbus::blocking::{Connection, MessageIterator};
 use zbus::zvariant::{ObjectPath, Value};
 use zbus::{MatchRule, Message, message};
 
-use crate::focus::CaretHint;
-
-use super::atspi_owner::{CaretOwner, OwnerLookup};
+use super::atspi_owner::OwnerLookup;
 use super::consts::COORD_TYPE_WINDOW;
+use super::enums::AtspiCaretError;
+use super::types::CaretSample;
 
 /// Per-iterator signal queue. Caret events burst during fast typing
 /// and we only ever serve the newest sample, so a small queue that
@@ -40,53 +40,6 @@ const SIGNAL_QUEUE: usize = 32;
 
 /// A `GetCharacterExtents` reply: x, y, width, height.
 type Extents = (i32, i32, i32, i32);
-
-/// One caret-position fix, in coordinates relative to the caret's
-/// toplevel window (see [`COORD_TYPE_WINDOW`] for why not screen).
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CaretSample {
-    pub(crate) x: i32,
-    pub(crate) y: i32,
-    pub(crate) height: u32,
-    pub(crate) at: Instant,
-    pub(crate) owner: CaretOwner,
-}
-
-impl CaretSample {
-    /// `age` is computed at read time so the caller can judge staleness
-    /// — an old sample usually means the focused app emits no a11y
-    /// events at all.
-    pub(crate) fn into_hint(self) -> CaretHint {
-        CaretHint {
-            x: self.x,
-            y: self.y,
-            height: self.height,
-            age: self.at.elapsed(),
-            pid: Some(self.owner.pid),
-            window: self.owner.window,
-        }
-    }
-}
-
-/// Why the watcher could not start. Every variant boils down to "no
-/// usable a11y stack in this session" — headless CI, a11y disabled,
-/// no registry daemon — which is why the caller treats construction
-/// failure as a normal, log-once condition.
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum AtspiCaretError {
-    #[error("session bus unavailable: {0}")]
-    SessionBus(#[source] zbus::Error),
-    #[error("a11y bus address lookup failed: {0}")]
-    A11yAddress(#[source] zbus::Error),
-    #[error("a11y bus connection failed: {0}")]
-    A11yConnect(#[source] zbus::Error),
-    #[error("caret event registration failed: {0}")]
-    Register(#[source] zbus::Error),
-    #[error("caret signal subscription failed: {0}")]
-    Subscribe(#[source] zbus::Error),
-    #[error("watcher thread spawn failed: {0}")]
-    Spawn(#[source] std::io::Error),
-}
 
 /// Handle to the background caret watcher. Cheap to share (`Arc` it);
 /// dropping the handle intentionally leaves the thread running — the

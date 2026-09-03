@@ -22,15 +22,11 @@ use std::path::{Path, PathBuf};
 
 use tracing::{debug, warn};
 
-use super::consts::{MANIFEST_NAME, PLUGINS_DIR};
+use super::consts::{EXTENSION_BIN_DIR, MANIFEST_NAME, PLUGIN_PATH_VAR, PLUGINS_DIR};
 use super::enums::{PluginError, PluginKind};
 use super::install::read_header;
 use super::types::ExtensionManifest;
-use super::validate::{EXTENSION_BIN_DIR, check_extension};
-
-/// Environment variable holding extra plug-in directories, separated
-/// the way `PATH` is on this platform.
-pub const PLUGIN_PATH_VAR: &str = "POLTERTYPE_PLUGIN_PATH";
+use super::validate::check_extension;
 
 /// An extension that was found, checked, and can be run.
 #[derive(Debug, Clone)]
@@ -218,5 +214,4 @@ fn sibling_dirs() -> Vec<PathBuf> {
 }
 
 #[cfg(test)]
-#[path = "discover_tests.rs"]
 mod tests;

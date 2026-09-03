@@ -33,3 +33,6 @@ pub use consts::*;
 pub(crate) use enums::*;
 pub use gsettings::*;
 pub use switcher::*;
+
+#[cfg(test)]
+mod tests;

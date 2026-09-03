@@ -4,7 +4,7 @@
 //! a translucent panel over somebody else's text, and a plain window
 //! has no per-pixel alpha, so `WM_PAINT` would give a rectangle.
 //! `UpdateLayeredWindow` composites a 32-bit premultiplied BGRA surface
-//! — what [`crate::render`] already produces for Wayland, so the pixels
+//! — what [`crate::renderer`] already produces for Wayland, so the pixels
 //! cross unchanged but for channel order. It also means no `WM_PAINT`
 //! to answer, no flicker, and no repaint when the window behind
 //! scrolls.

@@ -18,6 +18,7 @@ use zbus::blocking::Connection;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, Value};
 
 use super::atspi_caret::object_extents;
+use super::types::CaretOwner;
 
 /// The path every AT-SPI application registers its own root object at,
 /// and therefore the marker that a walk up the parent chain has left
@@ -35,16 +36,6 @@ const MAX_PARENT_HOPS: usize = 96;
 /// lifetime, so entries stay valid; the cap only stops a long session
 /// full of short-lived apps from growing without end.
 const PID_CACHE_CAP: usize = 128;
-
-/// The process and window one caret sample came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct CaretOwner {
-    pub(crate) pid: u32,
-    /// Size of the toplevel the caret coordinates are relative to, as
-    /// the application itself reports it — `None` when it would not
-    /// say, leaving the PID as the only identity.
-    pub(crate) window: Option<(u32, u32)>,
-}
 
 /// Identity resolver plus its caches. Lives on the caret watcher
 /// thread and is never shared.

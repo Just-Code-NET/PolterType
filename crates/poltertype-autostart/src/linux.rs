@@ -1,20 +1,10 @@
-//! Linux: a systemd user service, or an XDG autostart entry.
+//! Linux: a systemd user service, or an XDG autostart entry as the
+//! fallback for a machine with no user manager. See docs/DECISIONS.md,
+//! 2026-08-21, for why a `.service` under `graphical-session.target`
+//! rather than the XDG mechanism alone.
 //!
-//! `~/.config/autostart` is a *desktop environment* mechanism. GNOME,
-//! KDE and Xfce read it; a bare compositor — Hyprland, Sway, river —
-//! has nothing that does, so the entry the user's "run at login"
-//! toggle wrote sat there being read by nobody. Where systemd's
-//! `xdg-desktop-autostart.target` bridges the gap it is also the wrong
-//! shape: it fires as early as the user manager can reach it, which is
-//! before a compositor has finished putting its environment there.
-//!
-//! So a `.service` under `graphical-session.target` instead: started by
-//! whatever brings the session up, and therefore after the same thing
-//! has imported the session's environment. The XDG entry stays as the
-//! fallback for a machine with no user manager to talk to at all.
-//!
-//! There is nothing to register in that fallback — the file *is* the
-//! registration, read at session start.
+//! There is nothing to register in the XDG fallback — the file *is*
+//! the registration, read at session start.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -169,7 +159,7 @@ fn systemd_available() -> bool {
     systemctl(&["show", "--property=Version"])
 }
 
-pub(crate) fn sync(enabled: bool, app: App<'_>) {
+pub fn sync(enabled: bool, app: App<'_>) {
     if systemd_available() {
         sync_systemd(enabled, app);
     } else {

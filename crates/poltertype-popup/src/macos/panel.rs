@@ -31,8 +31,9 @@ use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
 use tracing::{debug, warn};
 
 use crate::enums::{PopupAnchor, PopupUiEvent};
-use crate::render::{RenderedPopup, Renderer, hit_row};
-use crate::types::PopupModel;
+use crate::render::hit_row;
+use crate::renderer::Renderer;
+use crate::types::{PopupModel, RenderedPopup};
 
 /// Popup bottom edge floats this many px above the anchor window's
 /// bottom edge (or the screen bottom). Matches the other backends.

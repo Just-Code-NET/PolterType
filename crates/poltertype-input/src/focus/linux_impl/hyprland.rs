@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use crate::focus::{CaretHint, FocusTracker, FocusedWindowGeometry};
 
-use super::atspi_caret::{AtspiCaretWatcher, CaretSample};
+use super::atspi_caret::AtspiCaretWatcher;
 use super::hyprland_ipc::{active_window_reply, parse_active_window, parse_active_window_rect};
 use super::proc_exe::exe_basename_for_pid;
+use super::types::CaretSample;
 
 /// Focus via Hyprland's `activewindow` IPC query. Prefers the window's
 /// PID resolved through `/proc` (the exact analogue of the Windows

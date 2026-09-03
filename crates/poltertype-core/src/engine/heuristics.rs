@@ -9,7 +9,8 @@ use poltertype_layout::LayoutId;
 use crate::layouts::LayoutDb;
 
 use super::consts::{MOD_DOUBLE_TAP_GAP, MOD_TAP_MAX, SC_INSERT, SC_V};
-use super::types::{Binding, BindingState, Chord, ModChord, ModRole, ModSet, ModTapState};
+use super::enums::{Binding, ModRole};
+use super::types::{BindingState, Chord, ModChord, ModSet, ModTapState};
 
 /// Returns `true` exactly once per physical press of `chord`'s key while
 /// the chord's modifiers are held. `key_down` carries the latch state

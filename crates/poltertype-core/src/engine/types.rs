@@ -7,6 +7,8 @@ use poltertype_input::{KeyEvent, ReplayKey};
 use poltertype_layout::LayoutId;
 use poltertype_types::WordKey;
 
+use super::enums::{Binding, ModRole, SuggestionAction};
+
 /// One correction, described in full: what to delete, what to type in
 /// its place, and under which layout.
 ///
@@ -72,16 +74,6 @@ pub struct Chord {
     pub alt: bool,
     pub meta: bool,
     pub scancode: u32,
-}
-
-/// Which modifier a bare modifier key stands for. Left and right keys
-/// carry the same role: nobody binds "the left Shift".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModRole {
-    Ctrl,
-    Shift,
-    Alt,
-    Meta,
 }
 
 /// A set of modifier roles — the whole of a modifier-only chord.
@@ -159,14 +151,6 @@ pub struct ModChord {
     /// Windows and macOS, so a one-tap binding would fire on a
     /// selection.
     pub double_tap: bool,
-}
-
-/// What a hotkey answers to on the key stream: an ordinary chord, or
-/// modifiers alone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Binding {
-    Key(Chord),
-    Mods(ModChord),
 }
 
 /// The two engine hotkeys, resolved to key-stream bindings. `None`
@@ -301,15 +285,6 @@ impl AcceptModifiers {
         }
         (m.ctrl || m.alt || m.meta).then_some(m)
     }
-}
-
-/// What accepting a suggestion entry does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SuggestionAction {
-    Replace,
-    /// No text change. The engine only emits the request; the app owns
-    /// the overlay file and the dictionary reload.
-    AddToDictionary,
 }
 
 /// One entry of a suggestion offer, as shown in the tooltip.

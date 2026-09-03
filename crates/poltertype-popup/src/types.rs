@@ -1,6 +1,9 @@
-//! Plain data crossing the app ↔ popup boundary.
+//! Plain data structs: the model crossing the app ↔ popup boundary,
+//! plus the renderer's own output shapes.
 
 use std::time::Duration;
+
+use tiny_skia::Pixmap;
 
 use crate::enums::PopupAnchor;
 
@@ -37,4 +40,20 @@ pub struct PopupModel {
     pub timeout: Duration,
     /// Where to appear.
     pub anchor: PopupAnchor,
+}
+
+/// One clickable row, in pixmap (device-pixel) coordinates.
+pub(crate) struct RowRect {
+    pub index: usize,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+/// Finished frame: pixels to upload plus where the rows landed.
+pub(crate) struct RenderedPopup {
+    /// Premultiplied-alpha RGBA, final device pixels.
+    pub pixmap: Pixmap,
+    pub rows: Vec<RowRect>,
 }
