@@ -198,7 +198,11 @@ impl SettingsApp {
     }
 
     pub(super) fn title(&self) -> String {
-        format!("PolterType · Settings ({})", self.config_path.display())
+        poltertype_core::i18n::tr_args(
+            "ui.window_title",
+            "PolterType · Settings ({})",
+            &[&self.config_path.display().to_string()],
+        )
     }
 
     /// The user's theme preference, parsed fresh from the staged

@@ -612,7 +612,7 @@ fn main() -> Result<()> {
         spawn_error_notification(format!(
             "Keyboard hooks are unavailable — automatic layout switching is off.\n\
              {reason}\n\
-             Tray menu → \"Setup…\" shows what is missing and how to fix it."
+             The tray menu's setup entry shows what is missing and how to fix it."
         ));
     }
 

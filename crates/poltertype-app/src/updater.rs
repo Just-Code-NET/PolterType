@@ -106,8 +106,8 @@ pub(crate) fn report_previous_install_failure() {
     warn!(%reason, "the previous update install was refused");
     spawn_error_notification(format!(
         "PolterType could not install its last update.\n{reason}\n\
-         The installer's own log is in the logs folder \
-         (Tray → \"Open Logs Folder…\").\n\
+         The installer's own log is in the logs folder, which the \
+         tray menu opens.\n\
          Download it from {RELEASES_URL}"
     ));
 }

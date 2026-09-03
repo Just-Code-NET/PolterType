@@ -40,10 +40,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
   Ukrainian shipped for every one of them. A plug-in's tray entries are
   translated from its own catalog, exactly as its settings pane is.
 
-  Two things stay English by design: error notifications, which carry
-  the operating system's own message, and the Setup pane's step titles,
+  Every pane's subtitle goes through the catalog too — the sentence
+  under each heading was the last thing still drawn from a raw literal
+  — and so does the suggestion popup's "Add to dictionary", the one
+  piece of interface the engine shows while you type.
+
+  Three things stay English by design: error notifications, which carry
+  the operating system's own message; the Setup pane's step titles,
   which come from the permission probe in a crate that does not depend
-  on the translation loader.
+  on the translation loader; and the plug-in supervisor's failures,
+  which name a plug-in's ids beside an OS error.
 
 - **The Plug-ins pane speaks the interface's language.** Everything
   PolterType draws around a plug-in — Add, Remove, Refresh, Select all,

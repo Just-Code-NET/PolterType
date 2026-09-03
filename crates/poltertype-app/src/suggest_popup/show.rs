@@ -41,7 +41,8 @@ pub(crate) fn show_suggestion_popup(
             // struck-through header right above.
             SuggestionAction::AddToDictionary => PopupEntry {
                 badge: None,
-                text: "Add to dictionary".to_owned(),
+                text: poltertype_core::i18n::tr("popup.add_to_dictionary", "Add to dictionary")
+                    .to_owned(),
                 is_action: true,
             },
         })

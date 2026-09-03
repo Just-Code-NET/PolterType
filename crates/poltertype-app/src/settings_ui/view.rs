@@ -209,10 +209,11 @@ impl SettingsApp {
 
         if self.os_layouts.is_empty() {
             col = col.push(card(
-                Text::new(
+                Text::new(tr(
+                    "ui.no_os_layouts",
                     "No OS layouts detected. Add languages in your system's keyboard \
                      settings, then reopen this window.",
-                )
+                ))
                 .size(13)
                 .color(b.muted),
             ));
@@ -356,10 +357,13 @@ impl SettingsApp {
                 // Not "registered with the OS": on the Wayland/evdev
                 // backend they are read off the key stream instead, and
                 // the pane said otherwise while doing exactly that.
-                "Hotkeys are global — they fire whatever window has focus. \
-                 Click 'Rebind', press the new combination, then save. \
-                 The new binding is in force as soon as this window closes."
-                    .to_owned(),
+                tr(
+                    "hotkeys.subtitle",
+                    "Hotkeys are global — they fire whatever window has focus. \
+                     Click 'Rebind', press the new combination, then save. \
+                     The new binding is in force as soon as this window closes.",
+                )
+                .to_owned(),
             ))
             .push(card(
                 Column::new()
@@ -444,13 +448,16 @@ impl SettingsApp {
         let mut col = Column::new().spacing(14).push(pane_header(
             b,
             tr("commands.commands", "Commands"),
-            "Type a short token, get a phrase — like classic snippet expanders. \
-             For example: typing the trigger `anrl` + space expands into \
-             `Anatomical Reference List `. The engine watches every word \
-             boundary and fires when the typed token matches. Pause / \
-             switch-last live separately on the Hotkeys pane. New commands \
-             take effect after Save + restart."
-                .to_owned(),
+            tr(
+                "commands.subtitle",
+                "Type a short token, get a phrase — like classic snippet expanders. \
+                 For example: typing the trigger `anrl` + space expands into \
+                 `Anatomical Reference List `. The engine watches every word \
+                 boundary and fires when the typed token matches. Pause / \
+                 switch-last live separately on the Hotkeys pane. New commands \
+                 take effect after Save + restart.",
+            )
+            .to_owned(),
         ));
 
         // ── Existing commands list ──────────────────────────────────
@@ -659,22 +666,26 @@ impl SettingsApp {
         let mut col = Column::new().spacing(14).push(pane_header(
             b,
             tr("wordlists.wordlists", "Wordlists"),
-            "Add language-specific words to the per-layout dictionary \
-             overlay. Use the Save button below to persist your edits, \
-             or just close the window — either way, the engine's \
-             dictionary set refreshes so new words start counting \
-             toward detection on the next typed word, no tray \
-             restart needed."
-                .to_owned(),
+            tr(
+                "wordlists.subtitle",
+                "Add language-specific words to the per-layout dictionary \
+                 overlay. Use the Save button below to persist your edits, \
+                 or just close the window — either way, the engine's \
+                 dictionary set refreshes so new words start counting \
+                 toward detection on the next typed word, no tray \
+                 restart needed.",
+            )
+            .to_owned(),
         ));
 
         if self.os_layouts.is_empty() {
             return col
                 .push(card(
-                    Text::new(
+                    Text::new(tr(
+                        "ui.no_os_layouts",
                         "No OS layouts detected. Add languages in your system's \
                          keyboard settings, then reopen this window.",
-                    )
+                    ))
                     .size(13)
                     .color(b.muted),
                 ))
@@ -857,11 +868,14 @@ impl SettingsApp {
         let col = Column::new().spacing(14).push(pane_header(
             b,
             tr("exceptions.exceptions", "Exceptions"),
-            "PolterType skips auto-correction when the foreground app's \
-             executable basename is in this list. Manual switch (the \
-             hotkey on the Hotkeys pane) bypasses the list — devs can \
-             still fix wrong-layout identifiers explicitly inside an IDE."
-                .to_owned(),
+            tr(
+                "exceptions.subtitle",
+                "PolterType skips auto-correction when the foreground app's \
+                 executable basename is in this list. Manual switch (the \
+                 hotkey on the Hotkeys pane) bypasses the list — devs can \
+                 still fix wrong-layout identifiers explicitly inside an IDE.",
+            )
+            .to_owned(),
         ));
 
         let mut rows = Column::new().spacing(8);
@@ -1023,7 +1037,7 @@ impl SettingsApp {
                     .align_y(Alignment::Center)
                     .push(Text::new(tr("general.idle_timeout_ms", "Idle timeout (ms):")).size(13))
                     .push(
-                        Button::new(Text::new(tr("general.text", "-100")).size(12))
+                        Button::new(Text::new("-100").size(12))
                             .on_press(Message::IdleTimeoutDelta(-100))
                             .style(theme::secondary)
                             .padding(Padding {
@@ -1039,7 +1053,7 @@ impl SettingsApp {
                             .font(Font::MONOSPACE),
                     )
                     .push(
-                        Button::new(Text::new(tr("general.text2", "+100")).size(12))
+                        Button::new(Text::new("+100").size(12))
                             .on_press(Message::IdleTimeoutDelta(100))
                             .style(theme::secondary)
                             .padding(Padding {
@@ -1417,10 +1431,11 @@ impl SettingsApp {
                     .push(modifiers_input),
             )
             .push(
-                Text::new(format!(
+                Text::new(tr_args(
+                    "suggestions.modifiers_hint",
                     "'+'-separated: {} — e.g. Ctrl+Shift. Applied with \
                      digit keys 1–9. Leave empty to disable keyboard accept.",
-                    named_key_list(&["Ctrl", "Shift", "Alt", "Meta"], ", ")
+                    &[&named_key_list(&["Ctrl", "Shift", "Alt", "Meta"], ", ")],
                 ))
                 .size(11)
                 .color(b.muted),
@@ -1433,10 +1448,11 @@ impl SettingsApp {
             && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
         {
             chord_card = chord_card.push(
-                Text::new(format!(
+                Text::new(tr_args(
+                    "suggestions.modifiers_required",
                     "At least one of {} is required — as written, keyboard \
                      accept is off (clicking a suggestion still works).",
-                    named_key_list(&["Ctrl", "Alt", "Meta"], " / ")
+                    &[&named_key_list(&["Ctrl", "Alt", "Meta"], " / ")],
                 ))
                 .size(11)
                 .color(b.warn),
@@ -1448,10 +1464,13 @@ impl SettingsApp {
             .push(pane_header(
                 b,
                 tr("suggestions.suggestions", "Suggestions"),
-                "Offer dictionary suggestions in a small tooltip when a typed word looks \
-                 misspelled. Clicking a suggestion (or pressing the accept chord + a digit) \
-                 replaces the word."
-                    .to_owned(),
+                tr(
+                    "suggestions.subtitle",
+                    "Offer dictionary suggestions in a small tooltip when a typed word \
+                     looks misspelled. Clicking a suggestion (or pressing the accept \
+                     chord + a digit) replaces the word.",
+                )
+                .to_owned(),
             ))
             .push(card(tooltip_card))
             .push(card(chord_card))
@@ -1731,7 +1750,7 @@ fn hotkey_chips(b: &'static theme::BrandPalette, combo: &str) -> Element<'static
     let mut row = Row::new().spacing(4).align_y(Alignment::Center);
     for (i, part) in combo.split('+').enumerate() {
         if i > 0 {
-            row = row.push(Text::new(tr("footer.text", "+")).size(11).color(b.muted));
+            row = row.push(Text::new("+").size(11).color(b.muted));
         }
         row = row.push(keycap_chip(display_key_token(part)));
     }

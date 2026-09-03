@@ -147,12 +147,20 @@ The tray menu is translated too, a plug-in's own entries included: the
 tray reads the same catalogs at startup, so a change of language takes
 effect there when PolterType is next started.
 
-Two things stay English on purpose. **Error notifications** carry the
-operating system's own message, which is not ours to translate. And the
+The suggestion popup's own action — "Add to dictionary" — comes from
+the catalog as well, so nothing the engine puts on screen while you
+type is left in English.
+
+Three things stay English on purpose. **Error notifications** carry the
+operating system's own message, which is not ours to translate. The
 **Setup pane's step titles** come from the permission probe in
 `poltertype-input`, a crate with no dependency on the translation
 loader; everything the Settings window puts around them — the headline,
-the state badges, the buttons and the notes — is translated.
+the state badges, the buttons and the notes — is translated. And the
+**plug-in supervisor's failures** ("declares no command", "did not
+answer within 5000ms") name a plug-in's own ids beside an OS error:
+they are read in bug reports more often than by the person who
+clicked.
 
 ---
 

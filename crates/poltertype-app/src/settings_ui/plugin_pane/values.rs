@@ -228,9 +228,10 @@ impl PluginPane {
             }
             Err(e) => {
                 warn!(path = %self.config_path.display(), "cannot write plug-in config: {e}");
-                self.status = Some(format!(
-                    "Could not write {}: {e}",
-                    self.config_path.display()
+                self.status = Some(poltertype_core::i18n::tr_args(
+                    "plugins.status_write_failed",
+                    "Could not write {}: {}",
+                    &[&self.config_path.display().to_string(), &e.to_string()],
                 ));
                 false
             }

@@ -691,9 +691,11 @@ impl SettingsApp {
                             warn!(?e, "could not remember the signing identity");
                         }
                         self.setup_status = Some(SaveBanner {
-                            text: format!(
-                                "Identity “{name}” is in your keychain — updates will keep \
-                                 the permissions from now on."
+                            text: tr_args(
+                                "setup.identity_stored",
+                                "Identity “{}” is in your keychain — updates will keep \
+                                 the permissions from now on.",
+                                &[&name],
                             ),
                             is_error: false,
                         });
@@ -753,11 +755,13 @@ impl SettingsApp {
         if !is_usable_hotkey(&combo) {
             warn!(?kind, %combo, "refusing a hotkey this build cannot read back");
             self.save_banner = Some(SaveBanner {
-                text: format!(
-                    "{combo} can't be used as a hotkey. \
+                text: tr_args(
+                    "hotkeys.unusable_combo",
+                    "{} can't be used as a hotkey. \
                      Try a Latin letter or a function key — \
                      a key is stored by the character it types, \
-                     so switch layout first if you meant a letter."
+                     so switch layout first if you meant a letter.",
+                    &[&combo],
                 ),
                 is_error: true,
             });
