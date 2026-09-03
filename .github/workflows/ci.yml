@@ -34,6 +34,10 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+      # File organization and the platform split — CONTRIBUTING states
+      # both, and until this ran nothing checked either. Cheap: it reads
+      # the sources, it does not build the workspace.
+      - run: cargo xtask style
 
   # Lint + build + test in one job per OS. Splitting `check` and `test`
   # across two runners bought nothing: the second runner recompiled the

@@ -77,3 +77,16 @@ if ! CARGO_TARGET_DIR=target/lint-all \
     echo "(or \`git commit --no-verify\` if you really need to bypass)"
     exit 1
 fi
+
+# The rules the compiler has no opinion about: which kind of thing goes
+# in which file, and where a platform `cfg` may appear. No
+# CARGO_TARGET_DIR of its own — this one needs a real binary rather
+# than check artefacts, so it shares the plain `target/` that pre-push
+# already builds into and stays warm there.
+echo "poltertype pre-commit: cargo xtask style"
+if ! cargo xtask style; then
+    echo
+    echo "poltertype pre-commit: code is in the wrong file."
+    echo "See CONTRIBUTING.md § File organization and § Style & guarantees."
+    exit 1
+fi
