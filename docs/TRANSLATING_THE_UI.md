@@ -12,7 +12,8 @@ layouts: the things that vary between people live in data.
 
 ## The short version
 
-1. Copy `data/i18n/uk.toml` to `data/i18n/<your-language>.toml`.
+1. Copy any catalog in `data/i18n/` — German, Spanish, French and
+   Ukrainian ship — to `data/i18n/<your-language>.toml`.
 2. Translate the right-hand side of each line.
 3. Pick your language under **General → Appearance → Interface
    language** and reopen the window.

@@ -57,6 +57,13 @@ and the project follows [Semantic Versioning](https://semver.org/).
   through the catalog like the rest of the window, with the Ukrainian
   translation shipped.
 
+- **Three more interface languages: German, Spanish and French.** Each
+  is a complete catalog — every string the window, the tray menu, the
+  notifications and the suggestion popup draw — so the picker in
+  General → Appearance now offers Deutsch, Español, Français and
+  Українська beside the system default. English needs no catalog: it
+  is compiled into every call site.
+
 ### Fixed
 
 - **`<config-dir>/poltertype/i18n/` is read at last.** The loader only

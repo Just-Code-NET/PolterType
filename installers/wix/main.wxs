@@ -212,6 +212,15 @@
                                     <!-- UI translations. English is compiled
                                          into every call site, so a missing
                                          catalog costs nothing. -->
+                                    <File Id="I18nDe"
+                                          Source="$(var.DataDir)\i18n\de.toml"
+                                          Name="de.toml" />
+                                    <File Id="I18nEs"
+                                          Source="$(var.DataDir)\i18n\es.toml"
+                                          Name="es.toml" />
+                                    <File Id="I18nFr"
+                                          Source="$(var.DataDir)\i18n\fr.toml"
+                                          Name="fr.toml" />
                                     <File Id="I18nUk"
                                           Source="$(var.DataDir)\i18n\uk.toml"
                                           Name="uk.toml" />

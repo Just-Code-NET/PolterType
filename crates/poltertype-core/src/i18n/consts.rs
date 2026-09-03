@@ -22,4 +22,9 @@ pub const LOCALE_ENV: &str = "POLTERTYPE_LOCALE";
 /// `<config-dir>/poltertype/i18n/<lang>.toml` in and set
 /// `[general].ui_language`. This is what the picker offers, not what
 /// the loader accepts.
-pub const SHIPPED_LOCALES: &[(&str, &str)] = &[("uk", "Українська")];
+pub const SHIPPED_LOCALES: &[(&str, &str)] = &[
+    ("de", "Deutsch"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("uk", "Українська"),
+];
