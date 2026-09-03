@@ -1,13 +1,15 @@
 //! Tray icon state rendering.
 
+use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
-use tracing::warn;
+use tracing::{debug, warn};
 use tray_icon::TrayIcon;
-use tray_icon::menu::MenuItem;
+use tray_icon::menu::{MenuId, MenuItem, Submenu};
 
 use crate::consts::*;
 use crate::icon_render;
+use crate::plugins;
 use crate::types::*;
 
 pub(crate) fn tooltip_for(
@@ -86,4 +88,70 @@ pub(crate) fn pause_item_label(paused: bool) -> &'static str {
     } else {
         "⏸ Pause auto-switch"
     }
+}
+
+/// Repopulate the "missed words" submenu from `deferred`, and record
+/// which menu id stands for which word so a click can be resolved.
+///
+/// Rebuilt wholesale rather than patched: the list is at most eight
+/// rows and changes only when a tooltip is missed or a word is taken,
+/// so the simple thing is also the fast one.
+pub(crate) fn rebuild_deferred_menu(
+    submenu: &Submenu,
+    deferred: &DeferredWords,
+    rows: &mut Vec<(MenuId, LayoutId, String)>,
+    layouts: &LayoutDb,
+) {
+    // Back to front: `remove_at` shifts everything after the index it
+    // takes, so walking forwards would skip every other row and leave
+    // stale ones behind — which then resolve to words already added.
+    for i in (0..submenu.items().len()).rev() {
+        let _ = submenu.remove_at(i);
+    }
+    rows.clear();
+    if deferred.is_empty() {
+        // A submenu that is empty *and* disabled is indistinguishable
+        // from one that is broken: reported as "I click it and nothing
+        // happens" (issue #38). One disabled row says which it is.
+        let empty = MenuItem::new(DEFERRED_MENU_EMPTY, false, None);
+        if let Err(e) = submenu.append(&empty) {
+            warn!(?e, "could not add the missed-word placeholder");
+        }
+        debug!("tray: missed-word list rebuilt rows=0");
+        return;
+    }
+    for (layout, word) in deferred.iter() {
+        // The layout is named because the same spelling can be a word
+        // in one and gibberish in another, and the entry goes into one
+        // wordlist, not both.
+        let name = layouts
+            .get(layout)
+            .map(|m| m.name.clone())
+            .unwrap_or_else(|| layout.as_str().to_owned());
+        let item = MenuItem::new(format!("{word}  ·  {name}"), true, None);
+        rows.push((item.id().clone(), layout.clone(), word.clone()));
+        if let Err(e) = submenu.append(&item) {
+            warn!(?e, "could not add a missed word to the submenu");
+        }
+    }
+    // Count only. The whole point of this list is that it holds text
+    // the user typed, so it is the one thing that must never reach a
+    // log — see `logsafe`.
+    debug!(rows = rows.len(), "tray: missed-word list rebuilt");
+}
+
+/// Move the mark on the tray icon to match what the plug-ins are waiting
+/// on, redrawing only when the number changed: the icon is rasterised
+/// from scratch on every redraw.
+pub(crate) fn sync_attention(
+    tray: &TrayIcon,
+    item_pause: &MenuItem,
+    state: &mut TrayState,
+    menu: &plugins::PluginMenu,
+) {
+    if state.attention == menu.attention() {
+        return;
+    }
+    state.attention = menu.attention();
+    refresh_tray(tray, item_pause, state);
 }

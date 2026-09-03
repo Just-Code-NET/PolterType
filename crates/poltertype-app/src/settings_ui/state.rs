@@ -6,13 +6,13 @@ use std::sync::Arc;
 use iced::keyboard::{Key, key::Named};
 use iced::widget::text_editor;
 use iced::{Subscription, Theme};
-use poltertype_core::engine::ModSet;
 use poltertype_core::settings::{Settings, SettingsStore};
 use poltertype_layout::LayoutId;
 
 use super::enums::*;
 use super::helpers::*;
 use super::theme;
+pub use super::types::{ModCapture, SaveBanner};
 
 pub struct SettingsApp {
     pub(super) settings: Settings,
@@ -112,27 +112,6 @@ pub struct SettingsApp {
     /// Gates the "discard changes" warning when the user switches
     /// layout / kind without saving.
     pub(super) wordlist_dirty: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct SaveBanner {
-    pub(super) text: String,
-    pub(super) is_error: bool,
-}
-
-/// Capture state for a modifier-only chord (issue #32), mirroring what
-/// the engine's matcher does with the live key stream.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ModCapture {
-    /// Modifier keys down right now.
-    pub(super) down: ModSet,
-    /// Every modifier seen during this hold — the gesture is judged on
-    /// what was held together, not on what is left at the last release.
-    pub(super) peak: ModSet,
-    /// A single-modifier tap that has landed and is waiting to see
-    /// whether a second one follows. One modifier alone is never a
-    /// binding, so nothing is committed until it does.
-    pub(super) pending_tap: Option<ModSet>,
 }
 
 impl SettingsApp {

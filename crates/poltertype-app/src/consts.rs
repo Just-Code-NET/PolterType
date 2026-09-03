@@ -160,6 +160,11 @@ pub(crate) const SWITCHER_PROBE_INTERVAL: std::time::Duration =
 /// file is replaced atomically, so its size and mtime move together.
 pub(crate) const CONFIG_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
+/// How often a plug-in that reports state is re-asked while the user is
+/// not touching the menu. Slow on purpose: every tick costs one
+/// subprocess per reporting plug-in.
+pub(crate) const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// How long a global hotkey may look "still held" before the next
 /// `Pressed` is treated as a fresh press anyway. Only the OS-grab path
 /// needs it — the keystream matcher latches on real key releases.

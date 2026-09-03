@@ -23,27 +23,34 @@ mod icon_render;
 mod settings_ui;
 
 mod bridges;
+mod cli;
 mod consts;
 mod detectors;
 mod enums;
 mod hotkeys;
+mod logging;
+mod noop_emitter;
 mod plugins;
 mod settings_proc;
 mod suggest_popup;
+mod switcher_retry;
 mod tray;
 mod types;
 mod updater;
 mod user_dirs;
 
 use crate::bridges::*;
-use std::time::Instant;
 
+use crate::cli::print_help;
 use crate::consts::*;
 use crate::detectors::*;
 use crate::enums::*;
 use crate::hotkeys::*;
+use crate::logging::init_tracing;
+use crate::noop_emitter::noop_emitter;
 use crate::settings_proc::*;
 use crate::suggest_popup::*;
+use crate::switcher_retry::switcher_with_retry;
 use crate::tray::*;
 use crate::types::*;
 use crate::updater::*;
@@ -68,86 +75,14 @@ use poltertype_detect::Detector;
 use poltertype_input::{
     KeyEvent, create_emitter, create_focus_tracker, create_key_gate, create_listener,
 };
-use poltertype_layout::{LayoutError, create_switcher};
 use poltertype_popup::{PopupUiEvent, create_popup};
 use poltertype_types::LayoutId;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use tray_icon::TrayIcon;
 use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-
-/// How often a plug-in that reports state is re-asked while the user is
-/// not touching the menu. Slow on purpose: every tick costs one
-/// subprocess per reporting plug-in.
-const PLUGIN_STATE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(15);
-
-/// Repopulate the "missed words" submenu from `deferred`, and record
-/// which menu id stands for which word so a click can be resolved.
-///
-/// Rebuilt wholesale rather than patched: the list is at most eight
-/// rows and changes only when a tooltip is missed or a word is taken,
-/// so the simple thing is also the fast one.
-fn rebuild_deferred_menu(
-    submenu: &Submenu,
-    deferred: &DeferredWords,
-    rows: &mut Vec<(tray_icon::menu::MenuId, LayoutId, String)>,
-    layouts: &LayoutDb,
-) {
-    // Back to front: `remove_at` shifts everything after the index it
-    // takes, so walking forwards would skip every other row and leave
-    // stale ones behind — which then resolve to words already added.
-    for i in (0..submenu.items().len()).rev() {
-        let _ = submenu.remove_at(i);
-    }
-    rows.clear();
-    if deferred.is_empty() {
-        // A submenu that is empty *and* disabled is indistinguishable
-        // from one that is broken: reported as "I click it and nothing
-        // happens" (issue #38). One disabled row says which it is.
-        let empty = MenuItem::new(DEFERRED_MENU_EMPTY, false, None);
-        if let Err(e) = submenu.append(&empty) {
-            warn!(?e, "could not add the missed-word placeholder");
-        }
-        debug!("tray: missed-word list rebuilt rows=0");
-        return;
-    }
-    for (layout, word) in deferred.iter() {
-        // The layout is named because the same spelling can be a word
-        // in one and gibberish in another, and the entry goes into one
-        // wordlist, not both.
-        let name = layouts
-            .get(layout)
-            .map(|m| m.name.clone())
-            .unwrap_or_else(|| layout.as_str().to_owned());
-        let item = MenuItem::new(format!("{word}  ·  {name}"), true, None);
-        rows.push((item.id().clone(), layout.clone(), word.clone()));
-        if let Err(e) = submenu.append(&item) {
-            warn!(?e, "could not add a missed word to the submenu");
-        }
-    }
-    // Count only. The whole point of this list is that it holds text
-    // the user typed, so it is the one thing that must never reach a
-    // log — see `logsafe`.
-    debug!(rows = rows.len(), "tray: missed-word list rebuilt");
-}
-
-/// Move the mark on the tray icon to match what the plug-ins are waiting
-/// on, redrawing only when the number changed: the icon is rasterised
-/// from scratch on every redraw.
-fn sync_attention(
-    tray: &TrayIcon,
-    item_pause: &tray_icon::menu::MenuItem,
-    state: &mut TrayState,
-    menu: &plugins::PluginMenu,
-) {
-    if state.attention == menu.attention() {
-        return;
-    }
-    state.attention = menu.attention();
-    tray::refresh_tray(tray, item_pause, state);
-}
 
 fn main() -> Result<()> {
     // Before `init_tracing` / single-instance on purpose: the settings
@@ -1082,124 +1017,4 @@ fn main() -> Result<()> {
             _ => {}
         }
     });
-}
-
-/// Tell the user a plug-in service is gone, once, as it happens.
-///
-/// A stopped plug-in is invisible by construction: its tray entries are
-/// one-shot commands that keep working, so the menu looks identical
-/// whether the service behind it is running or dead. On the
-/// error-notification path, so `show_notifications` does not gate it.
-/// [`create_switcher`], retried for a few seconds before giving up.
-///
-/// At login we can be started before the session has anything to
-/// probe. That is not hypothetical: an `xdg-desktop-autostart` unit
-/// beat the Hyprland session's own environment import, PolterType
-/// probed seven backends, found none and exited 1 — so "run at login"
-/// simply did not work, with the reason in a journal nobody reads.
-///
-/// Patience costs a genuinely unsupported machine a slower error
-/// message, and buys every autostarted one a working app.
-fn switcher_with_retry() -> Result<Box<dyn poltertype_layout::LayoutSwitcher>, LayoutError> {
-    let deadline = Instant::now() + SWITCHER_PROBE_WINDOW;
-    loop {
-        match create_switcher() {
-            Ok(s) => return Ok(s),
-            Err(e) if Instant::now() >= deadline => return Err(e),
-            Err(_) => {
-                debug!("no layout switcher backend yet; the session may still be coming up");
-                std::thread::sleep(SWITCHER_PROBE_INTERVAL);
-            }
-        }
-    }
-}
-
-fn announce_departed(gone: Vec<plugins::Departed>) {
-    for d in gone {
-        spawn_error_notification(format!(
-            "The {id} plug-in stopped and will not restart on its own.\n\
-             {why}\n\
-             Its own log is next to PolterType's, as plugin-{id}.log.",
-            id = d.id,
-            why = d.why,
-        ));
-    }
-}
-
-fn print_help() {
-    println!(
-        "{APP_NAME} {ver}\n\
-        \n\
-        USAGE:\n  \
-            poltertype              start the tray app\n  \
-            poltertype --settings   open the settings window\n  \
-            poltertype --setup      open the settings window on the Setup pane\n  \
-            poltertype --version    print version and exit\n  \
-            poltertype --help       show this help",
-        ver = env!("CARGO_PKG_VERSION"),
-    );
-}
-
-/// Init `tracing` with a stderr layer and a daily-rotating file appender
-/// under `<data_dir>/poltertype/logs/`. Returns the file writer's guard —
-/// dropping it closes the file.
-fn init_tracing() -> Option<tracing_appender::non_blocking::WorkerGuard> {
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
-    use tracing_subscriber::{EnvFilter, fmt};
-
-    // cosmic-text / fontdb log the *text being shaped* at debug level
-    // ("Failed to find script fallback …: '<word>'") — and the
-    // suggestion tooltip shapes the user's words. Those targets are
-    // capped at warn no matter what RUST_LOG says: typed text stays
-    // out of the logs at any level.
-    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        // `[general].log_level` from `config.toml`, applied to our own
-        // crates only: it is the knob a user actually has when the app
-        // was started from a menu entry, and a global `debug` buries
-        // their own lines under iced and zbus. `RUST_LOG` still wins.
-        let mut base = EnvFilter::new("info");
-        if let Some(level) = SettingsStore::peek_log_level()
-            && let Ok(directive) = format!("poltertype={level}").parse()
-        {
-            base = base.add_directive(directive);
-        }
-        base
-    });
-    for target in ["cosmic_text=warn", "fontdb=warn"] {
-        if let Ok(directive) = target.parse() {
-            filter = filter.add_directive(directive);
-        }
-    }
-
-    let stderr_layer = fmt::layer().with_writer(std::io::stderr).with_target(false);
-
-    let (file_layer, guard) = match SettingsStore::log_dir() {
-        Ok(dir) => {
-            if let Err(e) = std::fs::create_dir_all(&dir) {
-                eprintln!("poltertype: could not create log dir {dir:?}: {e}");
-                (None, None)
-            } else {
-                let appender = tracing_appender::rolling::daily(&dir, "poltertype.log");
-                let (writer, guard) = tracing_appender::non_blocking(appender);
-                let layer = fmt::layer()
-                    .with_writer(writer)
-                    .with_ansi(false)
-                    .with_target(false);
-                (Some(layer), Some(guard))
-            }
-        }
-        Err(e) => {
-            eprintln!("poltertype: cannot resolve log dir: {e}");
-            (None, None)
-        }
-    };
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(stderr_layer)
-        .with(file_layer)
-        .init();
-
-    guard
 }

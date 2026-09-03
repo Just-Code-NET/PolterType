@@ -18,6 +18,9 @@ use poltertype_core::plugins::DiscoveredExtension;
 use poltertype_core::settings::SettingsStore;
 use tracing::{info, warn};
 
+use super::consts::{ROW_ID_PLACEHOLDER, STOP_COMMAND};
+use super::types::{Departed, MenuRow};
+
 /// One running service, and enough to identify it in a log line.
 struct Running {
     id: String,
@@ -30,28 +33,6 @@ struct Running {
     /// file for it. Read only when the service is gone.
     log: Option<PathBuf>,
 }
-
-/// A service that has exited, and the shortest true answer to "why".
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Departed {
-    pub id: String,
-    /// Exit status, plus the last thing the plug-in said if it said
-    /// anything. Already one line, already bounded — it goes in a
-    /// notification.
-    pub why: String,
-}
-
-/// The command id a plug-in may declare to be told "wind up now".
-///
-/// Reserved rather than invented per plug-in: the supervisor has to know
-/// the name without being configured, and a plug-in that does not declare
-/// it is simply not asked.
-///
-/// This is the graceful stop on **every** platform, because the per-OS
-/// mechanisms are not: SIGTERM still needs the plug-in to install a
-/// handler, and Windows' console control event was measured here and
-/// refused — see `docs/DECISIONS.md`.
-pub const STOP_COMMAND: &str = "stop";
 
 /// Owns every plug-in process this app started.
 #[derive(Default)]
@@ -252,9 +233,6 @@ pub fn run_command_for_row(
         .map_err(|e| format!("could not run {command_id:?}: {e}"))
 }
 
-/// The one argument a per-row command may have substituted.
-pub const ROW_ID_PLACEHOLDER: &str = "{id}";
-
 /// The same substitution as [`run_command_for_row`], but waiting for the
 /// answer — what a pane's own row button needs.
 ///
@@ -298,7 +276,7 @@ pub fn run_command_for_row_waiting(
 /// reason: this runs while a menu is being built. An empty answer and a
 /// failed one are both "no rows" here — the menu says so either way, and
 /// the log carries the difference.
-pub fn read_rows(ext: &DiscoveredExtension, command_id: &str) -> Vec<super::menu::MenuRow> {
+pub fn read_rows(ext: &DiscoveredExtension, command_id: &str) -> Vec<MenuRow> {
     let Some(cmd) = ext.manifest.commands.iter().find(|c| c.id == command_id) else {
         warn!(id = %ext.id, "no command {command_id:?} to list from");
         return Vec::new();
@@ -563,5 +541,4 @@ const LOG_TAIL_BYTES: u64 = 8 * 1024;
 const LOG_LINE_CHARS: usize = 200;
 
 #[cfg(test)]
-#[path = "supervisor_tests.rs"]
 mod tests;

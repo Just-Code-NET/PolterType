@@ -7,15 +7,18 @@
 //! [`types`] holds the [`BrandPalette`] struct, [`consts`] the light
 //! and dark values, [`themes`] the two custom [`iced::Theme`]s and the
 //! mapping back to a palette, [`styles`] the widget style functions,
-//! and [`mark`] the keycap-ghost logo as an image.
+//! [`helpers`] the font/colour functions behind those constants, and
+//! [`mark`] the keycap-ghost logo as an image.
 
 mod consts;
+mod helpers;
 mod mark;
 mod styles;
 mod themes;
 mod types;
 
-pub use consts::{FONT_MONO, font_bold, font_ui};
+pub use consts::FONT_MONO;
+pub use helpers::{font_bold, font_ui};
 pub use mark::mark;
 pub use styles::*;
 pub use themes::{brand_palette, dark, light};

@@ -214,32 +214,5 @@ pub(crate) fn kill_settings_ui() {
     if pid != 0 {
         info!(pid, "closing the settings window before exit");
     }
-    #[cfg(unix)]
-    {
-        if pid != 0 {
-            let _ = std::process::Command::new("kill")
-                .arg(pid.to_string())
-                .status();
-        }
-        // And every other window of this executable, tracked or not:
-        // this base has no second-window guard, so a Settings window
-        // and a Setup-alert window can coexist while one pid slot
-        // remembers only the latest. The one that survived the main
-        // process is what made LaunchServices treat the app as still
-        // running and turned the updater relaunch into a no-op that
-        // merely raised an orphaned old-version window (measured:
-        // `poltertype --setup`, 2026-08-31).
-        if let Ok(exe) = std::env::current_exe() {
-            let _ = std::process::Command::new("pkill")
-                .arg("-f")
-                .arg(format!("{} --", exe.display()))
-                .status();
-        }
-    }
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .status();
-    }
+    poltertype_shell::stop_ui_children(pid);
 }

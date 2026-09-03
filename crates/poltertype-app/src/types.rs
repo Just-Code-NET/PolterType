@@ -7,14 +7,12 @@ use std::sync::atomic::AtomicBool;
 
 use parking_lot::RwLock;
 
-use anyhow::Result;
 use crossbeam_channel::Sender;
 use poltertype_core::engine::EngineCommand;
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_types::LayoutId;
 use tao::event_loop::EventLoopProxy;
-use tracing::debug;
 
 /// Snapshot of "what should the tray look like right now". Icon and
 /// tooltip each depend on more than one field, so a redraw always takes
@@ -108,26 +106,6 @@ pub(crate) struct SettingsCloseDeps {
     pub(crate) reload_tx: Sender<EngineCommand>,
     /// Announces the re-read to the tray, which owns the hotkey grabs.
     pub(crate) proxy: EventLoopProxy<crate::enums::UserEvent>,
-}
-
-pub(crate) struct NoopEmitter;
-
-impl poltertype_input::KeyEmitter for NoopEmitter {
-    fn send_backspaces(&self, n: usize) -> Result<(), poltertype_input::InputError> {
-        debug!(n, "noop emitter: would send backspaces");
-        Ok(())
-    }
-    fn send_text(&self, text: &str) -> Result<(), poltertype_input::InputError> {
-        debug!(text, "noop emitter: would send text");
-        Ok(())
-    }
-    fn backend_name(&self) -> &'static str {
-        "noop"
-    }
-}
-
-pub(crate) fn noop_emitter() -> Box<dyn poltertype_input::KeyEmitter> {
-    Box::new(NoopEmitter)
 }
 
 #[cfg(test)]

@@ -14,34 +14,11 @@ use crate::consts::{
     DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
 };
 
-/// Why the chord in force is not the one in `config.toml`.
-///
-/// A value rather than a sentence: the tray writes it to the log, the
-/// Settings window renders it as translated prose, and neither has to
-/// know how the other says it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Substitution {
-    /// The default reaches the focused app as well as us, and
-    /// `Ctrl+Backspace` there deletes the very word we are correcting.
-    DefaultIsDestructiveHere,
-    /// The OS already owns the default chord.
-    SystemOwnsDefault,
-}
+mod enums;
+mod types;
 
-/// The chord a hotkey answers to on this machine.
-///
-/// Both substitutions apply **only while the user is still on the
-/// default** — an explicit binding is always honoured — and neither is
-/// written back to `config.toml`, so one config file keeps meaning the
-/// same thing on every machine. That is also why this is resolved in
-/// two places at once and must stay one function: the tray decides
-/// what to listen for, the Settings window decides what to show, and
-/// they disagreed for a whole release (issue #31).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct EffectiveHotkey<'a> {
-    pub(crate) chord: &'a str,
-    pub(crate) substitution: Option<Substitution>,
-}
+pub(crate) use enums::{ActiveBinding, Substitution};
+pub(crate) use types::{ActiveHotkeys, EffectiveHotkey};
 
 pub(crate) fn effective_pause_toggle(
     configured: &str,
@@ -75,30 +52,6 @@ pub(crate) fn effective_switch_last(
     }
 }
 
-/// One hotkey as it is actually held here: an OS-level grab, or a
-/// modifier-only gesture the key stream matches (issue #32).
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum ActiveBinding {
-    Key(HotKey),
-    Mods(ModChord),
-}
-
-impl ActiveBinding {
-    /// Whether an OS hotkey event belongs to this binding. Always false
-    /// for a modifier-only chord: nothing registers it, so nothing can
-    /// deliver an event for it.
-    pub(crate) fn owns_event(self, id: u32) -> bool {
-        matches!(self, Self::Key(hk) if hk.id() == id)
-    }
-
-    fn os_grab(self) -> Option<HotKey> {
-        match self {
-            Self::Key(hk) if !is_lock_key(&hk) => Some(hk),
-            _ => None,
-        }
-    }
-}
-
 /// A key that is a *lock*, and so is read off the key stream on every
 /// backend rather than registered as an OS-level grab.
 ///
@@ -114,14 +67,6 @@ impl ActiveBinding {
 /// that is what the key-stream matcher reads (issue #41).
 fn is_lock_key(hk: &HotKey) -> bool {
     hk.key == Code::CapsLock
-}
-
-/// The two chords in force right now, and — through their ids — what
-/// the event loop dispatches an OS hotkey event on.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ActiveHotkeys {
-    pub(crate) pause: ActiveBinding,
-    pub(crate) switch_last: ActiveBinding,
 }
 
 /// Put the configured chords in force, replacing whatever was in force

@@ -21,19 +21,7 @@ use tracing::{info, warn};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 
 use super::supervisor::{read_rows, read_state, run_command, run_command_for_row};
-
-/// One entry of a plug-in's runtime menu, as the plug-in printed it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MenuRow {
-    /// Handed back to the plug-in when an action on this row is chosen.
-    pub id: String,
-    /// The line the user reads in the menu.
-    pub label: String,
-    /// Lines shown under it, disabled. This is where a row says what it
-    /// actually holds — who wrote, what the reply would be — without a
-    /// window having to be opened to find out.
-    pub details: Vec<String>,
-}
+use super::types::MenuRow;
 
 /// Parse a list command's output into rows: `id`, label, then any number
 /// of detail lines, tab-separated.
@@ -427,5 +415,4 @@ fn count_label(label: &str, rows: usize) -> String {
 }
 
 #[cfg(test)]
-#[path = "menu_tests.rs"]
 mod tests;

@@ -25,44 +25,15 @@ use iced::widget::{
 use iced::{Alignment, Element, Length, Padding};
 use poltertype_core::plugins::{ControlKind, SettingValue};
 
+use super::consts::{
+    LABEL_GAP, NUMBER_WIDTH, PLUGIN_DEFAULT, PLUGIN_DEFAULT_SHORT, PLUGIN_LIST_HINT, SECTION_NAV,
+    SUGGEST_ROWS, VALUE_COLUMN,
+};
 use super::enums::*;
 use super::plugin_pane::{CommandOutput, Slot};
 use super::state::*;
 use super::theme::{self, FONT_MONO, font_bold};
 use super::view::section_title;
-
-/// Shown where a plug-in's config does not set a value. Not "0" and
-/// not an empty selection that looks chosen: the plug-in has a default
-/// and this pane does not know it.
-const PLUGIN_DEFAULT: &str = "(plug-in default)";
-
-/// Placeholder for a list typed by hand, saying how to separate the
-/// members. The alternative is a user discovering the rule by having
-/// their spaces silently become part of a name.
-const PLUGIN_LIST_HINT: &str = "(empty — separate with commas)";
-
-/// The same for a number box, which is too narrow to say it in full.
-const PLUGIN_DEFAULT_SHORT: &str = "default";
-
-/// How many suggestions are drawn under a box at once: enough to
-/// browse, few enough that the form under it stays on screen. The rest
-/// are counted, not scrolled — this pane has one scrolling region.
-const SUGGEST_ROWS: usize = 8;
-
-/// Width of the value column. Every switch, picker and number lands on
-/// the same right-hand edge — which is the whole difference between a
-/// form and a list of sentences with boxes after them.
-const VALUE_COLUMN: f32 = 210.0;
-
-/// Gap between what a setting is and what it is set to.
-const LABEL_GAP: f32 = 24.0;
-
-/// Width of the section list. Narrower than the window's own nav so the
-/// two do not read as one two-level menu of equal weight.
-const SECTION_NAV: f32 = 186.0;
-
-/// How wide a number gets. A box sized for a paragraph invites one.
-const NUMBER_WIDTH: f32 = 110.0;
 
 impl SettingsApp {
     pub(super) fn view_plugins(&self) -> Element<'_, Message> {
