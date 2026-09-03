@@ -552,7 +552,7 @@ Update, in one `packaging: point the manifests at v$NEW` commit:
 
 `poltertype-web` resolves the latest tag from the GitHub API **at build
 time**, so in principle it follows the release on its own — the `Site`
-workflow fires a Vercel deploy hook the moment you publish. In practice
+workflow fires the site's deploy hook the moment you publish. In practice
 that call is anonymous and rate-limited per build IP, and when it is
 throttled the build silently ships `FALLBACK_VERSION` from
 `src/lib/app-release.ts` instead. That is not hypothetical: on **v0.17.1

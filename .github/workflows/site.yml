@@ -20,14 +20,14 @@ jobs:
     name: Rebuild poltertype.com
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger the Vercel deploy hook
+      - name: Trigger the site deploy hook
         env:
-          DEPLOY_HOOK: ${{ secrets.VERCEL_SITE_DEPLOY_HOOK }}
+          DEPLOY_HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$DEPLOY_HOOK" ]; then
-            echo "::warning::VERCEL_SITE_DEPLOY_HOOK secret is not set — skipping the site rebuild."
+            echo "::warning::SITE_DEPLOY_HOOK secret is not set — skipping the site rebuild."
             exit 0
           fi
           # Wait for `releases/latest` to catch up before triggering.
