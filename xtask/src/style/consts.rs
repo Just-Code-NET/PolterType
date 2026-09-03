@@ -30,6 +30,18 @@ pub(crate) const PLATFORM_NAMES: &[&str] = &["linux", "macos", "windows", "unix"
 /// is what `consts.rs` is for.
 pub(crate) const MAX_PRIVATE_CONSTS: usize = 5;
 
+/// When a file holding one type and its `impl`s stops being readable
+/// as one thing. `CONTRIBUTING.md` § File organization says "past ~400
+/// lines → directory module"; this is that sentence, counted.
+pub(crate) const MAX_TYPE_FILE_LINES: usize = 400;
+
+/// How many free functions may sit beside a type in its own file.
+/// A constructor and a couple of helpers are part of the type; seven
+/// are a second concern that has moved in, and the fix is a
+/// `<purpose>.rs` sibling — or moving the type out, when the file was
+/// really a function file all along.
+pub(crate) const MAX_LOOSE_FNS: usize = 6;
+
 /// Crates that must hold no platform `cfg` at all: the binary and the
 /// engine. A `#[cfg(target_os)]` reached for here is the signal that a
 /// capability crate is missing — `CONTRIBUTING.md` § Style & guarantees.

@@ -81,6 +81,10 @@ pub(crate) enum Rule {
     /// A second exported type in one file, or a `trait` outside
     /// `traits.rs`.
     Types,
+    /// A file holding one type and its `impl`s that has taken on
+    /// something else as well: another type, a crowd of free
+    /// functions, or simply too many lines.
+    TypeFile,
     /// An inline `mod tests { … }` block.
     InlineTests,
     /// A platform `cfg` somewhere other than a dispatch or a per-OS
@@ -97,6 +101,7 @@ impl fmt::Display for Rule {
             Rule::RoleFile => "role-file",
             Rule::Consts => "consts",
             Rule::Types => "types",
+            Rule::TypeFile => "type-file",
             Rule::InlineTests => "inline-tests",
             Rule::Platform => "platform",
             Rule::ModTree => "mod-tree",

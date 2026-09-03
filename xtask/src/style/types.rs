@@ -19,6 +19,9 @@ pub(crate) struct Item {
     /// Carries `#[path = "…"]`, pointing the module somewhere the file
     /// name does not.
     pub(crate) path_attr: bool,
+    /// `impl Foo` rather than `impl Trait for Foo`. The type whose
+    /// file this is, is the one implemented inherently in it.
+    pub(crate) inherent_impl: bool,
 }
 
 /// One file, as the line scanner sees it.
@@ -27,6 +30,7 @@ pub(crate) struct FileScan {
     /// Lines of an indented `#[cfg(…)]` naming a platform: inside a
     /// function body, or on a struct field or enum variant.
     pub(crate) nested_platform_cfg: Vec<usize>,
+    pub(crate) lines: usize,
 }
 
 /// A rule violation, at the line a reader should look at.

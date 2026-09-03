@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
+use super::consts::MAX_TYPE_FILE_LINES;
 use super::enums::{Kind, Role, Rule};
 use super::rules::{check_file, platform_of, role_of};
 use super::scan::{names_platform, scan};
@@ -52,7 +53,7 @@ mod inner;
         (Kind::Fn, "go"),
         (Kind::Fn, "size"),
         (Kind::Fn, "cb"),
-        (Kind::Impl, ""),
+        (Kind::Impl, "Plain"),
         (Kind::Use, ""),
         (Kind::Mod, "inner"),
     ];
@@ -249,4 +250,81 @@ fn a_mod_without_a_file_and_a_file_without_a_mod_are_both_found() {
     assert_eq!(found.len(), 2, "{messages:?}");
     assert!(messages[0].contains("`mod missing` has no file"));
     assert!(messages[1].contains("no `mod` declares this file"));
+}
+
+#[test]
+fn an_impl_block_names_the_type_it_is_for() {
+    // Every shape the workspace actually writes, including the two the
+    // whitespace split gets wrong: generics on the keyword, and a
+    // trait that is itself generic.
+    let scanned = scan(
+        "\
+impl Foo {}
+impl<'a> Bar<'a> {}
+impl fst::Automaton for Foo {}
+impl From<&str> for Baz {}
+",
+    );
+    let got: Vec<(&str, bool)> = scanned
+        .items
+        .iter()
+        .map(|i| (i.name.as_str(), i.inherent_impl))
+        .collect();
+    assert_eq!(
+        got,
+        [("Foo", true), ("Bar", true), ("Foo", false), ("Baz", false)]
+    );
+}
+
+#[test]
+fn a_type_file_holds_one_type_and_its_behaviour() {
+    let src = "\
+pub struct Suggester {}
+impl Suggester {}
+struct LevAutomaton;
+impl fst::Automaton for LevAutomaton {}
+";
+    assert_eq!(rules_for("crates/c/src/suggest.rs", src), [Rule::TypeFile]);
+}
+
+#[test]
+fn two_exported_types_that_nothing_implements_are_still_two_types() {
+    let src = "pub struct A {}\npub struct B {}\n";
+    assert_eq!(rules_for("crates/c/src/pair.rs", src), [Rule::Types]);
+}
+
+#[test]
+fn a_file_of_free_functions_is_held_to_no_type_budget() {
+    // The type is incidental here — nothing implements it — so the
+    // file is what its name says, and twenty functions are its point.
+    let mut src = String::from("struct Held;\n");
+    for i in 0..20 {
+        src.push_str(&format!("fn helper{i}() {{}}\n"));
+    }
+    assert!(rules_for("crates/c/src/place.rs", &src).is_empty());
+}
+
+#[test]
+fn helpers_beside_a_type_are_context_until_there_is_a_crowd() {
+    let head = "struct Gate;\nimpl Gate {}\n";
+    let fns = |n: usize| {
+        (0..n)
+            .map(|i| format!("fn h{i}() {{}}\n"))
+            .collect::<String>()
+    };
+    assert!(rules_for("crates/c/src/gate.rs", &format!("{head}{}", fns(6))).is_empty());
+    assert_eq!(
+        rules_for("crates/c/src/gate.rs", &format!("{head}{}", fns(7))),
+        [Rule::TypeFile]
+    );
+}
+
+#[test]
+fn a_type_file_past_the_line_budget_becomes_a_directory() {
+    let head = "struct Big;\nimpl Big {}\n";
+    let blank = |n: usize| "\n".repeat(n);
+    let at_budget = format!("{head}{}", blank(MAX_TYPE_FILE_LINES - 2));
+    let over = format!("{head}{}", blank(MAX_TYPE_FILE_LINES - 1));
+    assert!(rules_for("crates/c/src/big.rs", &at_budget).is_empty());
+    assert_eq!(rules_for("crates/c/src/big.rs", &over), [Rule::TypeFile]);
 }

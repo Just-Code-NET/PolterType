@@ -2,29 +2,12 @@
 //!
 //! A line scanner, not a parser: `cargo fmt` is a gate here, so a
 //! top-level item always starts at column 0 and nothing else does.
-//! What still has to be tracked is the text that only *looks* like
-//! code — this crate writes installer scripts as multi-line string
-//! literals, and one of them starts a line with `fn`.
+//! Which columns are code at all is [`super::text`]'s job.
 
 use super::consts::PLATFORM_PREDICATES;
 use super::enums::Kind;
+use super::text::{Pending, advance};
 use super::types::{FileScan, Item};
-
-/// How much of the line the scanner is still owed by an unterminated
-/// string or comment when the next one starts.
-#[derive(Default)]
-struct Pending {
-    /// Delimiter that closes an open raw string (`"##` for `r##"`).
-    raw_close: Option<String>,
-    block_comments: usize,
-    string: bool,
-}
-
-impl Pending {
-    fn inside_text(&self) -> bool {
-        self.raw_close.is_some() || self.block_comments > 0 || self.string
-    }
-}
 
 pub(crate) fn scan(text: &str) -> FileScan {
     let mut items = Vec::new();
@@ -56,12 +39,13 @@ pub(crate) fn scan(text: &str) -> FileScan {
             // Doc comments and attributes interleave above an item.
         } else if line.is_empty() {
             attrs.clear();
-        } else if let Some((kind, name, exported)) = parse_item(line) {
+        } else if let Some((kind, name, exported, inherent_impl)) = parse_item(line) {
             items.push(Item {
                 line: no,
                 kind,
                 name,
                 exported,
+                inherent_impl,
                 platform_cfg: attrs
                     .iter()
                     .any(|a| a.starts_with("#[cfg") && names_platform(a)),
@@ -77,93 +61,8 @@ pub(crate) fn scan(text: &str) -> FileScan {
     FileScan {
         items,
         nested_platform_cfg,
+        lines: text.lines().count(),
     }
-}
-
-/// Walk one line, updating what is left open at the end of it.
-fn advance(line: &str, pending: &mut Pending) {
-    let chars: Vec<char> = line.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        if let Some(close) = &pending.raw_close {
-            if starts_with(&chars, i, close) {
-                i += close.chars().count();
-                pending.raw_close = None;
-            } else {
-                i += 1;
-            }
-            continue;
-        }
-        if pending.block_comments > 0 {
-            if starts_with(&chars, i, "*/") {
-                pending.block_comments -= 1;
-                i += 2;
-            } else if starts_with(&chars, i, "/*") {
-                pending.block_comments += 1;
-                i += 2;
-            } else {
-                i += 1;
-            }
-            continue;
-        }
-        if pending.string {
-            match chars[i] {
-                '\\' => i += 2,
-                '"' => {
-                    pending.string = false;
-                    i += 1;
-                }
-                _ => i += 1,
-            }
-            continue;
-        }
-
-        if starts_with(&chars, i, "//") {
-            return;
-        }
-        if starts_with(&chars, i, "/*") {
-            pending.block_comments = 1;
-            i += 2;
-            continue;
-        }
-        if chars[i] == '"' {
-            pending.string = true;
-            i += 1;
-            continue;
-        }
-        if chars[i] == 'r' && (i == 0 || !is_ident_char(chars[i - 1])) {
-            let mut j = i + 1;
-            while j < chars.len() && chars[j] == '#' {
-                j += 1;
-            }
-            if j < chars.len() && chars[j] == '"' {
-                pending.raw_close = Some(format!("\"{}", "#".repeat(j - i - 1)));
-                i = j + 1;
-                continue;
-            }
-        }
-        if chars[i] == '\'' {
-            // A char literal closes on this line; a lifetime never opens.
-            let escaped = chars.get(i + 1) == Some(&'\\');
-            let plain = chars.get(i + 2) == Some(&'\'');
-            if escaped || plain {
-                let mut j = i + 1;
-                while j < chars.len() && chars[j] != '\'' {
-                    j += if chars[j] == '\\' { 2 } else { 1 };
-                }
-                i = j + 1;
-                continue;
-            }
-        }
-        i += 1;
-    }
-}
-
-fn starts_with(chars: &[char], at: usize, needle: &str) -> bool {
-    needle
-        .chars()
-        .enumerate()
-        .all(|(k, c)| chars.get(at + k) == Some(&c))
 }
 
 /// Does this `cfg` attribute name a platform rather than a feature?
@@ -194,12 +93,9 @@ fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-fn is_ident_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '_'
-}
-
-/// The kind, name and visibility of a top-level declaration.
-fn parse_item(line: &str) -> Option<(Kind, String, bool)> {
+/// The kind, name and visibility of a top-level declaration, plus
+/// whether an `impl` is inherent rather than a trait implementation.
+fn parse_item(line: &str) -> Option<(Kind, String, bool, bool)> {
     let (rest, exported) = strip_visibility(line);
     let mut toks = rest.split_whitespace().peekable();
     // `impl<T> Trait for Foo` attaches its generics to the keyword.
@@ -240,9 +136,12 @@ fn parse_item(line: &str) -> Option<(Kind, String, bool)> {
         "union" => Kind::Union,
         "trait" => Kind::Trait,
         "fn" => Kind::Fn,
-        "impl" => return Some((Kind::Impl, String::new(), exported)),
+        "impl" => {
+            let (target, inherent) = impl_target(rest);
+            return Some((Kind::Impl, target, exported, inherent));
+        }
         "mod" => Kind::Mod,
-        "use" => return Some((Kind::Use, String::new(), exported)),
+        "use" => return Some((Kind::Use, String::new(), exported, false)),
         _ if keyword.starts_with("macro_rules!") => {
             let name = keyword
                 .strip_prefix("macro_rules!")
@@ -250,7 +149,7 @@ fn parse_item(line: &str) -> Option<(Kind, String, bool)> {
                 .map(str::to_owned)
                 .or_else(|| toks.next().map(str::to_owned))
                 .unwrap_or_default();
-            return Some((Kind::Macro, identifier(&name), exported));
+            return Some((Kind::Macro, identifier(&name), exported, false));
         }
         _ => return None,
     };
@@ -259,7 +158,57 @@ fn parse_item(line: &str) -> Option<(Kind, String, bool)> {
     if name.is_empty() {
         return None;
     }
-    Some((kind, name, exported))
+    Some((kind, name, exported, false))
+}
+
+/// The type an `impl` block is written for, and whether it is the
+/// type's own — `impl Foo`, not `impl Trait for Foo`. Generics are
+/// skipped by matching angle brackets rather than by splitting on
+/// whitespace: `impl<T: Debug + Clone> Foo<T>` has spaces inside them.
+fn impl_target(rest: &str) -> (String, bool) {
+    let Some(at) = rest.find("impl") else {
+        return (String::new(), false);
+    };
+    let after = skip_generics(rest[at + "impl".len()..].trim_start());
+    let head = after
+        .split(" where ")
+        .next()
+        .unwrap_or(after)
+        .split('{')
+        .next()
+        .unwrap_or(after);
+    match head.split_once(" for ") {
+        Some((_, target)) => (type_head(target), false),
+        None => (type_head(head), true),
+    }
+}
+
+/// Everything after a leading `<…>`, brackets balanced.
+fn skip_generics(s: &str) -> &str {
+    if !s.starts_with('<') {
+        return s;
+    }
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        match c {
+            '<' => depth += 1,
+            '>' => {
+                depth -= 1;
+                if depth == 0 {
+                    return s[i + c.len_utf8()..].trim_start();
+                }
+            }
+            _ => {}
+        }
+    }
+    s
+}
+
+/// The bare name of an impl target: `crate::a::Foo<T>` → `Foo`.
+fn type_head(s: &str) -> String {
+    let s = s.trim().trim_start_matches(['&', '*']).trim();
+    let s = s.split('<').next().unwrap_or(s);
+    identifier(s.rsplit("::").next().unwrap_or(s))
 }
 
 /// Split a leading `pub`, `pub(crate)` or `pub(in path)` off the line.

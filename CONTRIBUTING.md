@@ -347,7 +347,12 @@ hook runs it, so a violation fails the commit rather than the review.
 | `<Type in snake_case>.rs` | a struct with substantial behaviour lives in its own file together with its `impl` (e.g. `db.rs`) |
 | `tests.rs` | **all** unit tests — never inline `#[cfg(test)] mod tests { … }` blocks in source files |
 
-Three consequences, because these are the ones review kept catching:
+A file that declares a type **and implements it** is that type's
+file, and the rest of this section is about what may keep it company.
+A file that only groups free functions is not — a small private struct
+holding state for one of them is part of the function, not a tenant.
+
+Four consequences, because these are the ones review kept catching:
 
 * **A constant another file can name lives in `consts.rs`.** A
   file-private one may stay beside the code that reads it — four
@@ -356,20 +361,30 @@ Three consequences, because these are the ones review kept catching:
   being context and become a table, and a table belongs in
   `consts.rs`. A constant that is part of a type's API is an
   associated `const` in its `impl` instead.
-* **One exported type per file.** A second `pub` struct, enum or
-  trait means the file is a bag: move the data types to `types.rs` /
-  `enums.rs`, the seam to `traits.rs`, or give the type its own file.
-  A type private to one file may stay next to its only user.
+* **One type per file, once the file belongs to a type.** A second
+  struct or enum beside a type with its own `impl`s means the file is
+  a bag — and it is a bag whether or not the second type is `pub`:
+  move plain data to `types.rs` / `enums.rs`, a seam to `traits.rs`,
+  and a second type with behaviour to its own file. In a file of free
+  functions, where no type claims the file, one exported type is still
+  the limit.
+* **A type's file is not a workshop around the type.** Up to six free
+  functions beside it read as its constructors and near helpers; a
+  seventh is a second concern that has moved in, and belongs in a
+  `<purpose>.rs` sibling. Sometimes the honest fix is the other way
+  round — the type goes to `types.rs` / `enums.rs` and the file turns
+  out to have been a function file all along.
 * **A module is found by its file name.** No `#[path = "…"]` — the
   directory tree must be readable as the module tree, so unit tests
   for `foo.rs` go in `foo/tests.rs`, not in `foo_tests.rs` pointed at
   by an attribute.
 
-When such a type file outgrows a couple of screenfuls (~400+ lines),
-promote it to its own directory module: the struct with its fields and
-constructor in one file, and the `impl` split into one block per
-concern, one file per block (fields and cross-file methods become
-`pub(super)`). Example: `crates/poltertype-core/src/engine/switcher/`
+Past 400 lines a type file has stopped being one thing, and the
+checker says so. Promote it to its own directory module: the struct
+with its fields and constructor in one file, and the `impl` split into
+one block per concern, one file per block (fields and cross-file
+methods become `pub(super)`).
+Example: `crates/poltertype-core/src/engine/switcher/`
 (`engine.rs` — the struct; `run_loop.rs`, `echo.rs`, `decide.rs`,
 `correction.rs`, `commands.rs` — one concern each).
 

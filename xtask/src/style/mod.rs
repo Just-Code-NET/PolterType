@@ -12,6 +12,7 @@ mod modtree;
 mod rules;
 mod run;
 mod scan;
+mod text;
 mod types;
 
 #[cfg(test)]
