@@ -44,6 +44,7 @@ cargo build -p poltertype-app --features ai,poltertype-ai/remote
 # Lints (CI runs the same)
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo xtask style
 cargo test --workspace
 ```
 
@@ -61,6 +62,7 @@ cargo xtask help            # list available subcommands
 cargo xtask wordlists fetch # re-fetch + Hunspell-expand bundled dictionaries
 cargo xtask hooks install   # see below
 cargo xtask hooks uninstall
+cargo xtask style [<path>]  # file-organization + platform rules (below)
 cargo xtask assets icon-png <out> [--size N]   # render the app icon (the PolterType mark)
 cargo xtask assets icon-ico <out>              # …as a multi-size Windows .ico
 ```
@@ -81,7 +83,7 @@ Wires the versioned hooks under [`.githooks/`](.githooks/):
 
 | Hook | Runs | Why |
 |---|---|---|
-| `pre-commit` | `cargo fmt --all -- --check`, then clippy twice — the default feature set (what CI runs) and `--all-features` | No commits with formatter drift or lint violations, in either feature shape. |
+| `pre-commit` | `cargo fmt --all -- --check`, then clippy twice — the default feature set (what CI runs) and `--all-features` — then `cargo xtask style` | No commits with formatter drift, lint violations in either feature shape, or code in the wrong file. |
 | `pre-push` | `cargo build --workspace --all-targets` | No pushes that don't compile. |
 
 Bypass a single run with `git commit --no-verify` / `git push
@@ -300,10 +302,28 @@ language.
   own 64-line crate rather than put the first `#[cfg]` in `main.rs`
   (see `docs/DECISIONS.md`, 2026-07-29).
 
+  Inside such a crate a platform `cfg` — `target_os`, `unix`,
+  `windows`, `target_arch` — may appear in exactly **two** places:
+
+  1. on the `mod` or `use` declaration that picks the per-OS module.
+     This is the dispatch, and there is one of it per capability;
+  2. inside a file or directory already named for that OS
+     (`linux.rs`, `macos/`, `windows_impl.rs`), where it can only
+     refine a choice the module has already made — `apply/linux.rs`
+     compiles its script-building half everywhere so the tests can run
+     off-Linux, and says so with a `cfg`.
+
+  Not anywhere else. In particular a `#[cfg]` block **inside a
+  function body** that picks a backend is the shape this rule exists
+  to stop: the choice is made once, where the module is declared, not
+  again in every function that needs it. A `struct` with a per-OS
+  field is the same thing wearing a different hat — give each OS its
+  own type and let the dispatch choose.
+
   `poltertype-app` holds **none**, and `poltertype-core` holds none
-  either — both are checked by grep, not by good intentions. If you
-  find yourself reaching for `#[cfg(target_os)]` in the binary, that
-  is the signal a capability crate is missing. Where the difference is
+  either. All of this is checked by `cargo xtask style`, not by good
+  intentions. If you find yourself reaching for `#[cfg(target_os)]` in
+  the binary, that is the signal a capability crate is missing. Where the difference is
   a *value* rather than an API, prefer a runtime signal over a
   build-time one: the macOS pause-hotkey default and the Wayland
   switch-last default are both chosen from the live backend name, so
@@ -311,19 +331,39 @@ language.
 
 ## File organization (one kind of thing per file)
 
-Don't mix tests, data types, and free functions in one file. When a
-module grows past a single concern, split it into a directory module
-with these conventional file names:
+A file's **name** says what it is for, and that decides what may be
+declared in it. `cargo xtask style` checks this and the pre-commit
+hook runs it, so a violation fails the commit rather than the review.
 
 | File | Contents |
 |---|---|
 | `mod.rs` / `lib.rs` | module docs, `mod` declarations, `pub use` re-exports — wiring only |
+| `main.rs` | wiring plus `fn main`; everything it calls lives elsewhere |
 | `consts.rs` | constants |
 | `enums.rs` | enums (and their small `impl`s) |
 | `types.rs` | plain data structs (and their small `impl`s) |
+| `traits.rs` | the traits a crate is built around, and their `impl`s |
 | `<purpose>.rs` | free functions grouped by purpose (`heuristics.rs`, `helpers.rs`, `files.rs`, …) |
 | `<Type in snake_case>.rs` | a struct with substantial behaviour lives in its own file together with its `impl` (e.g. `db.rs`) |
 | `tests.rs` | **all** unit tests — never inline `#[cfg(test)] mod tests { … }` blocks in source files |
+
+Three consequences, because these are the ones review kept catching:
+
+* **A constant another file can name lives in `consts.rs`.** A
+  file-private one may stay beside the code that reads it — four
+  documented gaps above the one function that places a tooltip are
+  context, not clutter. Past a handful in one file they have stopped
+  being context and become a table, and a table belongs in
+  `consts.rs`. A constant that is part of a type's API is an
+  associated `const` in its `impl` instead.
+* **One exported type per file.** A second `pub` struct, enum or
+  trait means the file is a bag: move the data types to `types.rs` /
+  `enums.rs`, the seam to `traits.rs`, or give the type its own file.
+  A type private to one file may stay next to its only user.
+* **A module is found by its file name.** No `#[path = "…"]` — the
+  directory tree must be readable as the module tree, so unit tests
+  for `foo.rs` go in `foo/tests.rs`, not in `foo_tests.rs` pointed at
+  by an attribute.
 
 When such a type file outgrows a couple of screenfuls (~400+ lines),
 promote it to its own directory module: the struct with its fields and
