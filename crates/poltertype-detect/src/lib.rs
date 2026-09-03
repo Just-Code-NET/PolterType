@@ -14,10 +14,12 @@
 mod consts;
 mod dictionary;
 mod dictionary_detector;
+mod distance;
 mod enums;
 mod geometry;
+mod lev_automaton;
 mod plausibility;
-mod suggest;
+mod suggester;
 mod text;
 mod traits;
 mod types;
@@ -30,7 +32,7 @@ pub use dictionary_detector::DictionaryDetector;
 pub use enums::{RewriteVerdict, Script, Verdict};
 pub use geometry::KeyboardGeometry;
 pub use plausibility::WordPlausibilityDetector;
-pub use suggest::Suggester;
+pub use suggester::Suggester;
 pub use text::{
     compound_segments, letters_only_lower, looks_like_acronym, looks_like_code_token,
     non_word_char_count, paired_segments, segment_vouches, surface_lower,

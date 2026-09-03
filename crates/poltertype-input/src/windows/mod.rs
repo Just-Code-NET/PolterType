@@ -16,6 +16,8 @@ pub(crate) mod factory;
 mod gate;
 #[cfg(windows)]
 mod listener;
+#[cfg(windows)]
+mod types;
 
 #[cfg(windows)]
 pub use emitter::WindowsEmitter;

@@ -4,7 +4,12 @@ use std::path::PathBuf;
 
 use poltertype_core::plugins::{DiscoveredExtension, ExtensionManifest, PluginCommand};
 
-use super::*;
+use crate::plugins::consts::STOP_COMMAND;
+
+use super::commands::{declares_stop, run_command};
+use super::consts::{LOG_LINE_CHARS, LOG_TAIL_BYTES};
+use super::process::{last_line, last_words};
+use super::state::Supervisor;
 
 /// The interpreter these fixtures drive, and the flag that makes it
 /// take a command string.
@@ -311,21 +316,19 @@ fn a_failing_plugin_is_quoted_rather_than_summarised_as_a_status_code() {
     // nothing they can act on — while the plug-in was, one pipe away,
     // saying which conversation is not on the allow-list.
     assert_eq!(
-        super::last_words(
-            "reading config\nError: \"Чех\" is not a conversation this may write in\n"
-        )
-        .as_deref(),
+        last_words("reading config\nError: \"Чех\" is not a conversation this may write in\n")
+            .as_deref(),
         Some("\"Чех\" is not a conversation this may write in")
     );
     // The last line, not the first: a program that logs while it works
     // ends with the thing that stopped it.
     assert_eq!(
-        super::last_words("starting\nopening\nit did not open\n").as_deref(),
+        last_words("starting\nopening\nit did not open\n").as_deref(),
         Some("it did not open")
     );
-    assert_eq!(super::last_words("   \n\n").as_deref(), None);
+    assert_eq!(last_words("   \n\n").as_deref(), None);
     // Bounded — a stack trace must not take the window.
     let long = "x".repeat(400);
-    let cut = super::last_words(&long).unwrap();
+    let cut = last_words(&long).unwrap();
     assert_eq!(cut.chars().count(), 161, "160 and the ellipsis");
 }

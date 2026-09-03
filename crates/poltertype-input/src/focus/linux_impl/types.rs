@@ -2,6 +2,9 @@
 
 use std::time::{Duration, Instant};
 
+use x11rb::protocol::xproto::{Atom, Window};
+use x11rb::rust_connection::RustConnection;
+
 use crate::focus::CaretHint;
 
 /// One caret-position fix, in coordinates relative to the caret's
@@ -52,4 +55,14 @@ pub(crate) struct CaretOwner {
     /// the application itself reports it — `None` when it would not
     /// say, leaving the PID as the only identity.
     pub(crate) window: Option<(u32, u32)>,
+}
+
+/// A live display connection plus the two EWMH atoms we query. Built
+/// lazily on the first `focused_exe()` call and dropped whenever the
+/// connection dies (the next call reconnects).
+pub(super) struct X11FocusConn {
+    pub(super) conn: RustConnection,
+    pub(super) root: Window,
+    pub(super) net_active_window: Atom,
+    pub(super) net_wm_pid: Atom,
 }

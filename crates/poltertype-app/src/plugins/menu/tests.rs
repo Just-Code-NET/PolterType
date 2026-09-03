@@ -3,8 +3,11 @@
 use std::path::PathBuf;
 
 use poltertype_core::plugins::{DiscoveredExtension, ExtensionManifest, PluginCommand, TrayItem};
+use tray_icon::menu::{Menu, MenuItem};
 
-use super::*;
+use super::refresh::count_label;
+use super::rows::parse_rows;
+use super::state::PluginMenu;
 
 fn extension(id: &str, entries: &[(&str, &str)]) -> DiscoveredExtension {
     DiscoveredExtension {

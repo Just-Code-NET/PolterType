@@ -8,16 +8,15 @@
 //! the call would hang until the timeout for no reason.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::time::Duration;
 
-use tracing::{debug, info, warn};
-use zbus::blocking::{Connection, MessageIterator};
-use zbus::zvariant::{ObjectPath, OwnedValue, Value};
-use zbus::{MatchRule, message};
+use tracing::{debug, info};
+use zbus::blocking::Connection;
+use zbus::zvariant::{ObjectPath, Value};
 
 use super::consts::*;
 use super::enums::PortalError;
+use super::response::{request_path_of, subscribe, unique_token, wait_response};
+use super::restore_token::{load_restore_token, store_restore_token};
 
 /// Is a RemoteDesktop portal present at all?
 ///
@@ -198,99 +197,4 @@ fn start(conn: &Connection, session_handle: &str) -> Result<Option<String>, Port
     Ok(results
         .get("restore_token")
         .and_then(|v| String::try_from(v.clone()).ok()))
-}
-
-/// Subscribe to `Response` before making a call — see the module docs
-/// for why the order matters.
-fn subscribe(conn: &Connection, call: &'static str) -> Result<MessageIterator, PortalError> {
-    let rule = MatchRule::builder()
-        .msg_type(message::Type::Signal)
-        .interface(REQUEST_IFACE)
-        .map_err(|source| PortalError::Call { call, source })?
-        .member("Response")
-        .map_err(|source| PortalError::Call { call, source })?
-        .build();
-    MessageIterator::for_match_rule(rule, conn, Some(8))
-        .map_err(|source| PortalError::Call { call, source })
-}
-
-fn wait_response(
-    call: &'static str,
-    signals: &mut MessageIterator,
-    request_path: &str,
-) -> Result<HashMap<String, OwnedValue>, PortalError> {
-    let deadline = std::time::Instant::now() + Duration::from_secs(RESPONSE_TIMEOUT_SECS);
-    while std::time::Instant::now() < deadline {
-        let Some(Ok(msg)) = signals.next() else {
-            break;
-        };
-        let header = msg.header();
-        if header.path().map(ToString::to_string).as_deref() != Some(request_path) {
-            continue; // somebody else's request
-        }
-        let (code, results): (u32, HashMap<String, OwnedValue>) = msg
-            .body()
-            .deserialize()
-            .map_err(|_| PortalError::BadReply(call))?;
-        return match code {
-            RESPONSE_SUCCESS => Ok(results),
-            RESPONSE_CANCELLED => Err(PortalError::Cancelled),
-            other => Err(PortalError::Refused { call, code: other }),
-        };
-    }
-    Err(PortalError::Timeout(call))
-}
-
-/// The `Request` object path a portal call returns.
-fn request_path_of(reply: &zbus::Message, call: &'static str) -> Result<String, PortalError> {
-    // Bind the body: deserialising borrows from it, so a temporary
-    // would be dropped while the ObjectPath still points into it.
-    let body = reply.body();
-    let path: ObjectPath<'_> = body
-        .deserialize()
-        .map_err(|_| PortalError::BadReply(call))?;
-    Ok(path.to_string())
-}
-
-/// Portal handle tokens must be unique per connection and are
-/// restricted to `[A-Za-z0-9_]`.
-fn unique_token(prefix: &str) -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let pid = std::process::id();
-    format!("{prefix}_{pid}_{n}")
-}
-
-fn restore_token_path() -> Option<PathBuf> {
-    directories::ProjectDirs::from("dev", "opensource", "poltertype")
-        .map(|d| d.data_local_dir().join(RESTORE_TOKEN_FILE))
-}
-
-fn load_restore_token() -> Option<String> {
-    let path = restore_token_path()?;
-    let token = std::fs::read_to_string(path).ok()?;
-    let token = token.trim().to_owned();
-    (!token.is_empty()).then_some(token)
-}
-
-/// Store the token so the next launch is silent.
-///
-/// Best-effort: a machine where this cannot be written just prompts
-/// again next time, which is annoying rather than broken.
-fn store_restore_token(token: &str) {
-    let Some(path) = restore_token_path() else {
-        return;
-    };
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Err(e) = std::fs::write(&path, token) {
-        warn!(path = %path.display(), %e, "could not store the portal restore token");
-    }
-}
-
-#[cfg(test)]
-pub(super) fn token_for_test(prefix: &str) -> String {
-    unique_token(prefix)
 }

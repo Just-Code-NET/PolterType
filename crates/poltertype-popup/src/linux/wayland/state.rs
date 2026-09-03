@@ -17,9 +17,10 @@ use smithay_client_toolkit::shm::slot::SlotPool;
 use tracing::{debug, warn};
 use wayland_client::QueueHandle;
 use wayland_client::globals::GlobalList;
-use wayland_client::protocol::{wl_output, wl_pointer, wl_shm};
+use wayland_client::protocol::{wl_pointer, wl_shm};
 
 use super::enums::{Cmd, WlInitError};
+use super::types::TargetOutput;
 use super::view::View;
 use crate::enums::{PopupAnchor, PopupUiEvent};
 use crate::renderer::Renderer;
@@ -30,16 +31,6 @@ use crate::types::PopupModel;
 /// chat inputs and shell prompts. `Point` anchors use [`crate::place`]
 /// instead.
 const BOTTOM_OFFSET: i32 = 96;
-
-/// An output the tooltip can be placed on, reduced to what placement
-/// needs: the handle to pin the layer surface to, and its rectangle in
-/// the compositor's global logical space.
-struct TargetOutput {
-    output: wl_output::WlOutput,
-    origin: (i32, i32),
-    size: (i32, i32),
-    scale: i32,
-}
 
 pub(super) struct WlState {
     pub(super) registry_state: RegistryState,

@@ -17,7 +17,7 @@ use tracing::debug;
 use zbus::blocking::Connection;
 use zbus::zvariant::{ObjectPath, OwnedObjectPath, Value};
 
-use super::atspi_caret::object_extents;
+use super::atspi_caret_queries::object_extents;
 use super::types::CaretOwner;
 
 /// The path every AT-SPI application registers its own root object at,

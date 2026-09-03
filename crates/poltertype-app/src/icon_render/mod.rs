@@ -10,10 +10,12 @@
 //! icon can be redrawn on every layout change without GPU round-trips.
 
 mod consts;
+mod enums;
 pub(crate) mod flag;
 mod render;
 
 pub(crate) use consts::*;
+pub use enums::*;
 pub use render::*;
 
 #[cfg(test)]

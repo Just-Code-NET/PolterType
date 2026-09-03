@@ -15,6 +15,7 @@ mod handlers;
 mod popup;
 mod run;
 mod state;
+mod types;
 mod view;
 
 pub(crate) use popup::WaylandPopup;

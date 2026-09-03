@@ -38,6 +38,7 @@
 
 mod consts;
 mod dbus;
+mod gvariant;
 mod session;
 mod switcher;
 mod xkb_switcher;

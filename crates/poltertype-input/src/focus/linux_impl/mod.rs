@@ -15,6 +15,8 @@
 //! is event-driven and sits outside that cache entirely.
 
 mod atspi_caret;
+mod atspi_caret_geometry;
+mod atspi_caret_queries;
 mod atspi_focus;
 mod atspi_owner;
 mod cache;

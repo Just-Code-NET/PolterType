@@ -171,7 +171,7 @@ fn parse_rect_handles_a_window_on_a_negative_origin_monitor() {
 
 // ─── AT-SPI caret extents fallback (pure logic) ──────────────────────
 
-use super::atspi_caret::{anchor_from_rect, is_caret_shaped, is_degenerate, retry_offset};
+use super::atspi_caret_geometry::{anchor_from_rect, is_caret_shaped, is_degenerate, retry_offset};
 use super::types::{CaretOwner, CaretSample};
 
 #[test]

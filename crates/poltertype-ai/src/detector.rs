@@ -28,15 +28,7 @@ use crate::consts::QUEUE_DEPTH;
 use crate::enums::{Locality, QueryMode};
 #[cfg(feature = "remote")]
 use crate::transport::Call;
-use crate::types::LlmSettings;
-
-/// A question handed to the background worker. Without the `remote`
-/// feature there is no worker, so nothing consumes this type.
-#[cfg_attr(not(feature = "remote"), allow(dead_code))]
-struct Job {
-    key: u64,
-    candidates: Vec<String>,
-}
+use crate::types::{Job, LlmSettings};
 
 pub struct LlmDetector {
     settings: Arc<LlmSettings>,

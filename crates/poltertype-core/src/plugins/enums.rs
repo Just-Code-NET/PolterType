@@ -1,4 +1,5 @@
-//! What kind of plug-in this is, and why an install refused.
+//! What kind of plug-in this is, the shape of a pane control and the
+//! value it holds, and why an install refused.
 
 use std::path::PathBuf;
 
@@ -190,6 +191,35 @@ impl PaneOption {
     /// none do is drawn as a drop-down, as it always was.
     pub fn is_described(&self) -> bool {
         !self.detail().trim().is_empty() || !self.link().trim().is_empty()
+    }
+}
+
+/// A value a pane control can hold. Deliberately the three shapes the
+/// controls produce, rather than all of TOML: a pane is not a config
+/// editor, and a control that cannot render a value has no business
+/// writing one.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SettingValue {
+    Bool(bool),
+    Int(i64),
+    /// Kept apart from [`Self::Int`] all the way to the file: a plug-in
+    /// expecting `0.35` refuses to start on `1`.
+    Float(f64),
+    Text(String),
+}
+
+impl SettingValue {
+    /// How it should appear in a text field.
+    pub fn as_display(&self) -> String {
+        match self {
+            Self::Bool(b) => b.to_string(),
+            Self::Int(n) => n.to_string(),
+            // Always with a point: `25` shown for a `25.0` invites the
+            // user to save back an integer the plug-in cannot read.
+            Self::Float(f) if f.is_finite() && f.fract() == 0.0 => format!("{f:.1}"),
+            Self::Float(f) => f.to_string(),
+            Self::Text(s) => s.clone(),
+        }
     }
 }
 

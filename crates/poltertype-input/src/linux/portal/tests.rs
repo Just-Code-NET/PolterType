@@ -107,8 +107,8 @@ fn option_values_match_the_specification() {
 /// `[A-Za-z0-9_]` would make the portal reject the call.
 #[test]
 fn handle_tokens_are_path_safe_and_unique() {
-    let a = super::session::token_for_test("pt_req");
-    let b = super::session::token_for_test("pt_req");
+    let a = super::response::token_for_test("pt_req");
+    let b = super::response::token_for_test("pt_req");
     assert_ne!(a, b, "two tokens on one connection must differ");
     for t in [&a, &b] {
         assert!(

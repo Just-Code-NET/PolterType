@@ -1,10 +1,8 @@
 //! Spelling suggestions: fuzzy search over the surface-form FSTs plus a
 //! keyboard-aware ranking metric. See [`Suggester::suggest`].
 //!
-//! Candidates come off the FST by Levenshtein distance, then re-rank by
-//! a *weighted* optimal-string-alignment distance: a physical-neighbour
-//! substitution costs less than a random one, a transposition less than
-//! two edits, and a matching first letter is rewarded.
+//! Candidates come off the FST by Levenshtein distance ([`crate::lev_automaton`]),
+//! then re-rank by [`crate::distance::weighted_osa`].
 //!
 //! Pure computation over data the crate already owns — no OS access,
 //! and token contents never reach a log.
@@ -12,105 +10,20 @@
 use std::collections::{HashMap, HashSet};
 
 use fst::{IntoStreamer, Streamer};
-use levenshtein_automata::{DFA, Distance, LevenshteinAutomatonBuilder, SINK_STATE};
+use levenshtein_automata::LevenshteinAutomatonBuilder;
 use poltertype_types::LayoutId;
 
 use crate::consts::{
     FIRST_CHAR_PENALTY, LAST_CHAR_PENALTY, MAX_RAW_CANDIDATES, MAX_SCORE, MIN_LETTERS_FOR_D2,
-    MIN_TOKEN_LETTERS, PREFIX_BONUS, PREFIX_BONUS_CAP, TRANSPOSITION_COST, WEAK_PENALTY,
+    MIN_TOKEN_LETTERS, PREFIX_BONUS, PREFIX_BONUS_CAP, WEAK_PENALTY,
 };
 use crate::dictionary_detector::DictionaryDetector;
+use crate::distance::weighted_osa;
 use crate::geometry::KeyboardGeometry;
+use crate::lev_automaton::LevAutomaton;
 use crate::text::{letters_only_lower, surface_lower};
 use crate::traits::SuggestionProvider;
 use crate::types::Suggestion;
-
-/// Substitution cost for `a` → `b`: graded by physical key distance,
-/// so `hwllo` prefers `hello` (w↔e are direct neighbours) over
-/// `hallo` (w↔a are diagonal neighbours). Beyond 1.5 key units it's
-/// a full-price substitution — that's not a finger slip any more.
-fn substitution_cost(geo: Option<&KeyboardGeometry>, a: char, b: char) -> f32 {
-    if a == b {
-        return 0.0;
-    }
-    match geo.and_then(|g| g.proximity_sq(a, b)) {
-        Some(d2) if d2 <= 2.25 => 0.3 + 0.1 * d2,
-        _ => 1.0,
-    }
-}
-
-/// Weighted optimal-string-alignment (restricted Damerau-Levenshtein)
-/// distance. Costs: exact match 0, substitution per
-/// [`substitution_cost`], adjacent transposition [`TRANSPOSITION_COST`],
-/// insertion/deletion 1.
-fn weighted_osa(typed: &[char], cand: &[char], geo: Option<&KeyboardGeometry>) -> f32 {
-    let n = typed.len();
-    let m = cand.len();
-    if n == 0 {
-        return m as f32;
-    }
-    if m == 0 {
-        return n as f32;
-    }
-
-    // Three rolling rows of the DP matrix (previous-previous is needed
-    // for the transposition case).
-    let mut prev2 = vec![0.0f32; m + 1];
-    let mut prev = vec![0.0f32; m + 1];
-    let mut cur = vec![0.0f32; m + 1];
-    for (j, slot) in prev.iter_mut().enumerate() {
-        *slot = j as f32;
-    }
-
-    for i in 1..=n {
-        cur[0] = i as f32;
-        for j in 1..=m {
-            let a = typed[i - 1];
-            let b = cand[j - 1];
-            let sub_cost = substitution_cost(geo, a, b);
-            let mut best = (prev[j] + 1.0) // deletion
-                .min(cur[j - 1] + 1.0) // insertion
-                .min(prev[j - 1] + sub_cost); // substitution / match
-            if i > 1 && j > 1 && a == cand[j - 2] && typed[i - 2] == b && a != b {
-                best = best.min(prev2[j - 2] + TRANSPOSITION_COST);
-            }
-            cur[j] = best;
-        }
-        std::mem::swap(&mut prev2, &mut prev);
-        std::mem::swap(&mut prev, &mut cur);
-    }
-    prev[m]
-}
-
-/// Adapter: drive an [`fst`] set search with a
-/// [`levenshtein_automata`] DFA.
-///
-/// Not `fst`'s own `levenshtein` feature: its automaton mismatches
-/// multibyte queries entirely — even `слово` within distance 1 of
-/// itself streams zero results — which rules it out for a
-/// Cyrillic-first product. The tantivy crate also counts adjacent
-/// transpositions as one edit, a better model of how humans mistype.
-struct LevAutomaton(DFA);
-
-impl fst::Automaton for LevAutomaton {
-    type State = u32;
-
-    fn start(&self) -> u32 {
-        self.0.initial_state()
-    }
-
-    fn is_match(&self, state: &u32) -> bool {
-        matches!(self.0.distance(*state), Distance::Exact(_))
-    }
-
-    fn can_match(&self, state: &u32) -> bool {
-        *state != SINK_STATE
-    }
-
-    fn accept(&self, state: &u32, byte: u8) -> u32 {
-        self.0.transition(*state, byte)
-    }
-}
 
 /// Fuzzy-search suggestions provider over the hot-swappable dictionary
 /// set. Shares the [`DictionaryDetector`]'s inner state via a handle

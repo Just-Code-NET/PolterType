@@ -12,36 +12,7 @@
 
 use toml_edit::{Document, Item, Value};
 
-use super::enums::PluginError;
-
-/// A value a pane control can hold. Deliberately the three shapes the
-/// controls produce, rather than all of TOML: a pane is not a config
-/// editor, and a control that cannot render a value has no business
-/// writing one.
-#[derive(Debug, Clone, PartialEq)]
-pub enum SettingValue {
-    Bool(bool),
-    Int(i64),
-    /// Kept apart from [`Self::Int`] all the way to the file: a plug-in
-    /// expecting `0.35` refuses to start on `1`.
-    Float(f64),
-    Text(String),
-}
-
-impl SettingValue {
-    /// How it should appear in a text field.
-    pub fn as_display(&self) -> String {
-        match self {
-            Self::Bool(b) => b.to_string(),
-            Self::Int(n) => n.to_string(),
-            // Always with a point: `25` shown for a `25.0` invites the
-            // user to save back an integer the plug-in cannot read.
-            Self::Float(f) if f.is_finite() && f.fract() == 0.0 => format!("{f:.1}"),
-            Self::Float(f) => f.to_string(),
-            Self::Text(s) => s.clone(),
-        }
-    }
-}
+use super::enums::{PluginError, SettingValue};
 
 /// Read the value at a dotted key, or `None` if the file does not set
 /// it — which is normal, not an error.

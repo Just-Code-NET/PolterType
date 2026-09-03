@@ -1,5 +1,5 @@
 //! Physical keyboard geometry, for the suggestion ranker's
-//! neighbour-aware substitution cost. See [`crate::suggest`].
+//! neighbour-aware substitution cost. See [`crate::distance`].
 
 use std::collections::HashMap;
 

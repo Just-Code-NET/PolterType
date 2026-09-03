@@ -8,7 +8,7 @@
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::{self, JoinHandle};
+use std::thread;
 
 use std::sync::Arc;
 
@@ -27,6 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use super::consts::EMITTER_MARKER;
 use super::gate::WindowsGate;
+use super::types::WorkerHandle;
 use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
 
 /// Sender shared with the C-callable hook procedure. There can only be
@@ -51,12 +52,6 @@ fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
 pub struct WindowsListener {
     worker: Option<WorkerHandle>,
     gate: Option<Arc<WindowsGate>>,
-}
-
-struct WorkerHandle {
-    join: JoinHandle<()>,
-    thread_id: u32,
-    stopping: std::sync::Arc<AtomicBool>,
 }
 
 impl WindowsListener {

@@ -8,6 +8,14 @@ use crate::enums::{Locality, QueryMode, WireFormat};
 
 pub use poltertype_types::AiPluginConfig;
 
+/// A question handed to the background worker. Without the `remote`
+/// feature there is no worker, so nothing consumes this type.
+#[cfg_attr(not(feature = "remote"), allow(dead_code))]
+pub(crate) struct Job {
+    pub(crate) key: u64,
+    pub(crate) candidates: Vec<String>,
+}
+
 /// Everything the detector needs, already validated by the factory.
 pub struct LlmSettings {
     pub id: String,

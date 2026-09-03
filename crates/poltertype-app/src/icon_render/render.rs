@@ -7,36 +7,6 @@ use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
 use tray_icon::Icon;
 
-/// Which way round a `mono` icon has to read.
-///
-/// Sampled once, from the desktop's own dark/light preference — a
-/// panel is free to disagree, which is what the halo is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PanelPolarity {
-    Dark,
-    Light,
-}
-
-impl PanelPolarity {
-    pub fn from_prefers_dark(dark: bool) -> Self {
-        if dark { Self::Dark } else { Self::Light }
-    }
-
-    fn letters(self) -> [u8; 4] {
-        match self {
-            Self::Dark => MONO_ON_DARK,
-            Self::Light => MONO_ON_LIGHT,
-        }
-    }
-
-    fn halo(self) -> [u8; 4] {
-        match self {
-            Self::Dark => MONO_HALO_ON_DARK,
-            Self::Light => MONO_HALO_ON_LIGHT,
-        }
-    }
-}
-
 /// Build a tray icon for `layout`: its two-letter short code over a
 /// colour derived from the id, grey with a pause mark when `paused`.
 ///
