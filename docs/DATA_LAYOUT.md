@@ -200,8 +200,18 @@ has to satisfy:
   wordlists/                drops into the merged dictionary pool
     <stem>.fst
     <stem>-stop.txt
+  i18n/                     UI translations (see below)
+    <lang>.toml
   README.md                 optional human-readable description
 ```
+
+`i18n/` is read at every settings-window start, between the shipped
+catalog and the user's own. What it may translate depends on the kind
+of plug-in: a data pack's file is a translation of PolterType's
+interface, taken as written; an **extension**'s is confined to
+`plugin.<id>.` and translates that plug-in's own settings pane and
+nothing else. `docs/TRANSLATING_THE_UI.md` has the key scheme and
+`poltertype --plugin-strings <id>` prints it for an installed plug-in.
 
 The loader treats `plugins/<pack-id>/{layout-mappings,wordlists}`
 exactly the same way it treats the bundled

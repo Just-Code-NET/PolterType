@@ -4,6 +4,41 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **A plug-in can ship its own translations.** Its settings pane is
+  drawn by PolterType but worded by its manifest, so the words now come
+  from a catalog the plug-in carries: `<plugin>/i18n/<lang>.toml`, keys
+  derived from the manifest's own structure, printed ready to translate
+  by `poltertype --plugin-strings <id>`. The catalog is confined to
+  `plugin.<id>.` — an extension can retitle its own pane and nothing
+  else — and it is independent of the interface's own languages, so a
+  plug-in can offer Polish while the window around it is English.
+
+  Values are never translated: an option's `value`, a control's key and
+  a command's id still reach the plug-in's config exactly as its author
+  wrote them, and a drop-down now shows the label while writing the
+  value. What a plug-in *prints* — report text, the rows of a list —
+  only it can translate, so every plug-in process is handed
+  `POLTERTYPE_LOCALE`.
+
+- **The Plug-ins pane speaks the interface's language.** Everything
+  PolterType draws around a plug-in — Add, Remove, Refresh, Select all,
+  "Asking the plug-in…", the placeholders and the save line — goes
+  through the catalog like the rest of the window, with the Ukrainian
+  translation shipped.
+
+### Fixed
+
+- **`<config-dir>/poltertype/i18n/` is read at last.** The loader only
+  ever looked at the shipped catalog, so the edit-and-reopen loop
+  `docs/TRANSLATING_THE_UI.md` promises translators did not work and a
+  language PolterType does not ship could not be tried without editing
+  the source tree. Catalogs are now layered — shipped, then plug-ins,
+  then yours — and the last one to name a key wins.
+
 ## [0.30.0] — the gesture that went quiet, and a clipboard that was never there
 
 ### Added

@@ -210,6 +210,7 @@ fn the_shipped_ukrainian_catalog_is_usable() {
         "suggestions.suggestions",
         "exceptions.exceptions",
         "setup.setup",
+        "plugins.plugins",
     ] {
         let value = c.get(key);
         assert!(value.is_some(), "missing translation for `{key}`");
@@ -233,4 +234,118 @@ fn the_ukrainian_catalog_keeps_its_placeholders() {
     if let Some(v) = c.get("languages.status_restricted") {
         assert!(v.contains("{}"), "the layout count must survive: {v}");
     }
+}
+
+// ── layering ─────────────────────────────────────────────────────────
+
+/// A directory of this test's own, cleaned up by the caller.
+fn scratch(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("pt-i18n-{}-{name}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+fn write(dir: &std::path::Path, file: &str, body: &str) {
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(dir.join(file), body);
+}
+
+/// The promise `docs/TRANSLATING_THE_UI.md` makes to translators: your
+/// own file overrides the shipped one, which is what makes editing and
+/// reopening the window a loop.
+#[test]
+fn a_later_source_overrides_an_earlier_one() {
+    let root = scratch("layering");
+    write(
+        &root.join("shipped"),
+        "uk.toml",
+        "\"a\" = \"перше\"\n\"b\" = \"друге\"\n",
+    );
+    write(&root.join("mine"), "uk.toml", "\"a\" = \"моє\"\n");
+
+    let c = build(
+        "uk",
+        &[
+            CatalogSource::open(root.join("shipped")),
+            CatalogSource::open(root.join("mine")),
+        ],
+    );
+    assert_eq!(c.get("a"), Some("моє"));
+    assert_eq!(c.get("b"), Some("друге"), "untouched keys survive");
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// However a plug-in writes its catalog, it lands under its own
+/// namespace: an extension runs code, and relabelling PolterType's own
+/// buttons is not something it gets to do.
+#[test]
+fn a_confined_source_cannot_reach_a_key_that_is_not_its_own() {
+    let root = scratch("confined");
+    write(
+        &root.join("acme"),
+        "uk.toml",
+        "\"footer.save\" = \"викрадено\"\n\"pane.act.mode.label\" = \"Режим\"\n",
+    );
+
+    let c = build(
+        "uk",
+        &[CatalogSource::confined(root.join("acme"), "plugin.acme")],
+    );
+    assert_eq!(c.get("footer.save"), None, "a core key stays untranslated");
+    assert_eq!(c.get("plugin.acme.footer.save"), Some("викрадено"));
+    assert_eq!(c.get("plugin.acme.pane.act.mode.label"), Some("Режим"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Writing the prefix out is repetition, not a mistake — and it must
+/// not end up doubled.
+#[test]
+fn a_key_that_already_carries_its_prefix_is_left_alone() {
+    let root = scratch("prefixed");
+    write(
+        &root.join("acme"),
+        "uk.toml",
+        "\"plugin.acme.summary\" = \"Опис\"\n",
+    );
+
+    let c = build(
+        "uk",
+        &[CatalogSource::confined(root.join("acme"), "plugin.acme")],
+    );
+    assert_eq!(c.get("plugin.acme.summary"), Some("Опис"));
+    assert_eq!(c.get("plugin.acme.plugin.acme.summary"), None);
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The point of letting a plug-in ship translations: a language nobody
+/// has translated the rest of the interface into still reaches the pane
+/// that plug-in drew.
+#[test]
+fn a_plugin_can_offer_a_language_the_app_does_not_ship() {
+    let root = scratch("unshipped");
+    let _ = std::fs::create_dir_all(root.join("shipped"));
+    write(
+        &root.join("acme"),
+        "pl.toml",
+        "\"summary\" = \"Odpowiada na czaty\"\n",
+    );
+
+    let c = build(
+        "pl_PL",
+        &[
+            CatalogSource::open(root.join("shipped")),
+            CatalogSource::confined(root.join("acme"), "plugin.acme"),
+        ],
+    );
+    assert_eq!(c.get("plugin.acme.summary"), Some("Odpowiada na czaty"));
+    assert!(
+        SHIPPED_LOCALES.iter().all(|(code, _)| *code != "pl"),
+        "the point of this test is a locale PolterType does not ship"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
 }

@@ -164,6 +164,16 @@ pub fn resolve_exe(dir: &Path, name: &str) -> Option<PathBuf> {
     built.into_iter().next().map(|(_, p)| p)
 }
 
+/// Every directory a plug-in may be loaded from, installed ones first
+/// — the same three sources [`extensions`] walks, for callers that want
+/// what a plug-in *carries* rather than the program it runs.
+pub fn plugin_dirs(data_dir: &Path) -> Vec<PathBuf> {
+    let mut dirs = installed_dirs(data_dir);
+    dirs.extend(path_dirs());
+    dirs.extend(sibling_dirs());
+    dirs
+}
+
 fn installed_dirs(data_dir: &Path) -> Vec<PathBuf> {
     let plugins = data_dir.join(PLUGINS_DIR);
     let Ok(entries) = std::fs::read_dir(&plugins) else {

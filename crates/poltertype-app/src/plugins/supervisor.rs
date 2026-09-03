@@ -369,6 +369,10 @@ fn capture_output(
     let mut cmd = Command::new(&ext.exe);
     cmd.args(args)
         .current_dir(&ext.dir)
+        .env(
+            poltertype_core::i18n::LOCALE_ENV,
+            poltertype_core::i18n::active_locale(),
+        )
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         // Drained but never *shown* on success: a program says why it
@@ -473,6 +477,13 @@ fn spawn(
         // The plug-in's own directory, so a relative path in its
         // config means what its author expected.
         .current_dir(dir)
+        // The manifest is translated from its own catalog, but what a
+        // plug-in *prints* — report text, the rows of a list — only it
+        // can translate, and only if it is told which language to use.
+        .env(
+            poltertype_core::i18n::LOCALE_ENV,
+            poltertype_core::i18n::active_locale(),
+        )
         .stdin(Stdio::null());
     // Both streams to the same file, in the order the plug-in wrote them.
     // Without a log file we inherit, which is right when there *is* a

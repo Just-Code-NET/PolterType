@@ -23,7 +23,8 @@ use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput, rule,
 };
 use iced::{Alignment, Element, Length, Padding};
-use poltertype_core::plugins::{ControlKind, SettingValue};
+use poltertype_core::i18n::{tr, tr_args};
+use poltertype_core::plugins::{ControlKind, PaneControl, SettingValue};
 
 use super::consts::{
     LABEL_GAP, NUMBER_WIDTH, PLUGIN_DEFAULT, PLUGIN_DEFAULT_SHORT, PLUGIN_LIST_HINT, SECTION_NAV,
@@ -43,13 +44,14 @@ impl SettingsApp {
             return Container::new(
                 Column::new()
                     .spacing(10)
-                    .push(section_title(b, "Plug-ins"))
+                    .push(section_title(b, tr("plugins.plugins", "Plug-ins")))
                     .push(
-                        Text::new(
+                        Text::new(tr(
+                            "plugins.none_installed",
                             "No plug-ins are installed. A plug-in is a separate program that \
                              PolterType runs and shows here; it is never loaded into PolterType \
                              itself.",
-                        )
+                        ))
                         .size(13)
                         .color(b.muted),
                     ),
@@ -61,7 +63,9 @@ impl SettingsApp {
         // No padding and no card of its own: the window already pads
         // every pane, and a frame inside that frame made this page sit
         // further from the edge than every other one.
-        let mut body = Column::new().spacing(12).push(section_title(b, "Plug-ins"));
+        let mut body = Column::new()
+            .spacing(12)
+            .push(section_title(b, tr("plugins.plugins", "Plug-ins")));
         for (index, _) in self.plugins.iter().enumerate() {
             if index > 0 {
                 body = body.push(rule::horizontal(1).style(theme::hairline));
@@ -95,7 +99,11 @@ impl SettingsApp {
         if pane.ext.development {
             // Not a badge of honour: this is code that was never
             // installed, found next to a source checkout.
-            heading = heading.push(Text::new("· development build").size(12).color(b.warn));
+            heading = heading.push(
+                Text::new(tr("plugins.development_build", "· development build"))
+                    .size(12)
+                    .color(b.warn),
+            );
         }
 
         let mut head = Column::new().spacing(4).push(heading);
@@ -107,9 +115,13 @@ impl SettingsApp {
             );
         }
         head = head.push(
-            Text::new(format!("Settings file: {}", pane.config_path.display()))
-                .size(11)
-                .color(b.muted),
+            Text::new(tr_args(
+                "plugins.settings_file",
+                "Settings file: {}",
+                &[&pane.config_path.display().to_string()],
+            ))
+            .size(11)
+            .color(b.muted),
         );
 
         let sections = pane.sections();
@@ -219,7 +231,7 @@ impl SettingsApp {
     fn plugin_button<'a>(
         &'a self,
         plugin: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
     ) -> Element<'a, Message> {
         Button::new(Text::new(control.label.as_str()).size(13))
             .style(theme::primary)
@@ -241,7 +253,7 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
@@ -296,19 +308,12 @@ impl SettingsApp {
 
             ControlKind::Choice => self.field(
                 control,
-                PickList::new(
-                    control
-                        .options
-                        .iter()
-                        .map(|o| o.value().to_owned())
-                        .collect::<Vec<_>>(),
+                choice_picker(
+                    control,
                     stored.as_ref().map(SettingValue::as_display),
-                    move |chosen| Message::PluginChoiceSelected(plugin, index, chosen),
-                )
-                .text_size(13)
-                .placeholder(PLUGIN_DEFAULT)
-                .width(Length::Fill)
-                .into(),
+                    13,
+                    move |value| Message::PluginChoiceSelected(plugin, index, value),
+                ),
             ),
 
             ControlKind::Number | ControlKind::Decimal => self.field(
@@ -316,7 +321,7 @@ impl SettingsApp {
                 Row::new()
                     .push(Space::new().width(Length::Fill))
                     .push(
-                        TextInput::new(PLUGIN_DEFAULT_SHORT, &typed)
+                        TextInput::new(tr("plugins.default_short", PLUGIN_DEFAULT_SHORT), &typed)
                             .size(13)
                             .align_x(Alignment::End)
                             .width(Length::Fixed(NUMBER_WIDTH))
@@ -347,9 +352,9 @@ impl SettingsApp {
                 control,
                 TextInput::new(
                     if control.kind == ControlKind::Strings {
-                        PLUGIN_LIST_HINT
+                        tr("plugins.list_hint", PLUGIN_LIST_HINT)
                     } else {
-                        PLUGIN_DEFAULT
+                        tr("plugins.default", PLUGIN_DEFAULT)
                     },
                     &typed,
                 )
@@ -372,9 +377,10 @@ impl SettingsApp {
             // Said plainly, in place of the control. The alternative —
             // rendering nothing — leaves a plug-in looking like it
             // forgot half its settings.
-            ControlKind::Unknown => Text::new(format!(
+            ControlKind::Unknown => Text::new(tr_args(
+                "plugins.unknown_control",
                 "“{}” needs a newer version of PolterType.",
-                control.label
+                &[&control.label],
             ))
             .size(12)
             .color(b.warn)
@@ -407,10 +413,13 @@ impl SettingsApp {
         let has_list = pane.command_id(slot).is_some() || !pane.suggestions(slot).is_empty();
 
         let mut box_row = Row::new().spacing(6).align_y(Alignment::Center).push(
-            TextInput::new(PLUGIN_DEFAULT, current.as_deref().unwrap_or_default())
-                .size(13)
-                .width(Length::Fill)
-                .on_input(on_typed),
+            TextInput::new(
+                tr("plugins.default", PLUGIN_DEFAULT),
+                current.as_deref().unwrap_or_default(),
+            )
+            .size(13)
+            .width(Length::Fill)
+            .on_input(on_typed),
         );
         if has_list {
             // A word, not an arrow: `↓` is in the bundled Fira Sans and
@@ -420,9 +429,9 @@ impl SettingsApp {
             box_row = box_row.push(
                 Button::new(
                     Text::new(if pane.suggest_open(slot) {
-                        "hide"
+                        tr("plugins.hide", "hide")
                     } else {
-                        "list"
+                        tr("plugins.list", "list")
                     })
                     .size(11),
                 )
@@ -462,8 +471,14 @@ impl SettingsApp {
                 Text::new(match pane.pending(slot) {
                     // Not an error: a name the plug-in has never seen is
                     // exactly what this box exists to still allow.
-                    Some(_) => "Nothing here matches — what you typed is used as written.",
-                    None => "The plug-in offered nothing — type it in.",
+                    Some(_) => tr(
+                        "plugins.nothing_matches",
+                        "Nothing here matches — what you typed is used as written.",
+                    ),
+                    None => tr(
+                        "plugins.offered_nothing",
+                        "The plug-in offered nothing — type it in.",
+                    ),
                 })
                 .size(11)
                 .color(b.muted),
@@ -491,9 +506,10 @@ impl SettingsApp {
         }
         if matches.len() > SUGGEST_ROWS {
             list = list.push(
-                Text::new(format!(
+                Text::new(tr_args(
+                    "plugins.more_matches",
                     "…and {} more — type to narrow",
-                    matches.len() - SUGGEST_ROWS
+                    &[&(matches.len() - SUGGEST_ROWS).to_string()],
                 ))
                 .size(10)
                 .color(b.muted),
@@ -521,15 +537,19 @@ impl SettingsApp {
         let in_a_card = slot.row.is_some();
         match pane.output(slot) {
             Some(CommandOutput::Failed(why)) => Some(
-                Text::new(format!("Could not ask the plug-in: {why}"))
-                    .size(11)
-                    .color(b.warn)
-                    .width(Length::Fill)
-                    .into(),
+                Text::new(tr_args(
+                    "plugins.could_not_ask",
+                    "Could not ask the plug-in: {}",
+                    &[why.as_str()],
+                ))
+                .size(11)
+                .color(b.warn)
+                .width(Length::Fill)
+                .into(),
             ),
             _ if in_a_card => None,
             None | Some(CommandOutput::Loading) => Some(
-                Text::new("Asking the plug-in…")
+                Text::new(tr("plugins.asking", "Asking the plug-in…"))
                     .size(11)
                     .color(b.muted)
                     .into(),
@@ -540,14 +560,22 @@ impl SettingsApp {
                     .align_y(Alignment::Center)
                     .push(
                         Text::new(match pane.list_rows(slot).len() {
-                            0 => "The plug-in offered nothing — type it in.".to_owned(),
-                            n => format!("{n} offered · type to narrow, or write your own"),
+                            0 => tr(
+                                "plugins.offered_nothing",
+                                "The plug-in offered nothing — type it in.",
+                            )
+                            .to_owned(),
+                            n => tr_args(
+                                "plugins.offered_count",
+                                "{} offered · type to narrow, or write your own",
+                                &[&n.to_string()],
+                            ),
                         })
                         .size(11)
                         .color(b.muted),
                     )
                     .push(
-                        Button::new(Text::new("Refresh").size(11))
+                        Button::new(Text::new(tr("plugins.refresh", "Refresh")).size(11))
                             .padding(Padding {
                                 top: 3.0,
                                 right: 9.0,
@@ -574,12 +602,21 @@ impl SettingsApp {
         let pane = &self.plugins[plugin];
         pane.command_id(slot)?;
         let (text, colour) = match pane.output(slot) {
-            Some(CommandOutput::Failed(_)) => ("· could not ask the plug-in".to_owned(), b.warn),
-            None | Some(CommandOutput::Loading) => ("· asking…".to_owned(), b.muted),
+            Some(CommandOutput::Failed(_)) => (
+                tr("plugins.hint_failed", "· could not ask the plug-in").to_owned(),
+                b.warn,
+            ),
+            None | Some(CommandOutput::Loading) => {
+                (tr("plugins.hint_asking", "· asking…").to_owned(), b.muted)
+            }
             Some(CommandOutput::Ready(_)) => (
                 match pane.list_rows(slot).len() {
-                    0 => "· nothing offered — type it in".to_owned(),
-                    n => format!("· {n} to pick from, or write your own"),
+                    0 => tr("plugins.hint_nothing", "· nothing offered — type it in").to_owned(),
+                    n => tr_args(
+                        "plugins.hint_count",
+                        "· {} to pick from, or write your own",
+                        &[&n.to_string()],
+                    ),
                 },
                 b.muted,
             ),
@@ -595,7 +632,7 @@ impl SettingsApp {
     /// three-word lines pushing every later row down the page.
     fn field<'a>(
         &'a self,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
         widget: Element<'a, Message>,
     ) -> Element<'a, Message> {
         Row::new()
@@ -614,7 +651,7 @@ impl SettingsApp {
     /// then the box under it.
     fn wide_field<'a>(
         &'a self,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
         widget: Element<'a, Message>,
     ) -> Element<'a, Message> {
         self.described(control)
@@ -625,10 +662,7 @@ impl SettingsApp {
     }
 
     /// A setting's name, and the sentence explaining it.
-    fn described<'a>(
-        &'a self,
-        control: &'a poltertype_core::plugins::PaneControl,
-    ) -> Column<'a, Message> {
+    fn described<'a>(&'a self, control: &'a PaneControl) -> Column<'a, Message> {
         let b = self.brand();
         let mut column = Column::new()
             .spacing(3)
@@ -655,7 +689,7 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
@@ -664,7 +698,7 @@ impl SettingsApp {
 
         if rows.is_empty() {
             column = column.push(
-                Text::new("Nothing here yet.")
+                Text::new(tr("plugins.nothing_yet", "Nothing here yet."))
                     .size(12)
                     .color(b.muted)
                     .width(Length::Fill),
@@ -720,7 +754,7 @@ impl SettingsApp {
             }
             let mut card = Column::new().spacing(8).width(Length::Fill).push(
                 header.push(
-                    Button::new(Text::new("Remove").size(12))
+                    Button::new(Text::new(tr("plugins.remove", "Remove")).size(12))
                         .style(theme::danger)
                         .padding(small)
                         .on_press(Message::PluginRecordRemoved(plugin, index, row)),
@@ -741,7 +775,7 @@ impl SettingsApp {
             .push(
                 Button::new(
                     Text::new(if control.add_label.trim().is_empty() {
-                        "Add"
+                        tr("plugins.add", "Add")
                     } else {
                         control.add_label.trim()
                     })
@@ -772,7 +806,7 @@ impl SettingsApp {
         index: usize,
         row: usize,
         position: usize,
-        field: &'a poltertype_core::plugins::PaneControl,
+        field: &'a PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
@@ -806,39 +840,32 @@ impl SettingsApp {
                 })
                 .into(),
 
-            ControlKind::Choice => PickList::new(
-                field
-                    .options
-                    .iter()
-                    .map(|o| o.value().to_owned())
-                    .collect::<Vec<_>>(),
-                stored.as_ref().map(SettingValue::as_display),
-                {
+            ControlKind::Choice => {
+                choice_picker(field, stored.as_ref().map(SettingValue::as_display), 12, {
                     let key = key.clone();
-                    move |chosen| {
+                    move |value| {
                         Message::PluginRecordChanged(
                             plugin,
                             index,
                             row,
                             key.clone(),
-                            SettingValue::Text(chosen),
+                            SettingValue::Text(value),
                         )
                     }
-                },
-            )
-            .text_size(12)
-            .placeholder(PLUGIN_DEFAULT)
-            .width(Length::Fill)
-            .into(),
-
-            _ => TextInput::new(PLUGIN_DEFAULT_SHORT, typed.as_deref().unwrap_or_default())
-                .size(12)
-                .width(Length::Fill)
-                .on_input({
-                    let key = key.clone();
-                    move |text| Message::PluginRecordTyped(plugin, index, row, key.clone(), text)
                 })
-                .into(),
+            }
+
+            _ => TextInput::new(
+                tr("plugins.default_short", PLUGIN_DEFAULT_SHORT),
+                typed.as_deref().unwrap_or_default(),
+            )
+            .size(12)
+            .width(Length::Fill)
+            .on_input({
+                let key = key.clone();
+                move |text| Message::PluginRecordTyped(plugin, index, row, key.clone(), text)
+            })
+            .into(),
         };
 
         // A toggle carries its own label; anything else gets one above.
@@ -883,7 +910,7 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
         chosen: Option<String>,
     ) -> Element<'a, Message> {
         let b = self.brand();
@@ -956,7 +983,7 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
         let pane = &self.plugins[plugin];
@@ -966,24 +993,31 @@ impl SettingsApp {
         let column = self.output_heading_with(plugin, index, control, has_rows);
 
         let body: Element<'a, Message> = match pane.output(Slot::control(index)) {
-            None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
-                .size(12)
-                .color(b.muted)
-                .into(),
-            Some(CommandOutput::Failed(why)) => {
-                Text::new(format!("Could not ask the plug-in: {why}"))
+            None | Some(CommandOutput::Loading) => {
+                Text::new(tr("plugins.asking", "Asking the plug-in…"))
                     .size(12)
-                    .color(b.warn)
-                    .width(Length::Fill)
+                    .color(b.muted)
                     .into()
             }
+            Some(CommandOutput::Failed(why)) => Text::new(tr_args(
+                "plugins.could_not_ask",
+                "Could not ask the plug-in: {}",
+                &[why.as_str()],
+            ))
+            .size(12)
+            .color(b.warn)
+            .width(Length::Fill)
+            .into(),
             Some(CommandOutput::Ready(_)) => {
                 let rows = pane.list_rows(Slot::control(index));
                 if rows.is_empty() {
-                    Text::new("The plug-in offered nothing to choose from.")
-                        .size(12)
-                        .color(b.muted)
-                        .into()
+                    Text::new(tr(
+                        "plugins.nothing_to_choose",
+                        "The plug-in offered nothing to choose from.",
+                    ))
+                    .size(12)
+                    .color(b.muted)
+                    .into()
                 } else {
                     let mut list = Column::new().spacing(9).width(Length::Fill);
                     for row in rows {
@@ -1040,21 +1074,24 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
     ) -> Element<'a, Message> {
         let b = self.brand();
         let state = self.plugins[plugin].output(Slot::control(index));
         let body: Element<'a, Message> = match state {
-            None | Some(CommandOutput::Loading) => Text::new("Asking the plug-in…")
-                .size(12)
-                .color(b.muted)
-                .into(),
-            Some(CommandOutput::Ready(text)) if text.trim().is_empty() => {
-                Text::new("The plug-in had nothing to report.")
+            None | Some(CommandOutput::Loading) => {
+                Text::new(tr("plugins.asking", "Asking the plug-in…"))
                     .size(12)
                     .color(b.muted)
                     .into()
             }
+            Some(CommandOutput::Ready(text)) if text.trim().is_empty() => Text::new(tr(
+                "plugins.nothing_to_report",
+                "The plug-in had nothing to report.",
+            ))
+            .size(12)
+            .color(b.muted)
+            .into(),
             Some(CommandOutput::Ready(text)) => Text::new(text.as_str())
                 .size(12)
                 .font(FONT_MONO)
@@ -1062,13 +1099,15 @@ impl SettingsApp {
                 .into(),
             // Said plainly rather than left as an empty box, which
             // would read as "nothing to say".
-            Some(CommandOutput::Failed(why)) => {
-                Text::new(format!("Could not ask the plug-in: {why}"))
-                    .size(12)
-                    .color(b.warn)
-                    .width(Length::Fill)
-                    .into()
-            }
+            Some(CommandOutput::Failed(why)) => Text::new(tr_args(
+                "plugins.could_not_ask",
+                "Could not ask the plug-in: {}",
+                &[why.as_str()],
+            ))
+            .size(12)
+            .color(b.warn)
+            .width(Length::Fill)
+            .into(),
         };
 
         self.output_heading(plugin, index, control)
@@ -1088,7 +1127,7 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
     ) -> Column<'a, Message> {
         self.output_heading_with(plugin, index, control, false)
     }
@@ -1103,7 +1142,7 @@ impl SettingsApp {
         &'a self,
         plugin: usize,
         index: usize,
-        control: &'a poltertype_core::plugins::PaneControl,
+        control: &'a PaneControl,
         batch: bool,
     ) -> Column<'a, Message> {
         let b = self.brand();
@@ -1118,20 +1157,20 @@ impl SettingsApp {
             .align_y(Alignment::Center)
             .push(Text::new(control.label.as_str()).size(13).font(font_bold()))
             .push(
-                Button::new(Text::new("Refresh").size(11))
+                Button::new(Text::new(tr("plugins.refresh", "Refresh")).size(11))
                     .padding(small)
                     .on_press(Message::PluginOutputRefresh(plugin, Slot::control(index))),
             );
         if batch {
             heading = heading
                 .push(
-                    Button::new(Text::new("Select all").size(11))
+                    Button::new(Text::new(tr("plugins.select_all", "Select all")).size(11))
                         .padding(small)
                         .style(iced::widget::button::secondary)
                         .on_press(Message::PluginListAll(plugin, index, true)),
                 )
                 .push(
-                    Button::new(Text::new("Clear").size(11))
+                    Button::new(Text::new(tr("plugins.clear", "Clear")).size(11))
                         .padding(small)
                         .style(iced::widget::button::secondary)
                         .on_press(Message::PluginListAll(plugin, index, false)),
@@ -1148,4 +1187,47 @@ impl SettingsApp {
         }
         column
     }
+}
+
+/// A choice as a drop-down.
+///
+/// What is *read* is the option's label and what is *written* is its
+/// value, and after a plug-in's translation has been applied the two
+/// are rarely the same string — so the mapping happens here rather than
+/// showing a config value to somebody as if it were a word.
+fn choice_picker(
+    control: &PaneControl,
+    stored: Option<String>,
+    text_size: u32,
+    on_pick: impl Fn(String) -> Message + 'static,
+) -> Element<'static, Message> {
+    let pairs: Vec<(String, String)> = control
+        .options
+        .iter()
+        .map(|o| (o.label().to_owned(), o.value().to_owned()))
+        .collect();
+    let labels: Vec<String> = pairs.iter().map(|(label, _)| label.clone()).collect();
+    // A stored value with no option of its own is shown as itself: the
+    // plug-in's config said something this manifest no longer offers,
+    // and blanking the box would quietly propose overwriting it.
+    let selected = stored.map(|value| {
+        pairs
+            .iter()
+            .find(|(_, declared)| *declared == value)
+            .map(|(label, _)| label.clone())
+            .unwrap_or(value)
+    });
+
+    PickList::new(labels, selected, move |chosen| {
+        let value = pairs
+            .iter()
+            .find(|(label, _)| *label == chosen)
+            .map(|(_, value)| value.clone())
+            .unwrap_or(chosen);
+        on_pick(value)
+    })
+    .text_size(text_size)
+    .placeholder(tr("plugins.default", PLUGIN_DEFAULT))
+    .width(Length::Fill)
+    .into()
 }

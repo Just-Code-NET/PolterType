@@ -44,6 +44,12 @@ pub fn load_all(extensions: Vec<DiscoveredExtension>, config_root: &Path) -> Vec
     extensions
         .into_iter()
         .filter(|e| !e.manifest.pane.is_empty())
-        .map(|e| PluginPane::load(e, config_root))
+        .map(|mut e| {
+            // Every word this pane draws that PolterType did not write
+            // comes out of the manifest, so this is the one place a
+            // plug-in's own translation has to be applied.
+            poltertype_core::plugins::localise(&mut e.manifest, &e.id);
+            PluginPane::load(e, config_root)
+        })
         .collect()
 }

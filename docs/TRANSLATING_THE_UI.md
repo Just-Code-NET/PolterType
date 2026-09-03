@@ -76,9 +76,68 @@ A regional code falls back to the bare language: `uk_UA` finds
 `pt_BR.toml` alongside `pt.toml` earns its place, `en_GB.toml` for one
 word probably does not.
 
-Files are looked up in `<data_dir>/i18n/` (shipped with the app) and
-`<config-dir>/poltertype/i18n/` (yours). Yours wins, which is what
-makes the edit-and-reopen loop possible.
+Three kinds of directory are read, in this order, and the last one to
+name a key wins:
+
+1. `<data_dir>/i18n/` — what the app ships.
+2. `<data_dir>/plugins/<id>/i18n/` — what each installed plug-in ships
+   (see the next section).
+3. `<config-dir>/poltertype/i18n/` — yours.
+
+Yours winning is what makes the edit-and-reopen loop possible.
+
+---
+
+## Translating a plug-in
+
+A plug-in's settings pane is drawn by PolterType but **worded by the
+plug-in**: its labels, explanations and options come out of its
+`manifest.toml`. So a plug-in carries its own catalog, in its own
+directory:
+
+```
+<data_dir>/plugins/<id>/i18n/<lang>.toml
+```
+
+Ask the plug-in for the file to start from — no key has to be guessed:
+
+```console
+$ poltertype --plugin-strings <id>
+"summary" = "Answers your chats"
+"pane.act.mode.label" = "Mode"
+"pane.act.mode.option.auto" = "Automatic"
+"pane.schedule.sends.field.room.label" = "Room"
+```
+
+Keys are derived from the manifest's own structure — a control's config
+key (`act.mode`), or the command it runs, or a slug of its English label
+for a section that binds to neither. Translate the right-hand side, save
+as `i18n/uk.toml` next to the manifest, reopen the window.
+
+Four things worth knowing:
+
+* **A plug-in's catalog is confined to its own pane.** Whatever the file
+  says, every key lands under `plugin.<id>.`; a plug-in cannot reword
+  PolterType's own buttons. Writing the prefix out yourself is allowed
+  and changes nothing.
+* **It works for a language PolterType has never been translated into.**
+  The catalogs are independent: set `[general].ui_language = "pl"` and a
+  plug-in shipping `pl.toml` is in Polish while the window around it
+  stays English. Nothing has to be added to the app first.
+* **Values are never translated.** An option's `value`, a control's key
+  and a command's id are what reach the plug-in's config file and its
+  program; only what is *read* changes. The drop-down shows the label
+  and writes the value.
+* **What the plug-in prints, only the plug-in can translate.** Report
+  text and the rows of a list are produced at run time, so PolterType
+  hands every plug-in process `POLTERTYPE_LOCALE` (`uk`, `pt_BR`, …) and
+  the plug-in decides what to do with it.
+
+A *data pack* — `kind = "pack"`, no program — is the other way round: its
+`i18n/` is a translation of **PolterType itself**, taken as written, so
+a whole language can be distributed as a pack.
+
+The tray menu is not translated yet, a plug-in's entries there included.
 
 ---
 

@@ -1,40 +1,72 @@
-//! Loading the catalog once, and looking translations up in it.
+//! Loading the catalogs once, and looking translations up in them.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use tracing::{debug, info};
 
-use super::{Catalog, I18N_DIR, resolve_locale};
+use super::{Catalog, CatalogSource, I18N_DIR, resolve_locale};
 
 static CATALOG: OnceLock<Catalog> = OnceLock::new();
 
-/// Load the catalog for `requested` (or the environment's locale when
-/// `None`) out of `<data_dir>/i18n/`.
+/// Load the interface language from every place a catalog can live:
+/// what PolterType ships under `<data_dir>/i18n/`, then the plug-ins'
+/// own, then the user's `<config_dir>/i18n/`.
+///
+/// Later wins, so a file dropped in by hand overrides the shipped one —
+/// which is what makes the edit-and-reopen loop of
+/// `docs/TRANSLATING_THE_UI.md` possible. Plug-in catalogs sit in the
+/// middle: an extension's is confined to its own namespace by
+/// [`crate::plugins::catalog_sources`], so it can add a language the
+/// interface does not ship without being able to reword the interface.
 ///
 /// Idempotent and infallible by design: a missing directory, an
 /// unreadable file or malformed TOML all leave the UI in English, which
 /// is a perfectly good outcome.
-pub fn init(data_dir: &Path, requested: Option<&str>) {
+pub fn init(data_dir: &Path, requested: Option<&str>, plugins: &[CatalogSource]) {
     if CATALOG.get().is_some() {
         return;
     }
     let locale = resolve_locale(requested);
-    if locale.starts_with("en") {
-        debug!(%locale, "UI language is English; no catalog needed");
-        let _ = CATALOG.set(Catalog::empty(locale));
-        return;
+
+    let mut sources = Vec::with_capacity(plugins.len() + 2);
+    sources.push(CatalogSource::open(data_dir.join(I18N_DIR)));
+    sources.extend(plugins.iter().cloned());
+    if let Some(dir) = user_dir() {
+        sources.push(CatalogSource::open(dir));
     }
-    let catalog = Catalog::load(&data_dir.join(I18N_DIR), &locale);
+
+    let catalog = build(&locale, &sources);
     if catalog.is_empty() {
-        info!(
-            %locale,
-            "no UI translation found for this locale; the interface stays in English"
-        );
+        if locale.starts_with("en") {
+            debug!(%locale, "UI language is English; no catalog needed");
+        } else {
+            info!(
+                %locale,
+                "no UI translation found for this locale; the interface stays in English"
+            );
+        }
     } else {
         info!(%locale, entries = catalog.len(), "UI translation loaded");
     }
     let _ = CATALOG.set(catalog);
+}
+
+/// Fold `sources` into one catalog for `locale`, in order, later
+/// winning.
+///
+/// Separate from [`init`] because the global is written once per
+/// process and a test cannot unset it: everything about layering is
+/// checked here, on directories a test owns.
+pub fn build(locale: &str, sources: &[CatalogSource]) -> Catalog {
+    let mut catalog = Catalog::empty(locale.to_owned());
+    for source in sources {
+        let added = catalog.overlay(&source.dir, source.prefix.as_deref());
+        if added > 0 {
+            debug!(dir = %source.dir.display(), added, "UI translations layered");
+        }
+    }
+    catalog
 }
 
 /// The translated text for `key`, or `english` when there is none.
@@ -70,7 +102,23 @@ pub fn tr_args(key: &str, english: &'static str, args: &[&str]) -> String {
     out
 }
 
-/// The locale actually in force, for the About pane and the logs.
+/// The loaded catalog, for text that was not compiled in and so cannot
+/// carry its English at the call site — a plug-in's manifest. `None`
+/// before [`init`], which leaves a plug-in in the language it declared.
+pub fn active_catalog() -> Option<&'static Catalog> {
+    CATALOG.get()
+}
+
+/// The locale actually in force, for the About pane, the logs, and the
+/// plug-ins PolterType spawns.
 pub fn active_locale() -> &'static str {
     CATALOG.get().map_or("en", Catalog::locale)
+}
+
+/// The user's own catalog directory. Last in the layering, so anything
+/// here overrides both PolterType and its plug-ins.
+fn user_dir() -> Option<PathBuf> {
+    crate::settings::SettingsStore::project_dirs()
+        .ok()
+        .map(|dirs| dirs.config_dir().join(I18N_DIR))
 }

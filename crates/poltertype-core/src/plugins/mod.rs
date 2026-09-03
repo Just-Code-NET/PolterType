@@ -24,18 +24,22 @@
 //! prompt. [`check_extension`] enforces the parts a manifest could lie
 //! about.
 
+mod catalogs;
 mod consts;
 mod discover;
 mod enums;
 mod install;
+mod localise;
 mod settings;
 mod types;
 mod validate;
 
+pub use catalogs::*;
 pub use consts::*;
 pub use discover::*;
 pub use enums::*;
 pub use install::*;
+pub use localise::*;
 pub use settings::*;
 pub use types::*;
 pub use validate::*;

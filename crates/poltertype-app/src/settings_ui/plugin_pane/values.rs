@@ -3,6 +3,7 @@
 
 use tracing::warn;
 
+use poltertype_core::i18n::tr_args;
 use poltertype_core::plugins::{ControlKind, SettingValue, write_setting, write_string_array};
 
 use super::enums::Typing;
@@ -175,7 +176,11 @@ impl PluginPane {
             }
             Err(e) => {
                 warn!(key = %key, "cannot edit plug-in config list: {e}");
-                self.status = Some(format!("Could not change {key}: {e}"));
+                self.status = Some(tr_args(
+                    "plugins.status_change_failed",
+                    "Could not change {}: {}",
+                    &[&key, &e.to_string()],
+                ));
             }
         }
     }
@@ -203,13 +208,21 @@ impl PluginPane {
     pub(super) fn write(&mut self, updated: String) -> bool {
         if let Some(dir) = self.config_path.parent() {
             if let Err(e) = std::fs::create_dir_all(dir) {
-                self.status = Some(format!("Could not create {}: {e}", dir.display()));
+                self.status = Some(tr_args(
+                    "plugins.status_create_failed",
+                    "Could not create {}: {}",
+                    &[&dir.display().to_string(), &e.to_string()],
+                ));
                 return false;
             }
         }
         match std::fs::write(&self.config_path, updated) {
             Ok(()) => {
-                self.status = Some(format!("Saved to {}", self.config_path.display()));
+                self.status = Some(tr_args(
+                    "plugins.status_saved",
+                    "Saved to {}",
+                    &[&self.config_path.display().to_string()],
+                ));
                 self.reload_arrays();
                 true
             }

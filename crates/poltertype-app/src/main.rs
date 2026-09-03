@@ -98,6 +98,13 @@ fn main() -> Result<()> {
             "--plugins" => {
                 return settings_ui::run_on(settings_ui::Pane::Plugins);
             }
+            "--plugin-strings" => {
+                let Some(id) = args.next() else {
+                    eprintln!("poltertype: --plugin-strings needs a plug-in id");
+                    return Err(anyhow::anyhow!("missing plug-in id"));
+                };
+                return cli::print_plugin_strings(&id);
+            }
             "--version" | "-V" => {
                 println!("{APP_NAME} {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
@@ -507,6 +514,14 @@ fn main() -> Result<()> {
 
     // Plug-ins last, so the app's own entries keep their position and
     // a plug-in can never push Quit off the bottom of the menu.
+    // The tray menu is not translated yet; this is here so that the
+    // plug-ins started below are told which language the user reads,
+    // and so the settings window is not the only half that knows.
+    poltertype_core::i18n::init(
+        &data_dir,
+        Some(&settings.snapshot().general.ui_language),
+        &[],
+    );
     let discovered = poltertype_core::plugins::extensions(&data_dir);
     let mut plugin_menu = plugins::PluginMenu::build(discovered, &menu)?;
     let mut supervisor = plugins::Supervisor::new();

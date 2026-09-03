@@ -3,6 +3,7 @@
 
 use tracing::warn;
 
+use poltertype_core::i18n::tr_args;
 use poltertype_core::plugins::{ControlKind, read_string_array};
 
 use super::pane::PluginPane;
@@ -62,7 +63,11 @@ impl PluginPane {
             }
             Err(e) => {
                 warn!(key = %key, "cannot edit plug-in config array: {e}");
-                self.status = Some(format!("Could not change {key}: {e}"));
+                self.status = Some(tr_args(
+                    "plugins.status_change_failed",
+                    "Could not change {}: {}",
+                    &[&key, &e.to_string()],
+                ));
             }
         }
     }
@@ -100,7 +105,11 @@ impl PluginPane {
             }
             Err(e) => {
                 warn!(key = %key, "cannot edit plug-in config array: {e}");
-                self.status = Some(format!("Could not change {key}: {e}"));
+                self.status = Some(tr_args(
+                    "plugins.status_change_failed",
+                    "Could not change {}: {}",
+                    &[&key, &e.to_string()],
+                ));
             }
         }
     }

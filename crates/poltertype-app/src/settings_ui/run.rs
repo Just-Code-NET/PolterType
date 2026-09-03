@@ -36,7 +36,16 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
     // Must precede the first widget: `tr` runs from the view function,
     // on every frame. No catalog is not an error — English call sites.
     match poltertype_core::data_dir::resolve() {
-        Ok(dir) => poltertype_core::i18n::init(&dir, Some(&initial_settings.general.ui_language)),
+        Ok(dir) => {
+            // Also before the panes are built: a plug-in's manifest is
+            // translated the moment it is loaded into one.
+            let plugins = poltertype_core::plugins::catalog_sources(&dir);
+            poltertype_core::i18n::init(
+                &dir,
+                Some(&initial_settings.general.ui_language),
+                &plugins,
+            );
+        }
         Err(e) => warn!(?e, "no data dir; the interface stays in English"),
     }
 

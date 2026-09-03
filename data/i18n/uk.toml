@@ -104,6 +104,44 @@ PolterType підмножиною."""
 "general.download_new_versions_automatically" = "Завантажувати нові версії автоматично, встановлювати при перезапуску"
 "general.check_every_hours" = "Перевіряти кожні (годин):"
 
+# ── Plug-ins pane ────────────────────────────────────────────────────
+#
+# Only the words PolterType draws around a plug-in. What the plug-in
+# itself declares — its own labels and explanations — is translated in
+# its own `i18n/<lang>.toml`; `poltertype --plugin-strings <id>` prints
+# that file's keys.
+"plugins.plugins" = "Плагіни"
+"plugins.none_installed" = "Плагінів не встановлено. Плагін — це окрема програма, яку PolterType запускає й показує тут; усередину PolterType вона ніколи не завантажується."
+"plugins.development_build" = "· збірка для розробки"
+"plugins.settings_file" = "Файл налаштувань: {}"
+"plugins.add" = "Додати"
+"plugins.remove" = "Видалити"
+"plugins.refresh" = "Оновити"
+"plugins.select_all" = "Вибрати все"
+"plugins.clear" = "Зняти все"
+"plugins.hide" = "сховати"
+"plugins.list" = "список"
+"plugins.nothing_yet" = "Поки що порожньо."
+"plugins.asking" = "Запитуємо плагін…"
+"plugins.could_not_ask" = "Не вдалося запитати плагін: {}"
+"plugins.offered_nothing" = "Плагін нічого не запропонував — введіть вручну."
+"plugins.offered_count" = "{} на вибір · звужуйте набором або впишіть своє"
+"plugins.nothing_matches" = "Нічого не збігається — те, що ви ввели, буде використано як є."
+"plugins.more_matches" = "…і ще {} — звужуйте набором"
+"plugins.nothing_to_choose" = "Плагін не запропонував нічого на вибір."
+"plugins.nothing_to_report" = "Плагіну нема про що звітувати."
+"plugins.unknown_control" = "«{}» потребує новішої версії PolterType."
+"plugins.hint_asking" = "· запитуємо…"
+"plugins.hint_failed" = "· не вдалося запитати плагін"
+"plugins.hint_nothing" = "· нічого не запропоновано — введіть вручну"
+"plugins.hint_count" = "· {} на вибір або впишіть своє"
+"plugins.status_saved" = "Збережено у {}"
+"plugins.status_change_failed" = "Не вдалося змінити {}: {}"
+"plugins.status_create_failed" = "Не вдалося створити {}: {}"
+"plugins.default" = "(типове значення плагіна)"
+"plugins.default_short" = "типове"
+"plugins.list_hint" = "(порожньо — розділяйте комами)"
+
 # ── About pane ───────────────────────────────────────────────────────
 "about.cross_platform_automatic_keyboard" = "Кросплатформний автоматичний перемикач розкладки."
 "about.power_user_escape_hatches" = "Для досвідчених користувачів"
