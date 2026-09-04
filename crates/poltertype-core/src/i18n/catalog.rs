@@ -6,6 +6,9 @@ use std::path::Path;
 
 use tracing::warn;
 
+/// Compared whole when the language changes: a catalog identical to
+/// the one already loaded is not worth a redraw.
+#[derive(PartialEq)]
 pub struct Catalog {
     locale: String,
     entries: HashMap<String, String>,

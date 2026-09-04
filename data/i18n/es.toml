@@ -224,7 +224,7 @@
 "general.updates_disclosure" = "Esta es la única conexión de red que hace PolterType. Descarga de GitHub un pequeño archivo con el número de versión: sin cuenta, sin identificador, nada sobre ti ni sobre lo que escribes. La versión nueva se descarga, se verifica con su suma de comprobación y se deja quieta hasta que salgas o pulses «Reiniciar para actualizar» en la bandeja. Nunca se instala mientras escribes."
 "general.interface_language" = "Idioma de la interfaz"
 "general.language_system" = "Sistema"
-"general.interface_language_hint" = "Se aplica al volver a abrir esta ventana. Lo que no esté traducido se queda en inglés, y un complemento puede traer su propio idioma."
+"general.interface_language_hint" = "Se aplica en cuanto lo eliges; el menú de la bandeja lo sigue al guardar. Lo que no esté traducido se queda en inglés, y un complemento puede traer su propio idioma."
 "general.theme" = "Tema"
 "general.system_follows_os_light" = "«Sistema» sigue la preferencia de claro/oscuro del sistema operativo. Guarda para conservarlo."
 "general.tray_icon" = "Icono de la bandeja"

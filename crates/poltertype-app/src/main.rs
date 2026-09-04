@@ -69,7 +69,6 @@ use poltertype_core::audio::AudioPlayer;
 use poltertype_core::engine::{
     DictionaryAddOrigin, EngineCommand, EngineDeps, SwitcherEngine, SwitcherEvent,
 };
-use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_detect::Detector;
@@ -194,9 +193,9 @@ fn main() -> Result<()> {
     info!(?data_dir, "data directory resolved");
 
     // Before the tray menu is built, and before any plug-in is asked
-    // for anything: every label below is looked up once, at
-    // construction, and a plug-in is handed this locale when it is
-    // spawned.
+    // for anything: the menu's words come from this catalog, and a
+    // plug-in is handed this locale when it is spawned. A language
+    // picked later arrives as `SettingsChanged`.
     poltertype_core::i18n::init(
         &data_dir,
         Some(&settings.snapshot().general.ui_language),
@@ -450,37 +449,25 @@ fn main() -> Result<()> {
     poltertype_shell::keep_out_of_dock(&mut event_loop);
 
     let menu = Menu::new();
-    // Only when something the app needs failed to come up. Hooks first:
-    // without them nothing is read at all, which is the worse of the
-    // two and the one to name.
-    let alert_label = if input_alert.is_some() {
-        tr("tray.alert_hooks", "⚠ Keyboard hooks unavailable — Setup…")
-    } else {
-        tr(
-            "tray.alert_switching",
-            "⚠ Layout switching unavailable — Setup…",
-        )
-    };
-    let item_setup = (input_alert.is_some() || switcher_alert.is_some())
-        .then(|| MenuItem::new(alert_label, true, None));
+    // Every entry below is created wordless on purpose:
+    // `tray::relabel_menu` writes them all once the menu is assembled,
+    // and writes them again when the interface language changes, so the
+    // words live in exactly one place.
+    //
+    // Only when something the app needs failed to come up.
+    let hooks_missing = input_alert.is_some();
+    let item_setup =
+        (hooks_missing || switcher_alert.is_some()).then(|| MenuItem::new("", true, None));
     if let Some(item) = item_setup.as_ref() {
         menu.append_items(&[item, &PredefinedMenuItem::separator()])
             .context("populate tray alert entry")?;
     }
-    let item_settings_ui = MenuItem::new(tr("tray.settings", "Settings…"), true, None);
-    let item_settings_file = MenuItem::new(tr("tray.edit_config", "Edit config.toml…"), true, None);
-    let item_logs = MenuItem::new(tr("tray.open_logs", "Open Logs Folder…"), true, None);
-    let item_wordlists = MenuItem::new(
-        tr("tray.open_wordlists", "Open User Wordlists Folder…"),
-        true,
-        None,
-    );
-    let item_layouts = MenuItem::new(
-        tr("tray.open_layouts", "Open User Layouts Folder…"),
-        true,
-        None,
-    );
-    let item_reload = MenuItem::new(tr("tray.reload_settings", "Reload Settings"), true, None);
+    let item_settings_ui = MenuItem::new("", true, None);
+    let item_settings_file = MenuItem::new("", true, None);
+    let item_logs = MenuItem::new("", true, None);
+    let item_wordlists = MenuItem::new("", true, None);
+    let item_layouts = MenuItem::new("", true, None);
+    let item_reload = MenuItem::new("", true, None);
     // Auto-switching may have been left off in a previous run.
     let start_paused = settings.snapshot().general.paused;
     let mut tray_style = TrayIconStyle::from_config(&settings.snapshot().general.tray_icon);
@@ -500,24 +487,15 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    let item_update =
-        updates_enabled.then(|| MenuItem::new(menu_label(update_pending.as_ref()), true, None));
+    let item_update = updates_enabled.then(|| MenuItem::new("", true, None));
 
-    let item_about = MenuItem::new(
-        tr_args(
-            "tray.about",
-            "About {} v{}",
-            &[APP_NAME, env!("CARGO_PKG_VERSION")],
-        ),
-        false,
-        None,
-    );
-    let item_quit = MenuItem::new(tr("tray.quit", "Quit"), true, None);
+    let item_about = MenuItem::new("", false, None);
+    let item_quit = MenuItem::new("", true, None);
     // Words a tooltip offered and lost, so the offer can be taken up
     // later (issue #38). Always here and always openable: an entry that
     // comes and goes is harder to find than one that says it is empty,
     // and a disabled one answers a click with nothing at all.
-    let menu_deferred = Submenu::new(tr("tray.deferred", DEFERRED_MENU_LABEL), true);
+    let menu_deferred = Submenu::new("", true);
     menu.append_items(&[
         &item_settings_ui,
         &item_settings_file,
@@ -537,6 +515,23 @@ fn main() -> Result<()> {
     }
     menu.append_items(&[&item_about, &item_quit])
         .context("populate tray menu tail")?;
+
+    // Every entry exists now, so one pass can write all of them — and
+    // the same pass runs again on a language change.
+    let tray_menu = TrayMenu {
+        setup: item_setup.clone(),
+        settings_ui: item_settings_ui.clone(),
+        settings_file: item_settings_file.clone(),
+        logs: item_logs.clone(),
+        wordlists: item_wordlists.clone(),
+        layouts: item_layouts.clone(),
+        reload: item_reload.clone(),
+        deferred: menu_deferred.clone(),
+        update: item_update.clone(),
+        about: item_about.clone(),
+        quit: item_quit.clone(),
+    };
+    relabel_menu(&tray_menu, hooks_missing, update_pending.as_ref());
 
     // Plug-ins last, so the app's own entries keep their position and
     // a plug-in can never push Quit off the bottom of the menu.
@@ -745,6 +740,19 @@ fn main() -> Result<()> {
         *control_flow = ControlFlow::Wait;
         match event {
             Event::UserEvent(UserEvent::SettingsChanged) => {
+                // The interface language, which the menu cannot re-read
+                // on its own: these words were written when it was
+                // built, and this is the only process that outlives the
+                // window they were changed in.
+                let language = settings_for_loop.snapshot().general.ui_language;
+                let catalogs = poltertype_core::plugins::catalog_sources(&data_dir);
+                if poltertype_core::i18n::reload(&data_dir, Some(&language), &catalogs) {
+                    relabel_menu(&tray_menu, hooks_missing, update_pending.as_ref());
+                    // Rebuilt rather than relabelled: an empty list is a
+                    // translated row of its own.
+                    rebuild_deferred_menu(&menu_deferred, &deferred, &mut deferred_rows, &layouts);
+                    refresh_tray(&tray, &item_pause, &tray_state);
+                }
                 // The tray icon's style, which nothing else re-reads:
                 // the icon is redrawn from `TrayState`, and the state
                 // is where the old style is still remembered.

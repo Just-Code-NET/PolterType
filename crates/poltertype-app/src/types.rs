@@ -13,6 +13,29 @@ use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_types::LayoutId;
 use tao::event_loop::EventLoopProxy;
+use tray_icon::menu::{MenuItem, Submenu};
+
+/// The tray entries whose text PolterType wrote itself, kept so the
+/// menu can be relabelled where it stands when the interface language
+/// changes. Every field is a handle to the live entry, not a copy of
+/// it.
+///
+/// The pause entry is deliberately absent: its text says what a click
+/// would *do*, so `tray::refresh_tray` owns it. So are the plug-ins':
+/// each is drawn from its own manifest.
+pub(crate) struct TrayMenu {
+    pub(crate) setup: Option<MenuItem>,
+    pub(crate) settings_ui: MenuItem,
+    pub(crate) settings_file: MenuItem,
+    pub(crate) logs: MenuItem,
+    pub(crate) wordlists: MenuItem,
+    pub(crate) layouts: MenuItem,
+    pub(crate) reload: MenuItem,
+    pub(crate) deferred: Submenu,
+    pub(crate) update: Option<MenuItem>,
+    pub(crate) about: MenuItem,
+    pub(crate) quit: MenuItem,
+}
 
 /// Snapshot of "what should the tray look like right now". Icon and
 /// tooltip each depend on more than one field, so a redraw always takes

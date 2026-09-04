@@ -4,6 +4,7 @@ use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::TrayIconStyle;
 use poltertype_types::LayoutId;
+use poltertype_update::PendingUpdate;
 use tracing::{debug, warn};
 use tray_icon::TrayIcon;
 use tray_icon::menu::{MenuId, MenuItem, Submenu};
@@ -81,6 +82,52 @@ pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayS
         warn!(?e, "could not update tray tooltip");
     }
     item_pause.set_text(pause_item_label(state.paused));
+}
+
+/// Write every entry PolterType owns the words of, from the catalog
+/// loaded right now.
+///
+/// Called once as the menu is built and again whenever the interface
+/// language changes, which is why the entries are created empty: the
+/// words exist here and nowhere else, so the menu on screen and the
+/// menu after a language change cannot drift apart.
+///
+/// `hooks_missing` picks which failure the Setup entry names — fixed at
+/// startup, since the only recovery is fixing permissions and
+/// relaunching.
+pub(crate) fn relabel_menu(menu: &TrayMenu, hooks_missing: bool, pending: Option<&PendingUpdate>) {
+    if let Some(item) = &menu.setup {
+        item.set_text(if hooks_missing {
+            tr("tray.alert_hooks", "⚠ Keyboard hooks unavailable — Setup…")
+        } else {
+            tr(
+                "tray.alert_switching",
+                "⚠ Layout switching unavailable — Setup…",
+            )
+        });
+    }
+    menu.settings_ui.set_text(tr("tray.settings", "Settings…"));
+    menu.settings_file
+        .set_text(tr("tray.edit_config", "Edit config.toml…"));
+    menu.logs
+        .set_text(tr("tray.open_logs", "Open Logs Folder…"));
+    menu.wordlists
+        .set_text(tr("tray.open_wordlists", "Open User Wordlists Folder…"));
+    menu.layouts
+        .set_text(tr("tray.open_layouts", "Open User Layouts Folder…"));
+    menu.reload
+        .set_text(tr("tray.reload_settings", "Reload Settings"));
+    menu.deferred
+        .set_text(tr("tray.deferred", DEFERRED_MENU_LABEL));
+    if let Some(item) = &menu.update {
+        crate::updater::refresh_menu_item(item, pending);
+    }
+    menu.about.set_text(tr_args(
+        "tray.about",
+        "About {} v{}",
+        &[APP_NAME, env!("CARGO_PKG_VERSION")],
+    ));
+    menu.quit.set_text(tr("tray.quit", "Quit"));
 }
 
 /// Show or hide the tray icon, per `[general].tray_icon`.

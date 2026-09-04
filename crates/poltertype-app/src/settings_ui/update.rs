@@ -468,6 +468,7 @@ impl SettingsApp {
 
             Message::UiLanguageChanged(code) => {
                 self.settings.general.ui_language = code;
+                self.apply_ui_language();
             }
 
             Message::ManualOnlyChosen(manual) => {
@@ -475,10 +476,16 @@ impl SettingsApp {
                 self.conversion_chosen_here = true;
             }
 
-            Message::ResetDefaults => self.settings = Settings::default(),
+            Message::ResetDefaults => {
+                self.settings = Settings::default();
+                self.apply_ui_language();
+            }
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
                     self.settings = fresh.snapshot();
+                    // Before the banner below is phrased, so it is
+                    // already in the language the file asks for.
+                    self.apply_ui_language();
                     // Reload means one thing everywhere: every
                     // on-disk-backed view resets to what is on disk.
                     // Unsaved editor content is discarded by design.
@@ -839,6 +846,35 @@ impl SettingsApp {
             },
             move |outcome| Message::PluginOutputLoaded(plugin, slots.clone(), outcome),
         )
+    }
+
+    /// Show the window in the language the settings now name, without
+    /// waiting for it to be saved and reopened.
+    ///
+    /// `view` is rebuilt from scratch every frame, so swapping the
+    /// catalog is the whole of it for PolterType's own text. A
+    /// plug-in's pane is drawn from a manifest translated when it was
+    /// read, and the keys are derived from the labels — so a translated
+    /// manifest cannot be translated again, and those are re-read from
+    /// disk instead. The values already on screen are the user's, not
+    /// the manifest's, and are left alone.
+    fn apply_ui_language(&mut self) {
+        let Ok(data_dir) = poltertype_core::resolve_data_dir() else {
+            return;
+        };
+        let catalogs = poltertype_core::plugins::catalog_sources(&data_dir);
+        if !poltertype_core::i18n::reload(
+            &data_dir,
+            Some(&self.settings.general.ui_language),
+            &catalogs,
+        ) {
+            return;
+        }
+        for fresh in poltertype_core::plugins::extensions(&data_dir) {
+            if let Some(pane) = self.plugins.iter_mut().find(|p| p.ext.id == fresh.id) {
+                pane.ext = fresh;
+            }
+        }
     }
 
     /// The single shared "save the wordlist now" path — per-pane Save,

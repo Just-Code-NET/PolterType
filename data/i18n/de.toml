@@ -226,7 +226,7 @@
 "general.updates_disclosure" = "Dies ist die einzige Netzwerkverbindung, die PolterType aufbaut. Sie holt eine kleine Versionsdatei von GitHub — kein Konto, keine Kennung, nichts über Sie oder das, was Sie tippen. Eine neue Version wird heruntergeladen, per Prüfsumme verifiziert und dann liegen gelassen, bis Sie beenden oder im Menü auf „Zum Aktualisieren neu starten“ klicken. Niemals installiert, während Sie tippen."
 "general.interface_language" = "Sprache der Oberfläche"
 "general.language_system" = "System"
-"general.interface_language_hint" = "Gilt, sobald dieses Fenster erneut geöffnet wird. Nicht Übersetztes bleibt englisch, und ein Plug-in kann eine eigene Sprache mitbringen."
+"general.interface_language_hint" = "Gilt sofort bei der Auswahl; das Menü im Infobereich folgt beim Speichern. Nicht Übersetztes bleibt englisch, und ein Plug-in kann eine eigene Sprache mitbringen."
 "general.theme" = "Erscheinungsbild"
 "general.system_follows_os_light" = "„System“ folgt der Hell-/Dunkel-Einstellung des Betriebssystems. Zum Behalten speichern."
 "general.tray_icon" = "Symbol im Infobereich"

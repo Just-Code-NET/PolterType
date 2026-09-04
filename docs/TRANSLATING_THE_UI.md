@@ -16,7 +16,8 @@ layouts: the things that vary between people live in data.
    Ukrainian ship — to `data/i18n/<your-language>.toml`.
 2. Translate the right-hand side of each line.
 3. Pick your language under **General → Appearance → Interface
-   language** and reopen the window.
+   language**. The window changes as you pick it; save, and the tray
+   menu follows.
 
 That is the whole loop. To try it without touching the source tree,
 drop the file into `<config-dir>/poltertype/i18n/` instead — the picker
@@ -89,7 +90,9 @@ name a key wins:
    (see the next section).
 3. `<config-dir>/poltertype/i18n/` — yours.
 
-Yours winning is what makes the edit-and-reopen loop possible.
+Yours winning is what makes the edit-and-reload loop possible: the
+footer's **Reload** re-reads all three, so an edited catalog shows
+without reopening the window.
 
 ---
 
@@ -117,8 +120,9 @@ $ poltertype --plugin-strings <id>
 Keys are derived from the manifest's own structure — a control's config
 key (`act.mode`), or the command it runs, or a slug of its English label
 for a tray entry or a section, which bind to neither. Translate the
-right-hand side, save as `i18n/uk.toml` next to the manifest, reopen the
-window (the tray reads its own copy when PolterType next starts).
+right-hand side, save as `i18n/uk.toml` next to the manifest and press
+**Reload** (the plug-in's *tray* entries are read when PolterType next
+starts).
 
 Four things worth knowing:
 

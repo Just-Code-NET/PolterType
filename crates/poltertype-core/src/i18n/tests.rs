@@ -125,6 +125,34 @@ fn tr_falls_back_to_english_when_uninitialised() {
     assert_eq!(tr("some.key.no.one.set", "English text"), "English text");
 }
 
+/// The catalog was written once per process, so a language picked in
+/// Settings only arrived at the next start — the window had to be
+/// reopened and the tray menu stayed in the old language until a
+/// restart. This is what both call instead.
+///
+/// `zz` because the user's own catalog directory is layered over the
+/// one this test writes, and no real config directory has that file.
+#[test]
+fn reload_puts_a_new_language_in_front_of_tr() {
+    let dir = std::env::temp_dir().join(format!("pt-i18n-reload-{}", std::process::id()));
+    let i18n = dir.join(I18N_DIR);
+    let _ = std::fs::create_dir_all(&i18n);
+    let _ = std::fs::write(i18n.join("zz.toml"), "\"test.reload\" = \"first\"\n");
+
+    assert!(reload(&dir, Some("zz"), &[]), "a first catalog is a change");
+    assert_eq!(tr("test.reload", "English"), "first");
+    assert!(
+        !reload(&dir, Some("zz"), &[]),
+        "the same files read twice are not"
+    );
+
+    let _ = std::fs::write(i18n.join("zz.toml"), "\"test.reload\" = \"second\"\n");
+    assert!(reload(&dir, Some("zz"), &[]), "an edited catalog is");
+    assert_eq!(tr("test.reload", "English"), "second");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn shipped_locales_are_well_formed() {
     for (code, name) in SHIPPED_LOCALES {

@@ -226,7 +226,7 @@
 "general.updates_disclosure" = "C'est la seule connexion réseau que PolterType établit. Elle récupère sur GitHub un petit fichier de version — aucun compte, aucun identifiant, rien sur vous ni sur ce que vous tapez. Une nouvelle version est téléchargée, vérifiée par somme de contrôle, puis laissée telle quelle jusqu'à ce que vous quittiez l'application ou cliquiez sur « Redémarrer pour mettre à jour ». Jamais installée pendant que vous tapez."
 "general.interface_language" = "Langue de l'interface"
 "general.language_system" = "Système"
-"general.interface_language_hint" = "S'applique à la réouverture de cette fenêtre. Ce qui n'est pas traduit reste en anglais, et une extension peut apporter sa propre langue."
+"general.interface_language_hint" = "S'applique dès que vous choisissez ; le menu de la zone de notification suit à l'enregistrement. Ce qui n'est pas traduit reste en anglais, et une extension peut apporter sa propre langue."
 "general.theme" = "Thème"
 "general.system_follows_os_light" = "« Système » suit la préférence clair/sombre du système d'exploitation. Enregistrez pour conserver ce choix."
 "general.tray_icon" = "Icône de la zone de notification"

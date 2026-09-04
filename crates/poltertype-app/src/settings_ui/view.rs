@@ -1169,8 +1169,9 @@ impl SettingsApp {
             .push(
                 Text::new(tr(
                     "general.interface_language_hint",
-                    "Applies when this window is reopened. Anything not translated stays \
-                     English, and a plug-in can bring a language of its own.",
+                    "Applies as you pick it; the tray menu follows once you save. Anything \
+                     not translated stays English, and a plug-in can bring a language of \
+                     its own.",
                 ))
                 .size(11)
                 .color(b.muted),

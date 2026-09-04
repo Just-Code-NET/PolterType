@@ -26,6 +26,10 @@
 //! hash lookup returning a `&'static str`, so the view function
 //! allocates nothing per frame. Calling [`tr`] earlier, or after an
 //! `init` that found no catalog, returns the English fallback.
+//!
+//! [`reload`] re-reads the same directories and swaps the catalog in,
+//! which is how a language picked in Settings reaches a window and a
+//! tray menu that are already drawn.
 
 mod catalog;
 mod consts;
@@ -38,7 +42,7 @@ pub use catalog::Catalog;
 pub use consts::{I18N_DIR, LOCALE_ENV, PLUGIN_NAMESPACE, SHIPPED_LOCALES};
 pub use detect::resolve_locale;
 pub use locales::installed_locales;
-pub use lookup::{active_catalog, active_locale, build, init, sources, tr, tr_args};
+pub use lookup::{active_catalog, active_locale, build, init, reload, sources, tr, tr_args};
 pub use types::CatalogSource;
 
 #[cfg(test)]

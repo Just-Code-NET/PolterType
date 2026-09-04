@@ -29,8 +29,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
   you dropped into `<config-dir>/poltertype/i18n/` yourself — so a
   translation can be tried without hand-editing `config.toml`, and a
   language PolterType has no name for is offered under its code rather
-  than hidden. It takes effect when the window is reopened, because the
-  catalog is read once, before the first widget exists.
+  than hidden. The window changes language as you pick it, and the tray
+  menu follows when the settings are saved — neither waits for a
+  restart, and the tray's own words are rewritten where they stand.
 
 - **The whole window and the tray menu are translated, not just the
   panes.** The side navigation, every pane's footnotes and form labels,
@@ -67,7 +68,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **`<config-dir>/poltertype/i18n/` is read at last.** The loader only
-  ever looked at the shipped catalog, so the edit-and-reopen loop
+  ever looked at the shipped catalog, so the edit-and-reload loop
   `docs/TRANSLATING_THE_UI.md` promises translators did not work and a
   language PolterType does not ship could not be tried without editing
   the source tree. Catalogs are now layered — shipped, then plug-ins,
