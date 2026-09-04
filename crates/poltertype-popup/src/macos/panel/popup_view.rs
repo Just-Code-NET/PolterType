@@ -9,8 +9,10 @@ use objc2_foundation::MainThreadMarker;
 
 use super::callbacks::{click_at, hover_at};
 
+// As visible as the class below: `define_class!` names it in the
+// class's own interface, and a private type there is E0446.
 #[derive(Default)]
-struct PopupViewIvars;
+pub(super) struct PopupViewIvars;
 
 define_class!(
     // Safety:
