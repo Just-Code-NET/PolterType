@@ -49,7 +49,12 @@ Four consequences worth knowing before editing `settings_ui`:
 - **The i18n catalog must be loaded before the first widget exists.**
   `tr` is called from the view function, which runs every frame.
   Finding no catalog is not an error — every call site is written in
-  English and simply stays that way.
+  English and simply stays that way. It can be *replaced* while the
+  window runs (`i18n::reload`, what the language picker calls), which
+  costs nothing here because `view` is rebuilt from scratch anyway —
+  but anything the window cached at load time, a plug-in's translated
+  manifest above all, has to be re-read by whoever changed the
+  language.
 - **`exit_on_close_request(false)` is load-bearing.** The window
   intercepts the close request so an unsaved Wordlists edit is flushed
   to disk first. Without it, a user who typed a word and used the

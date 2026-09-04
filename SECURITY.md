@@ -85,6 +85,11 @@ The things that would actually hurt someone:
   it looks, tell us.
 - **Smart commands and the plug-in loader** — anything that turns
   data-only configuration into code execution.
+- **A plug-in's translation catalog.** It is confined to
+  `plugin.<id>.`: an extension can reword its own pane and its own
+  tray entries, and nothing else. A file that reaches a label
+  PolterType drew itself — a button, a warning, the update entry — is
+  exactly the report we want.
 
 ## Out of scope
 

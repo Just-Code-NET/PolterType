@@ -4273,3 +4273,58 @@ cross-layout twin *is* a real word is a permanent veto on correcting
 that word, which is the same failure as a poisoned overlay arriving by
 a respectable route. `src` (uk-UA `ікс`), `cfg` (`сап`) and `ptr`
 (`зек`) failed that check and were left out.
+
+## 2026-09-04 — A language that changes while the app runs, so the catalog is swapped rather than re-read
+
+`tr(key, english)` returns `&'static str`. That is what lets the view
+function do several hundred lookups a frame and allocate nothing, and
+it is also what made the catalog a `OnceLock`: a string handed out has
+to stay valid for as long as any widget might still be holding it, and
+writing the map once and never touching it again is the cheapest way to
+promise that.
+
+The bill arrived when the language became something a user picks. The
+window only spoke the new language after it was closed and reopened —
+it is a subprocess, so a new one read a new catalog — and the tray,
+which outlives every window, never spoke it at all: its menu had been
+built from the words the process started with, so Save, Reload and
+closing the window all left it exactly as it was.
+
+Three ways out.
+
+**Return an owned string.** `tr` allocates per call, at 250 call sites,
+on every frame. The signature that keeps the view function free stops
+being free, and for a value that changes a handful of times in a
+session's life.
+
+**Reference-count it.** `Arc<Catalog>` behind an `ArcSwap`, with `tr`
+returning a guard instead of a `&'static str`. Correct, bounded, and it
+rewrites every call site — a translated label could no longer be handed
+straight to a widget constructor.
+
+**Leak it and swap the pointer.** The strings stay `'static` because
+nothing is ever freed; `tr` keeps both its signature and its cost, an
+uncontended read lock around the same hash lookup. What is paid is
+memory: one catalog per language that actually changed, tens of
+kilobytes each, never given back.
+
+We took the leak. The bound is what a person does, not what a loop
+does: picking every shipped language and coming back holds five
+catalogs. `reload` compares the fresh catalog against the live one and
+swaps only on a difference, so a settings change that touched something
+else costs nothing at all.
+
+Two consequences worth writing down. The tray's entries are now created
+wordless and written by a single function, because the words then exist
+in exactly one place — and that place is what a language change calls
+again; a second copy in the construction path is a copy that drifts.
+And reading the files again, rather than only re-resolving the locale,
+makes this the translator's loop as well: edit a catalog, press Reload,
+see it.
+
+What is deliberately left behind: a plug-in's tray entries, built from
+its manifest when it is discovered, and the `POLTERTYPE_LOCALE` its
+process was handed when it was spawned. Both would mean rebuilding a
+menu whose ids the event loop already holds, or restarting somebody
+else's program because a label changed. They take the new language at
+the next start, and `docs/KNOWN-GAPS.md` says so.

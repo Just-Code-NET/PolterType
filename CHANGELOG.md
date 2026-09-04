@@ -65,6 +65,18 @@ and the project follows [Semantic Versioning](https://semver.org/).
   Українська beside the system default. English needs no catalog: it
   is compiled into every call site.
 
+### Changed
+
+- **The file-organization rules became a gate rather than a
+  convention.** `cargo xtask style` reads the tree and fails on what
+  `CONTRIBUTING.md` had only ever asked for — one kind of thing per
+  file, unit tests in a sibling `tests.rs`, a platform `cfg` only on
+  the declaration that picks a per-OS module — and it runs in the
+  pre-commit hook and in CI. The tree was brought under it in the same
+  breath: `poltertype-app` and `poltertype-core` now hold no platform
+  `cfg` at all, and the files that had grown into bags were split.
+  Nothing a user can see changed.
+
 ### Fixed
 
 - **`<config-dir>/poltertype/i18n/` is read at last.** The loader only

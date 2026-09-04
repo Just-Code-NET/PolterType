@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.29.0**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.31.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -52,6 +52,11 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
   a second explicit toggle to reach the network at all.
 - **Configurable** — autostart, per-language allowlist, per-app
   exceptions, hotkeys, sound themes.
+- **Speaks your language** — the window and the tray menu ship in
+  English, German, Spanish, French and Ukrainian, picked in Settings
+  and applied without a restart. A new one is a single TOML file and
+  no rebuild: see
+  [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
 - **Open source** — MIT licensed.
 
 ## Platforms

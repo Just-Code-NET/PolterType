@@ -1,4 +1,4 @@
-# Known gaps (as of v0.30.0)
+# Known gaps (as of v0.31.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,24 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.31.0 pass actually checked (2026-09-04).** The interface
+language, on **Hyprland/Wayland** on the development laptop, against a
+debug build in a config directory of its own. Picking French in
+Settings redrew the whole window with no save and no reopening; after
+Save, the tray menu — read back entry by entry from the same dbusmenu
+a panel draws — had gone from Ukrainian to French in the process that
+was already running, down to the submenu's empty row. The four shipped
+catalogs were checked mechanically as well: 249 keys each, none
+missing, extra or empty, and every `{}` count matching the English at
+the call site.
+
+What this pass did **not** check: everything else. No bullet below was
+re-measured — read them as the 0.30.0 pass left them — and no other
+desktop, no Windows and no macOS ran this build at all. The relabel
+reaches them through `tray-icon`'s own `set_text`, the same call the
+pause entry has used on every platform all along, so elsewhere it is
+reasoned rather than measured.
 
 **What the 0.30.0 pass actually checked (2026-09-02).** Three reports
 that all name the same session, so the pass was run on that session:
@@ -1210,6 +1228,16 @@ move too fast to be true.
   only what the compositor hands it and only mutter does (see
   `DECISIONS.md`, 2026-08-01). AT-SPI *is* used for the caret and the
   focused application, which is a different interface entirely.
+- **A plug-in's tray entries keep the language PolterType started
+  in.** The interface itself changes language while it runs — the
+  window as you pick it, the tray menu once the settings are saved —
+  and a plug-in's *settings pane* follows, because its manifest is
+  re-read. Its **tray** entries do not: those are built from that
+  manifest when the plug-in is discovered, so they take the new
+  language at PolterType's next start — and neither does a plug-in
+  **service**, started once and keeping the `POLTERTYPE_LOCALE` it was
+  handed then. A command run on demand is spawned per call and gets
+  the current one.
 - **The onboarding walkthrough exists since 0.7.0, and has never run
   on macOS.** The tray alert opens the Settings window on its **Setup**
   pane (`poltertype --setup`), which probes the live machine via

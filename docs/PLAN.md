@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-08-30 (v0.29.0).
+> Created: 2026-05-02. Last updated: 2026-09-04 (v0.31.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -342,7 +342,11 @@ autostart = true           # honoured on all three platforms since
                            # fallback — see DECISIONS, 2026-08-21)
 sound_on_correct = true
 show_notifications = false
-ui_language = "system"     # or "en", "uk"
+ui_language = "system"     # "system" reads the environment; "en" is
+                           # compiled in; "de", "es", "fr" and "uk"
+                           # ship as catalogs, and any language code
+                           # with a catalog on disk works — see
+                           # docs/TRANSLATING_THE_UI.md
 ui_theme = "system"        # Settings window theme: "system", "light", "dark"
 tray_icon = "color"        # tray icon: "color" (a hue per layout),
                            # "mono" (one neutral badge), "flag" (the
@@ -367,6 +371,11 @@ ignore_in_password_fields = true
 idle_timeout_ms = 2000
 suppress_in_identifiers = true   # skip snake_case / camelCase / letter+digit
 suppress_for_all_caps = true     # skip URL, HTTP, API, ССЫЛКА…
+hold_keys = false                # hold keystrokes back during a
+                                 # correction (Linux/evdev only); costs
+                                 # a small delay, so it is off by
+                                 # default. `POLTERTYPE_HOLD_KEYS`
+                                 # overrides; read at startup
 
 [exceptions]
 # EMPTY by default, deliberately — see DECISIONS.md, "Reversed: no
@@ -436,6 +445,10 @@ enabled = false
 [updates]
 enabled              = true
 check_interval_hours = 24   # floor of 1 is enforced in code; 0 means hourly, NOT off
+local_signing_identity = ""  # macOS only: a self-signed identity to
+                             # re-sign an update with, so the OS keeps
+                             # the permissions granted to the old copy.
+                             # Empty = ad-hoc, as before
 
 [ai]
 enabled      = false
