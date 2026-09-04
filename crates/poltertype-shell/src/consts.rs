@@ -14,4 +14,10 @@ pub const DESKTOP_ID: &str = "poltertype";
 /// from the geometry rather than filtered down from one master. 16 is
 /// absent because `poltertype-icon` refuses a PNG below
 /// `MIN_PNG_SIZE`, and nothing on the desktop asks for one.
+///
+/// Only `desktop::linux` reads it, and the other two platforms compile
+/// that module away — so without the allow this table is dead code
+/// there, which CI's `-D warnings` turns into a failed build no
+/// compiler on a Linux machine can predict.
+#[allow(dead_code)]
 pub(crate) const HICOLOR_SIZES: &[u32] = &[32, 48, 64, 128, 256];
