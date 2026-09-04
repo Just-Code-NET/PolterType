@@ -50,6 +50,25 @@ sidebar and not at all on the About card for four releases, with
 every test passing, because a renderer bug is only visible on
 screen (issue #49).
 
+**If anything under a `macos/` or `windows/` path moved, rehearse the
+build before you tag:**
+
+```bash
+gh workflow run release.yml --ref main    # ~15 min, publishes nothing
+```
+
+Nothing on a Linux machine compiles those modules — `cargo check`,
+both clippy passes and `cargo xtask style` all read straight past
+`#[cfg(target_os = …)]` — so the release workflow is the first
+compiler that ever sees them. The workflow's release job is tag-gated,
+so a dispatch on `main` builds all four installers and creates
+nothing. v0.31.0 learned this the expensive way: two visibility errors
+that exist only on macOS, each found by a tagged run, each costing a
+delete-the-tag / re-tag / wait cycle. Rehearsing would have cost the
+same waiting and left the tag alone — and it takes two rounds either
+way, since rustc stops at the first phase that fails and the second
+error was invisible until the first was gone.
+
 ## 2. Sync the docs — MANDATORY (~10 min)
 
 **No tag ships while the docs still describe the previous
