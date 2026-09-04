@@ -298,6 +298,6 @@
 "about.version" = "Version {}"
 "about.report_an_issue" = "Ein Problem melden"
 "about.config_line" = "Konfiguration: {}"
-"about.power_user_escape_hatches" = "Notausgänge für Fortgeschrittene"
+"about.power_user_escape_hatches" = "Notlösungen für Fortgeschrittene"
 "about.reload_from_disk" = "Von der Festplatte neu laden"
 "about.reset_defaults" = "Auf Standardwerte zurücksetzen"

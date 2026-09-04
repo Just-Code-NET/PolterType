@@ -298,6 +298,6 @@
 "about.version" = "Version {}"
 "about.report_an_issue" = "Signaler un problème"
 "about.config_line" = "Configuration : {}"
-"about.power_user_escape_hatches" = "Issues de secours pour utilisateurs avancés"
+"about.power_user_escape_hatches" = "Options de secours pour utilisateurs avancés"
 "about.reload_from_disk" = "Recharger depuis le disque"
 "about.reset_defaults" = "Rétablir les valeurs par défaut"
