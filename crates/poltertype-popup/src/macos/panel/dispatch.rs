@@ -18,7 +18,7 @@ thread_local! {
     pub(super) static STATE: RefCell<Option<PanelState>> = const { RefCell::new(None) };
 }
 
-pub(super) fn register_events(events: Sender<PopupUiEvent>) {
+pub(crate) fn register_events(events: Sender<PopupUiEvent>) {
     // A second registration means a second popup handle — the tests do
     // that; the first sender is as good as any.
     let _ = EVENTS.set(events);
@@ -28,7 +28,7 @@ pub(super) fn register_events(events: Sender<PopupUiEvent>) {
 /// `create_popup` runs before the tao event loop starts, so this (and
 /// everything else here) must survive being the first AppKit call the
 /// process makes on the main queue.
-pub(super) fn show_on_main(model: PopupModel) {
+pub(crate) fn show_on_main(model: PopupModel) {
     let Some(mtm) = MainThreadMarker::new() else {
         warn!("suggestion popup: not on the main thread; dropping show");
         return;
@@ -49,7 +49,7 @@ pub(super) fn show_on_main(model: PopupModel) {
 }
 
 /// Entry point for `hide`. Idempotent.
-pub(super) fn hide_on_main() {
+pub(crate) fn hide_on_main() {
     STATE.with(|cell| {
         if let Some(state) = cell.borrow_mut().as_mut() {
             state.hide();

@@ -137,7 +137,7 @@ fn cg_image(pixmap: &tiny_skia::Pixmap) -> Option<CGImage> {
 /// `"Ctrl+Shift"` reads as a Windows chord to a Mac user; the same
 /// keys are `⌃⇧` here. Unknown tokens are dropped rather than shown
 /// half-translated.
-pub(super) fn mac_hint(hint: &str) -> String {
+pub(crate) fn mac_hint(hint: &str) -> String {
     hint.split('+')
         .filter_map(|token| match token.trim().to_lowercase().as_str() {
             "ctrl" | "control" => Some('⌃'),
