@@ -243,8 +243,11 @@ function with a special case.
 
 Two separate things can be translated, and neither needs any Rust:
 
-* **The settings window** — one TOML file under `data/i18n/`. The whole
-  guide is [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
+* **The settings window** — one TOML file, kept in your own config
+  directory rather than in this repository: the set of languages the
+  build ships is closed for now, and a catalog of your own works the
+  same and is yours to share. The whole guide is
+  [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
 * **The README quick-start** — a `README.<lang>.md` beside this file.
   `README.de.md`, `README.es.md`, `README.fr.md` and `README.uk.md` are
   the shape to copy.

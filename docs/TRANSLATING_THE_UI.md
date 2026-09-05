@@ -12,19 +12,22 @@ layouts: the things that vary between people live in data.
 
 ## The short version
 
-1. Copy any catalog in `data/i18n/` — German, Spanish, French and
-   Ukrainian ship — to `data/i18n/<your-language>.toml`.
+1. Copy any catalog PolterType ships — German, Spanish, French and
+   Ukrainian, in `data/i18n/` here and in `<data_dir>/i18n/` in an
+   installed copy — to
+   `<config-dir>/poltertype/i18n/<your-language>.toml`.
 2. Translate the right-hand side of each line.
 3. Pick your language under **General → Appearance → Interface
    language**. The window changes as you pick it; save, and the tray
    menu follows.
 
-That is the whole loop. To try it without touching the source tree,
-drop the file into `<config-dir>/poltertype/i18n/` instead — the picker
-offers whatever it finds on disk, so a file you dropped in yourself is
-listed beside the shipped ones (under its bare code if PolterType has
-no name for that language). `[general].ui_language` in `config.toml` is
-the same setting, if you would rather type it.
+That is the whole loop, and nothing in it is a build: the picker offers
+whatever it finds on disk, so a file you dropped in yourself is listed
+beside the shipped ones (under its bare code if PolterType has no name
+for that language). `[general].ui_language` in `config.toml` is the
+same setting, if you would rather type it — and the default,
+`"system"`, picks your file up on its own once its name matches the
+locale you already run.
 
 ---
 
@@ -42,7 +45,7 @@ Four rules, each of which exists because breaking it is easy:
 
 * **A missing key is fine.** The English original is compiled into the
   program at every call site, so anything you have not translated
-  stays English. A half-finished file is a useful file — send it.
+  stays English. A half-finished file is a useful file.
 * **An empty value means "not yet".** `"key" = ""` is ignored rather
   than drawn, because a blank button is worse than an English one.
 * **`{}` is a value filled in at run time**, in order. Keep the same
@@ -169,19 +172,31 @@ clicked.
 
 ---
 
-## Getting it upstream
+## Which languages ship, and where yours lives
 
-Open a PR with the one file. Two things make it easy to review:
+Five: English, plus the German, Spanish, French and Ukrainian
+catalogs. **That set is closed for now** — a language outside it lives
+in `<config-dir>/poltertype/i18n/` rather than in this repository. Two
+reasons, and the first is the one that decides it: a shipped catalog is
+a standing promise, re-checked complete and correct at every release
+against an English original that moves, and the installers are already
+north of 55 MB before any of that.
 
-* **Say which strings you were unsure about.** Several are terms of
-  art — "identifier guard", "plausibility", "stop words" — and a
-  translator's note is more useful than a confident wrong guess.
-* **Keep the section comments** from `uk.toml`. They group the file by
-  pane, which is how the next person will read it.
+None of which makes a catalog of your own second class. It is the same
+file the shipped ones are, it wins over them key by key, the picker
+lists it the same way, and it survives updates because your config
+directory is not what an installer replaces. It is also **yours to pass
+around**: send the TOML to anyone who wants it and they drop it in the
+same place — no build, no plug-in, nothing to ask us for.
 
-If a string reads awkwardly because the English is awkward, say so.
-Fixing the English is usually the better patch, and it improves every
-other language at the same time.
+Two habits worth keeping from the shipped files: note the strings you
+were unsure about somewhere, because several are terms of art
+("identifier guard", "plausibility", "stop words"), and keep the
+section comments from `uk.toml`, which group the file by pane.
+
+What *is* worth a PR is the English. If a string reads awkwardly in
+your language because the English is awkward, say so — fixing the
+English is the better patch and it improves every catalog at once.
 
 ---
 

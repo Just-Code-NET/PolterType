@@ -54,8 +54,8 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
   exceptions, hotkeys, sound themes.
 - **Speaks your language** — the window and the tray menu ship in
   English, German, Spanish, French and Ukrainian, picked in Settings
-  and applied without a restart. A new one is a single TOML file and
-  no rebuild: see
+  and applied without a restart. Adding one of your own is a single
+  TOML file and no rebuild: see
   [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
 - **Open source** — MIT licensed.
 
