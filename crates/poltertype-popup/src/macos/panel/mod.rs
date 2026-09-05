@@ -35,7 +35,6 @@ mod state;
 mod types;
 
 pub(super) use dispatch::{hide_on_main, register_events, show_on_main};
-pub(super) use show::mac_hint;
 
 #[cfg(test)]
 mod tests;

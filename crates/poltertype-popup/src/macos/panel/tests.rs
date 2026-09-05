@@ -1,7 +1,7 @@
 //! The accept-hint rewrite. `[suggestions].accept_modifiers` is a
 //! free-text config value, so this runs on whatever the user typed.
 
-use super::mac_hint;
+use super::show::mac_hint;
 
 #[test]
 fn modifiers_are_rewritten_in_macos_notation() {
