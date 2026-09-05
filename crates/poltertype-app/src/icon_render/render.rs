@@ -4,8 +4,8 @@
 use super::*;
 use anyhow::{Context, Result};
 use poltertype_core::settings::TrayIconStyle;
+use poltertype_tray::Icon;
 use poltertype_types::LayoutId;
-use tray_icon::Icon;
 
 /// Build a tray icon for `layout`: its two-letter short code over a
 /// colour derived from the id, grey with a pause mark when `paused`.

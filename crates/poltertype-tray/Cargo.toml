@@ -1,6 +1,6 @@
 [package]
 name                  = "poltertype-tray"
-description           = "Per-OS quirks of the system tray, kept out of the binary crate."
+description           = "The system tray and its per-OS quirks, kept out of the binary crate."
 version.workspace     = true
 edition.workspace     = true
 license.workspace     = true
@@ -13,7 +13,12 @@ publish.workspace     = true
 workspace = true
 
 [dependencies]
-tracing = { workspace = true }
+tracing   = { workspace = true }
+thiserror = { workspace = true }
+# The tray itself on Windows and macOS, and the menu type on all three:
+# `tray_icon::menu` is `muda` re-exported, and the binary builds its
+# menu out of it whichever backend ends up showing the icon.
+tray-icon = { workspace = true }
 
 # `glib` reaches this crate anyway, under `tray-icon` →
 # `libappindicator`; naming it here adds a direct handle on a library
@@ -25,3 +30,11 @@ glib = { workspace = true }
 # asks exactly the question the tray is about to ask. Already in the
 # tree underneath it — this is a direct edge, not a new dependency.
 libloading = "0.8"
+# The tray on Linux. Reached at this level rather than through the
+# `libappindicator` wrapper because the wrapper hides the pointer, and
+# the tooltip call needs it — see `indicator.rs`. Same crate, same
+# version `tray-icon` already resolves.
+libappindicator-sys = "0.9"
+# The icon file an indicator reads back off disk. One PNG, one pixel
+# format, one direction — the same trade `poltertype-icon` makes.
+png = { workspace = true }

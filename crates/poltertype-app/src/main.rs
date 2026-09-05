@@ -76,12 +76,11 @@ use poltertype_input::{
     KeyEvent, create_emitter, create_focus_tracker, create_key_gate, create_listener,
 };
 use poltertype_popup::{PopupUiEvent, create_popup};
+use poltertype_tray::Tray;
 use poltertype_types::LayoutId;
 use tao::event::Event;
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tracing::{error, info, warn};
-use tray_icon::TrayIcon;
-use tray_icon::TrayIconBuilder;
 use tray_icon::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 fn main() -> Result<()> {
@@ -588,17 +587,17 @@ fn main() -> Result<()> {
     // the user reading the journal. See `poltertype-tray`.
     poltertype_tray::quiet_gtk_tray_logs();
 
-    let tray: TrayIcon = TrayIconBuilder::new()
-        .with_menu(Box::new(menu))
-        .with_tooltip(tooltip_for(
+    let tray = Tray::new(
+        Box::new(menu),
+        initial_icon,
+        &tooltip_for(
             initial_layout.as_ref(),
             start_paused,
             input_alert.is_some(),
             0,
-        ))
-        .with_icon(initial_icon)
-        .build()
-        .context("build tray icon")?;
+        ),
+    )
+    .context("build tray icon")?;
     apply_tray_visibility(&tray, tray_style);
 
     // Deliberately on the error path, not gated by

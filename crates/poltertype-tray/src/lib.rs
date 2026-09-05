@@ -1,13 +1,32 @@
-//! Per-OS quirks of the system tray.
+//! The system tray, and the per-OS quirks around it.
 //!
-//! `tray-icon` covers the tray itself everywhere, so this is
-//! deliberately not a tray abstraction — the binary still builds its
-//! `TrayIcon` directly. What lives here is the platform *noise* around
-//! that, which would otherwise put `#[cfg(target_os)]` in
-//! `poltertype-app`. Today that is one thing, on Linux — see
-//! [`quiet_gtk_tray_logs`].
+//! `tray-icon` is the tray on Windows and macOS and this crate is a
+//! pass-through there. On Linux it is not: its `set_tooltip` is an
+//! empty function on that platform, so the indicator is built here
+//! instead — see [`indicator`] for why that is worth a backend of its
+//! own. [`quiet_gtk_tray_logs`] and [`unavailable_reason`] are the
+//! noise around it that would otherwise put `#[cfg(target_os)]` in
+//! `poltertype-app`.
 
 #![deny(unsafe_op_in_unsafe_fn)]
+
+mod error;
+mod icon;
+#[cfg(test)]
+mod tests;
+
+pub use error::TrayError;
+pub use icon::Icon;
+
+#[cfg(target_os = "linux")]
+mod indicator;
+#[cfg(target_os = "linux")]
+pub use indicator::Tray;
+
+#[cfg(not(target_os = "linux"))]
+mod upstream;
+#[cfg(not(target_os = "linux"))]
+pub use upstream::Tray;
 
 #[cfg(target_os = "linux")]
 mod linux;

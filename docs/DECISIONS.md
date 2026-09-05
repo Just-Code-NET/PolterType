@@ -4328,3 +4328,64 @@ process was handed when it was spawned. Both would mean rebuilding a
 menu whose ids the event loop already holds, or restarting somebody
 else's program because a label changed. They take the new language at
 the next start, and `docs/KNOWN-GAPS.md` says so.
+
+---
+
+## 2026-09-05 — The Linux tray is ours, because a tooltip has to come from somewhere
+
+`tray-icon` has been the tray on all three platforms since the first
+release, and on two of them it still is. On Linux it no longer builds
+the icon: `poltertype-tray` creates the `AppIndicator` itself.
+
+The reason is one empty function. `TrayIcon::set_tooltip` on Linux
+takes the text, ignores it and returns `Ok(())` — documented as
+"Linux: Unsupported", and still that in 0.24.2, five versions ahead of
+the one we pin. So every state change PolterType made — a layout
+switch, a pause, a draft arriving — wrote a tooltip that went nowhere,
+until somebody asked why the icon had no hover text
+([#59](https://github.com/Just-Code-NET/PolterType/issues/59)). It
+never had one.
+
+The library underneath is not the problem. libayatana-appindicator
+implements `app_indicator_set_tooltip_full`, and the
+StatusNotifierItem `ToolTip` property it fills is what a host draws on
+hover — Plasma's own delegate binds its tooltip to `ToolTipTitle` and
+falls back to nothing, while `Title`, the one property we were setting
+by accident, is only the label in its hidden-items list. Reaching that
+function needs the `AppIndicator` pointer, and `tray-icon` keeps it
+private: no accessor, no extension trait, nothing to ask.
+
+Three ways to that pointer.
+
+**Fork `tray-icon`.** Fifteen lines and upstreamable — and a
+source-controlled dependency in a shipped product for as long as it
+takes to land, which every packager and everyone building from source
+inherits.
+
+**Wait for upstream.** The function has been empty for as long as the
+crate has existed, and the reporter is on the current release.
+
+**Create the indicator ourselves.** Two hundred lines in the crate that
+exists for exactly this class of problem, against the library the
+process already loads, with nothing off crates.io.
+
+We took the third. What keeps it a small change rather than a rewrite
+is that the menu never moved: `tray_icon::menu` is `muda` re-exported,
+the binary still builds its menu out of it, and the indicator is handed
+the same `gtk::Menu` `tray-icon` would have handed it. Ours now are the
+icon file, the status and the tooltip — and the icon path is a
+transcription of that backend, the same calls in the same order, so
+that a desktop it already worked on cannot tell the difference.
+
+Two things changed on purpose. The item's id is `poltertype` rather
+than the `tray-icon tray app` that every application built on that
+crate shares, and its `Title` is `PolterType` rather than the
+lower-cased process name a host was falling back to. A panel that
+remembers per-item whether it was shown may treat ours as a new item
+once, which is the price of no longer answering to a name that was
+never about us.
+
+One thing degrades instead of failing. The tooltip symbol is looked up
+by name, once, at construction: a system carrying the pre-Ayatana
+`libappindicator3`, which has no tooltip API at all, gets the tray it
+had before and a debug line saying why.

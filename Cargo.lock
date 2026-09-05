@@ -3985,8 +3985,12 @@ name = "poltertype-tray"
 version = "0.31.0"
 dependencies = [
  "glib",
+ "libappindicator-sys",
  "libloading 0.8.9",
+ "png",
+ "thiserror 1.0.69",
  "tracing",
+ "tray-icon",
 ]
 
 [[package]]

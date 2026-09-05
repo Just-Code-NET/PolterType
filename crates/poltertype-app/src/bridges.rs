@@ -13,10 +13,10 @@ use poltertype_core::i18n::tr_args;
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::SettingsStore;
 use poltertype_shell::notification_sender_ready;
+use poltertype_tray::Tray;
 use poltertype_types::LayoutId;
 use tao::event_loop::EventLoopProxy;
 use tracing::{debug, info, warn};
-use tray_icon::TrayIcon;
 use tray_icon::menu::{MenuEvent, MenuItem};
 
 use crate::consts::*;
@@ -27,7 +27,7 @@ use crate::types::*;
 
 pub(crate) fn handle_engine_event(
     ev: SwitcherEvent,
-    tray: &TrayIcon,
+    tray: &Tray,
     item_pause: &MenuItem,
     state: &mut TrayState,
     settings: &Arc<SettingsStore>,

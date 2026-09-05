@@ -3,10 +3,10 @@
 use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::TrayIconStyle;
+use poltertype_tray::Tray;
 use poltertype_types::LayoutId;
 use poltertype_update::PendingUpdate;
 use tracing::{debug, warn};
-use tray_icon::TrayIcon;
 use tray_icon::menu::{MenuId, MenuItem, Submenu};
 
 use crate::consts::*;
@@ -59,7 +59,7 @@ pub(crate) fn tooltip_for(
 /// Redraw icon, tooltip and the pause item's text from `TrayState`. The
 /// icon is rasterised from scratch, so call this on a state change, not
 /// on a tick.
-pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayState) {
+pub(crate) fn refresh_tray(tray: &Tray, item_pause: &MenuItem, state: &TrayState) {
     let waiting = state.attention > 0;
     let icon_result = match state.layout.as_ref() {
         Some(l) => icon_render::for_layout(l, state.paused, waiting, state.style, state.polarity),
@@ -67,18 +67,18 @@ pub(crate) fn refresh_tray(tray: &TrayIcon, item_pause: &MenuItem, state: &TrayS
     };
     match icon_result {
         Ok(icon) => {
-            if let Err(e) = tray.set_icon(Some(icon)) {
+            if let Err(e) = tray.set_icon(icon) {
                 warn!(?e, "could not update tray icon");
             }
         }
         Err(e) => warn!(?e, "could not render tray icon"),
     }
-    if let Err(e) = tray.set_tooltip(Some(tooltip_for(
+    if let Err(e) = tray.set_tooltip(&tooltip_for(
         state.layout.as_ref(),
         state.paused,
         state.input_alert,
         state.attention,
-    ))) {
+    )) {
         warn!(?e, "could not update tray tooltip");
     }
     item_pause.set_text(pause_item_label(state.paused));
@@ -137,7 +137,7 @@ pub(crate) fn relabel_menu(menu: &TrayMenu, hooks_missing: bool, pending: Option
 /// issue #50 asked for. On Linux this asks the desktop for
 /// `AppIndicatorStatus::Passive`, and a StatusNotifier host is allowed
 /// to go on drawing a passive item: a request, not a guarantee.
-pub(crate) fn apply_tray_visibility(tray: &TrayIcon, style: TrayIconStyle) {
+pub(crate) fn apply_tray_visibility(tray: &Tray, style: TrayIconStyle) {
     if let Err(e) = tray.set_visible(style != TrayIconStyle::Hidden) {
         warn!(?e, "could not change the tray icon's visibility");
     }
@@ -208,7 +208,7 @@ pub(crate) fn rebuild_deferred_menu(
 /// on, redrawing only when the number changed: the icon is rasterised
 /// from scratch on every redraw.
 pub(crate) fn sync_attention(
-    tray: &TrayIcon,
+    tray: &Tray,
     item_pause: &MenuItem,
     state: &mut TrayState,
     menu: &plugins::PluginMenu,
