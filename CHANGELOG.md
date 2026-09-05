@@ -4,6 +4,44 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Hovering the tray icon says something on Linux too — where the
+  system's tray library is new enough.** The tooltip was written on
+  every state change and thrown away every time: `set_tooltip` is an
+  empty function in `tray-icon`'s Linux backend, in the version we pin
+  and in the five released since. PolterType now drives the indicator
+  itself and fills in the `ToolTip` property a panel reads on hover,
+  with the same sentence Windows and macOS have shown all along: the
+  current layout, whether switching is paused, whether the keyboard
+  hook is missing, and how many drafts are waiting.
+
+  **The API it needs arrived in libayatana-appindicator 0.6.0.** Debian
+  13, Ubuntu and Debian sid all still ship 0.5.94, which has no tooltip
+  functions at all — and the AppImage bundles the copy it was built
+  against, so it is on 0.5.94 too. There, and on the pre-Ayatana
+  `libappindicator3`, the symbol is looked up once, missed, and the
+  tray behaves exactly as it did before. Measured both ways on KDE
+  Plasma: the tooltip drawn on screen against 0.6.0, and the tray
+  unchanged against 0.5.94.
+
+### Changed
+
+- **The tray item says who it is.** It used to register as
+  `tray-icon tray app` — the id every application built on that crate
+  shares — and carried no title, so a panel listing hidden items fell
+  back to the lower-cased process name. It is now `poltertype`, titled
+  `PolterType`. A panel that remembers per-item whether an icon was
+  shown may treat it as a new item once.
+
+- **The guide to translating the interface no longer invites a PR.**
+  The set of languages the build ships is closed for now; a catalog of
+  your own lives in `<config-dir>/poltertype/i18n/`, where it loads the
+  same way, wins over the shipped files key by key, survives an update
+  and is a single file to pass to anyone who wants it.
+
 ## [0.31.0] — five languages in the interface, and a switch that needs no restart
 
 ### Added

@@ -1,4 +1,4 @@
-# Known gaps (as of v0.31.0)
+# Known gaps (as of v0.32.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,39 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.32.0 pass actually checked (2026-09-05).** The tray — on
+**KDE Plasma Wayland** and **Cinnamon X11** in the matrix guest, and on
+**Hyprland/Wayland** on the development laptop, against a build made in
+each place. The indicator is PolterType's own on Linux from this
+release, so the pass is about the tray and nothing else.
+
+The tooltip end to end, where the library allows one at all: with
+libayatana-appindicator 0.6.0 on the loader path, hovering the icon in
+Plasma drew **"PolterType — en-US"** beside the highlighted badge —
+photographed with KDE's own grabber, because the VirtualBox framebuffer
+composites a click but not a tooltip surface, and both the icon's
+tooltip and the panel clock's were invisible to it. Against Ubuntu's
+own 0.5.94 the same run drew nothing and logged the missing symbol,
+which is the honest state of the AppImage today; see the Linux bullet
+under "Loose ends".
+
+The menu underneath was re-measured on both guest sessions, since it
+now reaches the panel through an indicator we create: `tray-probe.py`
+walked the missed-word submenu off the item's own dbusmenu — empty
+state, an offer deferred, the word present afterwards — with no errors,
+on Plasma Wayland against each library version and on Cinnamon X11.
+
+The item's own properties were read back off D-Bus in all three
+sessions: id `poltertype`, title `PolterType`, an icon path that
+changes on every redraw, and a `ToolTip` carrying the same sentence the
+other two platforms have shown all along — the property that was empty
+in every release before this one.
+
+What this pass did **not** check: everything else. Windows and macOS
+never ran this build, and their tray is still `tray-icon`'s, untouched
+by any of it. No bullet below was re-measured — read them as the 0.31.0
+and 0.30.0 passes left them.
 
 **What the 0.31.0 pass actually checked (2026-09-04).** The interface
 language, on **Hyprland/Wayland** on the development laptop, against a
@@ -1384,6 +1417,20 @@ move too fast to be true.
   `docs/DECISIONS.md` and the 0.6.2 changelog entry.
 
 ## Loose ends, per platform
+
+- **Linux: the tray icon's tooltip needs libayatana-appindicator
+  0.6.0, and most distributions have not got there yet.** The tooltip
+  API is a 0.6.0 addition; Debian 13, Debian sid and every current
+  Ubuntu ship 0.5.94, where those functions do not exist at all.
+  PolterType looks the symbol up once at startup, misses it and does
+  without — so on those systems the icon has no hover text, exactly as
+  in every release before 0.32.0. **The AppImage is on the wrong side
+  of this too**: it bundles the copy from the machine that built it,
+  which is Ubuntu's 0.5.94, and the bundled library wins over whatever
+  the user has installed. Arch and anything else already on 0.6.0 get
+  the tooltip today. Closing the gap for everyone else means putting a
+  newer build inside the AppImage, which is a packaging decision
+  rather than a code one, and it has not been taken.
 
 - **macOS: what 0.7.0 changed in the input path has still never been
   exercised.** 0.6.2 was runtime-tuned on real hardware (macOS 15,
