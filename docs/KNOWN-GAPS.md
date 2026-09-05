@@ -1427,7 +1427,10 @@ move too fast to be true.
   in every release before 0.32.0. **The AppImage is on the wrong side
   of this too**: it bundles the copy from the machine that built it,
   which is Ubuntu's 0.5.94, and the bundled library wins over whatever
-  the user has installed. Arch and anything else already on 0.6.0 get
+  the user has installed — read off the published v0.32.0 AppImage
+  itself, where `nm -D` finds `app_indicator_set_title` and not one
+  tooltip symbol, so the item's new name reaches those users and its
+  hover text does not. Arch and anything else already on 0.6.0 get
   the tooltip today. Closing the gap for everyone else means putting a
   newer build inside the AppImage, which is a packaging decision
   rather than a code one, and it has not been taken.
