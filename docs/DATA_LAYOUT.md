@@ -63,7 +63,7 @@ copy that tree into the install location:
 
 ## What the app writes outside its own directories
 
-Everything above is data the app *reads*. Four things it *writes* sit
+Everything above is data the app *reads*. Five things it *writes* sit
 outside both the data and config directories, so they are easy to miss
 when auditing what PolterType leaves on a machine:
 
@@ -73,6 +73,7 @@ when auditing what PolterType leaves on a machine:
 | Instance lock | macOS `<config-dir>/dev.opensource.poltertype.lock` | every launch — the `single-instance` crate `flock`s a real file on macOS, unlike the abstract socket (Linux) and named mutex (Windows) it uses elsewhere, so macOS is the only platform where a file appears |
 | Staged update | `<data_local_dir>/poltertype/updates/` | see "Staged updates" below |
 | Desktop entry + icon | Linux only: `$XDG_DATA_HOME/applications/poltertype.desktop` and `$XDG_DATA_HOME/icons/hicolor/{32,48,64,128,256}x…/apps/poltertype.png` | every launch, but written only when absent, stale or stamped with an older version — and skipped entirely when a package already installed `poltertype.desktop` under `$XDG_DATA_DIRS`. The entry arrives by rename, through a momentary `.poltertype.<pid>.tmp` beside it — a menu cache watches the directory, not the file |
+| Tray icon | Linux only: `$XDG_RUNTIME_DIR/poltertype/tray-<n>.png`, or under the temp directory where a session sets no runtime dir | every redraw of the icon — a layout switch, a pause, a draft arriving. An indicator reads its icon from a file rather than from memory, and a panel caches by name, so each redraw writes the next number and deletes the one before it; the last goes when the app quits. Before 0.32.0 the same files were written by `tray-icon` under `tray-icon/` |
 
 None of these need elevation and none live outside the user's own
 profile. The autostart entry is derived state, never a source of

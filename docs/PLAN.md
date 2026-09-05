@@ -108,7 +108,7 @@ integration).
 | Crate | Purpose |
 |---|---|
 | `iced` 0.13+ | settings window UI |
-| `tray-icon` | system tray (Win/Mac/Linux) |
+| `tray-icon` | system tray on Windows and macOS, and the menu type on all three. The Linux indicator is built directly since 0.32.0, because that backend's tooltip is an empty function — `DECISIONS.md`, 2026-09-05 |
 | `global-hotkey` | global hotkeys |
 | ~~`auto-launch`~~ | run at login — **dropped in 0.6.2**. It sat in the manifest unused for the project's whole life while the Settings checkbox quietly did nothing. Replaced by `poltertype-autostart`, which drives each platform's own mechanism directly (LaunchAgent / run key / systemd user unit, with an XDG entry where there is no user manager) and needs no dependency at all. |
 | `single-instance` | forbid a second process |
