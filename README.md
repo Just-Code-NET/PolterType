@@ -55,7 +55,8 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 - **Speaks your language** — the window and the tray menu ship in
   English, German, Spanish, French and Ukrainian, picked in Settings
   and applied without a restart. Adding one of your own is a single
-  TOML file and no rebuild: see
+  TOML file and no rebuild, and the same file can send the Setup
+  pane's guide to a translation of it: see
   [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md).
 - **Open source** — MIT licensed.
 
@@ -163,7 +164,10 @@ Two caveats worth stating plainly:
 ## Stack
 
 - Pure Rust — no WebView, no Node.
-- `tao` event loop + `tray-icon` + `global-hotkey` + `single-instance`.
+- `tao` event loop + `global-hotkey` + `single-instance`; `tray-icon`
+  for the tray on Windows and macOS and for the menus everywhere, with
+  the Linux indicator driven against `libayatana-appindicator`
+  directly since v0.32.0.
 - `ureq` + `rustls` + `sha2` for the updater, plus `ed25519-dalek` to
   check the release manifest's signature (verification only; the app
   holds no secret).

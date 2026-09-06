@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-09-04 (v0.31.0).
+> Created: 2026-05-02. Last updated: 2026-09-07 (v0.33.1).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -668,7 +668,7 @@ engine only *pulls* focus state at word boundaries.
 
 ## 4. Repository structure
 
-The actual structure as of v0.2.0 (the original sketch diverged from
+The actual structure as of v0.33.1 (the original sketch diverged from
 it in several places: `assets/` and a root `tests/` do not exist,
 modules are split into "one entity — one file" directories, and
 `CONTRIBUTING.md` lives at the root, not in `docs/`):
@@ -676,15 +676,20 @@ modules are split into "one entity — one file" directories, and
 ```
 poltertype/
 ├── .cargo/config.toml           # the `cargo xtask` alias
-├── .github/workflows/{ci.yml,release.yml}
+├── .github/workflows/{ci.yml,release.yml,site.yml}
 ├── .githooks/                   # pre-commit / pre-push (installed by xtask)
 ├── docs/
 │   ├── PLAN.md                  # this file
+│   ├── ARCHITECTURE.md          # why each piece is shaped as it is
 │   ├── DECISIONS.md             # architecture decision log
+│   ├── KNOWN-GAPS.md            # what does not work despite looking like it does
 │   ├── DATA_LAYOUT.md           # the on-disk data tree + plugins
 │   ├── PERMISSIONS.md           # macOS Accessibility, Linux evdev/X11
+│   ├── MACOS_POPUP.md           # the AX caret and what it lies about
+│   ├── CODE_SIGNING.md          # published signing policy
 │   ├── AI.md                    # state and design of the AI subsystem
 │   ├── ADDING_A_LANGUAGE.md
+│   ├── TRANSLATING_THE_UI.md    # catalogs, plug-in strings, translated guides
 │   └── RELEASING.md
 ├── crates/
 │   ├── poltertype-app/          # binary: tray, Settings UI (separate process)
@@ -702,16 +707,30 @@ poltertype/
 │   ├── poltertype-update/       # GitHub-Releases updater (v0.4.0+); the
 │   │   │                        # only network code in a stock source build
 │   │   └── src/{check.rs, manifest.rs, download.rs, staging.rs, version.rs, apply/}
+│   ├── poltertype-popup/        # the suggestion tooltip; steals no focus
+│   │   └── src/{factory.rs, place.rs, render.rs, renderer.rs, linux/, macos/, windows/, noop.rs}
+│   ├── poltertype-tray/         # the tray itself since 0.32.0 (libayatana direct on Linux)
+│   │   └── src/{icon.rs, indicator.rs, linux.rs, upstream.rs, noop.rs}
+│   ├── poltertype-shell/        # per-OS app-shell quirks: instance lock, dock,
+│   │   │                        # .desktop entry, keycap glyphs, UI font
+│   │   └── src/{desktop/, dock/, font/, instance/, keys/, lifecycle/, notify/, process/}
+│   ├── poltertype-autostart/    # run at login; no per-OS dependency
+│   │   └── src/{linux.rs, macos.rs, windows.rs, noop.rs}
+│   ├── poltertype-icon/         # the brand mark as geometry — RGBA, PNG, .ico
+│   │   └── src/{render.rs, shapes.rs, ico/}
 │   ├── poltertype-ai/           # feature `ai`; real LlmDetector since 0.10.0,
 │   │   │                        # compiled into the installers since 0.12.0
 │   │   └── src/{factory.rs, detector.rs, wire.rs, transport.rs, locality.rs, cache.rs, keys.rs, ...}
 │   └── poltertype-types/        # shared types (LayoutId, KeyEvent, ...)
 ├── data/                        # source of truth, consumed by build.rs
 │   ├── layout-mappings/         # TOML overlays (en_us.toml, uk_ua.toml, ...)
+│   ├── i18n/                    # UI catalogs (de, es, fr, uk); English at the call sites
 │   └── wordlists/               # <stem>.txt.gz + -extras/-stop/-weak
 ├── installers/{wix,windows,macos,linux}/
+├── packaging/                   # AUR / winget / Homebrew manifests + bump.sh
 ├── scripts/setup-linux.sh
-├── xtask/                       # wordlists fetch, hooks install, icon, version
+├── xtask/                       # wordlists fetch, hooks install, icon, version,
+│                                # manifest sign/verify, style gate
 ├── Cargo.toml                   # workspace
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -725,8 +744,12 @@ section on file organization).
 
 A workspace of several crates gives us:
 
-- Clean isolation of OS code behind `#[cfg(...)]`, confined to
-  `poltertype-input` / `poltertype-layout`.
+- Clean isolation of OS code behind `#[cfg(...)]`, confined to seven
+  crates — `poltertype-input`, `-layout`, `-update`, `-popup`,
+  `-tray`, `-autostart` and `-shell`. `poltertype-app` and
+  `poltertype-core` hold **zero**, which is why a one-function GTK
+  quirk got a crate of its own rather than a `#[cfg]` in `main.rs`.
+  `cargo xtask style` enforces this rather than trusting it.
 - The AI crate behind `feature = "ai"` — not compiled by default.
 - The option to extract `poltertype-detect` as a standalone library if
   third-party use ever comes up.
@@ -830,8 +853,14 @@ Levels:
 
 1. **UI framework:** `iced` (pure Rust). Fallback — `egui`.
 2. **Bundle ID:** `dev.opensource.poltertype`.
-3. **UI languages v0.1:** EN + UK; the architecture is multilingual
-   (i18n via `fluent-rs` or `rust-i18n`, `.ftl` files in `assets/i18n/`).
+3. **UI languages:** English lives at the call sites, compiled in, so
+   a missing catalog degrades to readable English rather than a blank
+   button; German, Spanish, French and Ukrainian ship as catalogs.
+   Neither `fluent-rs` nor `rust-i18n` and no `.ftl` — a flat TOML
+   table per language under `data/i18n/`, read at run time, so adding
+   a language is a file rather than a rebuild, and a guide the window
+   links to can be translated the same way. See
+   [TRANSLATING_THE_UI.md](TRANSLATING_THE_UI.md).
 4. **Sounds v0.1:** CC0 placeholders; theme format — folders.
 5. **Default log level:** `info`.
 6. **v0.1 release channel:** GitHub Releases only.
@@ -840,7 +869,7 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.24.0 (2026-08-28).** Phases 0–8 are, in their core
+> **Status as of v0.33.1 (2026-09-07).** Phases 0–8 are, in their core
 > parts, complete and shipped; `CHANGELOG.md` is the release-by-release
 > record and does not need repeating here. Items that are **not** done
 > are deliberately left as
