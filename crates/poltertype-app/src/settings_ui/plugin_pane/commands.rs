@@ -32,6 +32,10 @@ impl PluginPane {
                 continue;
             }
             match control.kind {
+                // Deliberately no `Query`: a search box has nothing to
+                // ask until somebody has typed a question, and running
+                // its command on the way into the pane would be asking
+                // the plug-in the empty question.
                 ControlKind::Report | ControlKind::List => slots.push(Slot::control(i)),
                 ControlKind::Suggest if !control.command.trim().is_empty() => {
                     slots.push(Slot::control(i));

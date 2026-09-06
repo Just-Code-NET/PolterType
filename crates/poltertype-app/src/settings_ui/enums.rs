@@ -180,6 +180,14 @@ pub enum Message {
     PluginOpenLink(String),
     /// Runs one of the plug-in's declared commands by id.
     PluginCommandClicked(usize, String),
+    /// A question being typed into a plug-in's query box. Kept in the
+    /// pane and never written to the plug-in's config: it is a question,
+    /// not a setting.
+    PluginQueryTyped(usize, usize, String),
+    /// That question, asked. The answer arrives as
+    /// [`Self::PluginOutputLoaded`] and is drawn where a report's would
+    /// be — one box, one command, one answer.
+    PluginQueryAsked(usize, usize),
     /// Ask a plug-in to run a control's command again — the pane's
     /// refresh button, and what opening the pane sends for each
     /// command-backed control it has not asked for yet.

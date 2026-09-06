@@ -332,3 +332,48 @@ fn a_failing_plugin_is_quoted_rather_than_summarised_as_a_status_code() {
     let cut = last_words(&long).unwrap();
     assert_eq!(cut.chars().count(), 161, "160 and the ellipsis");
 }
+
+/// An extension declaring one command, for the argument-building tests.
+fn asks_with(args: &[&str]) -> DiscoveredExtension {
+    DiscoveredExtension {
+        id: "test-asker".to_owned(),
+        name: "Asker".to_owned(),
+        version: "0".to_owned(),
+        dir: std::env::temp_dir(),
+        exe: std::path::PathBuf::from("/bin/true"),
+        manifest: ExtensionManifest {
+            exe: "true".to_owned(),
+            commands: vec![PluginCommand {
+                id: "ask".to_owned(),
+                label: "Ask".to_owned(),
+                args: args.iter().map(|a| (*a).to_owned()).collect(),
+            }],
+            ..ExtensionManifest::default()
+        },
+        development: true,
+    }
+}
+
+#[test]
+fn a_question_that_would_read_as_an_option_is_refused() {
+    // The half that does not depend on a manifest author having
+    // remembered to put `--` before their `{query}`.
+    use super::commands::ask_query;
+    let ext = asks_with(&["ask", "--", "{query}"]);
+    assert!(ask_query(&ext, "ask", "   ").is_err());
+    assert!(ask_query(&ext, "ask", "--help").is_err());
+}
+
+#[test]
+fn a_question_replaces_its_placeholder_whole_and_nothing_else() {
+    use crate::plugins::consts::QUERY_PLACEHOLDER;
+    let ext = asks_with(&["ask", "--limit", "25", "--", "{query}"]);
+    let args =
+        super::commands::substituted(&ext, "ask", QUERY_PLACEHOLDER, "деплой {query}").unwrap();
+    assert_eq!(
+        args,
+        vec!["ask", "--limit", "25", "--", "деплой {query}"],
+        "only the argument that IS the placeholder is replaced, and what \
+         replaces it is not searched in turn"
+    );
+}

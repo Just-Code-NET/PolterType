@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use poltertype_core::plugins::DiscoveredExtension;
 use tracing::{info, warn};
 
-use crate::plugins::consts::{ROW_ID_PLACEHOLDER, STOP_COMMAND};
+use crate::plugins::consts::{QUERY_PLACEHOLDER, ROW_ID_PLACEHOLDER, STOP_COMMAND};
 use crate::plugins::menu::parse_rows;
 use crate::plugins::types::MenuRow;
 
@@ -53,23 +53,7 @@ pub fn run_command_for_row(
     command_id: &str,
     row_id: &str,
 ) -> Result<(), String> {
-    let cmd = ext
-        .manifest
-        .commands
-        .iter()
-        .find(|c| c.id == command_id)
-        .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
-    let args: Vec<String> = cmd
-        .args
-        .iter()
-        .map(|a| {
-            if a == ROW_ID_PLACEHOLDER {
-                row_id.to_owned()
-            } else {
-                a.clone()
-            }
-        })
-        .collect();
+    let args = substituted(ext, command_id, ROW_ID_PLACEHOLDER, row_id)?;
 
     spawn(&ext.exe, &args, &ext.dir, None)
         .map(|child| {
@@ -94,25 +78,69 @@ pub fn run_command_for_row_waiting(
     command_id: &str,
     row_id: &str,
 ) -> Result<String, String> {
+    let args = substituted(ext, command_id, ROW_ID_PLACEHOLDER, row_id)?;
+    info!(id = %ext.id, command = %command_id, row = %row_id, "plug-in row action running");
+    capture_output(ext, &args, ACTION_TIMEOUT, "row action")
+}
+
+/// A declared command's arguments with one placeholder replaced.
+///
+/// **By whole argument.** An argument that *is* the placeholder becomes
+/// the value and nothing else is touched — not string interpolation,
+/// deliberately, because the value comes from outside (a row id the
+/// plug-in printed, a question the user typed) and pasting it into the
+/// middle of an argument is how it would turn into a second flag.
+pub(super) fn substituted(
+    ext: &DiscoveredExtension,
+    command_id: &str,
+    placeholder: &str,
+    value: &str,
+) -> Result<Vec<String>, String> {
     let cmd = ext
         .manifest
         .commands
         .iter()
         .find(|c| c.id == command_id)
         .ok_or_else(|| format!("{} declares no command {command_id:?}", ext.id))?;
-    let args: Vec<String> = cmd
+    Ok(cmd
         .args
         .iter()
         .map(|a| {
-            if a == ROW_ID_PLACEHOLDER {
-                row_id.to_owned()
+            if a == placeholder {
+                value.to_owned()
             } else {
                 a.clone()
             }
         })
-        .collect();
-    info!(id = %ext.id, command = %command_id, row = %row_id, "plug-in row action running");
-    capture_output(ext, &args, ACTION_TIMEOUT, "row action")
+        .collect())
+}
+
+/// Ask a plug-in the question typed into one of its query boxes.
+///
+/// Waited on with the report deadline, because that is what this is: a
+/// question with an answer to draw, not an action that changes the
+/// world. A plug-in whose search takes longer than that is one whose box
+/// says so instead of freezing the pane.
+///
+/// The question is refused rather than trimmed when it would read as an
+/// option. A manifest is expected to put `--` before its `{query}` and
+/// most do; this is the half that does not depend on the plug-in author
+/// having remembered.
+pub fn ask_query(
+    ext: &DiscoveredExtension,
+    command_id: &str,
+    query: &str,
+) -> Result<String, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Err("nothing to ask".to_owned());
+    }
+    if query.starts_with('-') {
+        return Err("a question may not begin with '-'".to_owned());
+    }
+    let args = substituted(ext, command_id, QUERY_PLACEHOLDER, query)?;
+    info!(id = %ext.id, command = %command_id, "plug-in query running");
+    capture_output(ext, &args, REPORT_TIMEOUT, "query command")
 }
 
 /// Ask a plug-in for the rows of one of its runtime menus.

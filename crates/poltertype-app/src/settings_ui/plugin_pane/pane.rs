@@ -73,6 +73,15 @@ pub struct PluginPane {
     /// the per-row counterpart of `edits`: saving per keystroke would
     /// put every prefix of a message into a file the plug-in reads.
     pub(super) record_edits: std::collections::HashMap<(usize, usize, String), String>,
+    /// What is typed into each query box, by control index.
+    ///
+    /// Deliberately not `edits`. That map is the staging area for values
+    /// on their way *into the plug-in's config file*, and a question is
+    /// not a setting — it is asked, answered and forgotten. Keeping it
+    /// somewhere `flush_edits` cannot reach is what makes "the pane
+    /// never writes what you searched for to disk" a property of the
+    /// code rather than a promise.
+    pub(super) queries: std::collections::HashMap<usize, String>,
 }
 
 impl PluginPane {
@@ -121,6 +130,7 @@ impl PluginPane {
             open_suggest: None,
             records: std::collections::HashMap::new(),
             record_edits: std::collections::HashMap::new(),
+            queries: std::collections::HashMap::new(),
             running_action: None,
         };
         pane.reload_arrays();
@@ -130,5 +140,16 @@ impl PluginPane {
 
     pub fn control(&self, index: usize) -> Option<&PaneControl> {
         self.ext.manifest.pane.get(index)
+    }
+
+    /// What is currently typed into a query box.
+    pub fn query(&self, index: usize) -> &str {
+        self.queries.get(&index).map_or("", String::as_str)
+    }
+
+    /// Remember what is being typed into a query box. Nothing is asked
+    /// and nothing is written until the box is submitted.
+    pub fn set_query(&mut self, index: usize, text: String) {
+        self.queries.insert(index, text);
     }
 }

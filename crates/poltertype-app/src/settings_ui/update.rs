@@ -223,6 +223,14 @@ impl SettingsApp {
                     }
                 }
             }
+            Message::PluginQueryTyped(plugin, index, text) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.set_query(index, text);
+                }
+            }
+            Message::PluginQueryAsked(plugin, index) => {
+                return self.ask_query(plugin, index);
+            }
             Message::PluginCommandClicked(plugin, command) => {
                 if let Some(pane) = self.plugins.get(plugin) {
                     if let Err(e) = crate::plugins::run_command(&pane.ext, &command) {
@@ -845,6 +853,41 @@ impl SettingsApp {
                     .unwrap_or_else(|_| Err("the report task went away".to_owned()))
             },
             move |outcome| Message::PluginOutputLoaded(plugin, slots.clone(), outcome),
+        )
+    }
+
+    /// Ask a plug-in the question typed into one of its query boxes.
+    ///
+    /// The same shape as [`Self::load_output`] and answered by the same
+    /// message, so the answer lands in the same box a report's would and
+    /// is drawn by the same code. What differs is the one argument the
+    /// plug-in is handed, and that it is only ever sent because somebody
+    /// pressed Ask.
+    pub(super) fn ask_query(&mut self, plugin: usize, index: usize) -> Task<Message> {
+        let slot = Slot::control(index);
+        let Some(pane) = self.plugins.get_mut(plugin) else {
+            return Task::none();
+        };
+        let query = pane.query(index).trim().to_owned();
+        if query.is_empty() {
+            return Task::none();
+        }
+        let Some(command) = pane.command_id(slot).map(str::to_owned) else {
+            return Task::none();
+        };
+        let ext = pane.ext.clone();
+        pane.set_output(slot, CommandOutput::Loading);
+
+        let (tx, rx) = iced::futures::channel::oneshot::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::plugins::ask_query(&ext, &command, &query));
+        });
+        Task::perform(
+            async move {
+                rx.await
+                    .unwrap_or_else(|_| Err("the query task went away".to_owned()))
+            },
+            move |outcome| Message::PluginOutputLoaded(plugin, vec![slot], outcome),
         )
     }
 

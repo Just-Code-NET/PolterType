@@ -27,7 +27,7 @@ mod state;
 mod types;
 
 pub use commands::{
-    read_report, read_rows, read_state, run_command, run_command_for_row,
+    ask_query, read_report, read_rows, read_state, run_command, run_command_for_row,
     run_command_for_row_waiting,
 };
 pub use state::Supervisor;

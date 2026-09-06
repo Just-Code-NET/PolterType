@@ -65,15 +65,15 @@ pub fn check_extension(m: &ExtensionManifest) -> Result<(), PluginError> {
 
     for control in &m.pane {
         match control.kind {
-            ControlKind::Button | ControlKind::Report => {
+            ControlKind::Button | ControlKind::Report | ControlKind::Query => {
                 // Both name a command rather than a key; pointed at one
                 // nobody declared, a report renders an empty box for
                 // ever, which reads as "nothing to say".
                 if !m.commands.iter().any(|c| c.id == control.command) {
-                    let what = if control.kind == ControlKind::Button {
-                        "button"
-                    } else {
-                        "report"
+                    let what = match control.kind {
+                        ControlKind::Button => "button",
+                        ControlKind::Query => "query box",
+                        _ => "report",
                     };
                     return Err(PluginError::BadPane(format!(
                         "{what} {:?} refers to unknown command {:?}",

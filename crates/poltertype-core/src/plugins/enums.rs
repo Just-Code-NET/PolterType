@@ -89,6 +89,21 @@ pub enum ControlKind {
     /// in a fixed-width block: it cannot draw a button, style itself, or
     /// look like anything PolterType said.
     Report,
+    /// A box to type a question into, and the plug-in's answer under
+    /// it.
+    ///
+    /// The only control that sends the user's own words to a plug-in,
+    /// which is why what is typed is substituted as a **whole
+    /// argument** — the `{query}` placeholder, exactly as a row action
+    /// substitutes `{id}` — and never interpolated into one. Pasting it
+    /// inside an argument is how a question would turn into a second
+    /// flag.
+    ///
+    /// Binds to no key and writes nothing: a question is asked and
+    /// answered, not configured. `command` names what answers it, and
+    /// nothing runs until somebody presses Ask — a search with no
+    /// question is not a question.
+    Query,
     /// A checkbox per row, where the rows come from the plug-in and
     /// ticking one adds its id to an array in the plug-in's config — for
     /// a set a manifest cannot write down in advance, such as what is

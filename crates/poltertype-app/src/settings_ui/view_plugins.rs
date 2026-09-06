@@ -370,6 +370,8 @@ impl SettingsApp {
 
             ControlKind::Report => self.plugin_report(plugin, index, control),
 
+            ControlKind::Query => self.plugin_query(plugin, index, control),
+
             ControlKind::List => self.plugin_list(plugin, index, control),
 
             ControlKind::Records => self.plugin_records(plugin, index, control),
@@ -1123,6 +1125,95 @@ impl SettingsApp {
     /// Title, refresh button and explanation for a control whose
     /// contents come from the plug-in. The explanation sits above the
     /// box, not below it: under a 340-pixel list it belongs to nothing.
+    /// A box to type a question into, the button that asks it, and the
+    /// answer under it.
+    ///
+    /// Drawn from the same output slot a report uses, so the answer, the
+    /// "asking…" line and the failure all read identically — a plug-in
+    /// that cannot answer says so in the same place whether it was asked
+    /// on the way into the pane or by somebody pressing a button.
+    ///
+    /// Nothing is asked until it is submitted. A search box that ran on
+    /// every keystroke would be a process per character.
+    fn plugin_query<'a>(
+        &'a self,
+        plugin: usize,
+        index: usize,
+        control: &'a PaneControl,
+    ) -> Element<'a, Message> {
+        let b = self.brand();
+        let typed = self.plugins[plugin].query(index);
+        let ask = Message::PluginQueryAsked(plugin, index);
+        let box_row = Row::new()
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .push(
+                TextInput::new(tr("plugins.ask_hint", "Type a question…"), typed)
+                    .size(13)
+                    .width(Length::Fill)
+                    .on_input(move |text| Message::PluginQueryTyped(plugin, index, text))
+                    .on_submit(ask.clone()),
+            )
+            .push(
+                Button::new(Text::new(tr("plugins.ask", "Ask")).size(12))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 12.0,
+                        bottom: 5.0,
+                        left: 12.0,
+                    })
+                    // Nothing to ask is a button that does not press,
+                    // rather than one that asks the empty question.
+                    .on_press_maybe((!typed.trim().is_empty()).then_some(ask)),
+            );
+
+        let answer: Option<Element<'a, Message>> =
+            match self.plugins[plugin].output(Slot::control(index)) {
+                None => None,
+                Some(CommandOutput::Loading) => Some(
+                    Text::new(tr("plugins.asking", "Asking the plug-in…"))
+                        .size(12)
+                        .color(b.muted)
+                        .into(),
+                ),
+                Some(CommandOutput::Ready(text)) if text.trim().is_empty() => Some(
+                    Text::new(tr("plugins.nothing_found", "Nothing matched that."))
+                        .size(12)
+                        .color(b.muted)
+                        .into(),
+                ),
+                Some(CommandOutput::Ready(text)) => Some(
+                    Text::new(text.as_str())
+                        .size(12)
+                        .font(FONT_MONO)
+                        .width(Length::Fill)
+                        .into(),
+                ),
+                Some(CommandOutput::Failed(why)) => Some(
+                    Text::new(tr_args(
+                        "plugins.could_not_ask",
+                        "Could not ask the plug-in: {}",
+                        &[why.as_str()],
+                    ))
+                    .size(12)
+                    .color(b.warn)
+                    .width(Length::Fill)
+                    .into(),
+                ),
+            };
+
+        let mut column = self.described(control).spacing(6).push(box_row);
+        if let Some(answer) = answer {
+            column = column.push(
+                Container::new(answer)
+                    .style(theme::card)
+                    .padding(12)
+                    .width(Length::Fill),
+            );
+        }
+        column.width(Length::Fill).into()
+    }
+
     fn output_heading<'a>(
         &'a self,
         plugin: usize,

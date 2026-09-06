@@ -4,6 +4,24 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **A plug-in's settings page can now offer a search box.** The new
+  `query` pane control draws a line to type a question into, a button to
+  ask it, and the plug-in's answer underneath — where a `report` shows
+  an answer to a question nobody asked, this one shows the answer to
+  yours. Nothing runs until the box is submitted, so opening the page
+  costs no process, and what is typed is never written to the plug-in's
+  config file: a question is asked, answered and forgotten, not stored.
+
+  What is typed reaches the plug-in as **one whole argument**, replacing
+  a `{query}` placeholder the manifest puts in its command — the same
+  substitution a per-row action uses for `{id}`, and never string
+  interpolation, so a question cannot become a second flag. A question
+  beginning with `-` is refused outright rather than passed on.
+
 ## [0.32.1] — the Setup pane learns the language the rest of the window speaks
 
 ### Fixed

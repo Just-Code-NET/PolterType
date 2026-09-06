@@ -13,5 +13,7 @@ mod supervisor;
 mod types;
 
 pub use menu::PluginMenu;
-pub use supervisor::{Supervisor, read_report, run_command, run_command_for_row_waiting};
+pub use supervisor::{
+    Supervisor, ask_query, read_report, run_command, run_command_for_row_waiting,
+};
 pub use types::Departed;

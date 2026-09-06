@@ -105,6 +105,34 @@ fn a_button_must_refer_to_a_real_command() {
 }
 
 #[test]
+fn a_query_box_must_refer_to_a_real_command() {
+    // Same reason a button and a report must: a box pointed at nothing
+    // sits there for ever with a question nothing can answer, which
+    // reads as a plug-in with nothing to say rather than as a manifest
+    // that is wrong.
+    let m = ExtensionManifest {
+        pane: vec![PaneControl {
+            kind: ControlKind::Query,
+            label: "Ask it".to_owned(),
+            command: "search".to_owned(),
+            ..PaneControl::default()
+        }],
+        ..base()
+    };
+    let why = match check_extension(&m) {
+        Err(PluginError::BadPane(why)) => why,
+        other => panic!("a query box with no command must be refused, got {other:?}"),
+    };
+    assert!(why.contains("query box"), "{why}");
+
+    let m = ExtensionManifest {
+        commands: vec![command("run"), command("search")],
+        ..m
+    };
+    assert!(check_extension(&m).is_ok());
+}
+
+#[test]
 fn a_stored_control_must_name_its_key() {
     for kind in [
         ControlKind::Toggle,

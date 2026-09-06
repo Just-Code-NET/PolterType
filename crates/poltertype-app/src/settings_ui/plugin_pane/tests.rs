@@ -935,3 +935,41 @@ fn only_one_card_may_be_acting_at_a_time() {
     assert!(!pane.any_action_running());
     std::fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn a_query_box_is_never_asked_on_its_own() {
+    // A report is asked on the way into the pane; a query box has
+    // nothing to ask until somebody has typed a question, and asking its
+    // command with an empty one would put a search for nothing in front
+    // of the plug-in on every visit.
+    let root = scratch("query-unasked");
+    let mut query = control(ControlKind::Query, "");
+    query.command = "ask".to_owned();
+    let mut report = control(ControlKind::Report, "");
+    report.command = "status".to_owned();
+    let pane = PluginPane::load(extension(vec![query, report]), &root);
+
+    let asked: Vec<usize> = pane.unasked_commands().iter().map(|s| s.control).collect();
+    assert_eq!(asked, vec![1], "only the report is asked for");
+}
+
+#[test]
+fn what_is_typed_into_a_query_box_never_reaches_the_config_file() {
+    // The property this pays for by keeping questions out of `edits`: a
+    // search is asked, answered and forgotten, and a settings file is
+    // not the place for what somebody went looking for.
+    let root = scratch("query-not-saved");
+    let mut query = control(ControlKind::Query, "");
+    query.command = "ask".to_owned();
+    let mut pane = PluginPane::load(extension(vec![query]), &root);
+
+    pane.set_query(0, "хто обіцяв деплой".to_owned());
+    pane.flush_edits(None);
+    assert_eq!(pane.query(0), "хто обіцяв деплой");
+
+    let written = std::fs::read_to_string(&pane.config_path).unwrap_or_default();
+    assert!(
+        !written.contains("обіцяв"),
+        "the question was written to the plug-in's config: {written}"
+    );
+}

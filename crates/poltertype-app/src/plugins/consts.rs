@@ -14,3 +14,11 @@ pub const STOP_COMMAND: &str = "stop";
 
 /// The one argument a per-row command may have substituted.
 pub const ROW_ID_PLACEHOLDER: &str = "{id}";
+
+/// The argument a query box's typed question replaces.
+///
+/// Its own placeholder rather than a second meaning for `{id}`: the two
+/// are substituted the same way and mean entirely different things, and
+/// a manifest that says which one it wants is a manifest that cannot be
+/// handed the wrong one.
+pub const QUERY_PLACEHOLDER: &str = "{query}";
