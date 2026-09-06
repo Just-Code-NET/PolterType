@@ -223,6 +223,20 @@ tr_args(
 )
 ```
 
+
+A string built **outside** `poltertype-app` needs one more step. The
+Setup pane's rows come from `poltertype-input`, which cannot call `tr`
+at all: `poltertype-core`, where `tr` lives, depends on that crate. So
+a step carries a `SetupText` — the same key and English, resolved by
+the window as it draws:
+
+```rust
+SetupText::new("setup.read_title", "Read the keyboard")
+```
+
+Keys there are `setup.`-prefixed, and `cargo test -p poltertype-input
+setup` fails on one that is reused or outside that namespace.
+
 Then add the key to `data/i18n/uk.toml` — or leave it, and the next
 translator will pick it up. `cargo test -p poltertype-core i18n`
 checks that the shipped catalog still parses and still covers one

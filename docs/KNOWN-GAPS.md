@@ -1,4 +1,4 @@
-# Known gaps (as of v0.32.0)
+# Known gaps (as of v0.32.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,22 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.32.1 pass actually checked (2026-09-06).** The Setup
+pane's own rows — until this release the one part of the window no
+catalog could reach. On **Hyprland/Wayland** on the development
+laptop, with the interface in Ukrainian: both Linux steps drew their
+title, their explanation and their button out of `uk.toml`, and the
+same build asked for English drew them in English, unchanged from
+0.32.0. The four shipped catalogs were re-checked the
+way the 0.31.0 pass checked them — 273 keys each now, none missing,
+every `{}` count matching the English at the call site.
+
+What this pass did **not** check: the macOS and Windows rows. Their
+text moved the same way and CI compiles it on those runners, but
+neither pane was drawn on either OS, and on Linux the compiler does
+not even read those modules. The tray was not re-measured either —
+read every bullet below as the 0.32.0 and 0.31.0 passes left them.
 
 **What the 0.32.0 pass actually checked (2026-09-05).** The tray — on
 **KDE Plasma Wayland** and **Cinnamon X11** in the matrix guest, and on
