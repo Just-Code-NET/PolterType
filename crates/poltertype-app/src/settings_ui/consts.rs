@@ -14,6 +14,30 @@ pub const ISSUES_URL: &str = "https://github.com/Just-Code-NET/PolterType/issues
 /// current setup script, not the release the reader is running.
 pub const PERMISSIONS_DOC_URL: &str = crate::consts::SETUP_GUIDE_URL;
 
+// ── Guides in other languages ───────────────────────────────────────
+
+/// Where the guides live. A catalog says which language one has been
+/// translated into and nothing else — the host stays in the program,
+/// so no file dropped into the config directory can aim a button in
+/// this window at a site of its own choosing.
+pub(super) const DOCS_PREFIX: &str = "https://github.com/Just-Code-NET/PolterType/blob/main/docs/";
+
+/// Every guide this window links to, with the catalog key naming the
+/// language it exists in. A guide is listed once something opens it;
+/// a key nobody translates leaves the link on the English original.
+pub(super) const TRANSLATED_DOCS: &[(&str, &str)] = &[("PERMISSIONS.md", "docs.permissions")];
+
+/// What a guide is written in until a catalog says otherwise.
+pub(super) const DOC_LANGUAGE: &str = "en";
+
+/// What a translated guide's file name ends in, both halves of the
+/// swap: `PERMISSIONS.md` → `PERMISSIONS.uk.md`.
+pub(super) const DOC_SUFFIX: &str = ".md";
+
+/// Longest a language tag may be before the value is treated as
+/// something other than a language. `zh-Hant-TW` is ten.
+pub(super) const DOC_TAG_MAX: usize = 12;
+
 // ── Plug-ins pane layout ────────────────────────────────────────────
 
 /// Shown where a plug-in's config does not set a value. Not "0" and

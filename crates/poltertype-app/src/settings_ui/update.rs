@@ -7,6 +7,7 @@ use poltertype_core::plugins::SettingValue;
 use poltertype_core::settings::{MIN_UPDATE_INTERVAL_HOURS, Settings, SettingsStore};
 use tracing::{info, warn};
 
+use super::doc_links;
 use super::enums::*;
 use super::helpers::*;
 use super::plugin_pane::{CommandOutput, Slot, Typing};
@@ -642,7 +643,11 @@ impl SettingsApp {
             Message::SetupOpen(url) => {
                 // `opener` hands http(s) docs links and macOS
                 // `x-apple.systempreferences:` deep links alike to the
-                // OS handler.
+                // OS handler. Every guide this window opens goes
+                // through here, including the ones the per-OS probe
+                // built — which is why the language swap lives at the
+                // point of opening rather than at each button.
+                let url = doc_links::localized(&url);
                 if let Err(e) = opener::open(&url) {
                     warn!(?e, %url, "could not open setup link");
                     self.setup_status = Some(SaveBanner {

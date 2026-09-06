@@ -58,7 +58,10 @@ Four rules, each of which exists because breaking it is easy:
 
 * **PolterType.** The product name is the same in every language.
 * **Layout ids** (`en-US`, `uk-UA`), config keys, file names and
-  paths — they are things the user types, not things they read.
+  paths — they are things the user types, not things they read. An
+  *example* of one is the other way round: `commands.placeholder_layout`
+  is the greyed `en-US` under the layout box, and a Ukrainian catalog
+  is right to make that `uk-UA`.
 * **Keycap names** in hotkey chips (`Ctrl`, `Alt`, `Shift`) unless
   your platform genuinely labels them differently.
 
@@ -96,6 +99,42 @@ name a key wins:
 Yours winning is what makes the edit-and-reload loop possible: the
 footer's **Reload** re-reads all three, so an edited catalog shows
 without reopening the window.
+
+---
+
+## Translating a guide the window links to
+
+The Setup pane has a button that opens
+[PERMISSIONS.md](PERMISSIONS.md) — an English page behind a button in
+a window that is not. A translated guide is a file beside the English
+one, named for its language:
+
+```
+docs/PERMISSIONS.uk.md
+```
+
+plus one line in your catalog saying it is there:
+
+```toml
+"docs.permissions" = "uk"
+```
+
+That value is a **language tag, not a file name**: PolterType builds
+`PERMISSIONS.uk.md` out of it and opens that instead. Anything that is
+not a language tag is ignored and the button stays on the English
+page — the address is assembled inside the program, so a catalog can
+send a link to another translation but never to another site.
+
+Nothing probes for the file. PolterType makes exactly one network call
+and it is the updater, so the line in your catalog *is* the answer to
+"does this exist?" — which is why the two belong in the same pull
+request: the translated guide, and the line that points at it.
+
+Only guides something in the window opens are listed, which today is
+`PERMISSIONS.md`. A translation is held to the same standard as the
+English one: a page that no longer matches what the program does is
+worse than no page, so a translation that falls behind gets updated or
+dropped rather than left to mislead.
 
 ---
 

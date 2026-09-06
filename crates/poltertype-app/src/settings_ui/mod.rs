@@ -7,6 +7,7 @@
 //! the three ordering constraints this module has to respect.
 
 mod consts;
+mod doc_links;
 mod enums;
 
 pub use enums::Pane;

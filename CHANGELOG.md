@@ -22,6 +22,40 @@ and the project follows [Semantic Versioning](https://semver.org/).
   interpolation, so a question cannot become a second flag. A question
   beginning with `-` is refused outright rather than passed on.
 
+- **A guide the window links to can now open in your language.** The
+  Setup pane's button led to an English page from a window that was
+  Ukrainian, German, Spanish or French, and there was no way to point
+  it anywhere else (issue #61). A translated guide is now a file
+  beside the English one — `docs/PERMISSIONS.uk.md` — plus one line in
+  the catalog that translates the window: `"docs.permissions" = "uk"`.
+
+  The value is a language tag rather than an address, and the rest of
+  the link is assembled in the program: a catalog can send that button
+  to another translation of our guide and to nothing else. Nothing
+  probes for the file either — PolterType makes exactly one network
+  call and it is the updater — so the catalog line *is* the statement
+  that a translation exists, which is why it travels in the same pull
+  request as the page. `docs/TRANSLATING_THE_UI.md` has the details.
+  No guide has been translated yet; the way to add one is now open.
+
+### Fixed
+
+- **The examples under "Add command" now translate.** The three greyed
+  hints — the signature, the layout id, the path — were written into
+  the program in English and stayed English in every language (issue
+  #62). They are catalog entries now, and a translator is free to make
+  the layout example `uk-UA` rather than `en-US`, which is the more
+  useful hint in a Ukrainian window.
+
+  The snippet example lost its `\n` along the way: nothing between
+  that box and the keystrokes expands one, so an example containing it
+  was promising an escape the engine does not have.
+
+- **All four shipped languages get a feature at the same time.** The
+  plug-in query box above reached the Ukrainian catalog and none of
+  the others. A test now fails the build when the shipped catalogs
+  stop agreeing on which keys they carry.
+
 ## [0.32.1] — the Setup pane learns the language the rest of the window speaks
 
 ### Fixed
