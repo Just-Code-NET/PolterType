@@ -1,4 +1,4 @@
-# Known gaps (as of v0.33.0)
+# Known gaps (as of v0.33.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,13 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.33.1 pass actually checked (2026-09-07): nothing new,
+because nothing changed.** That release carries no change to the
+program — it exists so the tag points at a tree that passes the
+project's own lint. Every bullet below stands exactly as the 0.33.0
+pass left it, and the stamp above moved only so the heading is not
+claiming to describe an older release than the one shipping.
 
 **What the 0.33.0 pass actually checked (2026-09-07).** The Commands
 pane's three greyed examples, on **Hyprland/Wayland** on the
