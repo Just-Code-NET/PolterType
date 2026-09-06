@@ -91,7 +91,7 @@ file or convince yourself it genuinely didn't change.
 | `README.md` | anything user-facing changes — **especially the Status line, the Goals bullets, the install table, and the hotkey table** |
 | `README.<lang>.md` | the translations carry their own copy of the install table and the caveats, so **anything that changes a row of the English one changes theirs**. They hold no version numbers by design, which bounds this to structural changes: an installer added or renamed, a permission step altered, a caveat that stops being true. A translation nobody speaks is the easiest doc to leave rotting — if there is no one to update it, delete it rather than ship a lie in a language we cannot read |
 | `docs/KNOWN-GAPS.md` | it is a release blocker: re-stamp its version heading and re-verify every bullet; a gap that closed must come out, and whatever it says must match `README.md` |
-| `docs/PLAN.md` | the `Last updated:` line, the phase checkboxes, and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there) |
+| `docs/PLAN.md` | **four places, not one**: the `Last updated:` line, §10's own `Status as of vX.Y.Z` (it fell nine releases behind once), §4's repository tree — which no test reads, and which had lost five crates and misstated the platform-isolation rule by 0.33.1 — and the settings schema in §3.5 (a new `[section]` in `config.toml` belongs there), plus the phase checkboxes |
 | `docs/DECISIONS.md` | you made a call worth defending later — append an entry; don't rewrite history |
 | `docs/CODE_SIGNING.md` | a signing key is added, rotated or retired, or a platform's signing status changes — it is a **published** policy and a stale one misleads users, not just us |
 | `docs/DATA_LAYOUT.md` | the app writes a new file or directory on the user's disk |
@@ -142,11 +142,27 @@ grep -rn "no network\|no telemetry\|never.*network\|no build makes" \
 #    (Replace 0.4.2 with the version you are ABOUT to leave behind.)
 grep -rn "0\.4\.2\|v0\.4\.2" README.md docs/*.md CONTRIBUTING.md
 
-# 2. Every crate in the workspace appears in the docs that list crates.
+# 2. Every currency stamp, however far behind. Check 1 finds only the
+#    version you are leaving behind — a file that fell stale five
+#    releases ago does not contain that string, so it stays invisible
+#    to it. That is how PLAN.md's header sat at v0.31.0 and its §10
+#    roadmap at v0.24.0 while everything above passed.
+#    Resolve every hit: a dated historical claim ("mandatory as of
+#    v0.17.2") stays put, a claim of being current moves.
+grep -rnE "Last updated|Status as of|as of v?0\." \
+    README.md CONTRIBUTING.md SECURITY.md docs/*.md
+
+# 3. Every crate in the workspace appears in the docs that list crates.
 ls crates/                                   # compare against
 grep -n "poltertype-" CONTRIBUTING.md | grep -c crates
 
-# 3. Skim the diff of the release you are cutting, and ask of each
+# 4. PLAN.md §4's repository tree, against the repository. It is prose
+#    in a code fence, so no test and no lint ever reads it; by 0.33.1
+#    it had lost five of the thirteen crates and the sentence under it
+#    still said platform code is confined to two of them.
+ls crates/ docs/ .github/workflows/; ls -d */
+
+# 5. Skim the diff of the release you are cutting, and ask of each
 #    changed file: "does any doc describe this behaviour?"
 git diff --stat "$(git describe --tags --abbrev=0)"..HEAD
 ```
