@@ -16,7 +16,7 @@ use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::string::CFStringRef;
 
 use super::enums::{Permission, StepAction, StepState};
-use super::types::{SetupReport, SetupStep};
+use super::types::{SetupReport, SetupStep, SetupText};
 
 mod consts;
 
@@ -60,18 +60,19 @@ pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
         backend: Some("macos-cg-event-tap".to_owned()),
         steps: vec![
             SetupStep {
-                title: "Grant Accessibility".to_owned(),
-                detail: "System Settings → Privacy & Security → Accessibility, then switch \
-                         PolterType on. This is what lets the app watch for a wrong-layout \
-                         word and type the corrected one back. If PolterType is not in the \
-                         list at all, press \u{201c}+\u{201d} under the list and add it from \
-                         Applications."
-                    .to_owned(),
+                title: SetupText::new("setup.accessibility_title", "Grant Accessibility"),
+                detail: SetupText::new(
+                    "setup.accessibility_detail",
+                    "System Settings → Privacy & Security → Accessibility, then switch \
+                     PolterType on. This is what lets the app watch for a wrong-layout word \
+                     and type the corrected one back. If PolterType is not in the list at \
+                     all, press \u{201c}+\u{201d} under the list and add it from Applications.",
+                ),
                 action: Some(step_action(accessibility, Permission::Accessibility)),
                 state: accessibility,
             },
             SetupStep {
-                title: "Grant Input Monitoring".to_owned(),
+                title: SetupText::new("setup.input_monitoring_title", "Grant Input Monitoring"),
                 // On current macOS the Accessibility grant covers this
                 // too — measured on 26: one system prompt, and both
                 // probes answer granted. Two Ask buttons for one
@@ -80,28 +81,37 @@ pub(super) fn probe(local_signing_identity: &str) -> SetupReport {
                 // still not — the older-macOS case this project also
                 // supports.
                 detail: if listen == StepState::Done {
-                    "Granted — on current macOS this comes with the Accessibility grant above."
-                        .to_owned()
+                    SetupText::new(
+                        "setup.input_monitoring_granted",
+                        "Granted — on current macOS this comes with the Accessibility grant \
+                         above.",
+                    )
                 } else if accessibility == StepState::Done {
-                    "Usually granted together with Accessibility, but this system still says \
-                     no. Use the button; if PolterType is not in the list at all, press \
-                     \u{201c}+\u{201d} under the list and add it from Applications."
-                        .to_owned()
+                    SetupText::new(
+                        "setup.input_monitoring_denied",
+                        "Usually granted together with Accessibility, but this system still \
+                         says no. Use the button; if PolterType is not in the list at all, \
+                         press \u{201c}+\u{201d} under the list and add it from Applications.",
+                    )
                 } else {
-                    "Covered by the Accessibility grant above on current macOS — do that one \
-                     first and this row turns Ready by itself. A separate switch exists only \
-                     on older systems."
-                        .to_owned()
+                    SetupText::new(
+                        "setup.input_monitoring_covered",
+                        "Covered by the Accessibility grant above on current macOS — do that \
+                         one first and this row turns Ready by itself. A separate switch \
+                         exists only on older systems.",
+                    )
                 },
                 action: (accessibility == StepState::Done && listen != StepState::Done)
                     .then(|| step_action(listen, Permission::InputMonitoring)),
                 state: listen,
             },
             SetupStep {
-                title: "Open the right pane".to_owned(),
-                detail: "Both switches live in Privacy & Security. If the buttons above don't \
-                         bring the window forward, these open the panes directly."
-                    .to_owned(),
+                title: SetupText::new("setup.panes_title", "Open the right pane"),
+                detail: SetupText::new(
+                    "setup.panes_detail",
+                    "Both switches live in Privacy & Security. If the buttons above don't \
+                     bring the window forward, these open the panes directly.",
+                ),
                 state: StepState::Unknown,
                 action: Some(StepAction::Open(ACCESSIBILITY_PANE_URL.to_owned())),
             },
@@ -207,40 +217,48 @@ fn signing_step(identity: &str) -> SetupStep {
     let (state, detail) = if identity.is_empty() {
         (
             StepState::Todo,
-            "Every update currently costs both permissions above, because macOS ties them \
-             to the exact copy of the app. One click creates a private signing identity in \
-             your keychain; every update is then re-signed with it and the permissions \
-             survive. Nothing leaves your machine. macOS will show one password prompt — \
-             \u{201c}codesign wants to access key\u{201d}: that is your new key being used for \
-             the first time. Enter your login password and press \u{201c}Always Allow\u{201d}, \
-             and it never appears again."
-                .to_owned(),
+            SetupText::new(
+                "setup.signing_none",
+                "Every update currently costs both permissions above, because macOS ties \
+                 them to the exact copy of the app. One click creates a private signing \
+                 identity in your keychain; every update is then re-signed with it and the \
+                 permissions survive. Nothing leaves your machine. macOS will show one \
+                 password prompt — \u{201c}codesign wants to access key\u{201d}: that is \
+                 your new key being used for the first time. Enter your login password and \
+                 press \u{201c}Always Allow\u{201d}, and it never appears again.",
+            ),
         )
     } else {
         match identity_in_keychain(identity) {
             Some(true) => (
                 StepState::Done,
-                format!(
-                    "Updates are re-signed with “{identity}” from your keychain, so the \
-                     permissions above survive them."
+                SetupText::with_args(
+                    "setup.signing_present",
+                    "Updates are re-signed with “{}” from your keychain, so the permissions \
+                     above survive them.",
+                    vec![identity.to_owned()],
                 ),
             ),
             Some(false) => (
                 StepState::Todo,
-                format!(
-                    "The config names “{identity}”, but no such identity is in your \
-                     keychain — updates fall back to resetting the permissions. The button \
-                     recreates it."
+                SetupText::with_args(
+                    "setup.signing_missing",
+                    "The config names “{}”, but no such identity is in your keychain — \
+                     updates fall back to resetting the permissions. The button recreates it.",
+                    vec![identity.to_owned()],
                 ),
             ),
             None => (
                 StepState::Unknown,
-                "Could not read the keychain to check the signing identity.".to_owned(),
+                SetupText::new(
+                    "setup.signing_unknown",
+                    "Could not read the keychain to check the signing identity.",
+                ),
             ),
         }
     };
     SetupStep {
-        title: "Keep permissions across updates".to_owned(),
+        title: SetupText::new("setup.signing_title", "Keep permissions across updates"),
         detail,
         action: (state != StepState::Done).then_some(StepAction::SetupLocalSigning),
         state,
@@ -389,24 +407,29 @@ fn notifications_step() -> SetupStep {
     let (state, detail) = match focus_is_on() {
         Some(true) => (
             StepState::Todo,
-            "A Focus mode (Do Not Disturb) is on right now: notifications go silently to \
-             Notification Center and no banner appears. Turn it off in Control Centre (the \
-             moon in the menu bar). Separately, the app must be allowed under System \
-             Settings → Notifications, with an alert style other than “None”."
-                .to_owned(),
+            SetupText::new(
+                "setup.notifications_focus_on",
+                "A Focus mode (Do Not Disturb) is on right now: notifications go silently \
+                 to Notification Center and no banner appears. Turn it off in Control \
+                 Centre (the moon in the menu bar). Separately, the app must be allowed \
+                 under System Settings → Notifications, with an alert style other than \
+                 “None”.",
+            ),
         ),
         _ => (
             StepState::Unknown,
-            "macOS offers no way to check this from here, so after the first notification \
-             ever sent, look for PolterType under System Settings → Notifications: “Allow \
-             notifications” on, and an alert style other than “None”. If banners still do \
-             not appear, check Focus (Do Not Disturb) in Control Centre — it silences \
-             banners while everything reads as enabled."
-                .to_owned(),
+            SetupText::new(
+                "setup.notifications_unknown",
+                "macOS offers no way to check this from here, so after the first \
+                 notification ever sent, look for PolterType under System Settings → \
+                 Notifications: “Allow notifications” on, and an alert style other than \
+                 “None”. If banners still do not appear, check Focus (Do Not Disturb) in \
+                 Control Centre — it silences banners while everything reads as enabled.",
+            ),
         ),
     };
     SetupStep {
-        title: "Let notifications through".to_owned(),
+        title: SetupText::new("setup.notifications_title", "Let notifications through"),
         detail,
         state,
         action: Some(StepAction::Open(NOTIFICATIONS_PANE_URL.to_owned())),

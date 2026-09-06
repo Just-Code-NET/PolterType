@@ -1,17 +1,18 @@
 //! What a Windows user has to grant — nothing.
 
 use super::enums::{Permission, StepState};
-use super::types::{SetupReport, SetupStep};
+use super::types::{SetupReport, SetupStep, SetupText};
 
 pub(super) fn probe(_local_signing_identity: &str) -> SetupReport {
     SetupReport {
         backend: Some("windows-ll-hook".to_owned()),
         steps: vec![SetupStep {
-            title: "Nothing to set up on Windows".to_owned(),
-            detail: "The low-level keyboard hook PolterType uses needs no permission and \
-                     no elevation — it works from a normal user account the moment the \
-                     app starts."
-                .to_owned(),
+            title: SetupText::new("setup.windows_title", "Nothing to set up on Windows"),
+            detail: SetupText::new(
+                "setup.windows_detail",
+                "The low-level keyboard hook PolterType uses needs no permission and no \
+                 elevation — it works from a normal user account the moment the app starts.",
+            ),
             state: StepState::Done,
             action: None,
         }],

@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use super::enums::{Permission, StepAction, StepState};
-use super::types::{SetupReport, SetupStep};
+use super::types::{SetupReport, SetupStep, SetupText};
 use crate::linux::access::{
     EVENT_DEVICE_DIR, GroupState, PERMISSIONS_URL, group_state, setup_script_command,
 };
@@ -22,10 +22,12 @@ pub(super) fn probe(_local_signing_identity: &str) -> SetupReport {
         SessionKind::X11 => SetupReport {
             backend: Some("linux-x11-xinput2".to_owned()),
             steps: vec![SetupStep {
-                title: "Nothing to set up on X11".to_owned(),
-                detail: "X11 hands global key events to any client that can open the display, \
-                         so PolterType needs no group membership, no udev rule and no sudo here."
-                    .to_owned(),
+                title: SetupText::new("setup.x11_title", "Nothing to set up on X11"),
+                detail: SetupText::new(
+                    "setup.x11_detail",
+                    "X11 hands global key events to any client that can open the display, \
+                     so PolterType needs no group membership, no udev rule and no sudo here.",
+                ),
                 state: StepState::Done,
                 action: None,
             }],
@@ -65,18 +67,24 @@ fn wayland_report() -> SetupReport {
         backend: Some("linux-wayland-evdev".to_owned()),
         steps: vec![
             step(
-                "Read the keyboard",
-                "PolterType watches key events straight from /dev/input, because Wayland \
-                 deliberately offers no way for one app to see another's keystrokes. \
-                 Read access only — nothing is written back to those devices.",
+                SetupText::new("setup.read_title", "Read the keyboard"),
+                SetupText::new(
+                    "setup.read_detail",
+                    "PolterType watches key events straight from /dev/input, because Wayland \
+                     deliberately offers no way for one app to see another's keystrokes. \
+                     Read access only — nothing is written back to those devices.",
+                ),
                 read,
                 group,
             ),
             step(
-                "Type the correction",
-                "Fixing a word means synthesising backspaces and letters through /dev/uinput, \
-                 a virtual keyboard the kernel creates for us. Without it PolterType can spot \
-                 the wrong layout but not repair it.",
+                SetupText::new("setup.write_title", "Type the correction"),
+                SetupText::new(
+                    "setup.write_detail",
+                    "Fixing a word means synthesising backspaces and letters through \
+                     /dev/uinput, a virtual keyboard the kernel creates for us. Without it \
+                     PolterType can spot the wrong layout but not repair it.",
+                ),
                 write,
                 group,
             ),
@@ -84,7 +92,7 @@ fn wayland_report() -> SetupReport {
     }
 }
 
-fn step(title: &str, detail: &str, works: Option<bool>, group: GroupState) -> SetupStep {
+fn step(title: SetupText, detail: SetupText, works: Option<bool>, group: GroupState) -> SetupStep {
     let (state, action) = match (works, group) {
         (Some(true), _) => (StepState::Done, None),
         // The trap this state exists for: `usermod -aG input` updates
@@ -103,8 +111,8 @@ fn step(title: &str, detail: &str, works: Option<bool>, group: GroupState) -> Se
         ),
     };
     SetupStep {
-        title: title.to_owned(),
-        detail: detail.to_owned(),
+        title,
+        detail,
         state,
         action,
     }

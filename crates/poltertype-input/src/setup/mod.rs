@@ -30,7 +30,7 @@ mod windows;
 pub use consts::DEFAULT_LOCAL_SIGNING_IDENTITY;
 pub use dispatch::{permission_settings_url, probe_setup, request_permission, setup_local_signing};
 pub use enums::{Permission, StepAction, StepState};
-pub use types::{SetupReport, SetupStep};
+pub use types::{SetupReport, SetupStep, SetupText};
 
 #[cfg(test)]
 mod tests;

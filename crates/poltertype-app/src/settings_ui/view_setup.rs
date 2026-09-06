@@ -15,7 +15,7 @@
 use iced::widget::{Button, Column, Container, Row, Space, Text};
 use iced::{Alignment, Element, Length, Padding};
 use poltertype_core::i18n::{tr, tr_args};
-use poltertype_input::setup::{StepAction, StepState};
+use poltertype_input::setup::{SetupText, StepAction, StepState};
 
 use super::consts::PERMISSIONS_DOC_URL;
 use super::enums::*;
@@ -218,12 +218,12 @@ impl SettingsApp {
         let mut text_col = Column::new()
             .spacing(4)
             .push(
-                Text::new(step.title.clone())
+                Text::new(translated(&step.title))
                     .size(14)
                     .font(font_bold())
                     .color(b.ink),
             )
-            .push(Text::new(step.detail.clone()).size(12).color(b.muted));
+            .push(Text::new(translated(&step.detail)).size(12).color(b.muted));
 
         if let Some(action) = &step.action {
             text_col = text_col.push(Space::new().height(2));
@@ -246,6 +246,14 @@ impl SettingsApp {
             .push(text_col.width(Length::Fill))
             .into()
     }
+}
+
+/// A step's own words, translated. The probe crate cannot call [`tr`]
+/// itself — `poltertype-core` depends on it — so it hands over the key
+/// and the English and the lookup happens here, as the row is drawn.
+fn translated(text: &SetupText) -> String {
+    let args: Vec<&str> = text.args.iter().map(String::as_str).collect();
+    tr_args(text.key, text.english, &args)
 }
 
 /// One button per step, labelled by what it actually does. No step
