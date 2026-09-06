@@ -9,8 +9,11 @@ use crate::settings_ui::consts::PERMISSIONS_DOC_URL;
 fn the_setup_guide_is_a_translatable_doc() {
     let file = PERMISSIONS_DOC_URL
         .strip_prefix(DOCS_PREFIX)
-        .expect("the setup guide lives under the docs prefix");
-    assert!(TRANSLATED_DOCS.iter().any(|(name, _)| *name == file));
+        .unwrap_or_default();
+    assert!(
+        TRANSLATED_DOCS.iter().any(|(name, _)| *name == file),
+        "the Setup pane opens {PERMISSIONS_DOC_URL}, which this module cannot translate"
+    );
 }
 
 #[test]
@@ -82,13 +85,15 @@ fn a_catalog_line_moves_the_button_to_the_translation() {
         "with no catalog loaded the guide is the English one"
     );
 
+    // Setup errors are ignored the way the i18n tests ignore theirs:
+    // a directory that did not get written shows up as the assertion
+    // below, not as a second failure mode to read past.
     let dir = std::env::temp_dir().join(format!("pt-doc-links-{}", std::process::id()));
-    std::fs::create_dir_all(dir.join("i18n")).expect("scratch data dir");
-    std::fs::write(
+    let _ = std::fs::create_dir_all(dir.join("i18n"));
+    let _ = std::fs::write(
         dir.join("i18n").join("uk.toml"),
         "\"docs.permissions\" = \"uk\"\n",
-    )
-    .expect("scratch catalog");
+    );
     poltertype_core::i18n::reload(&dir, Some("uk"), &[]);
 
     assert_eq!(
