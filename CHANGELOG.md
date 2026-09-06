@@ -4,6 +4,28 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.32.1] — the Setup pane learns the language the rest of the window speaks
+
+### Fixed
+
+- **The Setup pane's own rows now translate.** Every step on that pane
+  — "Read the keyboard", "Type the correction", the paragraph under
+  each, and on macOS the notes about Accessibility, signing and
+  notifications — stayed English in a window that was otherwise
+  Ukrainian, German, Spanish or French. The pane's frame translated
+  and its content did not, which made the one screen a confused user
+  is sent to the one screen their language did not reach (issue #60).
+
+  The cause is a dependency, not an oversight in any catalog: the text
+  is written in `poltertype-input`, where the per-OS probe has to
+  live, and `tr` lives in `poltertype-core`, which depends on that
+  crate. Nothing there could look a translation up. A step now carries
+  the catalog key beside its English and the Settings window resolves
+  it as it draws — the same "a key and the English at the call site"
+  contract the rest of the interface already had. All four shipped
+  catalogs carry the 24 new keys; a catalog of your own picks them up
+  from `<config-dir>/poltertype/i18n/` the same way.
+
 ## [0.32.0] — a tooltip with somewhere to go, and a tray item with its own name
 
 ### Fixed
