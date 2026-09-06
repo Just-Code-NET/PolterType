@@ -1,4 +1,4 @@
-# Known gaps (as of v0.32.1)
+# Known gaps (as of v0.33.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,25 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.33.0 pass actually checked (2026-09-07).** The Commands
+pane's three greyed examples, on **Hyprland/Wayland** on the
+development laptop: with the interface in Ukrainian all three drew out
+of `uk.toml` — including the path one, whose backslashes survive TOML
+escaping — and the same build asked for English drew the English. The
+four shipped catalogs are 279 keys each and a test now fails the build
+when they stop agreeing on which keys they carry.
+
+**A guide in another language has never been opened, because none
+exists.** The mechanism added for issue #61 is covered by tests,
+including one that writes a catalog to disk, loads it and reads the
+address that comes out — but no `PERMISSIONS.<lang>.md` has been
+written, so nothing has yet followed that address to a real page on
+GitHub. What ships is the way to add one, not a translated guide.
+
+What this pass did **not** check: the macOS and Windows panes, the
+tray, and anything the 0.32.1 and 0.32.0 passes covered — read those
+below as they left them.
 
 **What the 0.32.1 pass actually checked (2026-09-06).** The Setup
 pane's own rows — until this release the one part of the window no

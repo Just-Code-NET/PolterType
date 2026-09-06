@@ -241,7 +241,8 @@ function with a special case.
 
 ## Translating
 
-Two separate things can be translated, and neither needs any Rust:
+Three separate things can be translated, and none of them needs any
+Rust:
 
 * **The settings window** — one TOML file, kept in your own config
   directory rather than in this repository: the set of languages the
@@ -251,6 +252,13 @@ Two separate things can be translated, and neither needs any Rust:
 * **The README quick-start** — a `README.<lang>.md` beside this file.
   `README.de.md`, `README.es.md`, `README.fr.md` and `README.uk.md` are
   the shape to copy.
+* **A guide the settings window links to** — `docs/PERMISSIONS.uk.md`
+  beside the English one, plus the line in your catalog that points the
+  Setup pane's button at it. Same file, same pull request; the section
+  in [docs/TRANSLATING_THE_UI.md](docs/TRANSLATING_THE_UI.md) has the
+  one line to write. A guide is longer than a quick-start and rots the
+  same way, so the last paragraph of this section applies to it in
+  full.
 
 A quick-start is deliberately **not** a translation of the whole README.
 Translate only the parts that barely change:

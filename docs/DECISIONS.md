@@ -6,6 +6,48 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-07 — A catalog says which language a guide is in, not where it is
+
+The Setup pane opens `docs/PERMISSIONS.md` — in English, from a window
+that may be in four other languages, with nothing in the program able
+to point that button anywhere else (issue #61).
+
+**The catalog carries the answer, because nothing here may ask the
+network.** Whether `PERMISSIONS.uk.md` exists is a fact about the
+repository, and the only way to establish it at click time is an HTTP
+request. PolterType makes exactly one network call and it is the
+updater; a second one, on a button press, to learn something the
+contributor already knew when they wrote the file, is not a trade
+worth making. So the catalog that translates the window carries the
+claim as well — `"docs.permissions" = "uk"` — and the pull request
+that adds the page adds the line.
+
+**A language tag, not an address.** The value could have been the
+whole URL, which would also let a translator host their page
+elsewhere. It is a tag instead: prefix, file and suffix are assembled
+in the program, and a value that is not a tag is ignored. A catalog is
+a file that can arrive from the user's config directory, and the worst
+thing a translation file should be able to do is be wrong about its
+own language — not aim a button in our window at a site of its
+choosing. Plug-in catalogs cannot reach the key at all; they are
+confined to `plugin.<id>.`.
+
+**The swap happens where the link is opened**, not at each button. Two
+of the doc buttons on that pane get their URL from `poltertype-input`,
+the crate that holds per-OS code and therefore cannot call `tr` — the
+wall issue #60 ran into a release earlier. One function on the way to
+`opener` covers every guide the window opens, including the ones built
+where a translation lookup is out of reach.
+
+Alternatives considered: probing for the file (the network call
+above); one language suffix shared by every guide (a translator who
+does one page and not another would send readers to a 404); a table in
+the program of which languages each guide exists in (a code change for
+something that is not code, and out of reach of a catalog a user wrote
+for themselves).
+
+---
+
 ## 2026-09-02 — `tray_icon = "flag"`, drawn rather than shipped
 
 A fourth value for the one `tray_icon` key: the layout's country flag
