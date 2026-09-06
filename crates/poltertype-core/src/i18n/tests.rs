@@ -266,6 +266,50 @@ fn the_ukrainian_catalog_keeps_its_placeholders() {
     }
 }
 
+/// A feature whose strings reach one catalog and not the others ships
+/// translated for some users and English for the rest — which is how
+/// the plug-in query box arrived in Ukrainian alone. Every shipped
+/// catalog has to carry the same keys.
+///
+/// `docs.` keys are the deliberate exception: each names the language
+/// a linked guide has been translated into, so it exists only in the
+/// catalogs whose language that guide exists in.
+#[test]
+fn the_shipped_catalogs_agree_on_their_keys() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/i18n");
+    let mut catalogs: Vec<(&str, std::collections::BTreeSet<String>)> = Vec::new();
+    for (code, _) in SHIPPED_LOCALES {
+        let Ok(text) = std::fs::read_to_string(dir.join(format!("{code}.toml"))) else {
+            // Building from a package without `data/`, as above.
+            return;
+        };
+        let parsed: toml::Table =
+            toml::from_str(&text).unwrap_or_else(|e| panic!("{code}.toml does not parse: {e}"));
+        catalogs.push((
+            code,
+            parsed
+                .into_iter()
+                .map(|(key, _)| key)
+                .filter(|k| !k.starts_with("docs."))
+                .collect(),
+        ));
+    }
+    // Against the union rather than against one chosen catalog, so
+    // the failure names the file that is behind and not its neighbours.
+    let everything: std::collections::BTreeSet<&String> =
+        catalogs.iter().flat_map(|(_, keys)| keys).collect();
+    for (code, keys) in &catalogs {
+        let missing: Vec<_> = everything
+            .iter()
+            .filter(|key| !keys.contains(**key))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "{code}.toml is missing {missing:?}, which the other shipped catalogs carry"
+        );
+    }
+}
+
 // ── layering ─────────────────────────────────────────────────────────
 
 /// A directory of this test's own, cleaned up by the caller.

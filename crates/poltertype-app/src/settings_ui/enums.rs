@@ -48,11 +48,19 @@ impl CommandActionKind {
         }
     }
 
+    /// The greyed example under the parameter box.
+    ///
+    /// The snippet one is deliberately a single line: nothing between
+    /// this box and the keystrokes expands `\n`, so an example
+    /// containing one promises an escape the engine does not have.
     pub(super) fn placeholder(self) -> &'static str {
         match self {
-            CommandActionKind::TypeText => "Best regards,\\nDmytro",
-            CommandActionKind::SwitchLayout => "en-US",
-            CommandActionKind::OpenPath => "https://… or C:\\path\\to\\file.md",
+            CommandActionKind::TypeText => tr("commands.placeholder_text", "Best regards, Dmytro"),
+            CommandActionKind::SwitchLayout => tr("commands.placeholder_layout", "en-US"),
+            CommandActionKind::OpenPath => tr(
+                "commands.placeholder_path",
+                "https://… or C:\\path\\to\\file.md",
+            ),
         }
     }
 }
