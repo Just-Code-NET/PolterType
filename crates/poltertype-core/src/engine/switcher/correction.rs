@@ -1054,13 +1054,37 @@ impl SwitcherEngine {
 
     /// The selection re-rendered under another layout, or `None` when
     /// it is not wrong-layout text at all.
-    fn converted(&self, text: &str) -> Option<(String, LayoutId, LayoutId)> {
-        let from = self.layout_switcher.current().ok()?;
-        let to = self.next_layout_after(&from)?;
-        let source = self.layouts.get(&from)?;
-        let target = self.layouts.get(&to)?;
+    ///
+    /// Which of the current layout and its neighbour is the *source*
+    /// is not something `current()` can answer on its own: the text
+    /// may have been typed before the very next word moved the layout
+    /// on, and then a source guess keyed off `current()` names the
+    /// layout the caret is in now, not the one the selection was
+    /// typed under. So both directions are tried, current-first, and
+    /// `transliterate_to`'s own guard — no letter of that layout in
+    /// the text — is what rejects the one that does not fit; neither
+    /// is forced through blind.
+    // `pub(in crate::engine)`, not `pub(super)`: the regression test
+    // for the direction bug below builds a bare engine directly in
+    // `engine::tests` rather than driving the run loop, and that
+    // module sits one level above `switcher`.
+    pub(in crate::engine) fn converted(&self, text: &str) -> Option<(String, LayoutId, LayoutId)> {
+        let current = self.layout_switcher.current().ok()?;
+        let other = self.next_layout_after(&current)?;
+        self.transliterated(text, &current, &other)
+            .or_else(|| self.transliterated(text, &other, &current))
+    }
+
+    fn transliterated(
+        &self,
+        text: &str,
+        from: &LayoutId,
+        to: &LayoutId,
+    ) -> Option<(String, LayoutId, LayoutId)> {
+        let source = self.layouts.get(from)?;
+        let target = self.layouts.get(to)?;
         let converted = source.transliterate_to(text, target)?;
-        Some((converted, from, to))
+        Some((converted, from.clone(), to.clone()))
     }
 
     /// Put back what the user had, best effort. A failure here is worth
