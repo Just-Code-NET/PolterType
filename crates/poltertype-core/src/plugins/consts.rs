@@ -13,6 +13,16 @@ pub const PLUGIN_PATH_VAR: &str = "POLTERTYPE_PLUGIN_PATH";
 /// Directory an extension's program must live in, inside the plug-in.
 pub const EXTENSION_BIN_DIR: &str = "bin";
 
+/// The argument a [`super::ControlKind::Query`] box's typed question
+/// replaces, as a whole argument.
+///
+/// Here rather than beside the code that substitutes it, because the
+/// manifest is checked *before* anything runs: a query box whose command
+/// never mentions this would take a question and throw it away, and
+/// finding that out at load is the difference between a refused plug-in
+/// and a search box that silently ignores you.
+pub const QUERY_PLACEHOLDER: &str = "{query}";
+
 /// Sub-directories a pack may populate, and the file extensions
 /// allowed in each.
 ///

@@ -14,6 +14,15 @@ fn command(id: &str) -> PluginCommand {
     }
 }
 
+/// A command that takes a query box's question, as one whole argument.
+fn asking(id: &str) -> PluginCommand {
+    PluginCommand {
+        id: id.to_owned(),
+        label: id.to_owned(),
+        args: vec![id.to_owned(), "--".to_owned(), "{query}".to_owned()],
+    }
+}
+
 fn base() -> ExtensionManifest {
     ExtensionManifest {
         exe: "some-plugin".to_owned(),
@@ -126,10 +135,32 @@ fn a_query_box_must_refer_to_a_real_command() {
     assert!(why.contains("query box"), "{why}");
 
     let m = ExtensionManifest {
-        commands: vec![command("run"), command("search")],
+        commands: vec![command("run"), asking("search")],
         ..m
     };
     assert!(check_extension(&m).is_ok());
+}
+
+#[test]
+fn a_query_box_whose_command_ignores_the_question_is_refused() {
+    // The box would take a question and throw it away, and the plug-in
+    // would answer whatever its fixed arguments asked for — which reads
+    // as a search that ignores you.
+    let m = ExtensionManifest {
+        commands: vec![command("search")],
+        pane: vec![PaneControl {
+            kind: ControlKind::Query,
+            label: "Ask it".to_owned(),
+            command: "search".to_owned(),
+            ..PaneControl::default()
+        }],
+        ..base()
+    };
+    let why = match check_extension(&m) {
+        Err(PluginError::BadPane(why)) => why,
+        other => panic!("a query box whose command drops the question, got {other:?}"),
+    };
+    assert!(why.contains("{query}"), "{why}");
 }
 
 #[test]

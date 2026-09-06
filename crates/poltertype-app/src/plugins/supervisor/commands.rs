@@ -122,22 +122,38 @@ pub(super) fn substituted(
 /// world. A plug-in whose search takes longer than that is one whose box
 /// says so instead of freezing the pane.
 ///
-/// The question is refused rather than trimmed when it would read as an
-/// option. A manifest is expected to put `--` before its `{query}` and
-/// most do; this is the half that does not depend on the plug-in author
-/// having remembered.
+/// A question the plug-in must not be handed, and why — or `None` when
+/// there is nothing wrong with it.
+///
+/// Public because the pane asks it *before* it puts the box into its
+/// asking state: refusing after that flashed "Asking the plug-in…" for
+/// a question no plug-in was ever going to see.
+pub fn query_refusal(query: &str) -> Option<String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Some("nothing to ask".to_owned());
+    }
+    // A manifest is expected to put `--` before its `{query}` and most
+    // do; this is the half that does not depend on the plug-in author
+    // having remembered.
+    if query.starts_with('-') {
+        return Some("a question may not begin with '-'".to_owned());
+    }
+    None
+}
+
+/// Asked here as well as in the pane, and deliberately: this is the
+/// function a future caller will reach for, and a check the caller has
+/// to remember is a check that will one day be forgotten.
 pub fn ask_query(
     ext: &DiscoveredExtension,
     command_id: &str,
     query: &str,
 ) -> Result<String, String> {
+    if let Some(why) = query_refusal(query) {
+        return Err(why);
+    }
     let query = query.trim();
-    if query.is_empty() {
-        return Err("nothing to ask".to_owned());
-    }
-    if query.starts_with('-') {
-        return Err("a question may not begin with '-'".to_owned());
-    }
     let args = substituted(ext, command_id, QUERY_PLACEHOLDER, query)?;
     info!(id = %ext.id, command = %command_id, "plug-in query running");
     capture_output(ext, &args, REPORT_TIMEOUT, "query command")

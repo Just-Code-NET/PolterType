@@ -869,7 +869,13 @@ impl SettingsApp {
             return Task::none();
         };
         let query = pane.query(index).trim().to_owned();
-        if query.is_empty() {
+        // Before the box is put into its asking state, not after: a
+        // question that was never going to leave this process should not
+        // flash "asking the plug-in…" on its way to being refused.
+        if let Some(why) = crate::plugins::query_refusal(&query) {
+            if !query.is_empty() {
+                pane.set_output(slot, CommandOutput::Failed(why));
+            }
             return Task::none();
         }
         let Some(command) = pane.command_id(slot).map(str::to_owned) else {

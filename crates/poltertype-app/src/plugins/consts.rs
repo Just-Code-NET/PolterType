@@ -17,8 +17,9 @@ pub const ROW_ID_PLACEHOLDER: &str = "{id}";
 
 /// The argument a query box's typed question replaces.
 ///
-/// Its own placeholder rather than a second meaning for `{id}`: the two
-/// are substituted the same way and mean entirely different things, and
-/// a manifest that says which one it wants is a manifest that cannot be
-/// handed the wrong one.
-pub const QUERY_PLACEHOLDER: &str = "{query}";
+/// Re-exported from `poltertype-core` rather than spelled again here:
+/// the manifest checker refuses a query box whose command does not
+/// mention it, and a second copy of the string is how the checker and
+/// the substitution would come to disagree about what they are looking
+/// for.
+pub use poltertype_core::plugins::QUERY_PLACEHOLDER;
