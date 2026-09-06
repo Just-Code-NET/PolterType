@@ -4,6 +4,27 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.33.1] — the same program, from a commit that builds clean
+
+### Fixed
+
+- **Nothing in the program changed; the tag did.** v0.33.0 was cut
+  from a commit carrying three `clippy::expect_used` violations in a
+  test file — a lint this workspace denies everywhere, tests included.
+  Test code is never compiled into an installer, so the 0.33.0
+  binaries were correct and this release is byte-for-byte the same
+  program. What was wrong is that `git checkout v0.33.0` followed by
+  `cargo clippy --workspace --all-targets -- -D warnings` failed, so
+  the tag was no use to anyone building or bisecting from it. This
+  one is cut from the commit that fixed them.
+
+  It reached a tag because the pre-commit hook had not been running:
+  `core.hooksPath` in the maintainer's clone named a directory that no
+  longer existed after the checkout moved, and git skips a missing
+  hooks directory without a word. CI caught it on all three platforms,
+  which is what CI is for; the hook is pointed at `.githooks` again so
+  the next one is caught a step earlier.
+
 ## [0.33.0] — a question for a plug-in, and the last English in the window
 
 ### Added
