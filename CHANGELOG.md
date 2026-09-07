@@ -4,6 +4,56 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.33.2] — an idle keyboard costs nothing, a broken line costs a line
+
+### Fixed
+
+- **The Linux listener no longer wakes five hundred times a second to
+  ask an idle keyboard whether anything happened**
+  ([#63](https://github.com/Just-Code-NET/PolterType/issues/63)). Both
+  loops ran on a 2 ms timer: the evdev one polled every open device and
+  slept, the X11 one did the same on its connection. Measured on the
+  0.33.1 AppImage with the engine paused and nothing typed, that was
+  0.55 % of a core and 502 context switches a second, all of it in the
+  `poltertype-input` thread. Both now wait on the descriptors
+  themselves with `poll(2)`; the same measurement reads 0.05 % and 38.
+  On a laptop the bill was never really the half percent — it was the
+  idle states the CPU could not reach.
+
+  Nothing about correction timing was traded away for it. The key gate,
+  which holds your keystrokes back while a correction is on the wire,
+  now wakes the thread through an `eventfd` the instant it is asked
+  rather than waiting out a poll round, so a hold is taken sooner than
+  before. The Caps Lock latch is read on the way *into* the loop
+  instead of on the way out, so a lock toggled by something that sends
+  no key event — KDE InputActions, `xdotool key Caps_Lock`, an
+  on-screen keyboard — is still reconciled before the first word it
+  would otherwise have mis-cased.
+
+- **A translation that will not load can now say why**
+  ([#64](https://github.com/Just-Code-NET/PolterType/issues/64)). One
+  line the TOML parser refuses used to cost the whole catalog, and the
+  interface simply came up in English: the file was right there, the
+  app said nothing, and the only account of what happened was a log
+  line a translator has no reason to read. The commonest way to write
+  such a line is a Windows path — `"C:\path"` is not a valid escape,
+  `"C:\\path"` is. A file that will not parse whole is now read a
+  line at a time: the line that is wrong is dropped, everything else
+  loads, and the Settings window names the file and the line under the
+  language picker. A language that was asked for and produced no
+  catalog at all says that in the same place.
+
+  A second road to the same silence is closed with it. The Settings
+  window skipped loading translations altogether when it could not
+  locate the directory PolterType keeps its own catalogs in — taking
+  the user's own catalog, which lives somewhere else entirely and is
+  the whole translation for every language we do not ship, down with
+  something it had nothing to do with.
+
+  Entries left empty are still exactly what the format says they are —
+  "not translated yet" — and are not reported as anything: a catalog
+  being filled in a line at a time is a normal catalog.
+
 ## [0.33.1] — the same program, from a commit that builds clean
 
 ### Fixed
