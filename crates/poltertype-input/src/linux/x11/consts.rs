@@ -28,10 +28,15 @@ pub(crate) const EV_RIGHTMETA: u32 = 126;
 
 // ── Timing ──────────────────────────────────────────────────────────
 
-/// Sleep between empty `poll_for_event` rounds. Matches the evdev
-/// drain loop's idle sleep — small enough to stay imperceptible,
-/// large enough that an idle keyboard doesn't spin a core.
-pub(crate) const POLL_IDLE: Duration = Duration::from_millis(2);
+/// Longest wait between rounds when the server has nothing for us.
+///
+/// The loop waits on the connection's own descriptor, so a key arrives
+/// the moment the server sends it and this bound only paces the two
+/// things nothing notifies us about: the modifier reconciliation below
+/// and the stop flag. It replaced a 2 ms sleep that woke the thread
+/// five hundred times a second on an idle keyboard
+/// ([#63](https://github.com/Just-Code-NET/PolterType/issues/63)).
+pub(crate) const IDLE_WAIT: Duration = Duration::from_millis(250);
 
 /// Shortest gap between two `XQueryKeymap` round-trips when reconciling
 /// a modifier we believe is held (`ModState::resync`).

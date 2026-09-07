@@ -10,7 +10,7 @@ use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, Device, EventType, InputEvent, KeyCode};
 use poltertype_types::SC_POINTER_BUTTON;
 use std::collections::HashSet;
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -222,7 +222,32 @@ pub(crate) fn drain_devices(
     let mut batch: Vec<InputEvent> = Vec::new();
     let mut caps_stale = false;
     let mut last_caps_read = Instant::now();
+    // Added to the wait below so a correction that needs the keyboard
+    // held does not have to wait for a timer to notice.
+    let wake = gate.wake_fd();
     while !stop.load(Ordering::SeqCst) {
+        // A Caps Lock edge went by, or the latch is simply old enough
+        // to be worth re-reading — see `CAPS_RESYNC_INTERVAL` for why
+        // the edge alone is not enough. Ask *any* keyboard that has the
+        // LED rather than the one the key came from: the key routinely
+        // arrives from a device with no LED at all — a remapper's
+        // virtual keyboard, an on-screen keyboard, a KM switch — and
+        // the compositor mirrors the latch onto every real keyboard
+        // anyway (measured under keyd, 2026-08-27). Read before the
+        // batch rather than after it, because the thread now sleeps
+        // between keystrokes: the read has to happen on the way in, or
+        // the first word after an external toggle is cased by a latch
+        // nobody checked.
+        if caps_stale || last_caps_read.elapsed() >= CAPS_RESYNC_INTERVAL {
+            caps_stale = false;
+            last_caps_read = Instant::now();
+            if let Some(latched) = devices.iter().find_map(|od| caps_led(&od.dev))
+                && latched != caps_on
+            {
+                debug!(caps = latched, "Caps Lock latch changed");
+                caps_on = latched;
+            }
+        }
         let mut got_any = false;
         let mut dead = Vec::new();
         for (idx, od) in devices.iter_mut().enumerate() {
@@ -272,26 +297,6 @@ pub(crate) fn drain_devices(
                 Err(e) => warn!(?e, "evdev fetch_events"),
             }
         }
-        // A Caps Lock edge went by, or the latch is simply old enough
-        // to be worth re-reading — see `CAPS_RESYNC_INTERVAL` for why
-        // the edge alone is not enough. Ask *any* keyboard that has the
-        // LED rather than the one the key came from: the key routinely
-        // arrives from a device with no LED at all — a remapper's
-        // virtual keyboard, an on-screen keyboard, a KM switch — and
-        // the compositor mirrors the latch onto every real keyboard
-        // anyway (measured under keyd, 2026-08-27). Read here, after
-        // the borrow above is gone, which costs one poll round: still
-        // microseconds ahead of the next word key.
-        if caps_stale || last_caps_read.elapsed() >= CAPS_RESYNC_INTERVAL {
-            caps_stale = false;
-            last_caps_read = Instant::now();
-            if let Some(latched) = devices.iter().find_map(|od| caps_led(&od.dev))
-                && latched != caps_on
-            {
-                debug!(caps = latched, "Caps Lock latch changed");
-                caps_on = latched;
-            }
-        }
         // Remove dead devices high-index-first so earlier indices stay
         // valid. Forget their paths as well: `/dev/input` reuses event
         // nodes, so the next device to appear at that number is a
@@ -320,12 +325,67 @@ pub(crate) fn drain_devices(
         // typed out by nobody, gone from the user's text.
         gate.service(&mut devices);
         if !got_any {
-            thread::sleep(Duration::from_millis(2));
+            // Wait for the kernel to say a key arrived instead of
+            // asking every device again two milliseconds from now.
+            // The wait still has to end on its own for the rescan and
+            // for the hold watchdog, so it is never longer than
+            // whichever of those is due first.
+            let mut wait = rescan_every.saturating_sub(last_rescan.elapsed());
+            if let Some(watchdog) = gate.watchdog_wait() {
+                wait = wait.min(watchdog);
+            }
+            if wake.is_none() {
+                wait = wait.min(GATELESS_WAIT);
+            }
+            wait_for_input(&devices, wake, wait);
+            gate.drain_wake();
         }
     }
     // Never hand the devices back to the kernel still grabbed.
     gate.release_all(&mut devices);
     info!("evdev listener thread exiting");
+}
+
+/// Block until one of `devices` has something to read, the gate asks
+/// for attention, or `timeout` runs out.
+///
+/// This is what the loop above does instead of sleeping. Polling every
+/// device every two milliseconds cost half a percent of a core forever
+/// — on an idle keyboard, five hundred rounds a second of asking the
+/// kernel a question whose answer it will volunteer
+/// ([#63](https://github.com/Just-Code-NET/PolterType/issues/63)) —
+/// and it kept the CPU out of its deeper idle states, which a laptop
+/// pays for in battery rather than in percent.
+fn wait_for_input(devices: &[OpenDevice], wake: Option<RawFd>, timeout: Duration) {
+    let mut fds: Vec<libc::pollfd> = devices
+        .iter()
+        .map(|od| libc::pollfd {
+            fd: od.dev.as_raw_fd(),
+            events: libc::POLLIN,
+            revents: 0,
+        })
+        .collect();
+    if let Some(fd) = wake {
+        fds.push(libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        });
+    }
+    // Every keyboard unplugged and no eventfd: there is nothing to
+    // wait on, and the rescan is the only reason to come back.
+    if fds.is_empty() {
+        thread::sleep(timeout);
+        return;
+    }
+    let millis = i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX);
+    // SAFETY: `fds` is valid for the length passed, and every
+    // descriptor in it belongs to a device this thread owns or to the
+    // gate, which outlives the thread. A failed poll (EINTR) is a
+    // wait that ended early, which the caller re-enters.
+    unsafe {
+        libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, millis);
+    }
 }
 
 /// Fold one event into the held-modifier flags. `caps_stale` is raised

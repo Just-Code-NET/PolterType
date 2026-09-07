@@ -19,9 +19,16 @@ pub(crate) const MAX_HOLD: Duration = Duration::from_millis(1200);
 
 /// How long `hold()` waits for the device thread to actually take the
 /// grab before giving up and letting the correction proceed unheld.
-/// The thread services the request on its poll cadence (~2 ms), so this
-/// is many times the expected latency.
+/// Asking wakes that thread directly (`EvdevGate::wake`), so this is
+/// many times the expected latency.
 pub(crate) const HOLD_HANDSHAKE: Duration = Duration::from_millis(40);
+
+/// Longest the device thread may wait when it has no `eventfd` to be
+/// woken through — the fallback that keeps [`HOLD_HANDSHAKE`] honest
+/// on a kernel that refused one. It is the cadence the whole loop ran
+/// at before the wait replaced the sleep, so the fallback is exactly
+/// the old behaviour rather than a new one nobody has run.
+pub(crate) const GATELESS_WAIT: Duration = Duration::from_millis(2);
 
 /// How recently a keyboard must have produced an event for the gate to
 /// bother holding it. Long enough to cover a pause for thought, short
@@ -48,5 +55,10 @@ pub(crate) const RELEASE_HANDSHAKE: Duration = Duration::from_millis(250);
 /// purely edge-triggered the latch is then wrong for the rest of the
 /// session, which shows up as corrections retyped in the wrong case and
 /// as the ALL-CAPS filter failing to fire on text that is all caps.
-/// Two ioctls five times a second is the price of not guessing.
+/// Two ioctls five times a second is the price of not guessing — and
+/// only while keys are actually arriving: the read sits at the top of
+/// the drain loop, which no longer runs while the keyboard is idle
+/// ([#63](https://github.com/Just-Code-NET/PolterType/issues/63)). A
+/// latch moved during a lull is read on the way back in, before the
+/// keystroke that would have been cased by the stale one.
 pub(crate) const CAPS_RESYNC_INTERVAL: Duration = Duration::from_millis(200);

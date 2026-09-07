@@ -16,6 +16,7 @@
 
 use super::*;
 
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -38,6 +39,13 @@ pub struct EvdevGate {
     /// [`Self::service`].
     verified_epoch: AtomicU64,
     origin: Instant,
+    /// An `eventfd` the device thread waits on between keystrokes, so
+    /// a hold or a release reaches it the moment it is asked for
+    /// rather than whenever its wait happens to end. `None` if the
+    /// kernel refused one, which costs latency, not correctness: the
+    /// thread then keeps its wait short enough to service the
+    /// handshake on time.
+    wake: Option<OwnedFd>,
 }
 
 /// Has this device produced anything lately? The window is generous —
@@ -46,6 +54,24 @@ pub struct EvdevGate {
 fn recently_used(st: &GateState) -> bool {
     st.last_event
         .is_some_and(|t| t.elapsed() <= RECENT_USE_WINDOW)
+}
+
+/// The `eventfd` behind [`EvdevGate::wake`], or `None` on a kernel
+/// that would not give us one.
+fn open_wake_fd() -> Option<OwnedFd> {
+    // SAFETY: `eventfd` takes an initial count and flags and returns a
+    // descriptor or -1; the descriptor is handed to `OwnedFd` on the
+    // next line, which is what closes it.
+    let fd = unsafe { libc::eventfd(0, libc::EFD_NONBLOCK | libc::EFD_CLOEXEC) };
+    if fd < 0 {
+        warn!(
+            err = %std::io::Error::last_os_error(),
+            "no eventfd for the key gate; the device thread will wait in short hops instead"
+        );
+        return None;
+    }
+    // SAFETY: `fd` is a fresh descriptor this call owns.
+    Some(unsafe { OwnedFd::from_raw_fd(fd) })
 }
 
 impl Default for EvdevGate {
@@ -64,7 +90,60 @@ impl EvdevGate {
             epoch: AtomicU64::new(1),
             verified_epoch: AtomicU64::new(0),
             origin: Instant::now(),
+            wake: open_wake_fd(),
         }
+    }
+
+    /// The descriptor the device thread adds to its wait set.
+    pub(crate) fn wake_fd(&self) -> Option<RawFd> {
+        self.wake.as_ref().map(AsRawFd::as_raw_fd)
+    }
+
+    /// Interrupt that wait. Every path that changes what the device
+    /// thread must do — take the grabs, drop them, stop altogether —
+    /// ends here, because none of them is worth a millisecond of
+    /// waiting for a timer.
+    pub(crate) fn wake(&self) {
+        let Some(fd) = self.wake.as_ref() else {
+            return;
+        };
+        let one: u64 = 1;
+        // SAFETY: the descriptor is owned by `self` and open for the
+        // call; an eventfd write is exactly these eight bytes, and a
+        // full counter (EAGAIN) already means "wake up", so the
+        // result is genuinely nothing to act on.
+        unsafe {
+            libc::write(fd.as_raw_fd(), std::ptr::addr_of!(one).cast(), 8);
+        }
+    }
+
+    /// Empty the counter so the next wait blocks again. Called by the
+    /// device thread after every wake, whatever woke it.
+    pub(crate) fn drain_wake(&self) {
+        let Some(fd) = self.wake.as_ref() else {
+            return;
+        };
+        let mut sink: u64 = 0;
+        // SAFETY: as `wake`, in the other direction — the descriptor
+        // is non-blocking, so an empty counter returns EAGAIN rather
+        // than parking the thread that reads it.
+        unsafe {
+            libc::read(fd.as_raw_fd(), std::ptr::addr_of_mut!(sink).cast(), 8);
+        }
+    }
+
+    /// How long the device thread may wait before the watchdog in
+    /// [`Self::service`] has to run, or `None` when no hold is in
+    /// force and there is nothing to time out.
+    pub(crate) fn watchdog_wait(&self) -> Option<Duration> {
+        let armed = self.want.load(Ordering::Acquire) || self.held.load(Ordering::Acquire);
+        armed.then(|| {
+            Duration::from_millis(
+                self.deadline_ms
+                    .load(Ordering::Acquire)
+                    .saturating_sub(self.now_ms()),
+            )
+        })
     }
 
     fn now_ms(&self) -> u64 {
@@ -139,6 +218,7 @@ impl EvdevGate {
         );
         self.epoch.fetch_add(1, Ordering::AcqRel);
         self.want.store(true, Ordering::Release);
+        self.wake();
         let until = Instant::now() + HOLD_HANDSHAKE;
         while Instant::now() < until {
             if self.held.load(Ordering::Acquire) {
@@ -159,6 +239,7 @@ impl EvdevGate {
     /// everything after reaches the application by itself.
     pub(crate) fn release(&self) {
         self.want.store(false, Ordering::Release);
+        self.wake();
         let until = Instant::now() + RELEASE_HANDSHAKE;
         while Instant::now() < until {
             if !self.held.load(Ordering::Acquire) {

@@ -70,6 +70,11 @@ impl InputListener for EvdevListener {
 
     fn stop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
+        // The device thread is asleep between keystrokes now, and it
+        // still holds every grab it took: leaving it to notice the
+        // flag on its own timer would leave the keyboard held for as
+        // long as that timer runs.
+        self.gate.wake();
     }
 
     fn backend_name(&self) -> &'static str {

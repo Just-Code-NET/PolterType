@@ -6,10 +6,10 @@ use super::types::*;
 use crate::{InputError, KeyDirection, KeyEvent};
 use crossbeam_channel::Sender;
 use poltertype_types::SC_POINTER_BUTTON;
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tracing::{debug, info, trace, warn};
 use x11rb::connection::Connection;
 use x11rb::protocol::Event;
@@ -81,30 +81,64 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
     // already on, and nothing else would ever tell us.
     resync_caps(&conn, &mut mods, &mut last_caps_resync, true);
     while !stop.load(Ordering::SeqCst) {
-        match conn.poll_for_event() {
-            Ok(Some(ev)) => {
-                if let Some(out) = translate(&ev, &mut mods) {
-                    trace!(vk = out.vk, dir = ?out.direction, "x11 raw event");
-                    if sink.try_send(out).is_err() {
-                        debug!("x11 sink full — dropping event");
+        // Reconciled on the way in, not on the way out: the thread now
+        // sleeps between keystrokes, so a latch or a modifier that
+        // moved during a lull has to be corrected before the events
+        // that would be read through it, not after them.
+        resync_caps(&conn, &mut mods, &mut last_caps_resync, false);
+        resync_modifiers(&conn, &mut mods, &mut last_resync);
+        let mut idle = true;
+        loop {
+            match conn.poll_for_event() {
+                Ok(Some(ev)) => {
+                    idle = false;
+                    if let Some(out) = translate(&ev, &mut mods) {
+                        trace!(vk = out.vk, dir = ?out.direction, "x11 raw event");
+                        if sink.try_send(out).is_err() {
+                            debug!("x11 sink full — dropping event");
+                        }
                     }
                 }
+                Ok(None) => break,
+                // The connection is gone (X server shut down, session
+                // ended). There is nothing to recover to — exit the
+                // thread rather than spin on a dead socket forever.
+                Err(e) => {
+                    warn!(?e, "x11 connection lost — listener thread exiting");
+                    return;
+                }
             }
-            Ok(None) => {
-                resync_caps(&conn, &mut mods, &mut last_caps_resync, false);
-                resync_modifiers(&conn, &mut mods, &mut last_resync);
-                thread::sleep(POLL_IDLE);
-            }
-            // The connection is gone (X server shut down, session
-            // ended). There is nothing to recover to — exit the thread
-            // rather than spin on a dead socket forever.
-            Err(e) => {
-                warn!(?e, "x11 connection lost — listener thread exiting");
-                return;
-            }
+        }
+        if idle {
+            wait_for_server(&conn, IDLE_WAIT);
         }
     }
     info!("x11 listener thread exiting");
+}
+
+/// Wait until the server has something to say, or `timeout` runs out.
+///
+/// `poll_for_event` never blocks, so without this the loop had nothing
+/// to do but sleep and ask again. Waiting on the connection's
+/// descriptor turns an idle session into no wakeups at all and, as a
+/// side effect, delivers a keystroke as soon as the server sends it
+/// rather than up to a sleep later.
+fn wait_for_server(conn: &RustConnection, timeout: Duration) {
+    // Anything still queued has to reach the server, or we would wait
+    // for a reply to a request that never left.
+    let _ = conn.flush();
+    let mut fd = libc::pollfd {
+        fd: conn.stream().as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let millis = i32::try_from(timeout.as_millis()).unwrap_or(i32::MAX);
+    // SAFETY: one descriptor, owned by `conn`, valid for the call. A
+    // failed poll (EINTR) is a wait that ended early, and the caller
+    // simply comes back round.
+    unsafe {
+        libc::poll(std::ptr::addr_of_mut!(fd), 1, millis);
+    }
 }
 
 /// Ask the server which modifier keys are *actually* down, and correct
