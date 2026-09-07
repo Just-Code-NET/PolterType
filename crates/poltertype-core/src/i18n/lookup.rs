@@ -87,7 +87,15 @@ pub fn reload(data_dir: &Path, requested: Option<&str>, plugins: &[CatalogSource
 /// language nothing translates, or hide one that is right there.
 pub fn sources(data_dir: &Path, plugins: &[CatalogSource]) -> Vec<CatalogSource> {
     let mut sources = Vec::with_capacity(plugins.len() + 2);
-    sources.push(CatalogSource::open(data_dir.join(I18N_DIR)));
+    // An empty path is a caller that could not find the shipped data
+    // at all. Joining `i18n` onto it would name a relative directory
+    // in whatever the working directory happens to be; the rest of
+    // the layering is still perfectly readable without it, and for
+    // somebody whose only catalog is their own it is the whole
+    // translation ([#64]).
+    if !data_dir.as_os_str().is_empty() {
+        sources.push(CatalogSource::open(data_dir.join(I18N_DIR)));
+    }
     sources.extend(plugins.iter().cloned());
     if let Some(dir) = user_dir() {
         sources.push(CatalogSource::open(dir));

@@ -256,6 +256,8 @@
 "general.interface_language" = "Langue de l'interface"
 "general.language_system" = "Système"
 "general.interface_language_hint" = "S'applique dès que vous choisissez ; le menu de la zone de notification suit à l'enregistrement. Ce qui n'est pas traduit reste en anglais, et une extension peut apporter sa propre langue."
+"general.language_not_found" = "Aucun catalogue trouvé pour {} ; l'interface reste en anglais."
+"general.language_partly_read" = "Une partie de cette traduction n'a pas pu être lue — {}"
 "general.theme" = "Thème"
 "general.system_follows_os_light" = "« Système » suit la préférence clair/sombre du système d'exploitation. Enregistrez pour conserver ce choix."
 "general.tray_icon" = "Icône de la zone de notification"

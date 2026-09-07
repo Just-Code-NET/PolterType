@@ -254,6 +254,8 @@
 "general.interface_language" = "Idioma de la interfaz"
 "general.language_system" = "Sistema"
 "general.interface_language_hint" = "Se aplica en cuanto lo eliges; el menú de la bandeja lo sigue al guardar. Lo que no esté traducido se queda en inglés, y un complemento puede traer su propio idioma."
+"general.language_not_found" = "No se encontró ningún catálogo para {}; la interfaz permanece en inglés."
+"general.language_partly_read" = "Parte de esta traducción no se pudo leer: {}"
 "general.theme" = "Tema"
 "general.system_follows_os_light" = "«Sistema» sigue la preferencia de claro/oscuro del sistema operativo. Guarda para conservarlo."
 "general.tray_icon" = "Icono de la bandeja"

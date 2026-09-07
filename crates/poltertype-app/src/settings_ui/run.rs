@@ -35,19 +35,22 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
 
     // Must precede the first widget: `tr` runs from the view function,
     // on every frame. No catalog is not an error — English call sites.
-    match poltertype_core::data_dir::resolve() {
-        Ok(dir) => {
-            // Also before the panes are built: a plug-in's manifest is
-            // translated the moment it is loaded into one.
-            let plugins = poltertype_core::plugins::catalog_sources(&dir);
-            poltertype_core::i18n::init(
-                &dir,
-                Some(&initial_settings.general.ui_language),
-                &plugins,
-            );
-        }
-        Err(e) => warn!(?e, "no data dir; the interface stays in English"),
-    }
+    // A data directory we cannot find costs the catalogs PolterType
+    // ships — it must not cost the one the user wrote, which lives in
+    // the config directory and is the whole translation for every
+    // language we do not ship (#64).
+    let data_dir = poltertype_core::data_dir::resolve().unwrap_or_else(|e| {
+        warn!(?e, "no data dir; only catalogs outside it can be read");
+        std::path::PathBuf::new()
+    });
+    // Also before the panes are built: a plug-in's manifest is
+    // translated the moment it is loaded into one.
+    let plugins = poltertype_core::plugins::catalog_sources(&data_dir);
+    poltertype_core::i18n::init(
+        &data_dir,
+        Some(&initial_settings.general.ui_language),
+        &plugins,
+    );
 
     let store = Arc::new(store);
 

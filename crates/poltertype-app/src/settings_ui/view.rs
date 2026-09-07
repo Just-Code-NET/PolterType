@@ -1161,7 +1161,7 @@ impl SettingsApp {
         .text_size(12)
         .width(Length::Fixed(260.0));
 
-        let appearance = Column::new()
+        let mut appearance = Column::new()
             .spacing(12)
             .push(section_title(b, tr("general.appearance", "Appearance")))
             .push(Text::new(tr("general.interface_language", "Interface language")).size(12))
@@ -1175,7 +1175,11 @@ impl SettingsApp {
                 ))
                 .size(11)
                 .color(b.muted),
-            )
+            );
+        if let Some(trouble) = language_trouble() {
+            appearance = appearance.push(Text::new(trouble).size(11).color(b.warn));
+        }
+        let appearance = appearance
             .push(Text::new(tr("general.theme", "Theme")).size(12))
             .push(theme_row)
             .push(
@@ -1676,9 +1680,6 @@ pub(super) fn section_title(
         .into()
 }
 
-/// Sidebar label for the Setup pane. Carries the warning glyph only
-/// while something is actually unresolved — a permanent ⚠ in the nav
-/// is a warning nobody reads by the second day.
 /// How one language is named in the picker. A locale nobody has a name
 /// for is offered under its bare code — the file works, so hiding it
 /// would be the worse answer.
@@ -1690,6 +1691,37 @@ fn language_label(code: &str, name: &str) -> String {
     }
 }
 
+/// What to say under the picker when the catalogs did not come out the
+/// way the files promised.
+///
+/// Silence is the normal answer, and the one this returns for a
+/// language that simply has no file: that is a translation nobody
+/// wrote, not one that failed. The two cases worth a line are a file
+/// that was found and could not be fully read, and a language that was
+/// asked for and produced nothing — because from the outside those
+/// look identical to a translation that works, and the only account of
+/// either was a log line nobody has a reason to read (#64).
+fn language_trouble() -> Option<String> {
+    let catalog = poltertype_core::i18n::active_catalog()?;
+    if let Some(problem) = catalog.problems().first() {
+        return Some(tr_args(
+            "general.language_partly_read",
+            "Part of this translation could not be read — {}",
+            &[problem],
+        ));
+    }
+    (catalog.is_empty() && !catalog.locale().starts_with("en")).then(|| {
+        tr_args(
+            "general.language_not_found",
+            "No catalog found for {}, so the interface stays in English.",
+            &[catalog.locale()],
+        )
+    })
+}
+
+/// Sidebar label for the Setup pane. Carries the warning glyph only
+/// while something is actually unresolved — a permanent ⚠ in the nav
+/// is a warning nobody reads by the second day.
 fn setup_nav_label(needs_attention: bool) -> &'static str {
     // ASCII on purpose: the bundled font has no ⚠ and draws a tofu
     // box, which reads as a rendering bug rather than as a warning.

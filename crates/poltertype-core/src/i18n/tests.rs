@@ -95,6 +95,46 @@ fn one_bad_entry_does_not_discard_the_good_ones() {
     assert_eq!(c.get("numeric"), None);
 }
 
+/// One line down from the entry above, and the way this actually
+/// happens: a Windows path written with single backslashes is not a
+/// valid TOML escape, and refusing the file over it took a translated
+/// interface back to English with nothing on screen to say why
+/// ([#64](https://github.com/Just-Code-NET/PolterType/issues/64)).
+#[test]
+fn a_line_the_parser_refuses_costs_that_line_not_the_language() {
+    let c = catalog(
+        r#"
+"good" = "добре"
+"commands.placeholder_path" = "C:\path\to\file.md"
+"alsogood" = "теж"
+"#,
+    );
+    assert_eq!(c.get("good"), Some("добре"));
+    assert_eq!(c.get("alsogood"), Some("теж"));
+    assert_eq!(c.get("commands.placeholder_path"), None);
+    assert!(
+        c.problems().iter().any(|p| p.contains("line 3")),
+        "the line that was lost has to be nameable: {:?}",
+        c.problems()
+    );
+}
+
+/// A catalog being filled in a line at a time is a normal catalog, not
+/// a broken one — the Settings window must not put a complaint under
+/// the picker for entries their author has simply not reached yet.
+#[test]
+fn a_catalog_reports_nothing_for_clean_or_unfinished_files() {
+    let clean = catalog("\"a\" = \"перше\"\n");
+    assert!(clean.problems().is_empty(), "{:?}", clean.problems());
+
+    let unfinished = catalog("\"a\" = \"перше\"\n\"b\" = \"\"\n");
+    assert!(
+        unfinished.problems().is_empty(),
+        "an untranslated entry is not a problem to report: {:?}",
+        unfinished.problems()
+    );
+}
+
 #[test]
 fn a_missing_directory_yields_an_empty_catalog() {
     let c = Catalog::load(std::path::Path::new("/nonexistent/poltertype/i18n"), "uk");

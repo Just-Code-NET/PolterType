@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use tracing::warn;
+use tracing::{debug, warn};
 
 /// Compared whole when the language changes: a catalog identical to
 /// the one already loaded is not worth a redraw.
@@ -12,6 +12,15 @@ use tracing::warn;
 pub struct Catalog {
     locale: String,
     entries: HashMap<String, String>,
+    /// What could not be read, in the words the Settings window puts
+    /// under the language picker.
+    ///
+    /// A catalog that silently does nothing is the one bug report
+    /// nobody can answer: the interface is in English, the file is
+    /// right there, and the only account of what happened is a log
+    /// line the person who wrote the file has no reason to read
+    /// ([#64](https://github.com/Just-Code-NET/PolterType/issues/64)).
+    problems: Vec<String>,
 }
 
 impl Catalog {
@@ -21,6 +30,7 @@ impl Catalog {
         Self {
             locale,
             entries: HashMap::new(),
+            problems: Vec::new(),
         }
     }
 
@@ -55,41 +65,100 @@ impl Catalog {
 
     /// Take in one catalog file: a flat table of `key = "text"`.
     ///
-    /// Nested tables and non-string values are skipped with a warning
-    /// rather than rejecting the whole file — one bad line in a
-    /// community translation should cost that line, not the language.
+    /// A file the parser refuses whole is read again a line at a time
+    /// rather than dropped, because one bad line in a community
+    /// translation should cost that line, not the language.
     fn absorb(&mut self, text: &str, origin: &str, prefix: Option<&str>) -> usize {
-        let parsed: toml::Value = match toml::from_str(text) {
-            Ok(v) => v,
-            Err(e) => {
-                warn!(%origin, %e, "UI translation is not valid TOML; staying in English");
-                return 0;
-            }
-        };
-        let Some(table) = parsed.as_table() else {
-            warn!(%origin, "UI translation is not a table; staying in English");
-            return 0;
-        };
+        match toml::from_str::<toml::Table>(text) {
+            Ok(table) => self.take(&table, origin, prefix),
+            Err(e) => self.salvage(text, origin, prefix, &e),
+        }
+    }
 
+    /// Read a file the parser refused one line at a time, keeping
+    /// every line that is a valid entry on its own.
+    ///
+    /// A catalog is a flat table of one-line entries, so a line is a
+    /// whole statement and can be judged alone. What this buys is the
+    /// difference between a translation that loses the line somebody
+    /// mistyped — `"C:\path"`, the escape every Windows example
+    /// invites — and one that loses the language.
+    fn salvage(
+        &mut self,
+        text: &str,
+        origin: &str,
+        prefix: Option<&str>,
+        whole: &toml::de::Error,
+    ) -> usize {
         let mut added = 0usize;
-        let mut skipped = 0usize;
+        let mut dropped = 0usize;
+        for line in text.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            match toml::from_str::<toml::Table>(trimmed) {
+                Ok(table) => added += self.take(&table, origin, prefix),
+                Err(_) => dropped += 1,
+            }
+        }
+        // The whole-file error is the one worth showing: it names the
+        // first line the parser choked on, which is where the fix is.
+        // Its Display spans several lines of caret diagram, and a
+        // label is one line.
+        let detail = whole
+            .to_string()
+            .lines()
+            .next()
+            .unwrap_or("invalid TOML")
+            .to_owned();
+        warn!(%origin, %detail, dropped, added, "UI translation has lines that are not valid TOML");
+        self.problems.push(format!("{origin}: {detail}"));
+        added
+    }
+
+    /// Fold a parsed catalog in.
+    ///
+    /// Nested tables and non-string values are skipped rather than
+    /// rejecting the file: a catalog is flat, so a `[section]` header
+    /// somebody added out of habit costs the entries under it and
+    /// nothing else.
+    fn take(&mut self, table: &toml::Table, origin: &str, prefix: Option<&str>) -> usize {
+        let mut added = 0usize;
+        let mut blank = 0usize;
+        let mut not_text = 0usize;
         self.entries.reserve(table.len());
         for (key, value) in table {
             match value.as_str() {
-                // An empty translation means "not translated yet";
-                // storing it would shadow the English fallback with a
-                // blank label.
                 Some(s) if !s.trim().is_empty() => {
                     self.entries.insert(namespaced(prefix, key), s.to_owned());
                     added += 1;
                 }
-                _ => skipped += 1,
+                // An empty translation means "not translated yet";
+                // storing it would shadow the English fallback with a
+                // blank label. Deliberate, and the normal state of a
+                // catalog being filled in a line at a time, so it is
+                // not something to put in front of the user.
+                Some(_) => blank += 1,
+                None => not_text += 1,
             }
         }
-        if skipped > 0 {
-            warn!(%origin, skipped, "UI translation entries skipped (empty or not a string)");
+        if blank > 0 {
+            debug!(%origin, blank, "UI translation entries still empty");
+        }
+        if not_text > 0 {
+            warn!(%origin, not_text, "UI translation entries are not text and were skipped");
+            self.problems
+                .push(format!("{origin}: {not_text} entries are not text"));
         }
         added
+    }
+
+    /// What could not be read, oldest source first. Empty is the
+    /// normal case, including for a language with no catalog at all —
+    /// that is a missing file, not a broken one.
+    pub fn problems(&self) -> &[String] {
+        &self.problems
     }
 
     pub fn get(&self, key: &str) -> Option<&str> {
