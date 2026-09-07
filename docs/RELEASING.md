@@ -656,7 +656,8 @@ cargo test --workspace
 # 2. SYNC THE DOCS — mandatory, own commit, before the bump.
 #    Walk the table in step 2. At minimum: README Status line +
 #    Goals bullets, `docs/KNOWN-GAPS.md`'s version heading,
-#    PLAN.md's `Last updated` + settings schema, a
+#    PLAN.md's TWO stamps (header + §10) and its §4 repository
+#    tree and settings schema, a
 #    DECISIONS.md entry, and — each its own repo — the wiki and
 #    the site if any user-facing claim moved. If the release
 #    changed what the app CAN do, grep for the old promise
