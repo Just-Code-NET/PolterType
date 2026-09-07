@@ -4,6 +4,52 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.34.0] — a selection is not the word behind it
+
+### Fixed
+
+- **The manual switch-last hotkey no longer converts a word you have
+  moved away from**
+  ([#65](https://github.com/Just-Code-NET/PolterType/issues/65)).
+  Selecting a phrase with `Ctrl+Shift+←` and pressing the hotkey
+  rewrote the *previous* word instead of the selection. The stash the
+  hotkey acts on is deliberately kept across shortcuts — the hotkey is
+  itself a shortcut — but a shortcut built on an arrow, `Home`, `End`
+  or `A` is one whose effect we can read: the caret moved, so a
+  correction that backspaces from it would land in the wrong place.
+  Those now drop the stash, exactly as the same keys do when pressed
+  without a modifier, which is why selecting with plain `Shift+←`
+  always worked.
+
+  The same change closes a worse case nobody had reported yet. With
+  everything selected by `Ctrl+A`, the first Backspace of a correction
+  deletes the whole selection — so the hotkey pressed after a select-all
+  would erase the document and type one word in its place.
+
+### Added
+
+- **`[suggestions] caret_anchor` — whether PolterType may ask the
+  accessibility bus where your text cursor is**
+  ([#66](https://github.com/Just-Code-NET/PolterType/issues/66)). The
+  suggestion tooltip is anchored at the caret, and on Linux the only
+  way to know where that is goes through AT-SPI. Joining that bus is
+  not a private act: it raises `org.a11y.Status.IsEnabled` for the
+  whole session, which is the signal Qt applications take as "a screen
+  reader is running" — Telegram Desktop says so on screen, every
+  session, whether or not a single suggestion was ever shown.
+
+  It stays on by default, and the switch is in Settings → Suggestions
+  (*Place the tooltip at the text cursor*). Off, the tooltip anchors to
+  the window and PolterType never touches the bus at all on Hyprland
+  and X11. On GNOME and KDE Wayland the same bus is the only answer to
+  "which application has focus", which `[exceptions]` needs, so there
+  the connection stays and only the caret subscription goes —
+  `docs/PERMISSIONS.md` says which is which.
+
+  Turning the tooltip itself off now also stops the watcher, which it
+  never did: with `[suggestions] enabled = false` there was nothing in
+  the program that wanted a caret, and it connected anyway.
+
 ## [0.33.2] — an idle keyboard costs nothing, a broken line costs a line
 
 ### Fixed
