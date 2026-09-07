@@ -1,4 +1,4 @@
-# Known gaps (as of v0.33.1)
+# Known gaps (as of v0.33.2)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,21 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.33.2 pass actually checked (2026-09-07).** The idle cost
+of the input loop, on **Linux/Wayland** (Hyprland, evdev) on the
+development laptop, measured on the shipped 0.33.1 AppImage and on this
+build with the engine paused and nothing typed: 0.55 % of a core and
+502 context switches a second before, 0.05 % and 38 after, all of it in
+the `poltertype-input` thread both times. Corrections were then checked
+live in both directions on the new build — `yjdbyf` → `новина` with the
+layout switched to uk-UA, then the `hello` keys back to en-US — because
+a loop that waits instead of spinning is only cheaper if it still
+delivers every keystroke. **Not checked on X11**, whose loop changed the
+same way and is covered by nothing but its unit tests here: this machine
+has no X session. The key gate's own wake path is unit-tested rather
+than exercised, because keyd proxies our emitter on this machine and the
+gate turns itself off.
 
 **What the 0.33.1 pass actually checked (2026-09-07): nothing new,
 because nothing changed.** That release carries no change to the

@@ -51,8 +51,17 @@ Four rules, each of which exists because breaking it is easy:
 * **`{}` is a value filled in at run time**, in order. Keep the same
   number as the English unless your language genuinely needs fewer;
   extra ones are left visible rather than crashing anything.
-* **One bad line costs that line**, not your language. A value that
-  isn't a string is skipped with a warning and everything else loads.
+* **One bad line costs that line**, not your language — including a
+  line TOML refuses outright. A value that isn't a string is skipped,
+  and a line that does not parse at all is dropped while the rest of
+  the file is read as usual. The commonest way to write one is a
+  Windows path: `"C:\path"` is not a valid escape and `"C:\\path"`
+  is, which is why the shipped catalogs double every backslash.
+
+  When something was dropped, the Settings window says so under the
+  language picker, naming the file and the line — that line is the
+  only place this is visible, since the log it is also written to is
+  not somewhere a translator has any reason to look.
 
 ### What not to translate
 

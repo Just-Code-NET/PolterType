@@ -6,6 +6,48 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-07 — The input thread waits for the kernel instead of asking it
+
+Both Linux listeners ran on a timer. The evdev one asked every open
+keyboard whether it had anything, found nothing, slept 2 ms and asked
+again; the X11 one did the same to the connection. Five hundred rounds
+a second on an idle keyboard is about half a percent of a core, forever
+— and on a laptop the cost is not the half percent but the idle states
+it keeps the CPU out of (issue #63).
+
+**Both now wait on the descriptors they were asking about**, with
+`poll(2)` — the devices themselves on evdev, the connection socket on
+X11. An idle keyboard costs nothing at all, and a keystroke arrives
+when the kernel has it rather than up to a sleep later.
+
+**The key gate gets an `eventfd`, because a wait it cannot interrupt is
+a wait that outlives its usefulness.** A correction asks for the
+keyboard to be held and gives the device thread `HOLD_HANDSHAKE` (40 ms)
+to take the grabs; a hold not taken in time proceeds unheld, which is
+the failure this whole mechanism exists to prevent. Hold, release and
+shutdown therefore write to a descriptor the wait is watching, so the
+thread is serviced in microseconds rather than whenever its timeout
+runs out. Where the kernel refuses an eventfd the wait falls back to a
+2 ms cap — the cadence the loop had before, so the fallback is the
+behaviour that has been shipping rather than a new one.
+
+**What had to move with it.** The Caps Lock latch is now read at the
+*top* of the loop rather than after the batch, and the X11 modifier
+reconciliation likewise. A thread that sleeps between keystrokes has to
+reconcile on the way in: a latch changed with no key event — KDE
+InputActions, `xdotool key Caps_Lock`, an on-screen keyboard — used to
+be caught by the next of the five reads a second, and would otherwise
+now be caught only after the first word had been typed through it.
+
+**Alternatives.** A longer sleep is still a timer, and it buys the CPU
+back by spending hold latency, which is the wrong currency. `epoll` has
+nothing to offer over `poll` at a dozen descriptors re-polled on every
+rescan. `libinput` would replace the loop entirely, at the price of a
+dependency, a different permission model and a rewrite of the grab
+handling that took three releases to get right.
+
+---
+
 ## 2026-09-07 — A catalog says which language a guide is in, not where it is
 
 The Setup pane opens `docs/PERMISSIONS.md` — in English, from a window
