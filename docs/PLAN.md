@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-09-07 (v0.33.2).
+> Created: 2026-05-02. Last updated: 2026-09-07 (v0.34.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -430,6 +430,7 @@ enabled              = true
 max_suggestions      = 5            # clamped to 1..=9 (one digit key each)
 tooltip_timeout_secs = 30           # clamped to 3..=600 at read time
 accept_modifiers     = "Ctrl+Shift" # + digit 1..9; "" disables keyboard accept
+caret_anchor         = true         # Linux: ask the a11y bus where the caret is
 
 # Converting a *selected* passage with the force-switch key, rather
 # than the last word — added 2026-08-28 (v0.24.0), issue #32. OFF by
@@ -668,7 +669,7 @@ engine only *pulls* focus state at word boundaries.
 
 ## 4. Repository structure
 
-The actual structure as of v0.33.2 (the original sketch diverged from
+The actual structure as of v0.34.0 (the original sketch diverged from
 it in several places: `assets/` and a root `tests/` do not exist,
 modules are split into "one entity — one file" directories, and
 `CONTRIBUTING.md` lives at the root, not in `docs/`):
@@ -869,7 +870,7 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.33.2 (2026-09-07).** Phases 0–8 are, in their core
+> **Status as of v0.34.0 (2026-09-07).** Phases 0–8 are, in their core
 > parts, complete and shipped; `CHANGELOG.md` is the release-by-release
 > record and does not need repeating here. Items that are **not** done
 > are deliberately left as

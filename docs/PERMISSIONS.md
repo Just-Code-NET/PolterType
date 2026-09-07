@@ -264,6 +264,20 @@ session-scoped, is never unset by PolterType (unsetting could break
 a real screen reader started later), and disappears at logout. If
 the a11y stack is absent or disabled, everything degrades silently.
 
+**Other applications can tell, and some say so.** Raising that flag
+is exactly the signal a Qt application waits for before switching its
+accessibility bridge on — and Telegram Desktop announces it on
+screen, so a user who never asked for a screen reader is told one is
+running (issue #66). Since 0.34.0 that is a choice:
+`[suggestions] caret_anchor = false` (Settings → Suggestions → *Place
+the tooltip at the text cursor*) leaves the bus alone entirely on
+Hyprland and X11, at the cost of anchoring the tooltip to the window
+instead of the caret. Turning the tooltip off does the same.
+
+On GNOME and KDE Wayland the same bus is also the only way to learn
+which application has focus, which is what `[exceptions]` runs on, so
+there the connection remains and only the caret subscription goes.
+
 ### Option C — X11
 
 On X11 sessions we select `XInput2` `RawKeyPress` / `RawKeyRelease` on

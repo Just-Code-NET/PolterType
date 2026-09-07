@@ -1,4 +1,4 @@
-# Known gaps (as of v0.33.2)
+# Known gaps (as of v0.34.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,28 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.34.0 pass actually checked (2026-09-07).** On **Cinnamon
+X11**, in the desktop-matrix guest — which is where the X11 listener
+rewritten in 0.33.2 could finally be run at all. The full sweep passes:
+a word typed under the wrong layout arrives corrected *in the
+application*, the manual hotkey undoes it and puts it back, the pause
+chord fires, the layout normalises. The same session measured that
+listener idling at **0.05 % of a core**, which is the figure 0.33.2
+claimed on the evdev side and could not test here.
+
+On that session, two more: the manual hotkey pressed after
+`Ctrl+Shift+←` performs no correction, while the same hotkey after
+`Ctrl+S` still does (issue #65); and the AT-SPI caret watcher's thread
+is present with `caret_anchor = true`, absent with it `false`, and
+absent again with the tooltip itself switched off (issue #66).
+
+**Not checked: Telegram's banner.** Cinnamon raises
+`org.a11y.Status.IsEnabled` for its own reasons before PolterType
+starts, so on that desktop the flag cannot be attributed to us either
+way. What was verified is the cause — that PolterType no longer joins
+the accessibility bus when nothing wants a caret. The symptom itself
+rests on the reporter's account.
 
 **What the 0.33.2 pass actually checked (2026-09-07).** The idle cost
 of the input loop, on **Linux/Wayland** (Hyprland, evdev) on the

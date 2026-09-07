@@ -6,6 +6,44 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-08 — Joining the accessibility bus is a choice, not a side effect
+
+PolterType connects to AT-SPI for one thing: where the text caret is,
+so the suggestion tooltip can sit next to it. Connecting also raises
+`org.a11y.Status.IsEnabled` for the whole session — deliberately, since
+toolkits keep their bridges dormant until an assistive client asks. The
+part nobody weighed is that other applications read that flag: Qt
+switches its accessibility bridge on, and Telegram Desktop tells the
+user a screen reader is running. Every session, whether or not a single
+suggestion was ever shown (issue #66).
+
+**Gated behind `[suggestions] caret_anchor`, and behind
+`[suggestions] enabled` as well.** The tooltip is the only consumer of
+a caret in the whole program, so with suggestions off the watcher was
+pure cost — that half needed no new setting at all, only the question
+being asked.
+
+**The default stays on.** Off by default would trade a visible feature
+(the tooltip appearing where the user is typing) for a banner in one
+application, for everybody, including the majority who never see the
+banner. The people affected get a switch and a sentence in
+`docs/PERMISSIONS.md` saying what it does; that is the right shape for
+a trade-off that is genuinely a matter of taste.
+
+**On GNOME and KDE Wayland the connection stays regardless**, because
+the same bus is the only answer to "which application has focus" —
+`[exceptions]` has no other source there. Turning the caret off saves
+the subscription, not the connection, and the setting's doc comment
+says so rather than promising a silence it cannot deliver.
+
+**Alternatives.** Connecting lazily on the first tooltip only delays
+the banner to the first suggestion, which is no answer for someone who
+does not want it at all. Reading the caret from the compositor instead
+is not on offer: no Wayland protocol exposes another application's
+caret, which is the whole reason AT-SPI is in this code.
+
+---
+
 ## 2026-09-07 — The input thread waits for the kernel instead of asking it
 
 Both Linux listeners ran on a timer. The evdev one asked every open
