@@ -2893,6 +2893,75 @@ mod engine_integration_tests {
         );
     }
 
+    /// Issue #65: `Ctrl+Shift+→` is how people select the phrase they
+    /// want converted, and the stash it left behind used to eat the
+    /// hotkey — rewriting the word before the one the caret had moved
+    /// away from. The same arrow pressed without Ctrl has always
+    /// dropped the stash; the modifier is the only difference.
+    #[test]
+    fn a_selection_gesture_leaves_the_hotkey_no_stale_word() {
+        const RIGHT: u32 = 0x4D;
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let after_correction = h.switcher.switches.lock().clone();
+
+        let ctrl_shift = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(RIGHT, KeyDirection::Press, ctrl_shift);
+        h.key_mods(RIGHT, KeyDirection::Release, ctrl_shift);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            *h.switcher.switches.lock(),
+            after_correction,
+            "the caret has moved: the stashed word is no longer under it"
+        );
+    }
+
+    /// The other half of the same rule. A shortcut whose effect we
+    /// cannot read leaves the stash alone — `Ctrl+S` moves no caret,
+    /// and the hotkey after a save has always worked.
+    #[test]
+    fn a_shortcut_that_moves_no_caret_still_leaves_the_hotkey_its_word() {
+        const S: u32 = 0x1F;
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.wait_for(|e| matches!(e, SwitcherEvent::Corrected { .. }));
+        h.settle();
+        let after_correction = h.switcher.switches.lock().clone();
+
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(S, KeyDirection::Press, ctrl);
+        h.key_mods(S, KeyDirection::Release, ctrl);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_ne!(
+            *h.switcher.switches.lock(),
+            after_correction,
+            "a save does not move the caret, so the word is still there to switch"
+        );
+    }
+
     /// The same hotkey on a word the engine *left alone* keeps its
     /// original meaning — apply the switch we declined — and teaches
     /// nothing: the user is telling us to correct that word, which is

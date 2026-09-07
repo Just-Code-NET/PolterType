@@ -11,7 +11,9 @@ use crate::audio::SoundEvent;
 use crate::engine::buffer::{WordBoundary, WordBuffer};
 use crate::engine::consts::{FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD, SC_BACKSPACE};
 use crate::engine::enums::{Either, EngineCommand, SwitcherEvent};
-use crate::engine::heuristics::{is_modifier_scancode, is_paste_shortcut};
+use crate::engine::heuristics::{
+    is_modifier_scancode, is_paste_shortcut, moves_caret_or_selection,
+};
 
 use super::engine::SwitcherEngine;
 
@@ -377,6 +379,17 @@ impl SwitcherEngine {
             // A shortcut can also move the caret (Ctrl+End,
             // app-specific jumps), so the next word may start mid-word.
             buffer.mark_context_unclean();
+            if moves_caret_or_selection(ev.scancode) {
+                // Except when the shortcut is one we can read. A
+                // correction backspaces *from the caret*, so a stash
+                // that outlives `Ctrl+Shift+→` gets applied wherever
+                // the caret ended up — and after `Ctrl+A` its first
+                // Backspace takes the whole selection with it. Dropping
+                // it here is also what lets the hotkey fall through to
+                // the selection, which is what the user who just
+                // selected something meant by pressing it (issue #65).
+                *self.last_word.write() = None;
+            }
             self.dismiss_suggestions(None);
             return;
         }

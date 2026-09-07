@@ -181,6 +181,12 @@ pub const HELD_FLUSH_QUIET_PROBES: u8 = 3;
 
 /// SC Set-1 scancode for the `V` key (matches evdev `KEY_V` on Linux).
 pub const SC_V: u32 = 0x2F;
+/// SC Set-1 scancode for the `A` key (matches evdev `KEY_A`), which is
+/// select-all nearly everywhere and a caret jump in the rest.
+pub const SC_A: u32 = 0x1E;
+/// SC Set-1 scancode for Esc, which every text field reads as "never
+/// mind" — the buffer already treats it as the caret moving.
+pub const SC_ESC: u32 = 0x01;
 /// evdev `KEY_INSERT` — used for the Shift+Insert paste shortcut. (Insert
 /// has no plain SC-1 byte; the listener reports the raw evdev code.)
 pub const SC_INSERT: u32 = 110;

@@ -439,3 +439,41 @@ fn caret_move_forgets_the_separator() {
     space(&mut b);
     assert_eq!(b.completed_lead(), None);
 }
+
+/// The stash the manual hotkey acts on is dropped for exactly the keys
+/// this buffer reads as the caret moving — but only the engine knows
+/// that, and it asks `moves_caret_or_selection`. If the two ever drift
+/// apart, a gesture starts abandoning the word while leaving the stash
+/// behind for the hotkey to apply wherever the caret went, which is
+/// issue #65 all over again.
+#[test]
+fn every_key_this_buffer_calls_navigation_is_a_caret_gesture() {
+    use crate::engine::heuristics::moves_caret_or_selection;
+
+    for sc in [
+        0x01, // Esc
+        0x47,
+        0x48,
+        0x4B, // Home, Up, Left (extended-prefixed)
+        0x4D,
+        0x4F,
+        0x50, // Right, End, Down
+        0x53, // Delete
+        0x66,
+        0x6B,
+        0x6F, // evdev Home, End, Delete
+        SC_POINTER_BUTTON,
+    ] {
+        let mut b = WordBuffer::new();
+        word_key(&mut b, 0x23, 'h');
+        assert_eq!(
+            b.feed(press(sc), None, false),
+            WordBoundary::Abandoned,
+            "{sc:#x} is navigation to the buffer"
+        );
+        assert!(
+            moves_caret_or_selection(sc),
+            "{sc:#x} abandons the word here but the engine would keep the stash for it"
+        );
+    }
+}

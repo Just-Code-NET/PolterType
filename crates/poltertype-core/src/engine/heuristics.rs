@@ -5,10 +5,11 @@ use std::time::Instant;
 
 use poltertype_input::{KeyDirection, KeyEvent};
 use poltertype_layout::LayoutId;
+use poltertype_types::SC_POINTER_BUTTON;
 
 use crate::layouts::LayoutDb;
 
-use super::consts::{MOD_DOUBLE_TAP_GAP, MOD_TAP_MAX, SC_INSERT, SC_V};
+use super::consts::{MOD_DOUBLE_TAP_GAP, MOD_TAP_MAX, SC_A, SC_ESC, SC_INSERT, SC_V};
 use super::enums::{Binding, ModRole};
 use super::types::{BindingState, Chord, ModChord, ModSet, ModTapState};
 
@@ -148,6 +149,24 @@ pub fn is_paste_shortcut(ev: &KeyEvent) -> bool {
 /// Tab, numpad Enter) — never safe to re-emit as part of a correction.
 pub fn is_submission_scancode(sc: u32) -> bool {
     matches!(sc, 0x1C | 0x0F | 0x60)
+}
+
+/// Keys that move the caret or replace what is selected, whatever else
+/// the application binds them to.
+///
+/// The nav cluster, Esc and the pointer — the same scancodes
+/// `buffer::classify` reads as navigation, which `classify_agrees…` in
+/// this module's tests keeps in step — plus `A`, for select-all.
+///
+/// Pressed bare, every one of these already abandons the word *and*
+/// drops the stashed last word. Held with Ctrl they used to be
+/// indistinguishable from any other shortcut, so the stash survived —
+/// and the manual switch-last hotkey then rewrote a word the caret had
+/// long left. After `Ctrl+A` it was worse than wrong: the correction's
+/// first Backspace deletes an entire selection, so the hotkey would
+/// erase everything the user had just selected (issue #65).
+pub fn moves_caret_or_selection(sc: u32) -> bool {
+    matches!(sc, SC_ESC | SC_A | 0x3B..=0x53 | 0x66..=0x6F) || sc == SC_POINTER_BUTTON
 }
 
 /// Bare modifier keys: left/right Ctrl, Shift, Alt, Meta and Caps Lock.
