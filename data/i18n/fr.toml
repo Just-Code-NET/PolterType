@@ -219,6 +219,8 @@
 "suggestions.modifiers_hint" = "Séparés par « + » : {} — p. ex. Ctrl+Shift. S'applique avec les touches 1 à 9. Laissez vide pour désactiver la validation au clavier."
 "suggestions.modifiers_required" = "Au moins un parmi {} est nécessaire — en l'état, la validation au clavier est désactivée (cliquer sur une suggestion fonctionne toujours)."
 "suggestions.tooltip" = "Bulle de suggestions"
+"suggestions.caret_anchor" = "Placer la bulle près du curseur de texte"
+"suggestions.caret_anchor_hint" = "Linux uniquement, et cela dépasse PolterType : la position du curseur vient du bus d'accessibilité, et une application qui s'y connecte fait annoncer aux applications Qt — dont Telegram — qu'un lecteur d'écran est actif. Désactivé, la bulle s'affiche près de la fenêtre. Prend effet au redémarrage."
 "suggestions.keyboard_accept" = "Validation au clavier"
 "suggestions.show_suggestions_mistyped_words" = "Proposer des suggestions pour les mots mal tapés"
 "suggestions.max_suggestions" = "Nombre maximal de suggestions (1–9) :"

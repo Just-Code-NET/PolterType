@@ -438,6 +438,9 @@ impl SettingsApp {
             }
             // ── Suggestions ──────────────────────────────────────
             Message::SuggestionsToggled(b) => self.settings.suggestions.enabled = b,
+            Message::SuggestionCaretAnchorToggled(b) => {
+                self.settings.suggestions.caret_anchor = b;
+            }
             // Guarded rather than trusted: the pane disables the
             // toggle where the session cannot do this, and a message
             // that arrives anyway must not write a setting the app

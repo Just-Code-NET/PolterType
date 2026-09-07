@@ -302,6 +302,24 @@ pub struct SuggestionSettings {
     /// up. Parsed like `[hotkeys]` strings; empty disables keyboard
     /// accept, leaving click-to-apply only.
     pub accept_modifiers: String,
+    /// Put the tooltip next to the text cursor rather than at the
+    /// window.
+    ///
+    /// **Linux only, and it costs more than it looks.** The caret
+    /// position comes from the accessibility bus, and an application
+    /// that joins that bus raises `org.a11y.Status.IsEnabled` for the
+    /// whole session — which switches Qt applications into
+    /// screen-reader mode, loudly in Telegram's case (issue #66).
+    /// Turned off, the tooltip anchors to the window and PolterType
+    /// never touches the bus at all on Hyprland or X11. On GNOME and
+    /// KDE Wayland that bus is also the only answer to "which
+    /// application is focused", which `[exceptions]` needs, so there
+    /// the connection stays and only the caret subscription goes.
+    ///
+    /// Windows and macOS read the caret through ordinary APIs with no
+    /// side effect outside this process and ignore this setting. The
+    /// tracker is built at startup, so a change needs a restart.
+    pub caret_anchor: bool,
 }
 
 impl Default for SuggestionSettings {
@@ -311,6 +329,7 @@ impl Default for SuggestionSettings {
             max_suggestions: 5,
             tooltip_timeout_secs: 30,
             accept_modifiers: "Ctrl+Shift".into(),
+            caret_anchor: true,
         }
     }
 }

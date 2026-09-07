@@ -276,7 +276,15 @@ fn main() -> Result<()> {
     let audio = Arc::new(AudioPlayer::new());
     audio.refresh_from(&settings);
 
-    let focus_tracker = create_focus_tracker();
+    // The caret is only ever wanted for the suggestion tooltip, and on
+    // Linux asking for it joins the accessibility bus — which is not a
+    // private act: it flips a session-wide flag that Qt applications
+    // read as "a screen reader is running" (issue #66). So the two
+    // settings that could want it are consulted first.
+    let focus_tracker = {
+        let s = settings.snapshot();
+        create_focus_tracker(s.suggestions.enabled && s.suggestions.caret_anchor)
+    };
     info!(
         backend = focus_tracker.backend_name(),
         "focus tracker ready"

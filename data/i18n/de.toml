@@ -219,6 +219,8 @@
 "suggestions.modifiers_hint" = "Mit „+“ getrennt: {} — z. B. Ctrl+Shift. Wird mit den Zifferntasten 1–9 angewandt. Leer lassen, um die Übernahme per Tastatur abzuschalten."
 "suggestions.modifiers_required" = "Mindestens eines von {} ist nötig — so wie es dasteht, ist die Übernahme per Tastatur aus (ein Klick auf einen Vorschlag funktioniert weiterhin)."
 "suggestions.tooltip" = "Vorschlagsfenster"
+"suggestions.caret_anchor" = "Vorschlagsfenster an der Schreibmarke platzieren"
+"suggestions.caret_anchor_hint" = "Nur Linux, und es wirkt über PolterType hinaus: Die Position der Schreibmarke kommt vom Accessibility-Bus, und eine Anwendung, die sich damit verbindet, lässt Qt-Programme — darunter Telegram — melden, dass ein Screenreader läuft. Aus erscheint das Fenster am Rand des Programmfensters. Wirkt nach einem Neustart."
 "suggestions.keyboard_accept" = "Übernahme per Tastatur"
 "suggestions.show_suggestions_mistyped_words" = "Vorschläge für vertippte Wörter anzeigen"
 "suggestions.max_suggestions" = "Maximale Vorschläge (1–9):"

@@ -110,13 +110,24 @@ fn cache_with_zero_ttl_always_refreshes() {
     assert_eq!(cached.focused_exe().as_deref(), Some("counted"));
 }
 
+/// The state this tracker gained when the caret became optional: on
+/// GNOME and KDE Wayland it is built for `focused_exe` alone, since
+/// `[exceptions]` has no other source there, and it must answer "no
+/// caret" rather than assume it has one (issue #66).
+#[test]
+fn an_atspi_tracker_with_no_caret_still_answers() {
+    let tracker = super::caret_only::CaretOnlyFocusTracker::new(None, None);
+    assert!(tracker.caret_hint().is_none());
+    assert!(tracker.focused_exe().is_none());
+}
+
 /// Live check against the real session — needs a running Hyprland or
 /// X11 desktop with a focused window, so it's `#[ignore]`d in CI.
 /// Run manually: `cargo test -p poltertype-input -- --ignored focus`
 #[test]
 #[ignore = "requires a live Hyprland/X11 session with a focused window"]
 fn live_focused_exe_returns_current_app() {
-    let tracker = super::create_linux_focus_tracker();
+    let tracker = super::create_linux_focus_tracker(true);
     let exe = tracker.focused_exe();
     println!("backend={} focused_exe={exe:?}", tracker.backend_name());
     assert!(tracker.backend_name() != "noop", "expected a live backend");
@@ -271,7 +282,7 @@ fn caret_sample_hint_carries_coordinates_age_and_owner() {
 #[test]
 #[ignore = "requires a live desktop, an a11y bus and someone typing"]
 fn live_anchor_inputs_agree_on_the_focused_window() {
-    let tracker = super::create_linux_focus_tracker();
+    let tracker = super::create_linux_focus_tracker(true);
     println!("backend={}", tracker.backend_name());
     for _ in 0..60 {
         let geometry = tracker.focused_window_geometry();

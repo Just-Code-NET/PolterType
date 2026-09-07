@@ -26,23 +26,36 @@ use super::x11::X11FocusTracker;
 /// even when `DISPLAY` points at XWayland: XWayland sees only its own
 /// windows, so `_NET_ACTIVE_WINDOW` goes stale whenever focus moves to
 /// a native Wayland window — a wrong answer, worse than no answer.
-pub(crate) fn create_linux_focus_tracker() -> Arc<dyn FocusTracker> {
+pub(crate) fn create_linux_focus_tracker(caret_anchor: bool) -> Arc<dyn FocusTracker> {
+    // Nothing else here asks the accessibility bus for anything, and
+    // asking is not free outside this process: joining it raises
+    // `org.a11y.Status.IsEnabled` session-wide, which is how Qt
+    // applications decide a screen reader is running — Telegram says
+    // so on screen (issue #66). So the watcher is built only where
+    // something actually wants a caret.
+    let caret = || caret_anchor.then(caret_watcher).flatten();
     if hyprland_available() {
         return Arc::new(CachedFocusTracker::new(
-            Box::new(HyprlandFocusTracker::new(caret_watcher())),
+            Box::new(HyprlandFocusTracker::new(caret())),
             FOCUS_CACHE_TTL,
         ));
     }
     if session_kind() == SessionKind::X11 {
         return Arc::new(CachedFocusTracker::new(
-            Box::new(X11FocusTracker::new(caret_watcher())),
+            Box::new(X11FocusTracker::new(caret())),
             FOCUS_CACHE_TTL,
         ));
     }
-    match caret_watcher() {
-        Some(caret) => Arc::new(CaretOnlyFocusTracker::new(caret, focus_watcher())),
-        None => Arc::new(NoopFocusTracker),
+    // The branch where the bus answers *both* halves. `focused_exe` is
+    // what `[exceptions]` runs on and has no other source here, so it
+    // is asked for whatever the caret setting says — turning the caret
+    // off saves the subscription, not the connection.
+    let focus = focus_watcher();
+    let caret = caret();
+    if caret.is_none() && focus.is_none() {
+        return Arc::new(NoopFocusTracker);
     }
+    Arc::new(CaretOnlyFocusTracker::new(caret, focus))
 }
 
 /// The AT-SPI focused-application watcher, for the branch that has no

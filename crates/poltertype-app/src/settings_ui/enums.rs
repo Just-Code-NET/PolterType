@@ -285,6 +285,7 @@ pub enum Message {
     // ── Suggestions pane ───────────────────────────────────────────
     /// `[suggestions].enabled` — master switch for the typo tooltip.
     SuggestionsToggled(bool),
+    SuggestionCaretAnchorToggled(bool),
     /// `[suggestions].max_suggestions`, stepped by the ± buttons.
     SuggestionMaxDelta(i64),
     /// `[suggestions].tooltip_timeout_secs`, stepped by the ± buttons.

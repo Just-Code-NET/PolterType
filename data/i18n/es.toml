@@ -217,6 +217,8 @@
 "suggestions.modifiers_hint" = "Separados por «+»: {} — p. ej. Ctrl+Shift. Se aplican con las teclas 1–9. Déjalo vacío para desactivar la aceptación por teclado."
 "suggestions.modifiers_required" = "Hace falta al menos uno de {}: tal y como está, la aceptación por teclado está desactivada (hacer clic en una sugerencia sigue funcionando)."
 "suggestions.tooltip" = "Globo de sugerencias"
+"suggestions.caret_anchor" = "Mostrar el globo junto al cursor de texto"
+"suggestions.caret_anchor_hint" = "Solo Linux, y afecta más allá de PolterType: la posición del cursor viene del bus de accesibilidad, y una aplicación que se conecta a él hace que las aplicaciones Qt —Telegram entre ellas— anuncien que hay un lector de pantalla activo. Desactivado, el globo aparece junto a la ventana. Se aplica al reiniciar."
 "suggestions.keyboard_accept" = "Aceptación por teclado"
 "suggestions.show_suggestions_mistyped_words" = "Mostrar sugerencias para las palabras mal escritas"
 "suggestions.max_suggestions" = "Máximo de sugerencias (1–9):"

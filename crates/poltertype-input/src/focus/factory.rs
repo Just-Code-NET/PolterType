@@ -16,6 +16,13 @@ use super::traits::FocusTracker;
 /// Build the focus tracker for the active platform. Always returns
 /// *some* tracker — even on platforms where we can't read focus
 /// state, we ship a noop tracker so the engine keeps a uniform API.
-pub fn create_focus_tracker() -> Arc<dyn FocusTracker> {
-    imp()
+///
+/// `caret_anchor` is `[suggestions].caret_anchor`: whether anything
+/// wants the text cursor's position. Only Linux acts on it, where the
+/// answer costs a connection to the accessibility bus and a
+/// session-wide flag that changes how other applications behave
+/// (issue #66); Windows and macOS read the caret through ordinary
+/// APIs and have nothing to gate.
+pub fn create_focus_tracker(caret_anchor: bool) -> Arc<dyn FocusTracker> {
+    imp(caret_anchor)
 }

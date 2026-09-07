@@ -1389,6 +1389,19 @@ impl SettingsApp {
                 .color(b.muted),
             );
 
+        // A Checkbox with no `on_toggle` renders disabled, which is the
+        // right signal while the tooltip itself is off: there is then
+        // nothing to anchor anywhere.
+        let mut anchor_checkbox = Checkbox::new(s.caret_anchor && s.enabled)
+            .label(tr(
+                "suggestions.caret_anchor",
+                "Place the tooltip at the text cursor",
+            ))
+            .text_size(13);
+        if s.enabled {
+            anchor_checkbox = anchor_checkbox.on_toggle(Message::SuggestionCaretAnchorToggled);
+        }
+
         let tooltip_card = Column::new()
             .spacing(12)
             .push(section_title(b, tr("suggestions.tooltip", "Tooltip")))
@@ -1402,7 +1415,20 @@ impl SettingsApp {
                     .on_toggle(Message::SuggestionsToggled),
             )
             .push(max_row)
-            .push(timeout_row);
+            .push(timeout_row)
+            .push(anchor_checkbox)
+            .push(
+                Text::new(tr(
+                    "suggestions.caret_anchor_hint",
+                    "Linux only, and it reaches outside PolterType: the cursor's position \
+                     comes from the accessibility bus, and an application that joins that bus \
+                     is what makes Qt ones — Telegram among them — announce that a screen \
+                     reader is running. Off, the tooltip sits at the window instead. Takes \
+                     effect on restart.",
+                ))
+                .size(11)
+                .color(b.muted),
+            );
 
         // A `TextInput` without `on_input` renders disabled.
         let mut modifiers_input = TextInput::new(

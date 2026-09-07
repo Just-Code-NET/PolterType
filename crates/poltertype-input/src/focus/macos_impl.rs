@@ -261,7 +261,10 @@ impl FocusTracker for MacosFocusTracker {
     }
 }
 
-pub(crate) fn create_macos_focus_tracker() -> std::sync::Arc<dyn FocusTracker> {
+/// `_caret_anchor` is honoured only on Linux — the AX caret is read
+/// from the app PolterType is already permitted to observe, and asking
+/// changes nothing for any other application.
+pub(crate) fn create_macos_focus_tracker(_caret_anchor: bool) -> std::sync::Arc<dyn FocusTracker> {
     std::sync::Arc::new(MacosFocusTracker)
 }
 
