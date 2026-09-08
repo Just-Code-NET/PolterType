@@ -1,4 +1,4 @@
-# Known gaps (as of v0.34.0)
+# Known gaps (as of v0.34.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,16 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.34.1 pass actually checked (2026-09-08).** Bug-fix-only
+release — two fixes from contributor PRs. The selection-direction fix
+(#68) is platform-neutral (`poltertype-core` only), verified by three
+regression tests and the full 407-test suite. The Windows modifier
+snapshot fix (#69) was measured by the contributor on Windows Server 2025
+over RDP: manual switches that previously stalled 1.5–5 s now take
+0.13–0.26 s, and selection conversion works on the first press. No gaps
+were added or closed; every existing bullet re-verified against the
+current code.
 
 **What the 0.34.0 pass actually checked (2026-09-07).** On **Cinnamon
 X11**, in the desktop-matrix guest — which is where the X11 listener

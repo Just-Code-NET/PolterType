@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-09-07 (v0.34.0).
+> Created: 2026-05-02. Last updated: 2026-09-08 (v0.34.1).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -669,7 +669,7 @@ engine only *pulls* focus state at word boundaries.
 
 ## 4. Repository structure
 
-The actual structure as of v0.34.0 (the original sketch diverged from
+The actual structure as of v0.34.1 (the original sketch diverged from
 it in several places: `assets/` and a root `tests/` do not exist,
 modules are split into "one entity — one file" directories, and
 `CONTRIBUTING.md` lives at the root, not in `docs/`):
@@ -870,7 +870,7 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.34.0 (2026-09-07).** Phases 0–8 are, in their core
+> **Status as of v0.34.1 (2026-09-08).** Phases 0–8 are, in their core
 > parts, complete and shipped; `CHANGELOG.md` is the release-by-release
 > record and does not need repeating here. Items that are **not** done
 > are deliberately left as

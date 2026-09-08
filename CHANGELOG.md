@@ -4,6 +4,35 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 0.34.1
+
+### Fixed
+
+- **Force-by-selection now follows the text, not the current layout**
+  ([#68](https://github.com/Just-Code-NET/PolterType/pull/68)).
+  `converted()` trusted `layout_switcher.current()` for the source
+  layout. If the layout had moved on since the word was typed — exactly
+  what the very next word does when it triggers auto-correction — the
+  guess named the layout the caret is in now, `transliterate_to`'s own
+  guard refused it, and the force-switch silently did nothing. Both
+  directions are now tried, current-first; the guard rejects the wrong
+  one on its own, so nothing is forced through blind.
+
+- **The manual switch-last hotkey no longer stalls on Windows**
+  ([#69](https://github.com/Just-Code-NET/PolterType/pull/69)).
+  `GetAsyncKeyState` inside `WH_KEYBOARD_LL` reports the keyboard as it
+  was *before* the event being delivered has taken effect. A Ctrl release
+  therefore arrived reading "Ctrl held", and with nothing typed
+  afterwards that snapshot was the last one the engine got — it believed
+  the force-switch chord was still down and waited for a release it had
+  already been handed, stalling every manual switch 1.5–5 s until the
+  next keystroke. For a modifier the event is about, the event itself is
+  now the truth: a new `Modifiers::after_transition()` applies the
+  delivered key's own press/release, reading the other side of the same
+  modifier live so that releasing one Shift while the other is held keeps
+  Shift. Selection conversion, which ran the same wait, now works on
+  the first press.
+
 ## [0.34.0] — a selection is not the word behind it
 
 ### Fixed
