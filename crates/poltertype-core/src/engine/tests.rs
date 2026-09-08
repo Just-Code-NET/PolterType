@@ -938,6 +938,101 @@ mod engine_integration_tests {
         );
     }
 
+    /// Builds a bare `SwitcherEngine` for calling a private method
+    /// directly — no thread, no channels driven, unlike `Harness`,
+    /// which moves the engine into its runner thread and never gives
+    /// it back. Only what `converted()` touches needs to be real.
+    fn bare_engine(current: &str, active: &[&str]) -> (SwitcherEngine, Arc<LayoutDb>) {
+        let active_ids: Vec<LayoutId> = active.iter().map(|s| LayoutId::from(*s)).collect();
+        let layouts = Arc::new(
+            LayoutDb::load(crate::layouts::LoadOptions {
+                active_filter: Some(&active_ids),
+                ..Default::default()
+            })
+            .expect("bundled layouts load"),
+        );
+        let settings = Arc::new(SettingsStore::for_tests(
+            crate::settings::Settings::default(),
+        ));
+        let switcher = Arc::new(MockSwitcher::new(current, active));
+        let (audio, _audio_rx) = crate::audio::AudioPlayer::for_tests();
+        let (out_tx, _out_rx) = crossbeam_channel::unbounded();
+        let engine = SwitcherEngine::new(EngineDeps {
+            settings,
+            layouts: Arc::clone(&layouts),
+            detectors: Vec::new(),
+            layout_switcher: switcher as Arc<dyn poltertype_layout::LayoutSwitcher>,
+            key_emitter: Arc::new(MockEmitter::default()) as Arc<dyn KeyEmitter>,
+            clipboard: None,
+            key_gate: poltertype_input::KeyGate::disabled(),
+            focus_tracker: Arc::new(NoopFocusTracker),
+            audio: Arc::new(audio),
+            out_tx,
+            suggester: None,
+        });
+        (engine, layouts)
+    }
+
+    /// Regression: force-by-selection trusted `current()` for the
+    /// *source* layout, not the text. If the layout had moved on since
+    /// the word was typed — exactly what the very next word does when
+    /// it triggers auto-correction — `converted()` tried
+    /// transliterating from the wrong layout, `transliterate_to`'s own
+    /// guard refused (no letter of that layout in the text), and the
+    /// whole gesture read as "nothing was selected". Plan and test
+    /// words are from `plans/backlog.md` (P2, keyboard-switcher track).
+    #[test]
+    fn selection_conversion_direction_follows_the_text_not_the_current_layout() {
+        let (engine, layouts) = bare_engine("uk-UA", &["en-US", "uk-UA"]);
+        let en = layouts.get(&LayoutId::from("en-US")).expect("en-US loaded");
+        let uk = layouts.get(&LayoutId::from("uk-UA")).expect("uk-UA loaded");
+        let expected = en
+            .transliterate_to("ghbdsn", uk)
+            .expect("en-US -> uk-UA must convert `ghbdsn`");
+
+        // `current()` says uk-UA, but "ghbdsn" (`привіт` mistyped) was
+        // typed under en-US — the old code trusted `current()` and
+        // the force-switch silently did nothing.
+        assert_eq!(
+            engine.converted("ghbdsn"),
+            Some((expected, LayoutId::from("en-US"), LayoutId::from("uk-UA"))),
+            "must detect en-US as the source from the text, not uk-UA from current()"
+        );
+    }
+
+    /// Mirror of the regression above: `current()` already names the
+    /// right source, so the first try must still succeed directly —
+    /// the fallback exists for the case above, not to replace the
+    /// ordinary one.
+    #[test]
+    fn selection_conversion_direction_still_works_when_current_is_right() {
+        let (engine, layouts) = bare_engine("en-US", &["en-US", "uk-UA"]);
+        let en = layouts.get(&LayoutId::from("en-US")).expect("en-US loaded");
+        let uk = layouts.get(&LayoutId::from("uk-UA")).expect("uk-UA loaded");
+        let expected = en
+            .transliterate_to("ghbdsn", uk)
+            .expect("en-US -> uk-UA must convert `ghbdsn`");
+
+        assert_eq!(
+            engine.converted("ghbdsn"),
+            Some((expected, LayoutId::from("en-US"), LayoutId::from("uk-UA"))),
+            "a source that `current()` already gets right must not need the fallback"
+        );
+    }
+
+    /// Text that belongs to neither active layout must not be forced
+    /// through either direction — `transliterate_to`'s guard has to
+    /// win both tries, not just the first.
+    #[test]
+    fn selection_conversion_direction_gives_up_on_text_neither_layout_typed() {
+        let (engine, _layouts) = bare_engine("uk-UA", &["en-US", "uk-UA"]);
+        assert_eq!(
+            engine.converted("12345"),
+            None,
+            "digits belong to no layout's alphabet — nothing to convert"
+        );
+    }
+
     /// A word typed under a latched Caps Lock has to go back out on the
     /// Shift states the user's fingers actually had.
     ///
