@@ -17,6 +17,8 @@ mod gate;
 #[cfg(windows)]
 mod listener;
 #[cfg(windows)]
+mod modifiers;
+#[cfg(windows)]
 mod types;
 
 #[cfg(windows)]

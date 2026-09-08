@@ -117,6 +117,39 @@ impl Modifiers {
     pub fn is_command(&self) -> bool {
         self.control || self.alt || self.meta
     }
+
+    /// The held set once an event on `key` has taken effect, given a
+    /// snapshot read *before* it.
+    ///
+    /// Some platforms hand a hook the keyboard as it was before the
+    /// event being delivered — `GetAsyncKeyState` inside a Windows
+    /// low-level hook does. A Ctrl release then arrives reading "Ctrl
+    /// held", and with nothing typed afterwards that reading stands
+    /// until the next key: the engine believes the hotkey's chord is
+    /// still down and waits for a release it has already been handed
+    /// (measured on Windows Server 2025 over RDP, 2026-09-03 and
+    /// 2026-09-08 — every manual switch delayed until the next
+    /// keystroke). Applying the event's own transition makes the
+    /// snapshot describe the moment *after* it.
+    ///
+    /// A release clears the flag only while the same modifier's other
+    /// physical key is not held — `other_side_down` is that answer,
+    /// read by the platform for the opposite side.
+    pub fn after_transition(
+        mut self,
+        key: ModifierKey,
+        pressed: bool,
+        other_side_down: bool,
+    ) -> Self {
+        let held = pressed || other_side_down;
+        match key {
+            ModifierKey::Shift => self.shift = held,
+            ModifierKey::Control => self.control = held,
+            ModifierKey::Alt => self.alt = held,
+            ModifierKey::Meta => self.meta = held,
+        }
+        self
+    }
 }
 
 /// The key combination a desktop binds to "switch to the next keyboard
