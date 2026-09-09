@@ -11,14 +11,19 @@
 //! | [`types`] | plain data: `Atoms`, `VisualPick`, `WinView` |
 //! | [`run_loop`] | the thread loop, command dispatch |
 //! | [`show`] | creating and placing the window |
+//! | [`monitors`] | which physical screen a popup belongs on |
 //! | [`paint`] | uploading the rendered pixmap |
 //! | [`events`] | the X event loop, hover, deadline, teardown |
 
 mod events;
+mod monitors;
 mod paint;
 mod run_loop;
 mod show;
 mod types;
 mod x11_state;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) use run_loop::run;

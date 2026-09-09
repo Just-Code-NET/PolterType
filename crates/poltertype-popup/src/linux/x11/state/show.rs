@@ -1,6 +1,7 @@
 //! Creating and placing the window: [`X11State::show`] tears down any
-//! current window and maps a fresh one; `place` is the shared
-//! side-picker its placement is measured against.
+//! current window and maps a fresh one; [`place`] puts it inside the
+//! monitor [`super::monitors`] picked, and is the shared side-picker's
+//! only caller here.
 
 use std::time::Instant;
 
@@ -16,6 +17,7 @@ use x11rb::wrapper::ConnectionExt as _;
 use crate::enums::PopupAnchor;
 use crate::types::PopupModel;
 
+use super::monitors::{self, MonitorRect};
 use super::types::WinView;
 use super::x11_state::X11State;
 
@@ -34,7 +36,14 @@ impl X11State {
         let rendered = self.renderer.render(&model, None, 1.0);
         let w = rendered.pixmap.width().min(u16::MAX as u32) as u16;
         let h = rendered.pixmap.height().min(u16::MAX as u32) as u16;
-        let (x, y) = self.place(w, h, &model.anchor);
+        let whole_root = MonitorRect {
+            x: 0,
+            y: 0,
+            w: self.screen_w as i32,
+            h: self.screen_h as i32,
+        };
+        let mon = monitors::for_anchor(&self.conn, self.root, whole_root, &model.anchor);
+        let (x, y) = place(mon, w, h, &model.anchor);
 
         let window = self.conn.generate_id()?;
         // For a depth ≠ root windows, border_pixel and colormap are
@@ -112,39 +121,45 @@ impl X11State {
         self.conn.flush()?;
         Ok(())
     }
+}
 
-    /// Root-coordinate placement: the shared side-picker around the
-    /// pointer for `Point`, centred on the anchor window with the
-    /// bottom edge `BOTTOM_OFFSET` above its bottom for `WindowRect`;
-    /// clamped to the screen either way.
-    fn place(&self, w: u16, h: u16, anchor: &PopupAnchor) -> (i16, i16) {
-        let (px, py) = match *anchor {
-            PopupAnchor::Point { x, y, height, .. } => crate::place::place_near_point(
-                x,
-                y,
-                y + height as i32,
+/// Root-coordinate placement *within `mon`*: the shared side-picker
+/// around the pointer for `Point`, centred on the anchor window with
+/// the bottom edge `BOTTOM_OFFSET` above its bottom for `WindowRect`,
+/// centred on the monitor for `ScreenBottom`; clamped to the monitor
+/// either way.
+pub(super) fn place(mon: MonitorRect, w: u16, h: u16, anchor: &PopupAnchor) -> (i16, i16) {
+    let (px, py) = match *anchor {
+        PopupAnchor::Point { x, y, height, .. } => {
+            // The side-picker works in one screen's space, so the point
+            // goes in monitor-local and the answer comes back out.
+            let (lx, ly) = crate::place::place_near_point(
+                x - mon.x,
+                y - mon.y,
+                y - mon.y + height as i32,
                 w as i32,
                 h as i32,
-                Some((self.screen_w as i32, self.screen_h as i32)),
-            ),
-            PopupAnchor::WindowRect {
-                x,
-                y,
-                width,
-                height,
-                ..
-            } => (
-                x + (width as i32 - w as i32) / 2,
-                y + height as i32 - BOTTOM_OFFSET - h as i32,
-            ),
-            PopupAnchor::ScreenBottom => (
-                (self.screen_w as i32 - w as i32) / 2,
-                self.screen_h as i32 - BOTTOM_OFFSET - h as i32,
-            ),
-        };
-        (
-            px.clamp(0, (self.screen_w as i32 - w as i32).max(0)) as i16,
-            py.clamp(0, (self.screen_h as i32 - h as i32).max(0)) as i16,
-        )
-    }
+                Some((mon.w, mon.h)),
+            );
+            (mon.x + lx, mon.y + ly)
+        }
+        PopupAnchor::WindowRect {
+            x,
+            y,
+            width,
+            height,
+            ..
+        } => (
+            x + (width as i32 - w as i32) / 2,
+            y + height as i32 - BOTTOM_OFFSET - h as i32,
+        ),
+        PopupAnchor::ScreenBottom => (
+            mon.x + (mon.w - w as i32) / 2,
+            mon.y + mon.h - BOTTOM_OFFSET - h as i32,
+        ),
+    };
+    (
+        px.clamp(mon.x, (mon.x + mon.w - w as i32).max(mon.x)) as i16,
+        py.clamp(mon.y, (mon.y + mon.h - h as i32).max(mon.y)) as i16,
+    )
 }

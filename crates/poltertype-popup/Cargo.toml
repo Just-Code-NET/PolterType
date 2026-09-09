@@ -23,7 +23,9 @@ cosmic-text       = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 smithay-client-toolkit = { workspace = true }
 wayland-client         = { workspace = true }
-x11rb                  = { workspace = true }
+# `randr` is the per-monitor geometry the X11 popup places itself
+# inside; x11rb ships no extension unless asked for it by name.
+x11rb                  = { workspace = true, features = ["randr"] }
 
 # `Gdi` is the layered-window surface (a DIB section handed to
 # UpdateLayeredWindow); `HiDpi` is the per-monitor scale the renderer
