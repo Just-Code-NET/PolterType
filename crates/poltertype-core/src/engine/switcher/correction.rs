@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::Receiver;
-use poltertype_input::{Clipboard, InputError, KeyDirection, KeyEvent, ReplayKey};
+use poltertype_input::{Clipboard, InputError, KeyDirection, KeyEvent, ReplayKey, ReplaySpeed};
 use poltertype_layout::LayoutId;
 use poltertype_types::logsafe;
 use tracing::{debug, info, warn};
@@ -14,10 +14,10 @@ use tracing::{debug, info, warn};
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{KeyKind, WordBuffer, classify};
 use crate::engine::consts::{
-    CHORD_RELEASE_SETTLE, CHORD_RELEASE_WAIT, CHORD_SETTLE, COPY_CHORD, HELD_FLUSH,
+    ABSORB_PROBE, CHORD_RELEASE_SETTLE, CHORD_RELEASE_WAIT, CHORD_SETTLE, COPY_CHORD, HELD_FLUSH,
     HELD_FLUSH_QUIET_PROBES, INTRUSION_PROBES, INTRUSION_QUIET_PROBES, INTRUSION_REPAIRS,
     LAYOUT_SETTLE, PASTE_CHORD, PASTE_GUARD, PASTE_SETTLE, POST_EMIT_LAG, SC_BACKSPACE, SC_SPACE,
-    SELECTION_COPY_WAIT, SWITCH_HOLD_PROBES, SWITCH_HOLD_STEP,
+    SELECTION_COPY_WAIT, SWITCH_HOLD_PROBES, SWITCH_HOLD_STEP, TRIGGER_POLL,
 };
 use crate::engine::enums::{DictionaryAddOrigin, SwitcherEvent};
 use crate::engine::heuristics::{boundary_key_for, is_paste_shortcut, is_submission_scancode};
@@ -31,6 +31,17 @@ use super::engine::SwitcherEngine;
 const MIN_LEARNED_LETTERS: usize = 3;
 
 impl SwitcherEngine {
+    /// Which gear this correction runs in.
+    ///
+    /// Read per correction rather than held from startup, so saving
+    /// `[engine].replay_speed` changes the next correction (issue #67,
+    /// where the reporter had to restart the app) — and so the setting
+    /// covers the whole wait rather than the replay alone, which is
+    /// what issue #71 asked for.
+    fn speed(&self) -> ReplaySpeed {
+        ReplaySpeed::from_config(&self.settings.snapshot().engine.replay_speed)
+    }
+
     /// Type out keystrokes the key gate held back, by whichever emit
     /// path this backend has.
     ///
@@ -112,14 +123,21 @@ impl SwitcherEngine {
     /// would otherwise occupy, and any single "no" is a no.
     ///
     /// `None` from the backend — it cannot see past its own write —
-    /// counts as held, which leaves those backends exactly as they were.
+    /// counts as held, and answers **at once**: further probes would
+    /// sample the same silence, and sleeping through them was a fifth
+    /// of a second of nothing on every KDE, Hyprland or IBus manual
+    /// switch (issue #71). Only a backend with an independent reading
+    /// is worth sampling across the window.
     fn switch_held(&self, to: &LayoutId) -> bool {
+        let step = self.speed().settle(SWITCH_HOLD_STEP);
         for probe in 0..SWITCH_HOLD_PROBES {
-            if self.layout_switcher.verify_switched(to) == Some(false) {
-                return false;
+            match self.layout_switcher.verify_switched(to) {
+                Some(false) => return false,
+                None => return true,
+                Some(true) => {}
             }
             if probe + 1 < SWITCH_HOLD_PROBES {
-                std::thread::sleep(SWITCH_HOLD_STEP);
+                std::thread::sleep(step);
             }
         }
         true
@@ -216,6 +234,17 @@ impl SwitcherEngine {
         // to flip; everything switch-related below is keyed off this.
         let switching = from != to;
 
+        let speed = self.speed();
+        // Every phase after the trigger key comes up is stamped, so a
+        // report of "it waits half a second" can be answered with where
+        // the half second went rather than a guess (issue #71). The
+        // clock starts when the key is up, because nothing before that
+        // is ours to shorten.
+        let mut up_at = Instant::now();
+        let mut switched_by: Option<Instant> = None;
+        let mut absorbed_by: Option<Instant> = None;
+        let mut verified_by: Option<Instant> = None;
+
         // See `LAYOUT_SETTLE`: the replay must not outrun the
         // compositor's xkb propagation.
         let mut switched_at: Option<Instant> = None;
@@ -246,13 +275,14 @@ impl SwitcherEngine {
                     tail.extend(w.word_keys);
                     suspicious |= w.suspicious;
                     resume = w.resume;
-                    std::thread::sleep(Duration::from_millis(20));
+                    std::thread::sleep(TRIGGER_POLL);
                 }
             }
             // Checked again rather than only on the deadline: the loop
             // also ends when something arrives that we cannot place,
             // and proceeding then would emit under the held key after
             // all.
+            up_at = Instant::now();
             if self.trigger_key_down() {
                 debug!(
                     "the key that asked for this correction is still down; \
@@ -301,6 +331,7 @@ impl SwitcherEngine {
                 return false;
             }
             switched_at = Some(Instant::now());
+            switched_by = switched_at;
         }
 
         // ── Absorb: wait for the user's fingers to lift ─────────────
@@ -332,9 +363,9 @@ impl SwitcherEngine {
                     quiet_probes = 0;
                 } else {
                     quiet_probes += 1;
-                    // Three empty probes, two 30 ms sleeps: ~60 ms, past
-                    // a fast typist's inter-key gap. Also waits for the
-                    // triggering chord to come up — releasing on our
+                    // Three empty probes — see `ABSORB_PROBE` for what
+                    // the gap between them buys. Also waits for the
+                    // triggering chord to come up: releasing on our
                     // side is not enough where a remapper keeps its own
                     // idea of what is down.
                     if quiet_probes >= 3 && !self.modifiers_held() {
@@ -342,10 +373,12 @@ impl SwitcherEngine {
                     }
                 }
                 if Instant::now() >= deadline {
+                    debug!("the fingers never settled; correcting anyway, on the deadline");
                     break;
                 }
-                std::thread::sleep(Duration::from_millis(30));
+                std::thread::sleep(speed.settle(ABSORB_PROBE));
             }
+            absorbed_by = Some(Instant::now());
         }
 
         if suspicious {
@@ -367,9 +400,10 @@ impl SwitcherEngine {
         // replay, so it cannot widen the gap between our last look at
         // the key stream and our first emitted key.
         if let Some(t) = switched_at {
+            let floor = speed.settle(LAYOUT_SETTLE);
             let since = t.elapsed();
-            if since < LAYOUT_SETTLE {
-                std::thread::sleep(LAYOUT_SETTLE - since);
+            if since < floor {
+                std::thread::sleep(floor - since);
             }
             // The switch reported success — but on a desktop whose
             // settings daemon owns the group, it can be put back before
@@ -387,6 +421,7 @@ impl SwitcherEngine {
                 );
                 return false;
             }
+            verified_by = Some(Instant::now());
         }
 
         // ── Emit: delete → replay ───────────────────────────────────
@@ -682,6 +717,24 @@ impl SwitcherEngine {
             );
             to_delete = emitted + intruders;
         }
+
+        // On screen now: what follows is bookkeeping the user cannot
+        // see. `ms` of `None` means the phase did not run at all — a
+        // same-layout replacement switches and verifies nothing.
+        let ms = |from: Option<Instant>, to: Option<Instant>| {
+            let (a, b) = (from?, to?);
+            Some(b.saturating_duration_since(a).as_millis())
+        };
+        let now = Instant::now();
+        debug!(
+            gear = speed.config_value(),
+            switch_ms = ?ms(Some(up_at), switched_by),
+            absorb_ms = ?ms(switched_by.or(Some(up_at)), absorbed_by),
+            verify_ms = ?ms(absorbed_by.or(switched_by), verified_by),
+            emit_ms = ?ms(verified_by.or(absorbed_by).or(Some(up_at)), Some(now)),
+            total_ms = now.saturating_duration_since(up_at).as_millis(),
+            "correction timing, from the trigger key coming up"
+        );
 
         if play_sound {
             self.audio.play(SoundEvent::Correct);
@@ -985,7 +1038,7 @@ impl SwitcherEngine {
             {
                 return false;
             }
-            std::thread::sleep(Duration::from_millis(20));
+            std::thread::sleep(TRIGGER_POLL);
         }
         !self.trigger_key_down()
     }

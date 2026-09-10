@@ -195,6 +195,12 @@ mod engine_integration_tests {
         revert: Mutex<bool>,
         /// The chord this desktop answers to, when it has one.
         chord: Mutex<Option<poltertype_types::SwitchChord>>,
+        /// A backend with no reading independent of its own write —
+        /// KDE, Hyprland, IBus. Answers `None`, like theirs.
+        blind: Mutex<bool>,
+        /// How many times the engine asked. The number is the point of
+        /// one test below, not a detail of it.
+        verifies: Mutex<usize>,
     }
 
     impl MockSwitcher {
@@ -205,6 +211,8 @@ mod engine_integration_tests {
                 switches: Mutex::new(Vec::new()),
                 revert: Mutex::new(false),
                 chord: Mutex::new(None),
+                blind: Mutex::new(false),
+                verifies: Mutex::new(0),
                 fail_switch: false,
             }
         }
@@ -228,6 +236,10 @@ mod engine_integration_tests {
             Ok(())
         }
         fn verify_switched(&self, target: &LayoutId) -> Option<bool> {
+            *self.verifies.lock() += 1;
+            if *self.blind.lock() {
+                return None;
+            }
             Some(*self.current.lock() == *target)
         }
         fn switch_chord(&self) -> Option<poltertype_types::SwitchChord> {
@@ -1123,6 +1135,48 @@ mod engine_integration_tests {
         );
         let (ops, _) = h.stop();
         assert!(!ops.is_empty(), "and the correction still happened");
+    }
+
+    /// A backend that cannot answer is asked once, not three times.
+    ///
+    /// The sampling exists for a settings daemon that puts its own
+    /// group back a moment later (see the MATE test above), and it
+    /// costs two sleeps. A backend answering `None` has no reading to
+    /// sample, so those sleeps bought nothing and sat in front of every
+    /// manual switch on KDE, Hyprland and IBus — issue #71, where they
+    /// were a fifth of the wait the reporter measured.
+    #[test]
+    fn a_backend_that_cannot_answer_is_not_asked_again() {
+        let h = Harness::start(60_000);
+        *h.switcher.blind.lock() = true;
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        let asked = *h.switcher.verifies.lock();
+        let (ops, _) = h.stop();
+        assert!(!ops.is_empty(), "the correction still happens: {ops:?}");
+        assert_eq!(
+            asked, 1,
+            "a backend that cannot see past its own write is asked once"
+        );
+    }
+
+    /// The same backend, seeing properly, is still sampled across the
+    /// window — the fix above must not have taken MATE's protection
+    /// with it.
+    #[test]
+    fn a_backend_that_can_answer_is_still_sampled_across_the_window() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+        let asked = *h.switcher.verifies.lock();
+        let (ops, _) = h.stop();
+        assert!(!ops.is_empty(), "the correction happens: {ops:?}");
+        assert!(
+            asked >= 3,
+            "a reading worth having is taken three times, got {asked}"
+        );
     }
 
     /// When the desktop puts the layout back *and* its shortcut does

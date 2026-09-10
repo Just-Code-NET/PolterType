@@ -102,6 +102,27 @@ pub const SELECTION_COPY_WAIT: Duration = Duration::from_millis(400);
 /// the result first, which no one does in a fifth of a second.
 pub const FORCE_SWITCH_REARM: Duration = Duration::from_millis(200);
 
+/// How often the two release waits look again at whether the key that
+/// asked for a correction has come up.
+///
+/// Pure detection latency — nothing at all happens between the key
+/// rising and our next look, so this poll is a floor under every
+/// manual switch, and the 20 ms it used to be was a fifth of the
+/// budget issue #71 was about. Small enough to disappear next to the
+/// rest of the path, large enough that a hotkey held down is not a
+/// spin loop.
+pub const TRIGGER_POLL: Duration = Duration::from_millis(4);
+
+/// Gap between the probes that wait for the user's fingers to settle
+/// before a correction goes out.
+///
+/// Three empty probes end the wait, so the cost is two of these. Past
+/// a fast typist's inter-key gap at the default — a keystroke that
+/// arrives after it lands *inside* the burst and has to be repaired
+/// instead of absorbed, which is why the faster gears scale it rather
+/// than the guards.
+pub const ABSORB_PROBE: Duration = Duration::from_millis(30);
+
 /// How long to wait after an emission burst before probing the key
 /// stream for keystrokes that raced it — the trip from the device
 /// through the listener thread into our channel. Every millisecond
