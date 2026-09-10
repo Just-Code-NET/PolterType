@@ -169,7 +169,61 @@ if [[ -z "${APPINDICATOR_SO}" || ! -f "${APPINDICATOR_SO}" ]]; then
     echo "Install it before packaging (Debian/Ubuntu: libayatana-appindicator3-dev)." >&2
     exit 1
 fi
-echo "tray library: ${APPINDICATOR_SO}"
+echo "system tray library: ${APPINDICATOR_SO}"
+
+# ─── make sure it can carry a tooltip ─────────────────────────────────
+# `app_indicator_set_tooltip_full` — the call that fills the
+# StatusNotifierItem `ToolTip` property a panel draws hover text from —
+# arrived in libayatana-appindicator 0.6.0. Debian 13, Debian sid and
+# every current Ubuntu (this runner included) ship 0.5.9x, where the
+# symbol does not exist: the tray sees no tooltip API, and the AppImage
+# hands that same library to every user regardless of what their own
+# distribution has. That is issue #59 after the tray was fixed — the
+# code was right and the library underneath it was not.
+#
+# So build the version that has it and bundle that. Failing loudly
+# beats shipping an AppImage whose tooltip silently does nothing, which
+# is exactly the shape of the original bug.
+AYATANA_VERSION="0.6.0"
+AYATANA_PREFIX="$(pwd)/.tools/ayatana-${AYATANA_VERSION}-${ARCH}"
+TOOLTIP_SYMBOL="app_indicator_set_tooltip_full"
+
+if ! nm -D --defined-only "${APPINDICATOR_SO}" 2>/dev/null | grep -q "${TOOLTIP_SYMBOL}"; then
+    echo "system tray library has no ${TOOLTIP_SYMBOL}; building ${AYATANA_VERSION}"
+    if [[ ! -f "${AYATANA_PREFIX}/lib/libayatana-appindicator3.so.1" ]]; then
+        AYATANA_SRC=".tools/src/libayatana-appindicator-${AYATANA_VERSION}"
+        mkdir -p .tools/src
+        curl -fSL -o .tools/ayatana.tar.gz \
+            "https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/${AYATANA_VERSION}.tar.gz"
+        rm -rf "${AYATANA_SRC}"
+        tar -xzf .tools/ayatana.tar.gz -C .tools/src
+        # Bindings and gtk-doc need Vala, Mono and gtkdoc-scan, none of
+        # which produce anything an AppImage carries.
+        cmake -S "${AYATANA_SRC}" -B "${AYATANA_SRC}/build" \
+            -DCMAKE_INSTALL_PREFIX="${AYATANA_PREFIX}" \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DENABLE_BINDINGS_VALA=OFF \
+            -DENABLE_BINDINGS_MONO=OFF \
+            -DENABLE_GTKDOC=OFF \
+            -DENABLE_TESTS=OFF
+        # The library target, not the default one: the default also
+        # generates GObject-introspection data, which needs a scanner
+        # toolchain and produces a .gir and a .typelib nothing here
+        # reads. Without the scanner it fails the build outright —
+        # measured on the runner's own image, ubuntu:24.04.
+        cmake --build "${AYATANA_SRC}/build" --target ayatana-appindicator3 -j"$(nproc)"
+        mkdir -p "${AYATANA_PREFIX}/lib"
+        cp -a "${AYATANA_SRC}/build/src/"libayatana-appindicator3.so* "${AYATANA_PREFIX}/lib/"
+    fi
+    APPINDICATOR_SO="${AYATANA_PREFIX}/lib/libayatana-appindicator3.so.1"
+fi
+
+if ! nm -D --defined-only "${APPINDICATOR_SO}" 2>/dev/null | grep -q "${TOOLTIP_SYMBOL}"; then
+    echo "tray library at '${APPINDICATOR_SO}' still exports no ${TOOLTIP_SYMBOL}." >&2
+    echo "The AppImage would ship without tray hover text (issue #59)." >&2
+    exit 1
+fi
+echo "bundled tray library: ${APPINDICATOR_SO}"
 
 # ─── build AppImage ───────────────────────────────────────────────────
 export OUTPUT="${OUT_DIR}/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
@@ -197,6 +251,13 @@ export ARCH
 # exists to prevent, and it would only surface on a user's machine.
 if ! ls "${APPDIR}/usr/lib/"libayatana-appindicator3.so.1* >/dev/null 2>&1; then
     echo "linuxdeploy did not place libayatana-appindicator3.so.1 in the AppDir." >&2
+    exit 1
+fi
+# And that it is the copy with the tooltip API, not one linuxdeploy
+# resolved from the system on its own.
+if ! nm -D --defined-only "${APPDIR}/usr/lib/"libayatana-appindicator3.so.1* 2>/dev/null |
+    grep -q "${TOOLTIP_SYMBOL}"; then
+    echo "the deployed tray library exports no ${TOOLTIP_SYMBOL} — no tray tooltip." >&2
     exit 1
 fi
 
