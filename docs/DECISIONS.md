@@ -6,6 +6,98 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-09 — A popup belongs to a monitor, not to the root window
+
+X11 root coordinates cover the whole desktop, so the fallback
+placement — bottom centre, used whenever nothing tells us where the
+caret is — centred the tooltip in the *union* of the monitors. On one
+screen that is the middle of the screen; on two it is the seam, and the
+popup was drawn half on each (issue #70, GNOME Wayland, where Mutter
+offers no layer shell and the X11 override-redirect backend is the only
+one available).
+
+**The X11 backend now asks RandR for the physical rectangles and
+measures inside one of them.** Which one comes from the anchor itself
+where the anchor knows — the caret's point, the focused window's
+centre — and otherwise from the server: the focused X window first,
+the pointer if no X client holds focus, which under XWayland is every
+native Wayland window. The clamp that used to keep the popup on the
+root now keeps it on that monitor, so a caret beside the seam no longer
+pushes half the tooltip onto the neighbouring screen either.
+
+**Asked per show, not cached.** A cached monitor list is correct until
+somebody replugs a screen and wrong from then on, with nothing to say
+so; the query is three round trips at most, on the popup's own thread,
+and only while a popup is being shown. A server with no RandR 1.5, or
+one that answers nothing, falls back to the whole root — which is
+exactly the behaviour being replaced, so the worst case is today's.
+
+**Wayland needs none of this**: a layer surface is anchored to an
+output by the compositor, which knows better than we do which one the
+user is looking at.
+
+---
+
+## 2026-09-09 — The replay's pacing is the user's to spend
+
+A correction types itself out with a pause between key events: 4 ms on
+evdev, 2 ms on X11. The reason is not politeness — an input remapper
+proxying our virtual keyboard (keyd and everything shaped like it)
+coalesces or drops press/release pairs that land microseconds apart,
+and the user loses a letter, most visibly the trailing space. But it is
+also most of what a correction spends: on a six-letter word the pacing
+is around 150 ms of the ~180 ms burst, and PuntoSwitcher on Windows —
+where `SendInput` takes a whole burst in one call — is visibly quicker
+(issue #67).
+
+**Exposed as `[engine].replay_speed`: `normal`, `fast`, `instant`.**
+Normal is the measured pacing and stays the default, because the
+failure it prevents is silent and looks like our bug. The other two
+halve it and remove it, and the Settings hint says what to watch for —
+if letters start going missing, go back.
+
+**Only the pacing scales.** The guards around the boundary key — the
+release before a press the user is probably still holding, and the hold
+after it — are correctness, not speed, and they stay as measured at
+every setting. Same for the layout settle and the intrusion probes,
+which are about races with the user rather than about typing quickly.
+
+**Linux only in effect.** Windows has no clock pause to give up, and
+macOS paces its backspaces against the window server's own echo, which
+is a measurement rather than a constant. The setting is honest about
+that in its doc comment instead of pretending to be cross-platform.
+
+---
+
+## 2026-09-09 — The AppImage carries its own tray library
+
+The tray tooltip has existed in our code since 0.32.0 and reached
+almost nobody. `app_indicator_set_tooltip_full` arrived in
+libayatana-appindicator 0.6.0; Debian 13, Debian sid and every current
+Ubuntu ship 0.5.9x, where the symbol does not exist — and the AppImage
+made it worse, because it bundles the library from the machine that
+built it (an Ubuntu runner) and that copy wins over whatever the user
+has installed. So the one build most people download was guaranteed to
+have no hover text (issue #59, reopened by the reporter after 0.32.1
+changed nothing for them).
+
+**The AppImage build now builds 0.6.0 from source and bundles that**,
+when — and only when — the system copy lacks the symbol. Distribution
+packages are unaffected: on Arch, and on anything else already at
+0.6.0, nothing changes.
+
+**Only the shared library target is built**, not the project's default
+one. The full build generates GObject-introspection data, which needs a
+scanner toolchain, produces a `.gir` and a `.typelib` no AppImage ever
+reads, and failed on the runner image for exactly that reason.
+
+**It fails the build rather than falling back.** An AppImage that
+quietly ships without the tooltip is the shape of the original bug, and
+the script now asserts the symbol twice: on the library it picked, and
+on the copy linuxdeploy actually deployed.
+
+---
+
 ## 2026-09-08 — Joining the accessibility bus is a choice, not a side effect
 
 PolterType connects to AT-SPI for one thing: where the text caret is,

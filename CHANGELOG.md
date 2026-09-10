@@ -4,6 +4,50 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.35.0] — one screen, one tooltip, at your own speed
+
+### Added
+
+- **`[engine] replay_speed` — how fast a correction types itself out**
+  ([#67](https://github.com/Just-Code-NET/PolterType/issues/67)).
+  `normal` (the default, unchanged), `fast` or `instant`, with a picker
+  in Settings → General → Behaviour. The pauses between key events
+  exist for input remappers such as keyd, which drop press/release
+  pairs sent faster than that; on a machine with nothing in the way
+  they are most of what a correction spends. `instant` removes them
+  entirely — on a six-letter word that is most of the burst. The guards
+  around the boundary key are correctness rather than pacing and do not
+  scale at any setting. Linux only in effect: Windows sends a burst in
+  one `SendInput` call and macOS paces against the window server's own
+  echo, so neither has a clock pause to give up.
+
+### Fixed
+
+- **The suggestion tooltip no longer straddles the gap between two
+  monitors** ([#70](https://github.com/Just-Code-NET/PolterType/issues/70)).
+  Where nothing says where the caret is, the tooltip falls back to
+  bottom-centre — and it was centred in the X11 root window, which
+  spans every monitor, so on a two-screen desktop it landed exactly on
+  the seam and was drawn half on each. It now asks RandR for the
+  physical rectangles and centres inside one of them: the monitor the
+  caret or focused window is on where that is known, otherwise the
+  focused X window's, otherwise the pointer's. A caret near the seam
+  keeps its tooltip on its own screen too. Most visible on GNOME, where
+  Mutter implements no layer shell and this X11 backend is the only one
+  available.
+
+- **The AppImage's tray icon has hover text again — on every
+  distribution** ([#59](https://github.com/Just-Code-NET/PolterType/issues/59)).
+  The tooltip landed in 0.32.0 and reached almost nobody: the call that
+  fills the StatusNotifierItem `ToolTip` property arrived in
+  libayatana-appindicator 0.6.0, Debian and Ubuntu still ship 0.5.9x,
+  and the AppImage bundles the copy from the machine that built it —
+  which then wins over whatever the user has installed. The AppImage
+  build now builds 0.6.0 from source and bundles that instead whenever
+  the build machine's copy lacks the call, and fails rather than
+  shipping an AppImage that silently has no tooltip. Distribution
+  packages are unaffected.
+
 ## [0.34.1] — the hotkey that waited for itself
 
 ### Fixed

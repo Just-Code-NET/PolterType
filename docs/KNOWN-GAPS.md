@@ -1,4 +1,4 @@
-# Known gaps (as of v0.34.1)
+# Known gaps (as of v0.35.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,50 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.35.0 pass actually checked (2026-09-09).** On **Cinnamon
+X11** in the desktop-matrix guest, and on `ubuntu:24.04` — the release
+runner's own image — for the packaging half.
+
+The popup on two monitors, live. VirtualBox will not light a second
+virtual head here, but RandR lets a *monitor* be declared over part of
+the screen, and a declared monitor is exactly what `GetMonitors`
+returns, which is all this code reads. With the guest's 1280×800 screen
+split into two 640-wide monitors, the tooltip mapped at x=220 with a
+width of 200 — wholly inside the left one. Centred in the root, which
+is what every release before this did, it would have started at 540 and
+been drawn across the seam at 640. That is issue #70 reproduced and
+fixed on a live server; the test that does it lives in the popup crate,
+`#[ignore]`d with the `xrandr --setmonitor` lines in its doc comment.
+The caret and focused-window anchors are covered by unit tests against
+the reporter's own geometry (1920×1080+0+120 beside 1920×1200+1920+0)
+and were **not** run against a server.
+
+The tray tooltip end to end, twice in one session (issue #59). Against
+the guest's own libayatana-appindicator **0.5.94** — the version Debian
+13 ships and the AppImage has been bundling — the app logs "tray
+library has no tooltip API" and the item's `ToolTip` property cannot be
+read at all. Against **0.6.0 built exactly as `build-appimage.sh` now
+builds it**, the same property reads `PolterType — ru-RU`. The library
+build was also run on the runner's image, where the system copy exports
+zero tooltip symbols and the built one exports seven.
+
+The replay pacing, measured rather than argued (issue #67). Seven
+backspaces and seven keys through a real uinput device in the guest:
+**152 ms** at `normal`, **100 ms** at `fast`, **77 ms** at `instant`.
+The first two match the constants almost exactly; the third does not —
+with the pacing gone, what is left is the boundary guards, which should
+be ~44 ms and measured 77, so read the guest's timers as coarse and the
+instant figure as an upper bound. The measurement is a `#[ignore]`d
+test, so it can be repeated on real hardware.
+
+What this pass did **not** check: the AppImage itself, on any machine —
+the packaging change is verified by the library build and the property
+read above, plus the build script's own two assertions, not by
+installing a built AppImage on Debian 13. Windows and macOS never ran
+this build; `replay_speed` does nothing on either by construction. No
+other bullet below was re-measured — read them as the 0.34.x passes
+left them.
 
 **What the 0.34.1 pass actually checked (2026-09-08).** Bug-fix-only
 release — two fixes from contributor PRs. The selection-direction fix
@@ -1508,21 +1552,24 @@ move too fast to be true.
 ## Loose ends, per platform
 
 - **Linux: the tray icon's tooltip needs libayatana-appindicator
-  0.6.0, and most distributions have not got there yet.** The tooltip
-  API is a 0.6.0 addition; Debian 13, Debian sid and every current
-  Ubuntu ship 0.5.94, where those functions do not exist at all.
-  PolterType looks the symbol up once at startup, misses it and does
-  without — so on those systems the icon has no hover text, exactly as
-  in every release before 0.32.0. **The AppImage is on the wrong side
-  of this too**: it bundles the copy from the machine that built it,
-  which is Ubuntu's 0.5.94, and the bundled library wins over whatever
-  the user has installed — read off the published v0.32.0 AppImage
-  itself, where `nm -D` finds `app_indicator_set_title` and not one
-  tooltip symbol, so the item's new name reaches those users and its
-  hover text does not. Arch and anything else already on 0.6.0 get
-  the tooltip today. Closing the gap for everyone else means putting a
-  newer build inside the AppImage, which is a packaging decision
-  rather than a code one, and it has not been taken.
+  0.6.0, which the AppImage now carries and most distributions still
+  do not.** The tooltip API is a 0.6.0 addition; Debian 13, Debian sid
+  and every current Ubuntu ship 0.5.9x, where those functions do not
+  exist at all. PolterType looks the symbol up once at startup, misses
+  it and does without — so **installed from a distribution package on
+  those systems, the icon has no hover text**, exactly as in every
+  release before 0.32.0.
+
+  The AppImage used to be on the wrong side of this as well, since it
+  bundles the copy from the machine that built it and that copy wins
+  over whatever the user has installed. From **0.35.0** it builds
+  0.6.0 from source and bundles that instead, and fails the build
+  rather than shipping one without it (issue #59). Verified on Ubuntu
+  with 0.5.94 installed: the same binary logs "no tooltip API" against
+  the system library and publishes a `ToolTip` property against the
+  built one. Not yet verified by installing a released AppImage on
+  Debian 13 — that reading belongs to the reporter or to the next
+  pass.
 
 - **macOS: what 0.7.0 changed in the input path has still never been
   exercised.** 0.6.2 was runtime-tuned on real hardware (macOS 15,

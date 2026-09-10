@@ -376,6 +376,13 @@ hold_keys = false                # hold keystrokes back during a
                                  # a small delay, so it is off by
                                  # default. `POLTERTYPE_HOLD_KEYS`
                                  # overrides; read at startup
+replay_speed = "normal"          # "normal" | "fast" | "instant" — how
+                                 # much of the emitter's measured
+                                 # inter-key pacing to keep. Normal is
+                                 # what input remappers (keyd) need;
+                                 # faster risks dropped keystrokes on
+                                 # such a stack. Linux only in effect;
+                                 # read at startup
 
 [exceptions]
 # EMPTY by default, deliberately — see DECISIONS.md, "Reversed: no
