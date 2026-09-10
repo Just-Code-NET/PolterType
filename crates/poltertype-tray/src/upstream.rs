@@ -21,10 +21,15 @@ impl Tray {
     ///
     /// [`TrayError::Backend`] when the platform refuses the icon or
     /// the tray itself.
-    pub fn new(menu: Box<dyn ContextMenu>, icon: Icon, tooltip: &str) -> Result<Self, TrayError> {
+    pub fn new(
+        menu: Box<dyn ContextMenu>,
+        icon: Icon,
+        tooltip: &str,
+        detail: &str,
+    ) -> Result<Self, TrayError> {
         let inner = TrayIconBuilder::new()
             .with_menu(menu)
-            .with_tooltip(tooltip)
+            .with_tooltip(joined(tooltip, detail))
             .with_icon(platform_icon(icon)?)
             .build()
             .map_err(|e| TrayError::Backend(e.to_string()))?;
@@ -44,12 +49,16 @@ impl Tray {
 
     /// Set the hover text a tray host shows for the icon.
     ///
+    /// Both platforms take one string, so the two halves the Linux
+    /// tooltip keeps apart (see the `indicator` backend) are joined
+    /// back into the single line they have always shown.
+    ///
     /// # Errors
     ///
     /// [`TrayError::Backend`] when the platform refuses the text.
-    pub fn set_tooltip(&self, text: &str) -> Result<(), TrayError> {
+    pub fn set_tooltip(&self, text: &str, detail: &str) -> Result<(), TrayError> {
         self.inner
-            .set_tooltip(Some(text))
+            .set_tooltip(Some(joined(text, detail)))
             .map_err(|e| TrayError::Backend(e.to_string()))
     }
 
@@ -71,4 +80,14 @@ fn platform_icon(icon: Icon) -> Result<tray_icon::Icon, TrayError> {
     let (width, height) = (icon.width(), icon.height());
     tray_icon::Icon::from_rgba(icon.into_rgba(), width, height)
         .map_err(|e| TrayError::Backend(e.to_string()))
+}
+
+/// The name and the state as one line, the way this tray has always
+/// drawn them.
+fn joined(title: &str, detail: &str) -> String {
+    if detail.is_empty() {
+        title.to_owned()
+    } else {
+        format!("{title} — {detail}")
+    }
 }

@@ -92,7 +92,12 @@ impl Tray {
     /// # Errors
     ///
     /// [`TrayError::Io`] when the icon cannot be written to disk.
-    pub fn new(menu: Box<dyn ContextMenu>, icon: Icon, tooltip: &str) -> Result<Self, TrayError> {
+    pub fn new(
+        menu: Box<dyn ContextMenu>,
+        icon: Icon,
+        tooltip: &str,
+        detail: &str,
+    ) -> Result<Self, TrayError> {
         let dir = icon_dir();
         let path = write_icon(&dir, 0, icon)?;
         let id = c_string(INDICATOR_ID);
@@ -145,7 +150,7 @@ impl Tray {
             counter: Cell::new(0),
             tooltip: tooltip_fn,
         };
-        tray.set_tooltip(tooltip)?;
+        tray.set_tooltip(tooltip, detail)?;
         Ok(tray)
     }
 
@@ -172,28 +177,37 @@ impl Tray {
         Ok(())
     }
 
-    /// Set the hover text a tray host shows for the icon.
+    /// Set the hover text a tray host shows for the icon: the name
+    /// it puts in bold, and the state underneath.
+    ///
+    /// The `ToolTip` property has both fields, and a panel lays them
+    /// out — so the whole line in the title read as one long name
+    /// (issue #59, once the tooltip finally appeared on Debian 13). An
+    /// empty `detail` goes out as a null body rather than an empty
+    /// string, which is what leaves a host free to draw the title
+    /// alone.
     ///
     /// # Errors
     ///
     /// Never, today: a library with no tooltip API is reported once at
     /// construction and silently skipped afterwards, because there is
     /// nothing the user could do about it on every refresh.
-    pub fn set_tooltip(&self, text: &str) -> Result<(), TrayError> {
+    pub fn set_tooltip(&self, text: &str, detail: &str) -> Result<(), TrayError> {
         let Some(set) = self.tooltip else {
             return Ok(());
         };
         let title = c_string(text);
+        let body = (!detail.is_empty()).then(|| c_string(detail));
         // SAFETY: the symbol came from the object holding this
-        // indicator, and both pointers outlive the call. A null icon
-        // and body leave the tooltip to its title, which is the only
-        // part KDE draws for a panel item.
+        // indicator, and every pointer outlives the call — `body`'s
+        // `CString` lives to the end of the statement. A null icon
+        // name leaves the host its own choice of icon.
         unsafe {
             set(
                 self.indicator,
                 std::ptr::null(),
                 title.as_ptr(),
-                std::ptr::null(),
+                body.as_ref().map_or(std::ptr::null(), |b| b.as_ptr()),
             )
         };
         Ok(())

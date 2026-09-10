@@ -14,46 +14,50 @@ use crate::icon_render;
 use crate::plugins;
 use crate::types::*;
 
+/// The tray's hover text: the name a host draws in bold, and the
+/// state it draws underneath.
+///
+/// Two parts because the tooltip has two fields, and a panel that lays
+/// them out showed the whole line as one long name until it did — the
+/// follow-up on issue #59. Platforms with a single-string tooltip join
+/// them back, so nothing changes there.
 pub(crate) fn tooltip_for(
     layout: Option<&LayoutId>,
     paused: bool,
     input_alert: bool,
     attention: u32,
-) -> String {
+) -> (String, String) {
     // The product name and the layout id are not words to translate;
     // everything the tooltip *says* around them is.
     let idle = tr("tray.tooltip_paused", "(paused)");
-    let base = match (layout, paused) {
-        (Some(l), false) => format!("{APP_NAME} — {l}"),
-        (Some(l), true) => format!("{APP_NAME} — {l} {idle}"),
-        (None, false) => APP_NAME.to_owned(),
-        (None, true) => format!("{APP_NAME} {idle}"),
-    };
-    let base = if input_alert {
-        format!(
-            "{base} — {}",
+    let mut parts: Vec<String> = Vec::new();
+    match (layout, paused) {
+        (Some(l), false) => parts.push(l.to_string()),
+        (Some(l), true) => parts.push(format!("{l} {idle}")),
+        (None, false) => {}
+        (None, true) => parts.push(idle.to_owned()),
+    }
+    if input_alert {
+        parts.push(
             tr(
                 "tray.tooltip_no_keyboard",
                 "⚠ no keyboard access, see Setup Guide",
             )
-        )
-    } else {
-        base
-    };
+            .to_owned(),
+        );
+    }
     // The mark on the icon says *that* something is waiting; the tooltip
     // is the only place the count fits without opening anything.
     match attention {
-        0 => base,
-        1 => format!("{base} — {}", tr("tray.tooltip_draft", "1 draft waiting")),
-        n => format!(
-            "{base} — {}",
-            tr_args(
-                "tray.tooltip_drafts",
-                "{} drafts waiting",
-                &[&n.to_string()]
-            )
-        ),
+        0 => {}
+        1 => parts.push(tr("tray.tooltip_draft", "1 draft waiting").to_owned()),
+        n => parts.push(tr_args(
+            "tray.tooltip_drafts",
+            "{} drafts waiting",
+            &[&n.to_string()],
+        )),
     }
+    (APP_NAME.to_owned(), parts.join(" — "))
 }
 
 /// Redraw icon, tooltip and the pause item's text from `TrayState`. The
@@ -73,12 +77,13 @@ pub(crate) fn refresh_tray(tray: &Tray, item_pause: &MenuItem, state: &TrayState
         }
         Err(e) => warn!(?e, "could not render tray icon"),
     }
-    if let Err(e) = tray.set_tooltip(&tooltip_for(
+    let (name, detail) = tooltip_for(
         state.layout.as_ref(),
         state.paused,
         state.input_alert,
         state.attention,
-    )) {
+    );
+    if let Err(e) = tray.set_tooltip(&name, &detail) {
         warn!(?e, "could not update tray tooltip");
     }
     item_pause.set_text(pause_item_label(state.paused));
@@ -219,3 +224,6 @@ pub(crate) fn sync_attention(
     state.attention = menu.attention();
     refresh_tray(tray, item_pause, state);
 }
+
+#[cfg(test)]
+mod tests;

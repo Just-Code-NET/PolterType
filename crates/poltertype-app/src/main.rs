@@ -597,17 +597,14 @@ fn main() -> Result<()> {
     // the user reading the journal. See `poltertype-tray`.
     poltertype_tray::quiet_gtk_tray_logs();
 
-    let tray = Tray::new(
-        Box::new(menu),
-        initial_icon,
-        &tooltip_for(
-            initial_layout.as_ref(),
-            start_paused,
-            input_alert.is_some(),
-            0,
-        ),
-    )
-    .context("build tray icon")?;
+    let (tip_name, tip_detail) = tooltip_for(
+        initial_layout.as_ref(),
+        start_paused,
+        input_alert.is_some(),
+        0,
+    );
+    let tray = Tray::new(Box::new(menu), initial_icon, &tip_name, &tip_detail)
+        .context("build tray icon")?;
     apply_tray_visibility(&tray, tray_style);
 
     // Deliberately on the error path, not gated by
@@ -701,6 +698,7 @@ fn main() -> Result<()> {
     let log_dir: Option<PathBuf> = SettingsStore::log_dir().ok();
     let cmd_tx_for_loop = engine_cmd_tx.clone();
     let settings_for_loop = Arc::clone(&settings);
+    let emitter_for_loop = Arc::clone(&key_emitter);
 
     // Handed to every settings-UI spawn: the close handler runs on a
     // thread of its own, and the hotkey grabs it needs re-applied live
@@ -773,6 +771,14 @@ fn main() -> Result<()> {
                     apply_tray_visibility(&tray, style);
                     refresh_tray(&tray, &item_pause, &tray_state);
                 }
+                // The replay pacing, which the emitter holds rather
+                // than re-reads: built once at startup, so before this
+                // a faster setting meant restarting the app (issue
+                // #67). The engine's own share of the same setting is
+                // read per correction and needs nothing here.
+                emitter_for_loop.set_replay_speed(ReplaySpeed::from_config(
+                    &settings_for_loop.snapshot().engine.replay_speed,
+                ));
                 // The chords, and only the chords: whoever sent this —
                 // the window's close handler, or the config watcher —
                 // re-read the file and refreshed the rest first.
