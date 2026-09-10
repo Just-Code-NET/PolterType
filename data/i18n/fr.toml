@@ -250,7 +250,7 @@
 "general.speed_normal" = "Normale"
 "general.speed_fast" = "Rapide"
 "general.speed_instant" = "Instantanée"
-"general.replay_speed_hint" = "À quelle vitesse une correction est saisie. « Normale » est calée sur les remappeurs de saisie comme keyd, qui perdent les frappes envoyées plus vite ; essayez un réglage plus rapide et revenez en arrière si des lettres manquent. Prend effet au redémarrage."
+"general.replay_speed_hint" = "À quelle vitesse une correction se déroule — les pauses entre les frappes et les attentes autour du changement de disposition. « Normale » est calée sur les remappeurs de saisie comme keyd, qui perdent les frappes envoyées plus vite ; essayez un réglage plus rapide et revenez en arrière si des lettres manquent. S'applique à la correction suivante."
 "general.subtitle" = "Comportement de l'application de la zone de notification et du moteur de correction."
 "general.theme_system" = "Système"
 "general.theme_light" = "Clair"

@@ -248,7 +248,7 @@
 "general.speed_normal" = "Normal"
 "general.speed_fast" = "Rápida"
 "general.speed_instant" = "Instantánea"
-"general.replay_speed_hint" = "Con qué rapidez se escribe una corrección. «Normal» está pensada para remapeadores de entrada como keyd, que descartan las pulsaciones enviadas más rápido; pruebe una más rápida y vuelva atrás si empiezan a faltar letras. Se aplica al reiniciar."
+"general.replay_speed_hint" = "Con qué rapidez ocurre una corrección: las pausas entre pulsaciones y las esperas en torno al cambio de distribución. «Normal» está pensada para remapeadores de entrada como keyd, que descartan las pulsaciones enviadas más rápido; pruebe una más rápida y vuelva atrás si empiezan a faltar letras. Se aplica a la siguiente corrección."
 "general.subtitle" = "Comportamiento de la aplicación de la bandeja y del motor de corrección."
 "general.theme_system" = "Sistema"
 "general.theme_light" = "Claro"

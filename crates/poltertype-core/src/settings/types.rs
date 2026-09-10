@@ -194,13 +194,20 @@ pub struct EngineSettings {
     /// in either direction; the gate is built at startup, so changing
     /// this needs a restart.
     pub hold_keys: bool,
-    /// How fast a correction is typed out: `"normal"`, `"fast"` or
-    /// `"instant"`, parsed by
+    /// How fast a correction is typed out **and** how long the engine
+    /// waits between switching the layout and typing against it:
+    /// `"normal"`, `"fast"` or `"instant"`, parsed by
     /// [`ReplaySpeed`](poltertype_input::ReplaySpeed), which falls back
-    /// to `"normal"` on anything else. Linux only in effect — Windows
-    /// sends a burst in one call and macOS paces against the window
-    /// server, so neither has a pause to give up. The emitter is built
-    /// at startup, so changing this needs a restart.
+    /// to `"normal"` on anything else.
+    ///
+    /// The pacing half is Linux only in effect — Windows sends a burst
+    /// in one call and macOS paces against the window server, so
+    /// neither has a pause to give up. The waits are everywhere, and
+    /// they never scale to nothing: see
+    /// [`ReplaySpeed::settle`](poltertype_input::ReplaySpeed::settle)
+    /// for why one of the two can reach zero and the other cannot.
+    ///
+    /// Applies to the next correction, not the next start.
     pub replay_speed: String,
 }
 

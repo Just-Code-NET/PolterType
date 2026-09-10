@@ -1098,10 +1098,11 @@ impl SettingsApp {
             .push(
                 Text::new(tr(
                     "general.replay_speed_hint",
-                    "How quickly a correction is typed out. Normal is paced for input \
-                     remappers such as keyd, which drop keystrokes sent faster; try a \
-                     faster setting and go back if letters start going missing. Takes \
-                     effect after a restart.",
+                    "How quickly a correction happens — both the pauses between \
+                     keystrokes and the waits around the layout switch. Normal is paced \
+                     for input remappers such as keyd, which drop keystrokes sent \
+                     faster; try a faster setting and go back if letters start going \
+                     missing. Applies to the next correction.",
                 ))
                 .size(11)
                 .color(b.muted),

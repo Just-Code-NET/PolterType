@@ -250,7 +250,7 @@
 "general.speed_normal" = "Normal"
 "general.speed_fast" = "Schnell"
 "general.speed_instant" = "Sofort"
-"general.replay_speed_hint" = "Wie schnell eine Korrektur getippt wird. „Normal“ ist auf Eingabe-Remapper wie keyd abgestimmt, die schneller gesendete Tastenanschläge verwerfen; probieren Sie eine schnellere Stufe und gehen Sie zurück, falls Buchstaben fehlen. Wirkt nach einem Neustart."
+"general.replay_speed_hint" = "Wie schnell eine Korrektur abläuft — die Pausen zwischen den Tastenanschlägen und die Wartezeiten um den Layout-Wechsel. „Normal“ ist auf Eingabe-Remapper wie keyd abgestimmt, die schneller gesendete Tastenanschläge verwerfen; probieren Sie eine schnellere Stufe und gehen Sie zurück, falls Buchstaben fehlen. Gilt ab der nächsten Korrektur."
 "general.subtitle" = "Verhalten der Anwendung im Infobereich und der Korrektur-Engine."
 "general.theme_system" = "System"
 "general.theme_light" = "Hell"
