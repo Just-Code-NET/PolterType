@@ -39,6 +39,35 @@ jobs:
       # the sources, it does not build the workspace.
       - run: cargo xtask style
 
+  # Whose name is on the commit. The convention is in CONTRIBUTING
+  # § Commits; this is what makes it hold, because a squash message is
+  # composed from the branch's commits and a trailer in one of them
+  # rides into `main` unless somebody notices at merge time. Nobody
+  # noticed twice.
+  authorship:
+    name: commit authorship
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: no assistant attribution trailers
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          base=$(git merge-base "$BASE" "$HEAD")
+          found=$(git log --format='%H %s%n%b' "$base..$HEAD" \
+            | grep -inE 'co-authored-by:[^<]*<[^>]*(anthropic|openai|copilot|users\.noreply\.github\.com/bot)|generated with .*(claude|copilot|codex|gemini)' \
+            || true)
+          if [ -n "$found" ]; then
+            printf '%s\n' "$found"
+            echo "::error::A commit message credits an assistant. PolterType credits the people who take responsibility for the patch — drop the trailer (git rebase -i, or amend) and force-push the branch. See CONTRIBUTING.md § Commits."
+            exit 1
+          fi
+          echo "no assistant attribution trailers in $(git rev-list --count "$base..$HEAD") commit(s)"
+
   # Lint + build + test in one job per OS. Splitting `check` and `test`
   # across two runners bought nothing: the second runner recompiled the
   # entire workspace from scratch and kept a second multi-gigabyte cache
