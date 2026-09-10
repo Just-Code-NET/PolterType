@@ -44,6 +44,11 @@ jobs:
   # composed from the branch's commits and a trailer in one of them
   # rides into `main` unless somebody notices at merge time. Nobody
   # noticed twice.
+  #
+  # Matched by shape rather than by a list of names, which would date
+  # the moment it was written: a co-author is a person with an address,
+  # and a `noreply@` one that is not GitHub's own privacy address
+  # belongs to no person who can be asked about the patch.
   authorship:
     name: commit authorship
     runs-on: ubuntu-latest
@@ -52,21 +57,24 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: no assistant attribution trailers
+      - name: every co-author is a person
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           base=$(git merge-base "$BASE" "$HEAD")
-          found=$(git log --format='%H %s%n%b' "$base..$HEAD" \
-            | grep -inE 'co-authored-by:[^<]*<[^>]*(anthropic|openai|copilot|users\.noreply\.github\.com/bot)|generated with .*(claude|copilot|codex|gemini)' \
-            || true)
-          if [ -n "$found" ]; then
-            printf '%s\n' "$found"
-            echo "::error::A commit message credits an assistant. PolterType credits the people who take responsibility for the patch — drop the trailer (git rebase -i, or amend) and force-push the branch. See CONTRIBUTING.md § Commits."
+          log=$(git log --format='%H %s%n%b' "$base..$HEAD")
+          found=$(printf '%s\n' "$log" \
+            | grep -inE '^[[:space:]]*co-authored-by:.*<[^>]*noreply@' \
+            | grep -viE 'users\.noreply\.github\.com' || true)
+          footers=$(printf '%s\n' "$log" \
+            | grep -inE '^[[:space:]]*[^[:alnum:]]*generated with ' || true)
+          if [ -n "$found$footers" ]; then
+            printf '%s\n' "$found" "$footers"
+            echo "::error::A commit message credits a tool where a person belongs. PolterType credits whoever takes responsibility for the patch — drop the line (git rebase -i, or git commit --amend for the last one) and force-push the branch. See CONTRIBUTING.md § Commits."
             exit 1
           fi
-          echo "no assistant attribution trailers in $(git rev-list --count "$base..$HEAD") commit(s)"
+          echo "$(git rev-list --count "$base..$HEAD") commit(s), every co-author a person"
 
   # Lint + build + test in one job per OS. Splitting `check` and `test`
   # across two runners bought nothing: the second runner recompiled the

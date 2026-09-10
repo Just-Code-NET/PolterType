@@ -438,17 +438,17 @@ forty lines of the same argument copied into a module header.
 Imperative mood, scope prefix when useful (`engine:`, `win:`, `ui:`,
 `ai:`). Reference the phase or doc when the change is design-bearing.
 
-**Authorship is human.** Whatever tool helped you write a patch, the
-commit credits the people who take responsibility for it: no
-`Co-authored-by:` line for an assistant, and no "Generated with …"
-footer. Use the tools you like — this is about who the history says
-wrote the project, and a contributors list is a list of people.
+**Authorship is human.** Use whatever tools you like; the commit
+credits the people who take responsibility for the patch. So a
+`Co-authored-by:` line names someone who can be asked about the code,
+and there is no "Generated with …" footer — a contributors list is a
+list of people.
 
 CI checks it on every pull request, because a squash message is
-composed from the branch's commits and a trailer in one of them
+composed from the branch's commits and such a line in one of them
 otherwise rides into `main` unnoticed. If the check fails, drop the
-trailer (`git rebase -i`, or `git commit --amend` for the last one)
-and force-push the branch.
+line (`git rebase -i`, or `git commit --amend` for the last one) and
+force-push the branch.
 
 ## Releasing
 
