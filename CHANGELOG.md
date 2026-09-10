@@ -4,6 +4,59 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.36.0] — the wait after the hotkey
+
+### Fixed
+
+- **A manual switch no longer waits for an answer that cannot come**
+  ([#71](https://github.com/Just-Code-NET/PolterType/issues/71)). Once the hotkey came up, the engine read the
+  layout back three times across 80 ms before touching any text — the
+  guard against a settings daemon that lets our switch land and puts
+  its own group back a moment later, measured on MATE. But only some
+  backends have a reading independent of their own write. KDE,
+  Hyprland, IBus and Fcitx answer "cannot tell", and on every one of
+  them those 80 ms bought nothing at all. They are now asked once.
+  Measured on Hyprland with keyd, from the trigger key rising to the
+  first key of the correction: **172 ms → 70 ms**; to the last key of
+  it: **320 ms → 217 ms**. MATE's protection is unchanged — a backend
+  that can answer is still sampled across the window.
+
+- **`[engine] replay_speed` takes effect on the next correction, not
+  the next start** ([#67](https://github.com/Just-Code-NET/PolterType/issues/67)). The emitter was built once at
+  startup and kept its pacing, so a faster setting meant restarting the
+  app — which is what the reporter of #67 found after the setting
+  shipped. It is now re-read live, in both the emitter and the engine.
+
+- **The tray tooltip's name and its state are two fields again**
+  ([#59](https://github.com/Just-Code-NET/PolterType/issues/59)). A panel draws the tooltip's title and its body
+  itself, and everything we had went into the title — so the layout,
+  the pause state and the draft count arrived as one long name. The
+  name is now the title and the rest is the body. Linux only: Windows
+  and macOS take a single string and get the same line they always did.
+
+### Changed
+
+- **`replay_speed` covers the whole correction, not only the typing.**
+  The waits between switching the layout and typing against it scale
+  with the setting too, which is what issue #71 asked for. They never
+  scale to *nothing*: a pace waits on a device we own and has guards
+  around it, while a settle waits on another process's clock — and
+  arriving early there does not cost a keystroke, it retypes the whole
+  word in the layout we just left. Measured on the same machine and
+  word, first key **70 / 40 / 25 ms** and whole burst **217 / 144 /
+  82 ms** at `normal` / `fast` / `instant`.
+
+### Added
+
+- **A correction says where its time went**, at debug level: `gear`,
+  `switch_ms`, `absorb_ms`, `verify_ms`, `emit_ms` and `total_ms`,
+  counted from the moment the trigger key comes up. Two issues running
+  have been about that wait, and this is the line a reporter can paste
+  instead of a stopwatch reading. The absorb phase also says when it
+  gave up waiting for the user's fingers to settle, which is the one
+  case that can still cost hundreds of milliseconds — a remapper that
+  never reports a modifier release.
+
 ## [0.35.0] — one screen, one tooltip, at your own speed
 
 ### Added

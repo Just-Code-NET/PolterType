@@ -214,7 +214,8 @@ the user intended.
 presses keep arriving, fold them into the plan — they are the start of
 the user's next word, already on screen in the layout just switched
 to. Emission starts only after the stream has come back empty three
-times running (~60 ms; a fast typist's inter-key gap is 45–60 ms plus
+times running (~60 ms at the default `replay_speed`, which scales the
+gap between probes; a fast typist's inter-key gap is 45–60 ms plus
 listener lag, so two probes can land inside a single gap). A
 correction fired by a chord also waits for that chord to come up: our
 replay reaches the application the way the user's keys do, so typing
@@ -226,6 +227,14 @@ decision. If a submission (Enter/Tab) or anything murkier (Backspace,
 navigation, a shortcut) arrives, abort the whole correction: nothing
 has been emitted, so the text is untouched. The layout stays switched
 and the buffer is tainted.
+
+**Verify, where that means anything.** Between absorbing and emitting,
+a switch that reported success is read back — three times across the
+window the deletion would occupy, because MATE's settings daemon
+restores its own group milliseconds after ours lands. A backend with
+no reading independent of its own write answers `None` and is asked
+once: sampling silence three times told us nothing and cost 80 ms of
+every manual switch on KDE, Hyprland, IBus and Fcitx (issue #71).
 
 **Emit.** Erase the on-screen characters, then retype the corrected
 word plus everything typed while preparing. Concretely, `зтзь ш `

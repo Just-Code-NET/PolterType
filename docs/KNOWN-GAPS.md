@@ -1,4 +1,4 @@
-# Known gaps (as of v0.35.0)
+# Known gaps (as of v0.36.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,54 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.36.0 pass actually checked (2026-09-10).** On
+**Hyprland/Wayland with keyd**, this machine, and nowhere else.
+
+The manual switch, timed from outside the app. The latency was read
+off PolterType's own emitted key events — through keyd's virtual
+keyboard, which is where they surface, since keyd holds our emitter
+exclusively — using the kernel's timestamps, so the numbers do not
+depend on any log line and the same measurement runs against an
+unpatched binary. A six-letter word, `hold_keys = false`, from the
+trigger key rising to the first emitted key and to the last:
+
+| build | first key | whole burst |
+|---|---|---|
+| 0.35.0, `normal` | 172 ms | 320 ms |
+| 0.36.0, `normal` | 70 ms | 217 ms |
+| 0.36.0, `fast` | 40 ms | 144 ms |
+| 0.36.0, `instant` | 25 ms | 82 ms |
+
+The app's own new timing line agrees and says where the rest goes: at
+`normal`, 1 ms switching, 60 ms waiting for the key stream to settle,
+**0 ms** verifying (80 ms before this release), 184 ms emitting.
+
+The gear changing without a restart, verified the way a user would hit
+it: `replay_speed` was rewritten in `config.toml` under a running app,
+which logged `config.toml changed on disk; applying it`, and the next
+measurement moved to the new numbers with no restart in between.
+
+The tray tooltip's two fields, read where a panel reads them: with
+waybar as the StatusNotifierHost and libayatana-appindicator 0.6.0
+installed, the item's `ToolTip` property is
+`"" 0 "PolterType" "uk-UA"` — the name in the title, the state in the
+description. That is issue #59's follow-up closed by reading the
+property rather than by looking at a rendered tooltip.
+
+What this pass did **not** check: **KDE Plasma Wayland**, which is
+where issue #71 was reported. The changed code is desktop-independent
+— the 80 ms belonged to a backend answering "cannot tell", which KDE's
+does — but the reporter's own total also contains KDE's D-Bus switch
+cost and an InputActions + keyd stack that may hold a modifier release
+longer than this machine does. That last case is now visible in a
+debug log rather than inferred. MATE was not re-run either; that its
+protection survives is covered by a unit test counting the readings,
+not by a live session. Windows and macOS never ran this build: the
+pacing half of `replay_speed` does nothing on either by construction,
+while the settle half applies everywhere and was measured only here.
+The tooltip split was not seen rendered on Plasma. No other bullet
+below was re-measured — read them as the 0.35.0 pass left them.
 
 **What the 0.35.0 pass actually checked (2026-09-09).** On **Cinnamon
 X11** in the desktop-matrix guest, and on `ubuntu:24.04` — the release

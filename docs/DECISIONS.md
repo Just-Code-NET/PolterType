@@ -6,6 +6,94 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-10 — A backend that cannot answer is asked once
+
+Before typing anything, a correction re-reads the layout three times
+across 80 ms and treats any single "no" as a no. That exists because
+MATE's settings daemon lets an `XkbLatchLockState` land and restores
+its own group milliseconds later, and going ahead then deletes the
+user's word and retypes it identically (2026-08-24, above).
+
+But `verify_switched` has three answers, and the third is `None` —
+"this backend has no reading independent of its own write". KDE,
+Hyprland, IBus and Fcitx all answer that, and sampling silence three
+times says nothing that sampling it once did not. Those two sleeps sat
+in front of every manual switch on all of them: measured on Hyprland,
+80 ms of a 172 ms wait (issue #71).
+
+**`None` now returns at once.** `Some(true)` is still sampled across
+the whole window, so MATE's protection is untouched, and the test that
+pins it asserts the *number* of readings rather than a duration —
+one for a blind backend, three for a seeing one.
+
+Alternative considered: dropping the sampling to one probe everywhere
+and re-reading after the deletion instead. Rejected — after the
+deletion the word is already gone, which is the outcome the guard
+exists to prevent.
+
+---
+
+## 2026-09-10 — One gear for the whole correction, and why a settle cannot reach zero
+
+`replay_speed` shipped in 0.35.0 scaling the emitter's inter-key
+pacing. The next report (issue #71) was about the other half of the
+same wait: the reporter measured 0.3–0.5 s between releasing the
+manual-switch hotkey and seeing the word change, and asked to
+customise that too. Measured on Hyprland with keyd, a six-letter word
+at the default setting spent 60 ms watching the key stream settle,
+80 ms re-reading a layout nobody could read back, and 184 ms emitting.
+
+**The setting now scales the engine's settle windows as well** — the
+xkb-propagation floor and the gap between the settle probes — through
+`ReplaySpeed::settle`, which is deliberately *not* `pace`:
+
+| | `normal` | `fast` | `instant` |
+|---|---|---|---|
+| `pace` (a device we own) | full | half | **zero** |
+| `settle` (another process's clock) | full | half | **a quarter** |
+
+A pace can vanish because what it protects against — a remapper
+coalescing two edges microseconds apart — is guarded at the boundary
+key by waits that never scale. A settle cannot: it waits for a
+compositor to propagate xkb state and for a settings daemon to stop
+disagreeing, and arriving early there does not lose a keystroke, it
+retypes the whole word in the layout we just left. A quarter of a
+measured window is still a floor; zero is a guess.
+
+**Both halves are read live.** The engine re-reads the setting per
+correction, and a running emitter holds it in an atomic that
+`set_replay_speed` writes when `config.toml` changes — so the setting
+applies to the next correction rather than the next start, which is
+what #67's reporter asked for after using it.
+
+Measured end to end on this machine, from the trigger key rising, read
+off PolterType's own virtual keyboard: first key **70 / 40 / 25 ms**,
+whole burst **217 / 144 / 82 ms**. Before any of this: 172 and 320.
+
+---
+
+## 2026-09-10 — The tray tooltip is a name and a state, not one line
+
+`app_indicator_set_tooltip_full` takes an icon name, a title and a
+body, and the StatusNotifierItem `ToolTip` property carries all three.
+0.35.0 put the whole hover text in the title and sent a null body,
+because the title was the part we could prove a panel draws.
+
+It draws both, and it styles them differently — the reporter of issue
+#59 sent a screenshot of the result once the tooltip finally appeared
+on Debian 13: `PolterType — en-US` as one bold run, next to another
+app's name-over-description. So the split is now ours to make rather
+than the panel's to guess: the product name is the title, everything
+that changes — layout, paused, missing keyboard access, drafts waiting
+— is the body, and an empty body still goes out as null so a host is
+free to draw the title alone.
+
+Windows and macOS take one string. They join the two back with the
+same em dash they always showed, in one function, so the platform with
+two fields is the one that carries the seam.
+
+---
+
 ## 2026-09-09 — A popup belongs to a monitor, not to the root window
 
 X11 root coordinates cover the whole desktop, so the fallback
@@ -61,6 +149,10 @@ release before a press the user is probably still holding, and the hold
 after it — are correctness, not speed, and they stay as measured at
 every setting. Same for the layout settle and the intrusion probes,
 which are about races with the user rather than about typing quickly.
+
+**Widened 2026-09-10 (issue #71):** the settle windows *do* scale now,
+by a gentler rule that cannot reach zero — see that day's entry. The
+boundary guards and the intrusion probes still do not.
 
 **Linux only in effect.** Windows has no clock pause to give up, and
 macOS paces its backspaces against the window server's own echo, which
