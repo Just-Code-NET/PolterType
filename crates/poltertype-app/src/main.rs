@@ -73,7 +73,7 @@ use poltertype_core::layouts::LayoutDb;
 use poltertype_core::settings::{SettingsStore, TrayIconStyle};
 use poltertype_detect::Detector;
 use poltertype_input::{
-    KeyEvent, create_emitter, create_focus_tracker, create_key_gate, create_listener,
+    KeyEvent, ReplaySpeed, create_emitter, create_focus_tracker, create_key_gate, create_listener,
 };
 use poltertype_popup::{PopupUiEvent, create_popup};
 use poltertype_tray::Tray;
@@ -258,7 +258,9 @@ fn main() -> Result<()> {
         layout_overlay = ?user_layout_dir,
         "layout DB ready"
     );
-    let key_emitter = match create_emitter() {
+    let key_emitter = match create_emitter(ReplaySpeed::from_config(
+        &settings.snapshot().engine.replay_speed,
+    )) {
         Ok(e) => {
             info!(backend = e.backend_name(), "key emitter ready");
             Arc::from(e)

@@ -7,6 +7,7 @@ use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_core::i18n::tr;
 use poltertype_core::plugins::SettingValue;
 use poltertype_core::settings::TrayIconStyle;
+use poltertype_input::ReplaySpeed;
 use poltertype_layout::LayoutId;
 
 use super::plugin_pane::Slot;
@@ -302,6 +303,10 @@ pub enum Message {
     /// Segmented tray-icon picker beside it. Nothing to apply here —
     /// the tray is another process, and it re-reads `config.toml`.
     TrayIconChoiceChanged(TrayIconStyle),
+
+    /// Segmented replay-speed picker on the General pane. Takes
+    /// effect when the app next builds its emitter, i.e. on restart.
+    ReplaySpeedChanged(ReplaySpeed),
 
     /// The interface language, as a locale code (`"system"` to follow
     /// the environment). Applied at the next open: the catalog is read

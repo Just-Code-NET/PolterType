@@ -13,6 +13,7 @@ use iced::{Alignment, Element, Font, Length, Padding};
 
 use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::settings::TrayIconStyle;
+use poltertype_input::ReplaySpeed;
 
 use crate::consts::{
     DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
@@ -980,6 +981,26 @@ impl SettingsApp {
             );
         }
 
+        let speed_choice = ReplaySpeed::from_config(&e.replay_speed);
+        let mut speed_row = Row::new().spacing(6);
+        for (choice, label) in [
+            (ReplaySpeed::Normal, tr("general.speed_normal", "Normal")),
+            (ReplaySpeed::Fast, tr("general.speed_fast", "Fast")),
+            (ReplaySpeed::Instant, tr("general.speed_instant", "Instant")),
+        ] {
+            speed_row = speed_row.push(
+                Button::new(Text::new(label).size(12))
+                    .on_press(Message::ReplaySpeedChanged(choice))
+                    .style(theme::chip(speed_choice == choice))
+                    .padding(Padding {
+                        top: 5.0,
+                        right: 12.0,
+                        bottom: 5.0,
+                        left: 12.0,
+                    }),
+            );
+        }
+
         let behaviour = Column::new()
             .spacing(12)
             .push(section_title(b, tr("general.behaviour", "Behaviour")))
@@ -1071,6 +1092,19 @@ impl SettingsApp {
                         .size(11)
                         .color(b.muted),
                     ),
+            )
+            .push(Text::new(tr("general.replay_speed", "Replacement speed")).size(12))
+            .push(speed_row)
+            .push(
+                Text::new(tr(
+                    "general.replay_speed_hint",
+                    "How quickly a correction is typed out. Normal is paced for input \
+                     remappers such as keyd, which drop keystrokes sent faster; try a \
+                     faster setting and go back if letters start going missing. Takes \
+                     effect after a restart.",
+                ))
+                .size(11)
+                .color(b.muted),
             );
 
         // Applies instantly; persisted by the footer Save.

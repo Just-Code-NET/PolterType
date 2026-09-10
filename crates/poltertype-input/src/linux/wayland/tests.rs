@@ -482,3 +482,57 @@ fn evdev_scan_of_this_machine() {
         crate::linux::access::no_keyboards_message(&facts, crate::linux::access::group_state())
     );
 }
+
+/// What `[engine].replay_speed` costs and saves, measured on this
+/// machine's own uinput device rather than argued from the constants
+/// (issue #67). Types nothing anyone can read — a burst of Backspace
+/// into whatever has focus — so run it where that is harmless:
+/// `cargo test -p poltertype-input -- --ignored --nocapture replay_pacing`
+#[test]
+#[ignore = "opens a real uinput device and types into the focused window"]
+fn replay_pacing_of_this_machine() {
+    use crate::{KeyEmitter, ReplayKey, ReplaySpeed};
+
+    // Six letters and the boundary that ended them: the shape of an
+    // ordinary correction.
+    let word: Vec<ReplayKey> = [0x22u32, 0x13, 0x17, 0x30, 0x14, 0x31, 0x39]
+        .iter()
+        .map(|&scancode| ReplayKey {
+            scancode,
+            shift: false,
+        })
+        .collect();
+
+    for speed in [ReplaySpeed::Normal, ReplaySpeed::Fast, ReplaySpeed::Instant] {
+        let emitter = super::UinputEmitter::new(speed);
+        if !emitter.is_usable() {
+            println!("no uinput device here — nothing to measure");
+            return;
+        }
+        // The first burst through a device this young pays for the
+        // device's own creation — 300 ms of it on the matrix guest,
+        // five times the pacing being measured. Spend one backspace on
+        // that before starting the clock.
+        assert!(
+            emitter.send_backspaces(1).is_ok(),
+            "uinput refused a warm-up burst"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+        let start = std::time::Instant::now();
+        assert!(emitter.send_backspaces(word.len()).is_ok());
+        let deleted = start.elapsed();
+        let start = std::time::Instant::now();
+        assert!(emitter.send_keys(&word).is_ok());
+        let replayed = start.elapsed();
+        println!(
+            "{:>7}: {} backspaces {:>6.1} ms + {} keys {:>6.1} ms = {:>6.1} ms",
+            speed.config_value(),
+            word.len(),
+            deleted.as_secs_f64() * 1000.0,
+            word.len(),
+            replayed.as_secs_f64() * 1000.0,
+            (deleted + replayed).as_secs_f64() * 1000.0,
+        );
+        std::thread::sleep(Duration::from_millis(300));
+    }
+}

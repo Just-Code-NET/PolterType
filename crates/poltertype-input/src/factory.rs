@@ -12,7 +12,7 @@ use unsupported as imp;
 #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
 mod unsupported;
 
-use crate::{InputError, InputListener, KeyEmitter, KeyGate};
+use crate::{InputError, InputListener, KeyEmitter, KeyGate, ReplaySpeed};
 
 /// A gate that can hold the user's keystrokes back while a correction
 /// is being typed, paired with the listener [`create_listener`]
@@ -37,6 +37,9 @@ pub fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputEr
     imp::create_listener(gate)
 }
 
-pub fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
-    imp::create_emitter()
+/// `speed` is the `[engine].replay_speed` config value: how much of
+/// each backend's measured inter-key pacing to keep. Read once at
+/// startup, like the gate's `hold_keys`, so a change needs a restart.
+pub fn create_emitter(speed: ReplaySpeed) -> Result<Box<dyn KeyEmitter>, InputError> {
+    imp::create_emitter(speed)
 }

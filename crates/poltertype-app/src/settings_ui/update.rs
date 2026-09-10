@@ -478,6 +478,10 @@ impl SettingsApp {
                 self.settings.general.tray_icon = choice.config_value().to_owned();
             }
 
+            Message::ReplaySpeedChanged(choice) => {
+                self.settings.engine.replay_speed = choice.config_value().to_owned();
+            }
+
             Message::UiLanguageChanged(code) => {
                 self.settings.general.ui_language = code;
                 self.apply_ui_language();

@@ -17,6 +17,14 @@ pub(crate) const EMITTER_DEVICE_NAME: &str = "poltertype virtual keyboard";
 /// the worst case is a hiccup rather than a lost sentence.
 pub(crate) const MAX_HOLD: Duration = Duration::from_millis(1200);
 
+/// Pause between the key events of a replay or a backspace burst,
+/// before `[engine].replay_speed` scales it.
+///
+/// Not a courtesy to the application: remappers proxying our uinput
+/// device (keyd with `[ids] *`) coalesce or discard pairs landing
+/// microseconds apart, most visibly the trailing space.
+pub(crate) const REPLAY_STEP: Duration = Duration::from_millis(4);
+
 /// How long `hold()` waits for the device thread to actually take the
 /// grab before giving up and letting the correction proceed unheld.
 /// Asking wakes that thread directly (`EvdevGate::wake`), so this is

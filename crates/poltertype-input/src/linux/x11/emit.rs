@@ -5,6 +5,7 @@ use super::consts::*;
 use super::types::*;
 use crate::{EmittedKey, InputError, KeyDirection};
 use std::thread;
+use std::time::Duration;
 use x11rb::connection::{Connection, RequestConnection as _};
 use x11rb::protocol::xproto::{ConnectionExt as _, KEY_PRESS_EVENT, KEY_RELEASE_EVENT, Keysym};
 use x11rb::protocol::xtest::ConnectionExt as _;
@@ -83,15 +84,18 @@ pub(crate) fn release(
     emit_one(c, log, evdev, false)
 }
 
+/// `step` is the pause after each edge — [`KEY_STEP`] scaled by
+/// `[engine].replay_speed`, and zero where the user asked for none.
 pub(crate) fn tap(
     c: &X11Conn,
     log: &parking_lot::Mutex<Vec<EmittedKey>>,
     evdev: u32,
+    step: Duration,
 ) -> Result<(), InputError> {
     press(c, log, evdev)?;
-    thread::sleep(KEY_STEP);
+    thread::sleep(step);
     release(c, log, evdev)?;
-    thread::sleep(KEY_STEP);
+    thread::sleep(step);
     Ok(())
 }
 

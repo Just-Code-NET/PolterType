@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tracing::info;
 
-use crate::{InputError, InputListener, KeyEmitter, KeyGate};
+use crate::{InputError, InputListener, KeyEmitter, KeyGate, ReplaySpeed};
 
 use super::session::{SessionKind, session_kind};
 use super::{portal, wayland, x11};
@@ -50,11 +50,11 @@ pub(crate) fn create_key_gate(_hold_keys: bool) -> KeyGate {
 /// The order is deliberate. Reversed, it would put a consent dialog in
 /// front of every GNOME and KDE user who had already granted the group
 /// membership.
-pub(crate) fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
+pub(crate) fn create_emitter(speed: ReplaySpeed) -> Result<Box<dyn KeyEmitter>, InputError> {
     match session_kind() {
-        SessionKind::X11 => Ok(Box::new(x11::X11Emitter::new())),
+        SessionKind::X11 => Ok(Box::new(x11::X11Emitter::new(speed))),
         SessionKind::Wayland | SessionKind::Unknown => {
-            let uinput = wayland::UinputEmitter::new();
+            let uinput = wayland::UinputEmitter::new(speed);
             if uinput.is_usable() {
                 return Ok(Box::new(uinput));
             }

@@ -4,12 +4,15 @@ use super::codes::*;
 use super::consts::*;
 use super::emit::*;
 use super::types::*;
-use crate::{EmittedKey, InputError, KeyEmitter, Modifiers, ReplayKey, SwitchChord};
+use crate::{EmittedKey, InputError, KeyEmitter, Modifiers, ReplayKey, ReplaySpeed, SwitchChord};
 use std::thread;
+use std::time::Duration;
 use tracing::{debug, warn};
 
 pub struct X11Emitter {
     conn: parking_lot::Mutex<Option<X11Conn>>,
+    /// How much of [`KEY_STEP`] to keep between key edges.
+    speed: ReplaySpeed,
     /// Log of every key edge actually injected since the last
     /// [`KeyEmitter::take_emitted`]. XTest events come back to us
     /// through XInput2 raw events looking exactly like real typing, so
@@ -19,9 +22,10 @@ pub struct X11Emitter {
 }
 
 impl X11Emitter {
-    pub fn new() -> Self {
+    pub fn new(speed: ReplaySpeed) -> Self {
         let s = Self {
             conn: parking_lot::Mutex::new(None),
+            speed,
             emitted: parking_lot::Mutex::new(Vec::new()),
         };
         // Connect eagerly so a broken DISPLAY surfaces in the log at
@@ -44,7 +48,7 @@ impl X11Emitter {
 
 impl Default for X11Emitter {
     fn default() -> Self {
-        Self::new()
+        Self::new(ReplaySpeed::default())
     }
 }
 
@@ -58,8 +62,9 @@ impl KeyEmitter for X11Emitter {
         let c = g
             .as_ref()
             .ok_or_else(|| InputError::Os("x11 connection not initialised".into()))?;
+        let step = self.speed.pace(KEY_STEP);
         for _ in 0..n {
-            tap(c, &self.emitted, EV_BACKSPACE)?;
+            tap(c, &self.emitted, EV_BACKSPACE, step)?;
         }
         Ok(())
     }
@@ -82,13 +87,16 @@ impl KeyEmitter for X11Emitter {
             .as_ref()
             .ok_or_else(|| InputError::Os("x11 connection not initialised".into()))?;
 
+        // The boundary guard below is correctness, not pacing, so it
+        // keeps `KEY_STEP` whatever the user asked for.
+        let step = self.speed.pace(KEY_STEP);
         let last_idx = keys.len() - 1;
         for (i, rk) in keys.iter().enumerate() {
             let is_last = i == last_idx;
             debug!(scancode = rk.scancode, shift = rk.shift, "x11 key");
             if rk.shift {
                 press(c, &self.emitted, EV_LEFTSHIFT)?;
-                thread::sleep(KEY_STEP);
+                thread::sleep(step);
             }
             // The last key of a replay is the boundary the user typed,
             // whose *press* triggered this correction milliseconds ago,
@@ -101,10 +109,10 @@ impl KeyEmitter for X11Emitter {
                 release(c, &self.emitted, rk.scancode)?;
                 thread::sleep(KEY_STEP);
             }
-            tap(c, &self.emitted, rk.scancode)?;
+            tap(c, &self.emitted, rk.scancode, step)?;
             if rk.shift {
                 release(c, &self.emitted, EV_LEFTSHIFT)?;
-                thread::sleep(KEY_STEP);
+                thread::sleep(step);
             }
         }
         Ok(())
@@ -201,7 +209,7 @@ impl KeyEmitter for X11Emitter {
         let mut result = Ok(());
         for ch in text.chars() {
             result = bind_keysym(c, scratch, per, unicode_to_keysym(ch))
-                .and_then(|()| tap(c, &self.emitted, scratch_evdev));
+                .and_then(|()| tap(c, &self.emitted, scratch_evdev, KEY_STEP));
             if result.is_err() {
                 break;
             }

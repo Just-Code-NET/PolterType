@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::{InputError, InputListener, KeyEmitter, KeyGate};
+use crate::{InputError, InputListener, KeyEmitter, KeyGate, ReplaySpeed};
 
 use super::{MacosEmitter, MacosGate, MacosListener};
 
@@ -19,6 +19,6 @@ pub(crate) fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, 
     }))
 }
 
-pub(crate) fn create_emitter() -> Result<Box<dyn KeyEmitter>, InputError> {
+pub(crate) fn create_emitter(_speed: ReplaySpeed) -> Result<Box<dyn KeyEmitter>, InputError> {
     Ok(Box::new(MacosEmitter::new()))
 }
