@@ -187,6 +187,14 @@ echo "system tray library: ${APPINDICATOR_SO}"
 AYATANA_VERSION="0.6.0"
 AYATANA_PREFIX="$(pwd)/.tools/ayatana-${AYATANA_VERSION}-${ARCH}"
 TOOLTIP_SYMBOL="app_indicator_set_tooltip_full"
+# This source is compiled into a library every Linux user then runs, so
+# it is checked before it is trusted — the same posture the updater
+# takes towards a download. Recorded 2026-09-09 from two independent
+# fetches. GitHub generates tag archives on demand and has changed how
+# it compresses them before now; if this ever stops matching, verify
+# the tag upstream and update the digest deliberately rather than
+# deleting the check.
+AYATANA_SHA256="23be92ad8eb9625ce93b23b14f82f3cf88a4970c31d48581945ddfbac0441d06"
 
 if ! nm -D --defined-only "${APPINDICATOR_SO}" 2>/dev/null | grep -q "${TOOLTIP_SYMBOL}"; then
     echo "system tray library has no ${TOOLTIP_SYMBOL}; building ${AYATANA_VERSION}"
@@ -195,6 +203,10 @@ if ! nm -D --defined-only "${APPINDICATOR_SO}" 2>/dev/null | grep -q "${TOOLTIP_
         mkdir -p .tools/src
         curl -fSL -o .tools/ayatana.tar.gz \
             "https://github.com/AyatanaIndicators/libayatana-appindicator/archive/refs/tags/${AYATANA_VERSION}.tar.gz"
+        echo "${AYATANA_SHA256}  .tools/ayatana.tar.gz" | sha256sum -c - || {
+            echo "tray library source does not match the recorded digest — refusing to build it." >&2
+            exit 1
+        }
         rm -rf "${AYATANA_SRC}"
         tar -xzf .tools/ayatana.tar.gz -C .tools/src
         # Bindings and gtk-doc need Vala, Mono and gtkdoc-scan, none of
