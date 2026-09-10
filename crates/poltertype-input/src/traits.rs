@@ -112,6 +112,15 @@ pub trait KeyEmitter: Send + Sync {
     /// `injected` check already filters their echoes. The Linux uinput
     /// backend records every event so the engine can consume the
     /// untagged echoes off the key stream.
+    /// Re-gear a *running* emitter, so `[engine].replay_speed` takes
+    /// effect on save rather than on the next start (issue #67).
+    ///
+    /// Ignored by default: only the Linux backends have a clock pause
+    /// to scale, and one that has none must not pretend otherwise.
+    fn set_replay_speed(&self, speed: ReplaySpeed) {
+        let _ = speed;
+    }
+
     fn take_emitted(&self) -> Vec<EmittedKey> {
         Vec::new()
     }

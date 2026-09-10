@@ -29,3 +29,35 @@ fn each_step_up_costs_the_replay_less_of_its_pacing() {
     assert_eq!(ReplaySpeed::Fast.pace(step), Duration::from_millis(2));
     assert_eq!(ReplaySpeed::Instant.pace(step), Duration::ZERO);
 }
+
+/// A pace may vanish; a settle may not.
+///
+/// The two wait on different things — see `ReplaySpeed::settle`. A
+/// zero-length settle would replay into the layout we just left, which
+/// is why the fastest gear keeps a quarter rather than nothing.
+#[test]
+fn the_fastest_gear_still_waits_for_another_process() {
+    let window = Duration::from_millis(40);
+    assert_eq!(ReplaySpeed::Normal.settle(window), window);
+    assert_eq!(ReplaySpeed::Fast.settle(window), Duration::from_millis(20));
+    assert_eq!(
+        ReplaySpeed::Instant.settle(window),
+        Duration::from_millis(10)
+    );
+    for gear in [ReplaySpeed::Normal, ReplaySpeed::Fast, ReplaySpeed::Instant] {
+        assert!(
+            gear.settle(window) > Duration::ZERO,
+            "{gear:?} scaled a settle to nothing"
+        );
+    }
+}
+
+/// The byte the atomic in a running emitter holds is the setting, and
+/// an unknown one is the safe default rather than a panic.
+#[test]
+fn a_gear_survives_the_trip_through_one_byte() {
+    for gear in [ReplaySpeed::Normal, ReplaySpeed::Fast, ReplaySpeed::Instant] {
+        assert_eq!(ReplaySpeed::from_u8(gear.as_u8()), gear);
+    }
+    assert_eq!(ReplaySpeed::from_u8(7), ReplaySpeed::Normal);
+}

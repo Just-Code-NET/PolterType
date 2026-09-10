@@ -5,14 +5,16 @@ use super::consts::*;
 use super::emit::*;
 use super::types::*;
 use crate::{EmittedKey, InputError, KeyEmitter, Modifiers, ReplayKey, ReplaySpeed, SwitchChord};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, warn};
 
 pub struct X11Emitter {
     conn: parking_lot::Mutex<Option<X11Conn>>,
-    /// How much of [`KEY_STEP`] to keep between key edges.
-    speed: ReplaySpeed,
+    /// How much of [`KEY_STEP`] to keep between key edges. Atomic
+    /// because the setting is re-read from a running emitter.
+    speed: AtomicU8,
     /// Log of every key edge actually injected since the last
     /// [`KeyEmitter::take_emitted`]. XTest events come back to us
     /// through XInput2 raw events looking exactly like real typing, so
@@ -25,7 +27,7 @@ impl X11Emitter {
     pub fn new(speed: ReplaySpeed) -> Self {
         let s = Self {
             conn: parking_lot::Mutex::new(None),
-            speed,
+            speed: AtomicU8::new(speed.as_u8()),
             emitted: parking_lot::Mutex::new(Vec::new()),
         };
         // Connect eagerly so a broken DISPLAY surfaces in the log at
@@ -52,7 +54,17 @@ impl Default for X11Emitter {
     }
 }
 
+impl X11Emitter {
+    fn speed(&self) -> ReplaySpeed {
+        ReplaySpeed::from_u8(self.speed.load(Ordering::Relaxed))
+    }
+}
+
 impl KeyEmitter for X11Emitter {
+    fn set_replay_speed(&self, speed: ReplaySpeed) {
+        self.speed.store(speed.as_u8(), Ordering::Relaxed);
+    }
+
     fn send_backspaces(&self, n: usize) -> Result<(), InputError> {
         if n == 0 {
             return Ok(());
@@ -62,7 +74,7 @@ impl KeyEmitter for X11Emitter {
         let c = g
             .as_ref()
             .ok_or_else(|| InputError::Os("x11 connection not initialised".into()))?;
-        let step = self.speed.pace(KEY_STEP);
+        let step = self.speed().pace(KEY_STEP);
         for _ in 0..n {
             tap(c, &self.emitted, EV_BACKSPACE, step)?;
         }
@@ -89,7 +101,7 @@ impl KeyEmitter for X11Emitter {
 
         // The boundary guard below is correctness, not pacing, so it
         // keeps `KEY_STEP` whatever the user asked for.
-        let step = self.speed.pace(KEY_STEP);
+        let step = self.speed().pace(KEY_STEP);
         let last_idx = keys.len() - 1;
         for (i, rk) in keys.iter().enumerate() {
             let is_last = i == last_idx;
