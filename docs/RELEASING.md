@@ -43,6 +43,21 @@ If any of those fail, fix them in a normal commit BEFORE the
 release commit. The release commit itself should only contain
 the version bump + changelog entry — nothing else.
 
+**Then look at CI on `main`, because the three commands above only
+ever saw this machine:**
+
+```bash
+gh run list --workflow=ci.yml --branch main --limit 1
+```
+
+`cargo clippy` and the pre-commit hook check the host target and
+nothing else, so a lint that only fires where a platform module is
+*not* compiled — a helper with no caller off Linux, say — is invisible
+here and fatal there. The release workflow does not catch it either:
+it builds, and building is not linting. 0.35.0 and 0.36.0 both shipped
+on top of a red `main` for exactly that reason, unnoticed for two
+releases because nobody read this line.
+
 Then **open the Settings window and look at it** — `poltertype
 --settings`, one pass over the panes. Nothing above this line can
 see the window: the brand mark was drawn as a fragment in the

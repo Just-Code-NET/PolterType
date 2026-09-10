@@ -111,7 +111,15 @@ impl ReplaySpeed {
     /// key — the release before a press the user is still holding, and
     /// the hold after it — are correctness, not speed, and every
     /// backend keeps them as measured whatever this returns.
-    pub(crate) fn pace(self, step: Duration) -> Duration {
+    ///
+    /// Public for the same reason [`settle`](Self::settle) is, and it
+    /// matters more here: only the Linux emitters have a clock pause
+    /// to scale — Windows hands a whole burst to one `SendInput` call
+    /// and macOS paces against the window server's own echo — so a
+    /// crate-private version has no caller at all on those two, and
+    /// `-D warnings` reads that as dead code. It failed CI on both for
+    /// two releases.
+    pub fn pace(self, step: Duration) -> Duration {
         match self {
             Self::Normal => step,
             Self::Fast => step / 2,
