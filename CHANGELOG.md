@@ -4,6 +4,28 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.36.1] — the second after a paste
+
+### Fixed
+
+- **The manual switch hotkey works right after a paste**
+  ([#72](https://github.com/Just-Code-NET/PolterType/issues/72)). Pasting
+  arms a one-second window in which PolterType declines to correct
+  anything on its own: what a paste inserts is not typing, and on
+  Wayland a compositor or remapper can replay it through a virtual
+  keyboard, keystroke by keystroke, indistinguishable from a person.
+  That part is deliberate and unchanged. What was not deliberate is
+  that the window also swallowed the *manual* hotkey: the last word is
+  stashed inside the same step the window skipped, so a word finished
+  within a second of a paste was never stashed at all, and the key
+  someone presses precisely because the automatic pass stayed quiet did
+  nothing. It now stops the automatic pass alone — the same place pause
+  stops, and for the same reason (issue #36).
+
+  Verified on Hyprland with keyd, with a real image on the clipboard:
+  paste, type a word, press the hotkey 0.5 s later, and the word
+  converts.
+
 ## [0.36.0] — the wait after the hotkey
 
 ### Fixed

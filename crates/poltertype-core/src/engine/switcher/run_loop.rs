@@ -433,10 +433,6 @@ impl SwitcherEngine {
                                  past word start) — not correcting"
                             .into(),
                     });
-                } else if Instant::now() < *self.paste_guard_until.read() {
-                    // Almost certainly pasted text replayed as
-                    // keystrokes, not typing.
-                    debug!("paste guard active — skipping correction for completed word");
                 } else {
                     self.decide(
                         buffer,

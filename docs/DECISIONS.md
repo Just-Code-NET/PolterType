@@ -6,6 +6,36 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-17 — A suppression window stops the automatic pass, never the stash
+
+Twice now the same shape has shipped: something switches auto-switching
+off for a while, and the manual switch-last hotkey goes off with it.
+Pause did it (#36), and the paste guard did it again (#72) — both by
+returning *above* the line that writes the last word to the stash,
+rather than below it.
+
+The two are not the same decision and must not share a gate. The
+automatic pass is us acting unasked, so every doubt argues for silence:
+a word that may be pasted text replayed as keystrokes must not be
+retyped. The stash is only a record of what was typed, and the hotkey
+that reads it is the user asking, in so many words, for the thing the
+automatic pass declined to do. Suppressing it is not caution, it is
+taking away the remedy for the caution — and it does so in the second
+right after a paste, which is a second in which people type.
+
+**So: the stash is written first, and every "do not correct this"
+gate lives below it.** The paste guard moved down beside the pause
+gate, which already carried this reasoning in a comment. A regression
+test pins each half — that the hotkey still reaches a word finished
+inside the window, and that the window still keeps the automatic pass
+quiet.
+
+Alternative considered: making the guard smarter — distinguishing a
+replayed paste from a person by inter-key timing. Rejected. It is a
+guess about someone else's virtual keyboard, it would fail on the
+machines the guard exists for, and it solves a problem this does not
+have: the guard's suppression was never wrong, only its reach.
+
 ## 2026-09-10 — A backend that cannot answer is asked once
 
 Before typing anything, a correction re-reads the layout three times

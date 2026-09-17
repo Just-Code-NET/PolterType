@@ -4457,6 +4457,60 @@ mod engine_integration_tests {
             "the held chord must undo the correction exactly once"
         );
     }
+
+    /// `Ctrl+V` — the chord that arms the paste guard.
+    fn paste_chord(h: &Harness) {
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(SC_V, KeyDirection::Press, ctrl);
+        h.key_mods(SC_V, KeyDirection::Release, ctrl);
+    }
+
+    /// Issue #72: pasting anything — an image into a chat box being the
+    /// report — armed a window in which the *next* finished word was not
+    /// stashed at all, because the guard skipped the whole decision step
+    /// and the stash is written inside it. Auto-switching staying quiet
+    /// after a paste is the point; the manual hotkey going quiet with it
+    /// is what leaves a person pressing a key that does nothing, in the
+    /// exact second after a paste when they are typing. Same shape as
+    /// pause in #36, one gate lower.
+    #[test]
+    fn a_word_finished_inside_the_paste_guard_still_answers_the_hotkey() {
+        let h = Harness::start(60_000);
+        paste_chord(&h);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE); // completes well inside PASTE_GUARD
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            h.switcher.switches.lock().as_slice(),
+            &[LayoutId::new("uk-UA")],
+            "the hotkey must still reach a word the paste guard declined to correct"
+        );
+    }
+
+    /// …and the guard itself still does its job: the automatic pass must
+    /// not retype text that may be a paste replayed as keystrokes.
+    #[test]
+    fn the_paste_guard_still_keeps_the_automatic_pass_quiet() {
+        let h = Harness::start(60_000);
+        paste_chord(&h);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "a word completed inside the guard must not be corrected on its own"
+        );
+    }
 }
 
 mod boundary_tests {

@@ -1,4 +1,4 @@
-# Known gaps (as of v0.36.0)
+# Known gaps (as of v0.36.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,22 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.36.1 pass actually checked (2026-09-17).** On
+**Hyprland/Wayland with keyd**, this machine, and nowhere else — a
+single path, the one issue #72 is about.
+
+A 1×1 PNG was put on the clipboard, pasted into a text editor (which
+inserts nothing, the report's own situation), a word typed 472 ms
+later, and the manual switch hotkey pressed. The word converted, and
+the log shows the paste window still declining the automatic pass. The
+engine's own harness covers the before/after: the hotkey emits nothing
+inside the window on 0.36.0 and converts on 0.36.1.
+
+Not re-measured this release: every other row below. The report came
+from **Debian 13 KDE Wayland**, which was not re-tested — the change is
+in the engine's word bookkeeping and touches no per-desktop code, but
+that is reasoning, not a measurement.
 
 **What the 0.36.0 pass actually checked (2026-09-10).** On
 **Hyprland/Wayland with keyd**, this machine, and nowhere else.

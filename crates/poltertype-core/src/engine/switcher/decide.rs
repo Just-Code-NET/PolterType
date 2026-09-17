@@ -1,6 +1,8 @@
 //! Per-completed-word decision: candidate filtering, smart-command
 //! lookup, the pre-decision filters, and the detector pipeline.
 
+use std::time::Instant;
+
 use crossbeam_channel::Receiver;
 use poltertype_detect::{Verdict, letters_only_lower, looks_like_code_token};
 use poltertype_input::{KeyEvent, ReplayKey};
@@ -203,6 +205,21 @@ impl SwitcherEngine {
         // reaching for it (issue #36).
         if *self.paused.read() {
             debug!("paused — word stashed for the manual hotkey, no automatic decision");
+            return;
+        }
+
+        // The paste guard reads the same way, and used to sit one step
+        // higher — skipping this whole function, stash included. What it
+        // guards against is us *retyping* text the user pasted, and
+        // retyping is the automatic pass; a word finished inside its
+        // window was simply never stashed, so the hotkey a person
+        // reaches for precisely because the automatic pass stayed quiet
+        // found nothing to act on. Dead for a second after every paste,
+        // which is the second in which people type (issue #72).
+        if Instant::now() < *self.paste_guard_until.read() {
+            debug!(
+                "paste guard active — word stashed for the manual hotkey, no automatic decision"
+            );
             return;
         }
 
