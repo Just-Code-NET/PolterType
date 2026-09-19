@@ -6,6 +6,46 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-19 — A library's dangling callback is dropped at our call site
+
+libayatana-appindicator's `unfallback` — the step that removes the
+legacy `GtkStatusIcon` once a real tray host appears — frees the icon
+and disconnects three of the four handlers it had connected to the
+indicator. The fourth writes the tooltip, and it keeps pointing at the
+freed object, so the next tooltip we set is a use-after-free (issue
+#73). It is upstream's bug, present in 0.6.0 and in master.
+
+We cannot wait for a fix: the library is whatever the user's distro
+ships, and the AppImage bundles one build of it for everybody. Of the
+ways to stop calling into a dangling handler, this one disconnects it
+from our side, immediately before each tooltip write.
+
+Rejected, with reasons:
+
+- **Vendor or patch the library.** It would fix the AppImage and
+  nothing else; distribution builds link the system copy. A fork is
+  also a permanent maintenance debt for one missing line.
+- **Turn the fallback off** by nulling the class's `fallback` hook.
+  Simplest of all, and it would end a second class of noise (on
+  Wayland the fallback icon is born defective and draws nothing). But
+  on X11 without a StatusNotifierWatcher — i3bar, trayer — that icon
+  is the only tray PolterType has, and this app is tray-only: no icon
+  means no interface at all.
+- **Stop writing tooltips after the first fallback.** Gives up a
+  feature on every affected session to avoid a bug on some of them.
+- **Track the fallback ourselves** from the `connection-changed`
+  signal. Needs a callback, an idle source and a piece of state that
+  has to stay true to the library's internals anyway.
+
+What makes the drop safe is a liveness test rather than remembered
+state: `new-icon` is connected and disconnected by the same pair of
+functions as the tooltip handler, and only ever beside an icon that
+exists. A `new-tooltip` handler with no `new-icon` handler next to it
+is therefore the leak and nothing else — so a fallback that is still on
+screen keeps its hover text, and a second fallback cycle is handled
+without bookkeeping. If upstream ever fixes `unfallback`, the test
+simply never fires.
+
 ## 2026-09-17 — A suppression window stops the automatic pass, never the stash
 
 Twice now the same shape has shipped: something switches auto-switching

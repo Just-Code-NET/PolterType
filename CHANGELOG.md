@@ -4,6 +4,33 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.36.2] — the panel that arrives late
+
+### Fixed
+
+- **No more crash when the tray host starts after PolterType**
+  ([#73](https://github.com/Just-Code-NET/PolterType/issues/73)). Until
+  something on the bus is willing to draw a StatusNotifierItem, the
+  tray library stands a legacy `GtkStatusIcon` in for it. When a panel
+  or shell finally turns up, the library takes that stand-in away —
+  and leaves one of the four callbacks it had wired to us behind: the
+  one that writes the hover text. Every tooltip written after that
+  went to freed memory, which reads as GTK type-check warnings for as
+  long as the allocation still looks like an object and as a segfault
+  once it has been handed out again. Roughly eleven minutes, in the
+  report.
+
+  PolterType now drops that callback itself, before each tooltip
+  write, and only once the icon it belonged to is gone — a fallback
+  still on screen keeps its hover text. The defect is upstream, in
+  libayatana-appindicator 0.6.0 and in its current master; this is the
+  half of it that can be fixed from here.
+
+  It needs nothing unusual to hit: a systemd user unit, an autostart
+  entry that wins the race against the panel, a shell that restarts.
+  Verified on Hyprland with a tray host brought up deliberately late —
+  0.36.1 segfaults after a handful of tooltip changes, 0.36.2 does not.
+
 ## [0.36.1] — the second after a paste
 
 ### Fixed

@@ -1,4 +1,4 @@
-# Known gaps (as of v0.36.1)
+# Known gaps (as of v0.36.2)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,27 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.36.2 pass actually checked (2026-09-19).** The Linux
+tray's fallback path on **Hyprland/Wayland**, this machine, and nothing
+else — the one sequence issue #73 is about.
+
+An inert instance (scratch XDG directories, paused, updater off) was
+started on a private D-Bus session with no StatusNotifierItem host on
+it, so the tray library fell back to a `GtkStatusIcon`; a stub host was
+then brought up, which is what frees that icon; the tooltip text was
+then changed a dozen times by flipping `ui_language`. The 0.36.1 build
+segfaults on the sixth change, with the reported backtrace frame for
+frame. The same run against this build survives and logs the stale
+handler being dropped once. A C program making the same library calls
+gives the same before/after, which is where the mechanism was read.
+
+Not measured: whether the fallback icon is of any use on Wayland in the
+first place (it is created defective there — GTK logs
+`gtk_widget_get_scale_factor: GTK_IS_WIDGET failed` the moment it
+appears — and PolterType does not change that), and the X11 XEmbed
+tray, where the same fallback is the real thing and the crash sequence
+should be identical. Nothing else below was re-measured.
 
 **What the 0.36.1 pass actually checked (2026-09-17).** On
 **Hyprland/Wayland with keyd**, this machine, and nowhere else — a

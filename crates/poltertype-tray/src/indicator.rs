@@ -19,16 +19,17 @@
 //! the difference.
 
 use std::cell::{Cell, RefCell};
-use std::ffi::CString;
+use std::ffi::{CString, c_uint};
 use std::path::{Path, PathBuf};
 
+use glib::gobject_ffi;
 use glib::translate::ToGlibPtr;
 use libappindicator_sys::{
     AppIndicator, AppIndicatorCategory_APP_INDICATOR_CATEGORY_APPLICATION_STATUS,
     AppIndicatorStatus_APP_INDICATOR_STATUS_ACTIVE,
-    AppIndicatorStatus_APP_INDICATOR_STATUS_PASSIVE, LIB, app_indicator_new_with_path,
-    app_indicator_set_icon_full, app_indicator_set_icon_theme_path, app_indicator_set_menu,
-    app_indicator_set_status, app_indicator_set_title, gchar,
+    AppIndicatorStatus_APP_INDICATOR_STATUS_PASSIVE, LIB, app_indicator_get_type,
+    app_indicator_new_with_path, app_indicator_set_icon_full, app_indicator_set_icon_theme_path,
+    app_indicator_set_menu, app_indicator_set_status, app_indicator_set_title, gchar,
 };
 use tracing::debug;
 use tray_icon::menu::ContextMenu;
@@ -84,6 +85,12 @@ pub struct Tray {
     /// `libloading`, not ours. Sound either way: that handle is a
     /// `static` the process never closes.
     tooltip: Option<SetTooltip>,
+    /// The ids of `new-icon` and `new-tooltip`, read once because a
+    /// signal keeps its id for the life of the process.
+    /// [`Tray::drop_stale_tooltip_handler`] needs both. `None` on a
+    /// library that has neither signal, which is also a library with
+    /// no fallback to go wrong.
+    fallback_signals: Option<(c_uint, c_uint)>,
 }
 
 impl Tray {
@@ -149,6 +156,7 @@ impl Tray {
             icon: RefCell::new(path),
             counter: Cell::new(0),
             tooltip: tooltip_fn,
+            fallback_signals: lookup_fallback_signals(),
         };
         tray.set_tooltip(tooltip, detail)?;
         Ok(tray)
@@ -196,6 +204,7 @@ impl Tray {
         let Some(set) = self.tooltip else {
             return Ok(());
         };
+        self.drop_stale_tooltip_handler();
         let title = c_string(text);
         let body = (!detail.is_empty()).then(|| c_string(detail));
         // SAFETY: the symbol came from the object holding this
@@ -211,6 +220,61 @@ impl Tray {
             )
         };
         Ok(())
+    }
+
+    /// Drop the tooltip handler the tray library leaves behind after a
+    /// fallback icon is taken away.
+    ///
+    /// With no StatusNotifierItem host on the bus — a session whose
+    /// panel starts after us is the ordinary way there — libayatana
+    /// falls back to a `GtkStatusIcon` and connects four handlers to
+    /// the indicator to keep it in step. When a host does turn up it
+    /// frees that icon and disconnects three of the four. The one it
+    /// forgets is the one that writes the tooltip, so from then on
+    /// every tooltip we set is delivered to freed memory: type-check
+    /// warnings for as long as the allocation still reads like an
+    /// object, then a segfault once it has been handed out again
+    /// ([#73](https://github.com/Just-Code-NET/PolterType/issues/73) —
+    /// the missing line is missing in upstream master too).
+    ///
+    /// `new-icon` is what tells a live fallback from a dead one. The
+    /// same pair of functions connects and disconnects it, and only
+    /// ever beside an icon that exists — so a `new-tooltip` handler
+    /// with no `new-icon` handler next to it is the leak and nothing
+    /// else, and a fallback still on screen keeps its hover text.
+    ///
+    /// Disconnecting by signal id takes nothing with it: the fallback
+    /// is the only thing in the library that listens for
+    /// `new-tooltip`, and the item's own `NewToolTip` goes out from
+    /// inside the setter rather than from a handler.
+    fn drop_stale_tooltip_handler(&self) {
+        let Some((new_icon, new_tooltip)) = self.fallback_signals else {
+            return;
+        };
+        let object = self.indicator.cast::<gobject_ffi::GObject>();
+        // SAFETY: a live indicator and a signal id read off its own
+        // type; the call only walks that object's handler list.
+        let fallback_alive = unsafe {
+            gobject_ffi::g_signal_has_handler_pending(object, new_icon, 0, glib::ffi::GTRUE)
+        };
+        if fallback_alive != 0 {
+            return;
+        }
+        // SAFETY: as above.
+        let dropped = unsafe {
+            gobject_ffi::g_signal_handlers_disconnect_matched(
+                object,
+                gobject_ffi::G_SIGNAL_MATCH_ID,
+                new_tooltip,
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if dropped > 0 {
+            debug!(dropped, "dropped the tray fallback's stale tooltip handler");
+        }
     }
 
     /// Show or hide the icon without tearing the tray down, so that
@@ -275,6 +339,24 @@ fn write_icon(dir: &Path, counter: u32, icon: Icon) -> Result<PathBuf, TrayError
         .write_image_data(&rgba)
         .map_err(|e| TrayError::Backend(e.to_string()))?;
     Ok(path)
+}
+
+/// The ids of `new-icon` and `new-tooltip` on the indicator's type,
+/// or `None` on the pre-Ayatana `libappindicator3`, which has no
+/// tooltip signal — and no tooltip API either, so nothing calls this
+/// path there.
+fn lookup_fallback_signals() -> Option<(c_uint, c_uint)> {
+    // SAFETY: `app_indicator_get_type` registers the type if it is not
+    // registered yet and returns it; `g_signal_lookup` then reads the
+    // table that registration fills in.
+    unsafe {
+        // The two crates spell the same C typedef differently —
+        // `c_ulong` in one, `size_t` in the other.
+        let ty = app_indicator_get_type() as glib::ffi::GType;
+        let icon = gobject_ffi::g_signal_lookup(c"new-icon".as_ptr(), ty);
+        let tooltip = gobject_ffi::g_signal_lookup(c"new-tooltip".as_ptr(), ty);
+        (icon != 0 && tooltip != 0).then_some((icon, tooltip))
+    }
 }
 
 /// A C string that cannot fail to be one. An interior NUL would only
