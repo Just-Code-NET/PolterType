@@ -201,6 +201,9 @@ mod engine_integration_tests {
         /// How many times the engine asked. The number is the point of
         /// one test below, not a detail of it.
         verifies: Mutex<usize>,
+        /// Answers `current` gives before the real one, oldest first — a
+        /// compositor still on the previous window's layout (issue #72).
+        stale: Mutex<std::collections::VecDeque<LayoutId>>,
     }
 
     impl MockSwitcher {
@@ -213,6 +216,7 @@ mod engine_integration_tests {
                 chord: Mutex::new(None),
                 blind: Mutex::new(false),
                 verifies: Mutex::new(0),
+                stale: Mutex::new(std::collections::VecDeque::new()),
                 fail_switch: false,
             }
         }
@@ -220,6 +224,9 @@ mod engine_integration_tests {
 
     impl poltertype_layout::LayoutSwitcher for MockSwitcher {
         fn current(&self) -> Result<LayoutId, LayoutError> {
+            if let Some(old) = self.stale.lock().pop_front() {
+                return Ok(old);
+            }
             Ok(self.current.lock().clone())
         }
         fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
@@ -4509,6 +4516,81 @@ mod engine_integration_tests {
         assert!(
             h.switcher.switches.lock().is_empty(),
             "a word completed inside the guard must not be corrected on its own"
+        );
+    }
+
+    /// `Alt+Tab` — the shortcut that hands the keyboard to another window.
+    fn alt_tab(h: &Harness) {
+        let alt = poltertype_types::Modifiers {
+            alt: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x0F, KeyDirection::Press, alt);
+        h.key_mods(0x0F, KeyDirection::Release, alt);
+    }
+
+    /// Issue #72, as the reporter narrowed it: Plasma keeping a layout
+    /// per window, `Alt+Tab`, a word typed at once, and the hotkey
+    /// converting nothing more often than not. The word's first key is
+    /// read off the device before the compositor has applied the new
+    /// window's layout, so the stamp named the old window's — and the
+    /// hotkey "switched" to the layout already in effect and retyped
+    /// the word unchanged. Measured in the VM on 2026-09-25.
+    #[test]
+    fn a_word_typed_as_the_focus_moves_is_stamped_with_the_new_windows_layout() {
+        let h = Harness::start(60_000);
+        h.switcher.stale.lock().push_back(LayoutId::from("uk-UA"));
+        alt_tab(&h);
+        type_word(&h, &GHBDSN);
+        h.settle();
+
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert_eq!(
+            h.switcher.switches.lock().as_slice(),
+            &[LayoutId::new("uk-UA")],
+            "typed under en-US, so the hotkey has to move it to uk-UA"
+        );
+    }
+
+    /// The same stale stamp silenced the automatic pass too: read
+    /// against the layout in effect at the boundary it looked like a
+    /// switch by hand mid-word, and those are left alone.
+    #[test]
+    fn a_word_typed_as_the_focus_moves_is_still_corrected_on_its_own() {
+        let h = Harness::start(60_000);
+        h.switcher.stale.lock().push_back(LayoutId::from("uk-UA"));
+        alt_tab(&h);
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        h.settle();
+
+        assert_eq!(
+            h.switcher.switches.lock().as_slice(),
+            &[LayoutId::new("uk-UA")],
+            "a stale first reading must not pass for a switch by hand"
+        );
+    }
+
+    /// …and nowhere else: a word that started after a boundary keeps the
+    /// stamp its first key got, which is what lets a switch by hand
+    /// mid-word be noticed rather than overwritten.
+    #[test]
+    fn a_word_started_after_a_boundary_keeps_its_first_stamp() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN[..2]);
+        h.settle();
+        *h.switcher.current.lock() = LayoutId::from("uk-UA");
+        type_word(&h, &GHBDSN[2..]);
+        h.tap(SPACE);
+        h.settle();
+
+        assert!(
+            h.switcher.switches.lock().is_empty(),
+            "a switch by hand inside a word must still read as one"
         );
     }
 }

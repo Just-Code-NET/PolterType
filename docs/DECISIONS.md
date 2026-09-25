@@ -6,6 +6,48 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-25 — A word's layout is provisional only after the caret context broke
+
+Each word is stamped with the layout in effect at its first key, and
+both the manual hotkey and the automatic pass read the word under that
+stamp. The stamp exists for one case: the user switching layout by hand
+between the word and the key that closes it, where reading the word
+under the new layout would "correct" text that is already right.
+
+On a desktop that keeps a layout per window, that first reading can be
+wrong. The listener sees a key on the device before the compositor has
+finished the focus change in front of it, and the compositor answers
+with the previous window's layout until it has — about 70 ms after an
+`Alt+Tab` on Plasma 6 (issue #72). The hotkey then switched a word to
+the layout it was already in, and the automatic pass mistook the
+mismatch for a switch by hand.
+
+A word that starts after a click, a shortcut or a focus change —
+exactly the words the buffer already marks as starting unclean — now
+has its stamp read again on each of its keys for `FOCUS_SETTLE`, and at
+the hotkey or boundary if they fall inside it, through a
+`LayoutSwitcher::current_fresh` that goes past the 200 ms cache in
+front of the Linux backends and refreshes it.
+
+Rejected, with reasons:
+
+- **Stamp at every key, always.** The last key's layout would win, so
+  a switch by hand in mid-word would go unnoticed — the case the stamp
+  is for.
+- **Re-read the layout when the hotkey fires.** By then the user may
+  have switched by hand after the word, and the reading would be that
+  switch rather than the one the word was typed in.
+- **Follow the layout poller's change events.** They report the change
+  but not whether it preceded or followed a given key, and they cross a
+  thread into the engine for what a local re-read answers.
+- **Delay the first stamp by a fixed wait.** The engine thread would
+  sleep on every word, while the re-read costs nothing where the
+  context never broke.
+
+The window gives up a switch by hand made within half a second of a
+word's first key, and only when that word started after the context
+broke — a combination rare enough to lose.
+
 ## 2026-09-19 — A library's dangling callback is dropped at our call site
 
 libayatana-appindicator's `unfallback` — the step that removes the

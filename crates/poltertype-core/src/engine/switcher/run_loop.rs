@@ -9,7 +9,9 @@ use tracing::{debug, info};
 
 use crate::audio::SoundEvent;
 use crate::engine::buffer::{WordBoundary, WordBuffer};
-use crate::engine::consts::{FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD, SC_BACKSPACE};
+use crate::engine::consts::{
+    FOCUS_SETTLE, FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD, SC_BACKSPACE,
+};
 use crate::engine::enums::{Either, EngineCommand, SwitcherEvent};
 use crate::engine::heuristics::{
     is_modifier_scancode, is_paste_shortcut, moves_caret_or_selection,
@@ -307,12 +309,36 @@ impl SwitcherEngine {
             None
         };
 
-        let was_empty = buffer.keys().is_empty();
+        let before = buffer.keys().len();
         let outcome = buffer.feed(ev, produced, letter_in_any_layout);
-        if was_empty && !buffer.keys().is_empty() {
+        if before == 0 && !buffer.keys().is_empty() {
             *self.word_layout.write() = self.layout_switcher.current().ok();
+            *self.word_layout_settles_at.write() =
+                (!buffer.word_started_clean()).then(|| Instant::now() + FOCUS_SETTLE);
+        } else if buffer.keys().len() > before {
+            self.settle_word_layout();
         }
         outcome
+    }
+
+    /// Re-read the word's layout while its stamp may still be the
+    /// previous window's (issue #72).
+    ///
+    /// Only inside [`FOCUS_SETTLE`] of a word that started after the
+    /// caret context broke: anywhere else a layout that differs from the
+    /// stamp is the user switching by hand mid-word, which the stamp
+    /// exists to notice.
+    pub(super) fn settle_word_layout(&self) {
+        let open = self
+            .word_layout_settles_at
+            .read()
+            .is_some_and(|until| Instant::now() < until);
+        if !open {
+            return;
+        }
+        if let Ok(fresh) = self.layout_switcher.current_fresh() {
+            *self.word_layout.write() = Some(fresh);
+        }
     }
 
     pub(super) fn handle_key(

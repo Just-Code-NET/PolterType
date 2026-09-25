@@ -50,6 +50,15 @@ impl LayoutSwitcher for CachedSwitcher {
         Ok(fresh)
     }
 
+    /// Refreshes the cache on the way, so the reads that follow agree
+    /// with this one rather than with the answer it replaced.
+    fn current_fresh(&self) -> Result<LayoutId, LayoutError> {
+        let mut g = self.current.lock().unwrap_or_else(|p| p.into_inner());
+        let fresh = self.inner.current()?;
+        *g = Some((fresh.clone(), Instant::now()));
+        Ok(fresh)
+    }
+
     fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
         let mut g = self.list.lock().unwrap_or_else(|p| p.into_inner());
         if let Some((list, at)) = g.as_ref() {

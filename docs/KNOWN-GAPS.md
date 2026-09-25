@@ -1,4 +1,4 @@
-# Known gaps (as of v0.36.2)
+# Known gaps (as of v0.36.3)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,32 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.36.3 pass actually checked (2026-09-25).** On **KDE
+Plasma 6 Wayland** in the desktop-matrix guest, and nothing else — the
+sequence issue #72 turned out to be.
+
+With KWin keeping a layout per window, two terminals, and `Alt+Tab`
+between them followed by a word 50, 150 or 300 ms later: the new
+window's layout lands about 70 ms after `Alt` comes up, and a word
+begun before that was filed under the old window's. Eight rounds per
+delay, the manual hotkey and the automatic pass run separately. 0.36.2
+converted 19 of 24 by hotkey and corrected 21 of 24 on its own, every
+miss at 50 or 150 ms; this build, 24 of 24 in both. With KDE's default,
+one layout for everything, 0.36.2 already converted 20 of 20 — the bug
+needs a layout that changes with the window. A pasted image (the first
+form of the report) was run on the same session before the cause was
+known and converted every time, which is consistent: `wl-copy` into a
+terminal opens no new window.
+
+Not measured: the reporter's own stack (keyd, InputActions, Telegram,
+far2l) — they saw it fail more often than not, so their compositor is
+slower to apply the layout than the guest's, and the half-second window
+is a margin chosen for that rather than a measured bound. A word typed
+entirely inside the compositor's delay and not touched again for half
+a second keeps the old window's layout. Hyprland with a per-window
+layout script — this machine's own set-up — has the same shape and was
+not re-run. Nothing else below was re-measured.
 
 **What the 0.36.2 pass actually checked (2026-09-19).** The Linux
 tray's fallback path on **Hyprland/Wayland**, this machine, and nothing

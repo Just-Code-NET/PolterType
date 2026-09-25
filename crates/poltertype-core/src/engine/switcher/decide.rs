@@ -59,6 +59,7 @@ impl SwitcherEngine {
     /// — see
     /// [`WordBuffer::remainder_at_caret`](crate::engine::buffer::WordBuffer::remainder_at_caret).
     pub(super) fn word_in_progress(&self, buffer: &WordBuffer) -> Option<LastWord> {
+        self.settle_word_layout();
         if buffer.remainder_at_caret() {
             // Its own line: lumped in with the empty-buffer case, a
             // decline here reads in a log exactly like a hotkey that
@@ -103,6 +104,7 @@ impl SwitcherEngine {
         }
         // No global min_word_length gate: each detector decides for
         // itself.
+        self.settle_word_layout();
 
         let current_layout = match self.layout_switcher.current() {
             Ok(l) => l,

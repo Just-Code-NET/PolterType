@@ -51,3 +51,64 @@ fn a_backend_that_names_one_is_accepted() {
         "one real layout among blanks is still a working backend"
     );
 }
+
+/// A backend whose answer the test moves by hand — the compositor
+/// applying another window's layout underneath the cache.
+struct Moving(std::sync::Mutex<LayoutId>);
+
+impl LayoutSwitcher for Moving {
+    fn current(&self) -> Result<LayoutId, LayoutError> {
+        Ok(self.0.lock().unwrap_or_else(|p| p.into_inner()).clone())
+    }
+    fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
+        Ok(Vec::new())
+    }
+    fn switch_to(&self, _: &LayoutId) -> Result<(), LayoutError> {
+        Ok(())
+    }
+    fn backend_name(&self) -> &'static str {
+        "moving"
+    }
+}
+
+/// Issue #72: a word's layout read in the instant after an Alt+Tab is
+/// the previous window's, and re-reading it through the cache hands the
+/// same stale answer back for the whole TTL. `current_fresh` has to go
+/// past it — and leave the cache agreeing, or the next plain read
+/// contradicts the one just made.
+#[test]
+fn a_fresh_read_goes_past_the_cache_and_updates_it() {
+    let inner = std::sync::Arc::new(Moving(std::sync::Mutex::new(LayoutId::new("ru-RU"))));
+    struct Shared(std::sync::Arc<Moving>);
+    impl LayoutSwitcher for Shared {
+        fn current(&self) -> Result<LayoutId, LayoutError> {
+            self.0.current()
+        }
+        fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError> {
+            self.0.list_active()
+        }
+        fn switch_to(&self, id: &LayoutId) -> Result<(), LayoutError> {
+            self.0.switch_to(id)
+        }
+        fn backend_name(&self) -> &'static str {
+            "shared"
+        }
+    }
+    let cached = super::cached_switcher::CachedSwitcher::new(Box::new(Shared(inner.clone())));
+
+    let ru = Some(LayoutId::new("ru-RU"));
+    let en = Some(LayoutId::new("en-US"));
+    assert_eq!(cached.current().ok(), ru);
+    *inner.0.lock().unwrap_or_else(|p| p.into_inner()) = LayoutId::new("en-US");
+    assert_eq!(
+        cached.current().ok(),
+        ru,
+        "inside the TTL the cache answers — the premise of the test"
+    );
+    assert_eq!(cached.current_fresh().ok(), en);
+    assert_eq!(
+        cached.current().ok(),
+        en,
+        "the cache must follow the fresh read"
+    );
+}

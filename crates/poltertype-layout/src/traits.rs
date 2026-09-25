@@ -7,6 +7,18 @@ pub trait LayoutSwitcher: Send + Sync {
     /// Layout currently effective for the foreground window.
     fn current(&self) -> Result<LayoutId, LayoutError>;
 
+    /// [`current`](Self::current), asked of the OS even where a cache in
+    /// front of the backend already has an answer.
+    ///
+    /// For the moments a remembered answer is known to be suspect: just
+    /// after the focus moved, a compositor that keeps a layout per window
+    /// may not have applied the new window's yet, and whatever was read
+    /// then is the old window's. The default is `current` itself, which
+    /// is right for every backend that caches nothing.
+    fn current_fresh(&self) -> Result<LayoutId, LayoutError> {
+        self.current()
+    }
+
     /// All layouts the system knows about and the user has enabled.
     fn list_active(&self) -> Result<Vec<LayoutId>, LayoutError>;
 

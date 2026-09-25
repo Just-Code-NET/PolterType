@@ -75,6 +75,11 @@ pub struct SwitcherEngine {
     /// `None` when the OS could not be asked, read as "assume it never
     /// changed".
     pub(super) word_layout: RwLock<Option<LayoutId>>,
+    /// Until when [`Self::word_layout`] is still provisional: set when a
+    /// word starts after a click, a shortcut or a focus change, and read
+    /// again, past any cache, on each key of the word before it lapses.
+    /// See [`FOCUS_SETTLE`](crate::engine::consts::FOCUS_SETTLE).
+    pub(super) word_layout_settles_at: RwLock<Option<Instant>>,
     /// Expected echoes of our own injected keystrokes: the scancode of
     /// every *press* the emitter put on the wire, oldest first, each
     /// with an expiry deadline.
@@ -152,6 +157,7 @@ impl SwitcherEngine {
             last_force_switch: RwLock::new(None),
             chord_state: Mutex::new(ChordState::default()),
             word_layout: RwLock::new(None),
+            word_layout_settles_at: RwLock::new(None),
             expected_echo: Mutex::new(VecDeque::new()),
             keystream_hotkeys: RwLock::new(KeystreamHotkeys::default()),
             suggester,

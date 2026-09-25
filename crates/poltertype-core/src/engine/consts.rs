@@ -19,6 +19,19 @@ pub const MOD_DOUBLE_TAP_GAP: Duration = Duration::from_millis(500);
 /// genuinely-typed word.
 pub const PASTE_GUARD: Duration = Duration::from_millis(1200);
 
+/// How long after a word's first key its layout stamp is re-read, when
+/// the word started after a click, a shortcut or a focus change.
+///
+/// The listener reads a key off the device before the compositor has
+/// finished handling the focus change in front of it, and a desktop
+/// that keeps a layout per window answers with the previous window's
+/// until it has — about 70 ms after `Alt` comes up on Plasma 6, measured
+/// in the VM on 2026-09-25 (issue #72), and plainly longer on the
+/// reporter's machine, where it failed more often than not. Generous on
+/// purpose: inside it the stamp follows the compositor, which costs a
+/// few reads; a switch by hand this early in a word is what it gives up.
+pub const FOCUS_SETTLE: Duration = Duration::from_millis(500);
+
 /// How long the last completed word stays reachable by the manual
 /// switch-last hotkey once typing stops.
 ///

@@ -4,6 +4,37 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.36.3] — the window that was still arriving
+
+### Fixed
+
+- **The manual switch converts a word typed straight after `Alt+Tab`**
+  ([#72](https://github.com/Just-Code-NET/PolterType/issues/72)). On a
+  desktop that keeps a keyboard layout per window — KDE Plasma set to
+  *Window* or *Application*, or anything that restores a window's
+  layout on focus — the new window's layout is applied a moment after
+  the focus moves. PolterType reads each key straight off the keyboard,
+  so the first key of a word typed at once arrives *before* that, and
+  the word was filed under the previous window's layout. The hotkey
+  then "switched" it to the layout already in effect and retyped it
+  unchanged, and the automatic pass, reading the same word against the
+  layout at the space, took it for a switch by hand and left it alone.
+
+  A word that starts after a focus change, a click or a shortcut now
+  has its layout read again, past the cached answer, on each key for
+  its first half second — so it is filed under the layout it was
+  actually typed in. Anywhere else the first key's reading still
+  stands, which is what lets a switch by hand in mid-word be noticed.
+
+  The report's first form — a caption typed into the box Telegram
+  opens for a pasted image — is most likely the same moment, since that
+  box takes the focus too; it was not reproduced here.
+
+  Verified on KDE Plasma 6 Wayland with a layout per window, two
+  windows and `Alt+Tab`, 24 rounds a side: 0.36.2 converted 19 by
+  hotkey and corrected 21 on its own, all of its misses within 150 ms
+  of the switch; this build, 24 and 24.
+
 ## [0.36.2] — the panel that arrives late
 
 ### Fixed

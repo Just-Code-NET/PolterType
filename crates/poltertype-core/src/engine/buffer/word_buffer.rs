@@ -120,6 +120,13 @@ impl WordBuffer {
         self.poisoned
     }
 
+    /// Did the in-progress word start where the caret was known to be —
+    /// after a boundary, rather than after a click, a shortcut or a
+    /// focus change?
+    pub fn word_started_clean(&self) -> bool {
+        self.word_clean
+    }
+
     /// See [`Self::remainder_at_caret`] — the manual hotkey's
     /// question, where [`Self::poisoned`] is the automatic decision's.
     pub fn remainder_at_caret(&self) -> bool {
