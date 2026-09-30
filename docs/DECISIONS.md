@@ -6,6 +6,49 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-09-30 — A correction waits for held keys to come up, not for the gate to be smarter
+
+An automatic correction is triggered by the *press* of the boundary
+key, and the finger is still on it. On Linux the key gate then grabs
+the keyboard with `EVIOCGRAB`, and that key's release arrives during
+the grab — so the compositor, which saw the press, never sees the
+release. libinput keeps per-device key state and drops both a second
+press of a key it thinks is down and a release of one it never saw
+pressed (`src/evdev-fallback.c`, "Ignore key release events from the
+kernel for keys that libinput never got a pressed event for"). That second rule is why the emitter's release-before-press
+guard around the replayed boundary never worked: its release comes from
+our device, where the key was never down. The result is the space lost
+behind the corrected word and the user's next space lost too (#74).
+
+The absorb phase already waited for the fingers to settle — no new
+presses, modifiers up. It now also waits for every non-modifier key the
+engine saw go down to come up, inside the same 600 ms deadline, and on
+every platform rather than only where the gate runs: emitting a key
+while its physical twin is down is the same collision without a gate,
+only rarer.
+
+Rejected, with reasons:
+
+- **Write the swallowed release back to the device after the grab.**
+  evdev accepts writes, but an injected event reaches the other readers
+  only once the grab is gone — after the replay, so the replayed space
+  is still lost; only the stuck state after it would be fixed.
+- **Ungrab, write the release, re-grab, as soon as it is read.** Two
+  grab transitions cost 13–25 ms each, and a key pressed in between
+  would reach the application *and* be replayed by us.
+- **Double-tap the replayed boundary** (press, release, press,
+  release). Only correct while the physical key is still logically
+  down; otherwise it types two spaces, and that state is not ours to
+  read.
+- **Defer the grab per device until its keys are up.** The same wait,
+  moved into the device thread, where the engine's handshake would time
+  out and proceed unheld.
+
+The cost is latency only when the boundary is held longer than the
+absorb window already takes — a few tens of milliseconds on a long
+press. A key whose release never reaches us is ignored after two
+seconds, so it cannot turn every later correction into a 600 ms one.
+
 ## 2026-09-25 — A word's layout is provisional only after the caret context broke
 
 Each word is stamped with the layout in effect at its first key, and

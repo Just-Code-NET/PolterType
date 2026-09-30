@@ -188,11 +188,13 @@ pub struct EngineSettings {
     /// Hold the user's keystrokes back while a correction burst is on
     /// the wire, and replay them after it — the deterministic guard
     /// against a letter typed mid-correction landing inside the
-    /// corrected word. Costs a small input delay right after each
-    /// correction, which is why it defaults off — see the trade in
-    /// docs/PERMISSIONS.md. `POLTERTYPE_HOLD_KEYS` (`1`/`0`) overrides
-    /// in either direction; the gate is built at startup, so changing
-    /// this needs a restart.
+    /// corrected word. **Windows and macOS only**, where it costs a small
+    /// input delay after each correction and so defaults off — see the
+    /// trade in docs/PERMISSIONS.md. On Linux/Wayland the gate is on
+    /// whenever the input stack allows it and this key is not read;
+    /// `POLTERTYPE_HOLD_KEYS=0` is what turns it off there. The
+    /// variable (`1`/`0`) overrides in either direction everywhere; the
+    /// gate is built at startup, so changing either needs a restart.
     pub hold_keys: bool,
     /// How fast a correction is typed out **and** how long the engine
     /// waits between switching the layout and typing against it:

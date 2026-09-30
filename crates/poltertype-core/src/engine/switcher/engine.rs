@@ -43,6 +43,10 @@ pub struct SwitcherEngine {
     /// under a held `Ctrl` every replayed key arrives as a shortcut and
     /// nothing is typed.
     pub(super) held_modifiers: RwLock<Modifiers>,
+    /// Non-modifier keys the user is holding right now, with when each
+    /// went down — what the correction waits on before it emits. See
+    /// [`SwitcherEngine::keys_held`].
+    pub(super) keys_down: Mutex<Vec<(u32, Instant)>>,
     pub(super) focus_tracker: Arc<dyn FocusTracker>,
     pub(super) audio: Arc<AudioPlayer>,
     pub(super) out_tx: Sender<SwitcherEvent>,
@@ -148,6 +152,7 @@ impl SwitcherEngine {
             clipboard,
             key_gate,
             held_modifiers: RwLock::new(Modifiers::NONE),
+            keys_down: Mutex::new(Vec::new()),
             focus_tracker,
             audio,
             out_tx,

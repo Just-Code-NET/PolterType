@@ -56,6 +56,7 @@ impl SwitcherEngine {
                         continue;
                     }
                     *self.held_modifiers.write() = ev.modifiers;
+                    self.track_keys_down(&ev);
                     self.click_grace_tick(&ev);
                     self.check_keystream_hotkeys(&ev, &mut buffer, &key_rx);
                     if last_event_at.elapsed() > idle_timeout {

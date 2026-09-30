@@ -1,4 +1,4 @@
-# Known gaps (as of v0.36.3)
+# Known gaps (as of v0.36.4)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,28 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.36.4 pass actually checked (2026-09-30).** On **KDE
+Plasma 6 Wayland** in the desktop-matrix guest, with the key gate
+holding (keyd stopped, so nothing proxies our emitter), and nowhere
+else — issue #74's sequence, filed from Hyprland.
+
+A wrong-layout word closed by a space held like a finger, then one more
+space tap: 0.36.3 kept both spaces in 8 of 8 rounds with a 30 ms tap,
+1 of 8 with a 150 ms press, 0 of 8 with 300 ms; this build, 8 of 8 in
+all three. The failure is libinput's, so every Wayland compositor is
+exposed the same way, but **Hyprland — the reporter's — was not
+re-run**: this machine runs keyd, which proxies our emitter and turns
+the gate off, so the bug cannot happen here at all. Nor was
+input-remapper, the reporter's remapper.
+
+Issue #72 was re-run against 0.36.3 on the same session, and stays
+open: an `Alt+Tab` between two windows, a second's pause, a word and
+the hotkey converted 24 of 24 across Electron (native Wayland and
+XWayland), an XWayland terminal and far2l's terminal mode, with keyd
+proxying the keyboard. What the reporter has and this did not —
+InputActions, Telegram, far2l's GUI backend — is unmeasured. Nothing
+else below was re-measured.
 
 **What the 0.36.3 pass actually checked (2026-09-25).** On **KDE
 Plasma 6 Wayland** in the desktop-matrix guest, and nothing else — the

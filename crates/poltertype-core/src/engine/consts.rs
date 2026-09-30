@@ -19,6 +19,12 @@ pub const MOD_DOUBLE_TAP_GAP: Duration = Duration::from_millis(500);
 /// genuinely-typed word.
 pub const PASTE_GUARD: Duration = Duration::from_millis(1200);
 
+/// How long a key may be seen down before the engine stops waiting for
+/// its release. Past this it is either held on purpose or its release
+/// never reached us (a device unplugged mid-press), and a correction
+/// that waited on it would wait on every word.
+pub const KEY_DOWN_STALE: Duration = Duration::from_secs(2);
+
 /// How long after a word's first key its layout stamp is re-read, when
 /// the word started after a click, a shortcut or a focus change.
 ///

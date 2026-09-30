@@ -4,6 +4,39 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.36.4] — the key that was still down
+
+### Fixed
+
+- **No more lost space after an automatic correction on Linux**
+  ([#74](https://github.com/Just-Code-NET/PolterType/issues/74)). A
+  correction starts at the *press* of the space that finished the word,
+  and a finger stays on that key for a moment. Where the key gate holds
+  the keyboard for the length of the correction — Wayland, whenever no
+  remapper proxies PolterType's own keyboard — the space's release came
+  in during the hold and never reached the compositor. So the compositor
+  went on treating the space as held: the space retyped behind the
+  corrected word was dropped as a second press of a key already down,
+  the next real press was dropped the same way, and it took a third
+  press to get a space at all. The same thing ate the first letter of a
+  following word typed fast.
+
+  A correction now waits for the keys the user is still holding to come
+  up before it takes the keyboard and types — within the same deadline
+  it already waited on for the fingers to settle, so a key that never
+  comes up still cannot stall it.
+
+  Verified on KDE Plasma 6 Wayland with the gate holding, the space held
+  as a finger holds it: 0.36.3 kept both spaces in 1 of 8 rounds with a
+  150 ms press and 0 of 8 with a 300 ms one; this build, 8 of 8 each. A
+  30 ms tap, whose release beats the hold, was fine before and still is.
+
+### Documentation
+
+- `[engine].hold_keys` is Windows and macOS only; on Linux the gate is
+  on whenever the input stack allows it, and `POLTERTYPE_HOLD_KEYS=0` is
+  what turns it off. The setting's own description said otherwise.
+
 ## [0.36.3] — the window that was still arriving
 
 ### Fixed

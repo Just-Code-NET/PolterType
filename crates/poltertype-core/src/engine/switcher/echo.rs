@@ -6,6 +6,9 @@ use std::time::{Duration, Instant};
 
 use poltertype_input::{EmittedKey, KeyDirection, KeyEvent};
 
+use crate::engine::consts::KEY_DOWN_STALE;
+use crate::engine::heuristics::modifier_role;
+
 use super::engine::SwitcherEngine;
 
 impl SwitcherEngine {
@@ -75,6 +78,39 @@ impl SwitcherEngine {
             },
             None => false,
         }
+    }
+
+    /// Follow which non-modifier keys are physically down. Fed every
+    /// user event the engine reads, on either path to it — the run loop
+    /// and a correction draining the stream itself.
+    pub(super) fn track_keys_down(&self, ev: &KeyEvent) {
+        if ev.injected
+            || modifier_role(ev.scancode).is_some()
+            || ev.scancode == poltertype_types::SC_POINTER_BUTTON
+        {
+            return;
+        }
+        let mut down = self.keys_down.lock();
+        down.retain(|&(sc, _)| sc != ev.scancode);
+        if ev.direction == KeyDirection::Press {
+            down.push((ev.scancode, Instant::now()));
+        }
+    }
+
+    /// Is the user still holding a key a correction must not emit
+    /// under? Most often the boundary that triggered it: we act on its
+    /// press, and the finger comes up a moment later.
+    ///
+    /// Emitting while it is down loses that release on Linux whenever
+    /// the key gate holds the keyboard — the compositor saw the press
+    /// and never sees the release, so libinput keeps the key down, drops
+    /// our replayed press of it and the user's next one too, and the
+    /// space takes three presses to appear (issue #74).
+    pub(super) fn keys_held(&self) -> bool {
+        self.keys_down
+            .lock()
+            .iter()
+            .any(|&(_, at)| at.elapsed() < KEY_DOWN_STALE)
     }
 
     /// Is the user holding a modifier right now? Read from the last

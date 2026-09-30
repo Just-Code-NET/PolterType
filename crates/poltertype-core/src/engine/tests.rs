@@ -4519,6 +4519,49 @@ mod engine_integration_tests {
         );
     }
 
+    /// Issue #74: the boundary is acted on at its press, and the finger
+    /// comes off it a moment later. A correction that emits in between
+    /// loses that release on Linux whenever the key gate holds the
+    /// keyboard — the compositor saw the press and never the release, so
+    /// the replayed space is dropped as a second press of a key already
+    /// down, and so is the user's next one. Nothing may go out until the
+    /// key is up.
+    #[test]
+    fn a_correction_waits_for_the_boundary_key_to_come_up() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.press(SPACE);
+        std::thread::sleep(Duration::from_millis(400));
+        assert!(
+            h.emitter.ops().is_empty(),
+            "nothing may be emitted while the boundary key is held: {:?}",
+            h.emitter.ops()
+        );
+
+        h.release(SPACE);
+        h.settle();
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len() + 1],
+            "once it is up, the word and its space are corrected as usual"
+        );
+    }
+
+    /// …but a key whose release never arrives must not stall every
+    /// correction after it: the wait ends on the absorb deadline.
+    #[test]
+    fn a_key_that_never_comes_up_does_not_stop_the_correction() {
+        let h = Harness::start(60_000);
+        type_word(&h, &GHBDSN);
+        h.press(SPACE);
+        h.settle();
+        assert_eq!(
+            erase_counts(&h),
+            vec![GHBDSN.len() + 1],
+            "the absorb deadline still bounds the wait"
+        );
+    }
+
     /// `Alt+Tab` — the shortcut that hands the keyboard to another window.
     fn alt_tab(h: &Harness) {
         let alt = poltertype_types::Modifiers {

@@ -367,8 +367,9 @@ impl SwitcherEngine {
                     // the gap between them buys. Also waits for the
                     // triggering chord to come up: releasing on our
                     // side is not enough where a remapper keeps its own
-                    // idea of what is down.
-                    if quiet_probes >= 3 && !self.modifiers_held() {
+                    // idea of what is down. And for the boundary key
+                    // itself — see `keys_held`.
+                    if quiet_probes >= 3 && !self.modifiers_held() && !self.keys_held() {
                         break;
                     }
                 }
@@ -836,6 +837,7 @@ impl SwitcherEngine {
                 // sign the triggering chord has been let go of. See
                 // `modifiers_held`.
                 *self.held_modifiers.write() = ev.modifiers;
+                self.track_keys_down(&ev);
                 self.track_trigger_key(&ev);
                 self.observe_swallowed_release(&ev);
             }

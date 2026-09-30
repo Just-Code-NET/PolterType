@@ -372,10 +372,12 @@ idle_timeout_ms = 2000
 suppress_in_identifiers = true   # skip snake_case / camelCase / letter+digit
 suppress_for_all_caps = true     # skip URL, HTTP, API, ССЫЛКА…
 hold_keys = false                # hold keystrokes back during a
-                                 # correction (Linux/evdev only); costs
+                                 # correction — Windows and macOS; costs
                                  # a small delay, so it is off by
-                                 # default. `POLTERTYPE_HOLD_KEYS`
-                                 # overrides; read at startup
+                                 # default there. Not read on Linux,
+                                 # where the gate is on unless
+                                 # `POLTERTYPE_HOLD_KEYS=0`; the variable
+                                 # overrides everywhere; read at startup
 replay_speed = "normal"          # "normal" | "fast" | "instant" — how
                                  # much of a correction's measured
                                  # waiting to keep: the emitter's
