@@ -27,13 +27,16 @@ re-run**: this machine runs keyd, which proxies our emitter and turns
 the gate off, so the bug cannot happen here at all. Nor was
 input-remapper, the reporter's remapper.
 
-Issue #72 was re-run against 0.36.3 on the same session, and stays
-open: an `Alt+Tab` between two windows, a second's pause, a word and
-the hotkey converted 24 of 24 across Electron (native Wayland and
-XWayland), an XWayland terminal and far2l's terminal mode, with keyd
-proxying the keyboard. What the reporter has and this did not —
-InputActions, Telegram, far2l's GUI backend — is unmeasured. Nothing
-else below was re-measured.
+Issue #72 was re-run against 0.36.3 on the same session: an
+`Alt+Tab` between two windows, a second's pause, a word and the hotkey
+converted 24 of 24 across Electron (native Wayland and XWayland), an
+XWayland terminal and far2l's terminal mode, with keyd proxying the
+keyboard. On 2026-10-06 the same test on 0.36.4 added a Qt 6 window
+(kwrite, the toolkit Telegram Desktop uses) paired with Electron and
+with a terminal, with and without keyd: 36 of 36. The issue is closed
+as not reproducible, the reporter never sent a log. What the reporter
+has and this did not — InputActions, Telegram itself, far2l's GUI
+backend — is unmeasured. Nothing else below was re-measured.
 
 **What the 0.36.3 pass actually checked (2026-09-25).** On **KDE
 Plasma 6 Wayland** in the desktop-matrix guest, and nothing else — the
