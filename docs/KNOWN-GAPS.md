@@ -1,4 +1,4 @@
-# Known gaps (as of v0.36.4)
+# Known gaps (as of v0.36.5)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,18 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.36.5 pass actually checked (2026-10-07).** On **Hyprland**
+on this machine, and nowhere else. Idle memory of a debug build with
+two layouts, read from `/proc`: 127 MB of the app's own memory before
+the font-library change, 24 MB after; five dictionary reloads in a row
+added 36 kB where each used to add about 83 MB. The tooltip was
+rendered before and after and compared: it differs only in glyph
+antialiasing. **macOS was not run**: the Accessibility check of #76 is
+compiled by CI and by nobody's Mac, and the memory figures are Linux
+figures — the reporter's 260 MB on macOS has not been re-measured. The
+held-Backspace change is covered by the engine's tests; this pass did
+not re-run it by hand. Nothing else below was re-measured.
 
 **What the 0.36.4 pass actually checked (2026-09-30).** On **KDE
 Plasma 6 Wayland** in the desktop-matrix guest, with the key gate
@@ -1194,6 +1206,17 @@ move too fast to be true.
   `adopted the OS keymap` says which keyboard was read, and at debug
   level the next line names every key that disagreed.
 
+- **Idle memory, measured on Linux only**
+  ([#76](https://github.com/Just-Code-NET/PolterType/issues/76), which
+  reported 260 MB on macOS 15). 0.36.4 with two layouts held 124 MB of
+  its own memory at idle, about 100 MB of it the tooltip's font library
+  reading every monospaced system font into the heap on a thread per
+  core, and every Settings close or *Reload Settings* leaked another
+  83 MB of wordlists. Since the fix the same debug build idles at
+  24 MB, and five reloads add 36 kB. File-backed pages — the binary,
+  the wordlists, system fonts and libraries — are not in that number
+  and are what `top`'s RES adds on top. Not re-measured on macOS or
+  Windows, whose activity monitors count differently.
 - **The installers roughly tripled in 0.9.0**, from 17–28 MB to
   55–65 MB (MSI 54, DMG 63, AppImages 65), and the bundled data tree
   from 21 MB to 78 MB. Nine
@@ -1554,6 +1577,18 @@ move too fast to be true.
   command instead), and imitate a system permission dialog (macOS shows
   its own). What is still missing from issue #10's wish list is the
   screenshots/GIFs of the macOS toggles.
+- **macOS without Accessibility now says so — compiled by CI, run by
+  nobody** ([#76](https://github.com/Just-Code-NET/PolterType/issues/76)).
+  With the key gate off the event tap is listen-only, which Input
+  Monitoring alone allows, so a user who granted only that saw layouts
+  switch while every retyped word was dropped, and nothing anywhere
+  said why. At startup the tray now checks `AXIsProcessTrusted`; when
+  it is false it shows a "Words can't be corrected — Setup…" entry and
+  tooltip, sends one notification and opens the Settings window on the
+  Setup pane. Linux and Windows answer "can post" unconditionally, so
+  nothing changes there. No Mac has run this build: the check, the
+  notification and the window opening by themselves are all unverified
+  on the platform they are for.
 
 ## Updating and installing
 

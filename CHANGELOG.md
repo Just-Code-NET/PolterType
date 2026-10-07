@@ -21,6 +21,33 @@ and the project follows [Semantic Versioning](https://semver.org/).
   pause. One trade-off: the first word typed after a line has been
   cleared this way is not corrected either, until the next space.
 
+- **macOS now says when words cannot be corrected**
+  ([#76](https://github.com/Just-Code-NET/PolterType/issues/76)).
+  Listening to the keyboard needs only Input Monitoring; typing the
+  corrected word back needs Accessibility as well. With only the first
+  granted, the layout switched after a mistyped word while the word
+  itself stayed as typed, and nothing said why. PolterType now checks
+  at startup: without Accessibility the tray shows "Words can't be
+  corrected — Setup…", one notification explains the fix, and the
+  Settings window opens on its Setup pane. Linux and Windows are
+  unchanged.
+- **Much less memory at idle**
+  ([#76](https://github.com/Just-Code-NET/PolterType/issues/76)). The
+  suggestions tooltip's text library read every monospaced font on the
+  system into memory when PolterType started, on one thread per CPU
+  core — around 100 MB and dozens of idle threads on a machine with
+  many such fonts, for a tooltip that draws none of them. It now reads
+  fonts only when it draws with them, and shares the library the
+  Settings window already used. Measured on Linux: 127 MB of the app's
+  own memory at idle before, 24 MB after.
+- **Closing Settings or choosing *Reload Settings* no longer grows
+  memory** ([#76](https://github.com/Just-Code-NET/PolterType/issues/76)).
+  Each time, PolterType loaded the dictionaries of every bundled
+  language again, including ones the user has no keyboard for, and
+  kept the old copies: about 83 MB more per reload, for as long as the
+  app ran. Dictionaries are now read once and shared, and a reload
+  only rebuilds the languages already in use.
+
 ## [0.36.4] — the key that was still down
 
 ### Fixed

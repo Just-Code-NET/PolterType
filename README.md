@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.36.4**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.36.5**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -41,9 +41,9 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 - **Smart** — language detection per word; pluggable AI detectors for
   power users (off by default).
 - **Fast** — pure Rust, no WebView, no perceptible typing latency.
-- **Light to run** — single binary, ~10–15 MB, a tray icon's worth of
+- **Light to run** — single binary, ~20 MB, a tray icon's worth of
   CPU and RAM. **The download is not light** — the installers are
-  55–65 MB, nearly all of it the fifteen bundled dictionaries — but
+  about 60–70 MB, nearly all of it the fifteen bundled dictionaries — but
   only the languages your OS has enabled are ever read into memory.
 - **Quiet** — tray-only, **zero telemetry**. Exactly one network call
   exists, the update check (§ [Staying up to

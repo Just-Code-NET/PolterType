@@ -4850,3 +4850,30 @@ One thing degrades instead of failing. The tooltip symbol is looked up
 by name, once, at construction: a system carrying the pre-Ayatana
 `libappindicator3`, which has no tooltip API at all, gets the tray it
 had before and a debug line saying why.
+
+## 2026-10-07 — A wordlist file is read once per process, however often it is rebuilt
+
+The FST reader wants `&'static [u8]`, and `build_dictionary` has always
+got it by reading the file and leaking the buffer. That was fine while
+the only caller was startup. It stopped being fine as rebuilds were
+added one by one: a dictionary set per wordlist profile, another on
+every Settings close, another on *Reload Settings* — each reading and
+leaking the same bytes again, and the reload path without the
+active-layout filter, so every bundled language came along. Issue #76
+saw the sum: memory that grew by about 83 MB per reload for the life of
+the process.
+
+Two ways out. Stop leaking — own the bytes in an `Arc` and give
+`LayoutDictionary` a lifetime or a self-referencing wrapper, which
+touches every detector that holds a dictionary. Or keep leaking, but
+once: a process-wide cache keyed by path, size and mtime, so a rebuild
+shares what is already in memory and a pack replaced on disk is still
+read anew.
+
+We took the second. The leaked set is bounded by the files that exist,
+which is what the first option would hold in memory anyway, and the
+change stays inside the one function that reads them. The reload now
+also asks only for the layouts already loaded: a language the user has
+no keyboard for has no business entering the candidate set because a
+window closed.
+
