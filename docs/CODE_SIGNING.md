@@ -5,8 +5,9 @@
 > can read is not a policy — and because SignPath Foundation requires
 > one from projects it signs for.
 >
-> Last updated: 2026-08-16 (v0.17.2 — manifest signatures became
-> mandatory; nothing else on this page changed).
+> Last updated: 2026-10-08 (the AI paragraph under Privacy described
+> stubs; the installers have carried a working, user-configured client
+> since v0.12.0).
 
 PolterType asks for an unusual amount of trust: it reads every
 keystroke on the machine and can type. A signature is how a user checks
@@ -203,9 +204,12 @@ their data; the short version:
   no identifier; GitHub sees an IP and a User-Agent naming the version,
   as it would for any download. `[updates].enabled = false` switches it
   off entirely.
-- **The optional AI subsystem is off by default, and its backends are
-  stubs that make no request** (`docs/AI.md`); remote AI would
-  additionally require `ai.allow_remote = true`.
+- **The optional AI subsystem is off by default and has no endpoint of
+  ours.** The installers include its HTTP client, but it contacts only
+  a model endpoint the user has written into their own config, and
+  only after `[ai].enabled = true`; an endpoint that is not loopback
+  additionally needs `[ai].allow_remote = true`. It sends the candidate
+  readings of one ambiguous word and nothing else (`docs/AI.md`).
 
 ## Reporting a problem
 
