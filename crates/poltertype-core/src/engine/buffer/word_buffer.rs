@@ -304,6 +304,22 @@ impl WordBuffer {
                     started_clean,
                 }
             }
+            KeyKind::Backspace if ev.kernel_repeat => {
+                // How many characters the hold really took is the
+                // compositor's count, not ours, so the caret may have
+                // stopped anywhere in the text we tracked — mid-word
+                // included. A word typed next may continue that
+                // remainder; a later repeat on the emptied buffer
+                // proves nothing about how far the screen got, so it
+                // must not clear the taint the way a tap does.
+                if !self.keys.is_empty() || !self.boundary_run.is_empty() {
+                    self.abandon();
+                    self.poison();
+                }
+                self.context_clean = false;
+                self.lead = None;
+                WordBoundary::Abandoned
+            }
             KeyKind::Backspace => {
                 if self.keys.pop().is_some() {
                     return WordBoundary::InProgress;

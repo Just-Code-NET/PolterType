@@ -238,6 +238,7 @@ pub(crate) fn translate(ev: &Event, mods: &mut ModState) -> Option<KeyEvent> {
                 direction: KeyDirection::Press,
                 modifiers: mods.snapshot(),
                 injected: false,
+                kernel_repeat: false,
                 timestamp_ms: 0,
             })
         }
@@ -258,6 +259,7 @@ fn key_event(evdev: u32, direction: KeyDirection, modifiers: crate::Modifiers) -
         // `injected` would be a lie. The engine filters our own events
         // via the emitter's echo log instead (see `KeyEmitter::take_emitted`).
         injected: false,
+        kernel_repeat: false,
         timestamp_ms: 0,
     }
 }

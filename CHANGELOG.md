@@ -4,6 +4,23 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Holding Backspace mid-word no longer leaves the tooltip offering a
+  fragment of the word** (Linux). The listener counted the kernel's
+  key repeats, but on Wayland the focused app deletes at the
+  compositor's repeat rate — Hyprland's 300 ms / 25 ms against the
+  kernel's 250 ms / 33 ms, so a brief hold took one character more in
+  PolterType's model than on screen. Retyping the rest then produced a
+  suggestion, and could produce an automatic correction, for the
+  retyped tail alone while the whole word sat on screen. A held
+  Backspace now tells PolterType it no longer knows where the word
+  starts: that word is left alone, the same as after a click or an idle
+  pause. One trade-off: the first word typed after a line has been
+  cleared this way is not corrected either, until the next space.
+
 ## [0.36.4] — the key that was still down
 
 ### Fixed

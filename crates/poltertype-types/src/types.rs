@@ -73,6 +73,14 @@ pub struct KeyEvent {
     /// Where a remapper strips the marker, the engine's expected-echo
     /// queue is the second line of defence.
     pub injected: bool,
+    /// An autorepeat press the kernel generated (evdev). On Wayland
+    /// the compositor repeats for the focused app with its own delay
+    /// and rate, so how many of these the app actually received is
+    /// unknown — Hyprland's default 300 ms / 25 ms against the
+    /// kernel's 250 ms / 33 ms turned a brief Backspace hold into one
+    /// deletion more than the screen saw. Backends whose repeats are
+    /// the ones the app gets leave this false.
+    pub kernel_repeat: bool,
     /// Best-effort monotonic timestamp in ms.
     pub timestamp_ms: u64,
 }

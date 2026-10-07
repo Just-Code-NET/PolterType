@@ -210,6 +210,7 @@ unsafe extern "system" fn low_level_keyboard_proc(
                 direction,
                 modifiers: modifiers_for_event(kb.vkCode, direction),
                 injected: ours,
+                kernel_repeat: false,
                 timestamp_ms: kb.time as u64,
             };
 

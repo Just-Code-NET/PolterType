@@ -159,6 +159,7 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
                 caps: flags.contains(CGEventFlags::CGEventFlagAlphaShift),
             },
             injected: event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA) != 0,
+            kernel_repeat: false,
             timestamp_ms: 0,
         });
     }
@@ -195,6 +196,7 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
             caps: flags.contains(CGEventFlags::CGEventFlagAlphaShift),
         },
         injected: event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA) != 0,
+        kernel_repeat: false,
         timestamp_ms: 0,
     })
 }

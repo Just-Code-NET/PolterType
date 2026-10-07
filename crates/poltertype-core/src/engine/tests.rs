@@ -474,6 +474,7 @@ mod engine_integration_tests {
                     direction,
                     modifiers,
                     injected: false,
+                    kernel_repeat: false,
                     timestamp_ms: 0,
                 })
                 .expect("engine alive");
@@ -1423,6 +1424,7 @@ mod engine_integration_tests {
                 direction,
                 modifiers: poltertype_types::Modifiers::NONE,
                 injected: false,
+                kernel_repeat: false,
                 timestamp_ms: 0,
             });
         }
@@ -1960,6 +1962,56 @@ mod engine_integration_tests {
         assert_eq!(entries[1].text, "hwllo");
         let (ops, _) = h.stop();
         assert!(ops.is_empty(), "an offer alone must not emit keystrokes");
+    }
+
+    #[test]
+    fn mid_word_backspaces_leave_the_whole_word_in_the_offer() {
+        let h = suggestion_harness();
+        // `hwlxx`, two Backspaces, then `lo` — `hwllo` on screen.
+        type_word(&h, &[0x23, 0x11, 0x26, 0x2D, 0x2D]);
+        h.tap(BACKSPACE);
+        h.tap(BACKSPACE);
+        type_word(&h, &[0x26, 0x18]);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady { original, .. } = ev else {
+            unreachable!()
+        };
+        assert_eq!(original, "hwllo");
+        h.stop();
+    }
+
+    /// The same edit made by holding Backspace: the kernel's repeat
+    /// count is not the compositor's, so the buffer cannot say which
+    /// head of the word survived, and an offer built on the retyped
+    /// tail alone is the bug.
+    #[test]
+    fn a_held_backspace_mid_word_yields_no_offer_for_the_tail() {
+        let h = suggestion_harness();
+        type_word(&h, &[0x23, 0x11, 0x26, 0x2D, 0x2D]);
+        h.tap(BACKSPACE);
+        h.key_tx
+            .send(KeyEvent {
+                vk: BACKSPACE,
+                scancode: BACKSPACE,
+                direction: KeyDirection::Press,
+                modifiers: poltertype_types::Modifiers::NONE,
+                injected: false,
+                kernel_repeat: true,
+                timestamp_ms: 0,
+            })
+            .expect("engine alive");
+        h.release(BACKSPACE);
+        type_word(&h, &[0x26, 0x18, 0x12]);
+        h.tap(SPACE);
+        h.settle();
+        let (ops, evs) = h.stop();
+        assert!(
+            !evs.iter()
+                .any(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. })),
+            "got {evs:?}"
+        );
+        assert!(ops.is_empty());
     }
 
     #[test]
@@ -5094,6 +5146,7 @@ mod chord_tests {
             direction,
             modifiers: mods,
             injected: false,
+            kernel_repeat: false,
             timestamp_ms: 0,
         }
     }
@@ -5228,6 +5281,7 @@ mod mod_chord_tests {
             // on every backend.
             modifiers: Modifiers::NONE,
             injected: false,
+            kernel_repeat: false,
             timestamp_ms: 0,
         }
     }
@@ -5379,6 +5433,7 @@ mod paste_shortcut_tests {
             direction,
             modifiers: mods,
             injected: false,
+            kernel_repeat: false,
             timestamp_ms: 0,
         }
     }

@@ -11,6 +11,7 @@ fn press(sc: u32) -> KeyEvent {
         direction: KeyDirection::Press,
         modifiers: Modifiers::NONE,
         injected: false,
+        kernel_repeat: false,
         timestamp_ms: 0,
     }
 }
@@ -215,6 +216,62 @@ fn backspace_into_unknown_text_keeps_the_next_word_correctable() {
         panic!("expected WordCompleted");
     };
     assert!(started_clean);
+}
+
+fn held_backspace(b: &mut WordBuffer) -> WordBoundary {
+    b.feed(
+        KeyEvent {
+            kernel_repeat: true,
+            ..press(0x0E)
+        },
+        None,
+        false,
+    )
+}
+
+/// A held Backspace deleted as many characters as the compositor
+/// repeated, which the kernel's count does not tell. What is typed
+/// next sits on whatever head of the word survived, so the word that
+/// closes must not reach a correction or a tooltip as if it were
+/// whole — the offer used to show only the retyped tail.
+#[test]
+fn a_held_backspace_inside_a_word_loses_track_of_it() {
+    let mut b = WordBuffer::new();
+    for (sc, ch) in [(0x23, 'h'), (0x12, 'e'), (0x26, 'l'), (0x2D, 'x')] {
+        word_key(&mut b, sc, ch);
+    }
+    backspace(&mut b);
+    assert_eq!(held_backspace(&mut b), WordBoundary::Abandoned);
+    held_backspace(&mut b);
+    assert!(b.keys().is_empty());
+    assert!(b.remainder_at_caret(), "the head may still be on screen");
+    word_key(&mut b, 0x26, 'l');
+    word_key(&mut b, 0x18, 'o');
+    let WordBoundary::WordCompleted {
+        tainted,
+        started_clean,
+        ..
+    } = space(&mut b)
+    else {
+        panic!("expected WordCompleted");
+    };
+    assert!(tainted);
+    assert!(!started_clean);
+}
+
+/// A hold that starts with nothing tracked has nothing to lose, the
+/// same as a tap there.
+#[test]
+fn a_held_backspace_on_untracked_text_keeps_the_next_word_correctable() {
+    let mut b = WordBuffer::new();
+    backspace(&mut b);
+    held_backspace(&mut b);
+    assert!(!b.poisoned());
+    word_key(&mut b, 0x23, 'h');
+    let WordBoundary::WordCompleted { tainted, .. } = space(&mut b) else {
+        panic!("expected WordCompleted");
+    };
+    assert!(!tainted);
 }
 
 /// Deleting the re-opened word completely and then continuing to
