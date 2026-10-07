@@ -150,6 +150,17 @@ fn accessibility_state(listen: StepState) -> StepState {
     }
 }
 
+/// Whether the corrected keys PolterType posts will reach anything.
+///
+/// The listening tap is `ListenOnly` unless the key gate is on, and
+/// that needs only Input Monitoring — so a user who granted just that
+/// sees layouts switch while every retyped word is dropped by the
+/// window server, with no error anywhere (issue #76).
+pub(super) fn can_post_events() -> bool {
+    // Safety: a nullary C call that reads the trust database.
+    unsafe { AXIsProcessTrusted() }
+}
+
 fn input_monitoring_state() -> StepState {
     // Safety: a plain C call taking an integer request type.
     match unsafe { IOHIDCheckAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) } {

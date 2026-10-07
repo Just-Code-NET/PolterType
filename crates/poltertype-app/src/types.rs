@@ -43,10 +43,9 @@ pub(crate) struct TrayMenu {
 pub(crate) struct TrayState {
     pub(crate) layout: Option<LayoutId>,
     pub(crate) paused: bool,
-    /// Keyboard hooks failed to start. Fixed at startup: the only
-    /// recovery is fixing permissions and relaunching, so this never
-    /// flips back at runtime.
-    pub(crate) input_alert: bool,
+    /// A missing permission found at startup. The only recovery is
+    /// granting it and relaunching, so this never flips back at runtime.
+    pub(crate) input_alert: Option<crate::enums::InputAlert>,
     /// Which way round a `mono` icon has to read. Sampled once at
     /// startup: the probe shells out to a CLI tool, and the icon is
     /// redrawn on every layout change.

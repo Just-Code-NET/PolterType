@@ -43,3 +43,15 @@ pub(crate) enum UpdateOutcome {
     /// Updates were switched off, and a staged artifact was discarded.
     Cleared,
 }
+
+/// What the tray's Setup entry and tooltip warn about. Decided once at
+/// startup: both are fixed only by granting a permission and
+/// relaunching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InputAlert {
+    /// No keyboard listener at all — nothing is ever corrected.
+    NoHooks,
+    /// Keys are read and layouts switch, but the retyped word cannot
+    /// be posted (macOS without Accessibility).
+    NoCorrections,
+}

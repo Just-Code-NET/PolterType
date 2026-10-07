@@ -108,7 +108,8 @@ fn spawn_settings_ui_on(deps: SettingsCloseDeps, entry: SettingsEntry) {
             );
 
             // Same path as the tray's "Reload Settings" menu entry.
-            let n = reload_user_dictionaries(&deps.dict_reload_handle);
+            let n =
+                reload_user_dictionaries(&deps.dict_reload_handle, &deps.layouts, &deps.data_dir);
             info!(
                 loaded = n,
                 "wordlist dictionaries reloaded after settings UI exit"

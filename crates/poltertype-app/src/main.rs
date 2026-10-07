@@ -412,6 +412,19 @@ fn main() -> Result<()> {
         }
     }
 
+    // Listening works while posting does not: macOS with Input
+    // Monitoring granted and Accessibility not. Nothing downstream fails
+    // in that state — layouts still switch — so it is named here or
+    // nowhere (issue #76).
+    let setup_alert = if input_alert.is_some() {
+        Some(InputAlert::NoHooks)
+    } else if poltertype_input::setup::corrections_blocked() {
+        warn!("corrections cannot be typed back: the Accessibility permission is missing");
+        Some(InputAlert::NoCorrections)
+    } else {
+        None
+    };
+
     // On Wayland/evdev the OS-level `global-hotkey` grab never sees
     // native input, but the evdev listener observes every key — so the
     // chords are detected off that stream instead. Never both paths for
@@ -464,9 +477,8 @@ fn main() -> Result<()> {
     // words live in exactly one place.
     //
     // Only when something the app needs failed to come up.
-    let hooks_missing = input_alert.is_some();
     let item_setup =
-        (hooks_missing || switcher_alert.is_some()).then(|| MenuItem::new("", true, None));
+        (setup_alert.is_some() || switcher_alert.is_some()).then(|| MenuItem::new("", true, None));
     if let Some(item) = item_setup.as_ref() {
         menu.append_items(&[item, &PredefinedMenuItem::separator()])
             .context("populate tray alert entry")?;
@@ -540,7 +552,7 @@ fn main() -> Result<()> {
         about: item_about.clone(),
         quit: item_quit.clone(),
     };
-    relabel_menu(&tray_menu, hooks_missing, update_pending.as_ref());
+    relabel_menu(&tray_menu, setup_alert, update_pending.as_ref());
 
     // Plug-ins last, so the app's own entries keep their position and
     // a plug-in can never push Quit off the bottom of the menu.
@@ -597,12 +609,7 @@ fn main() -> Result<()> {
     // the user reading the journal. See `poltertype-tray`.
     poltertype_tray::quiet_gtk_tray_logs();
 
-    let (tip_name, tip_detail) = tooltip_for(
-        initial_layout.as_ref(),
-        start_paused,
-        input_alert.is_some(),
-        0,
-    );
+    let (tip_name, tip_detail) = tooltip_for(initial_layout.as_ref(), start_paused, setup_alert, 0);
     let tray = Tray::new(Box::new(menu), initial_icon, &tip_name, &tip_detail)
         .context("build tray icon")?;
     apply_tray_visibility(&tray, tray_style);
@@ -615,6 +622,14 @@ fn main() -> Result<()> {
              {reason}\n\
              The tray menu's setup entry shows what is missing and how to fix it."
         ));
+    } else if setup_alert == Some(InputAlert::NoCorrections) {
+        spawn_error_notification(
+            "PolterType can switch layouts but cannot correct words: the \
+             Accessibility permission is missing.\n\
+             Grant it in System Settings → Privacy & Security → Accessibility, \
+             then restart PolterType."
+                .to_owned(),
+        );
     }
 
     // `MenuItem` is internally Arc-shared, so this clone is a refcount.
@@ -708,7 +723,7 @@ fn main() -> Result<()> {
     let mut tray_state = TrayState {
         layout: initial_layout,
         paused: start_paused,
-        input_alert: input_alert.is_some(),
+        input_alert: setup_alert,
         attention: 0,
         style: tray_style,
         polarity,
@@ -720,6 +735,22 @@ fn main() -> Result<()> {
     // Once before anything is missed, so the submenu says so instead of
     // opening on nothing.
     rebuild_deferred_menu(&menu_deferred, &deferred, &mut deferred_rows, &layouts);
+
+    // Opened rather than only offered: the user is already typing and
+    // watching words stay wrong, and the menu entry is easy to miss.
+    if setup_alert == Some(InputAlert::NoCorrections) {
+        spawn_setup_ui(SettingsCloseDeps {
+            settings: Arc::clone(&settings),
+            layouts: Arc::clone(&layouts),
+            data_dir: data_dir.clone(),
+            user_wordlist_dir: user_wordlist_dir.clone(),
+            dict_reload_handle: dict_reload_handle.handle(),
+            profile_dict_cache: Arc::clone(&profile_dict_cache),
+            profile_force_reapply: Arc::clone(&profile_force_reapply),
+            reload_tx: cmd_tx_for_loop.clone(),
+            proxy: settings_proxy.clone(),
+        });
+    }
 
     info!("entering event loop");
     // A slow heartbeat, so a mode changed from the command line — or an
@@ -754,7 +785,7 @@ fn main() -> Result<()> {
                 let language = settings_for_loop.snapshot().general.ui_language;
                 let catalogs = poltertype_core::plugins::catalog_sources(&data_dir);
                 if poltertype_core::i18n::reload(&data_dir, Some(&language), &catalogs) {
-                    relabel_menu(&tray_menu, hooks_missing, update_pending.as_ref());
+                    relabel_menu(&tray_menu, setup_alert, update_pending.as_ref());
                     // Rebuilt rather than relabelled: an empty list is a
                     // translated row of its own.
                     rebuild_deferred_menu(&menu_deferred, &deferred, &mut deferred_rows, &layouts);
@@ -924,7 +955,8 @@ fn main() -> Result<()> {
                 } else if id == reload_id {
                     // Also re-reads the user overlays, which is what
                     // lets added vocabulary apply without a restart.
-                    let reloaded_dicts = reload_user_dictionaries(&dict_reload_handle);
+                    let reloaded_dicts =
+                        reload_user_dictionaries(&dict_reload_handle, &layouts, &data_dir);
                     match settings_for_loop.reload() {
                         Ok(changed) => {
                             info!(

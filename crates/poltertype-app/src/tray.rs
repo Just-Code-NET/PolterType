@@ -10,6 +10,7 @@ use tracing::{debug, warn};
 use tray_icon::menu::{MenuId, MenuItem, Submenu};
 
 use crate::consts::*;
+use crate::enums::InputAlert;
 use crate::icon_render;
 use crate::plugins;
 use crate::types::*;
@@ -24,7 +25,7 @@ use crate::types::*;
 pub(crate) fn tooltip_for(
     layout: Option<&LayoutId>,
     paused: bool,
-    input_alert: bool,
+    input_alert: Option<InputAlert>,
     attention: u32,
 ) -> (String, String) {
     // The product name and the layout id are not words to translate;
@@ -37,14 +38,22 @@ pub(crate) fn tooltip_for(
         (None, false) => {}
         (None, true) => parts.push(idle.to_owned()),
     }
-    if input_alert {
-        parts.push(
+    match input_alert {
+        Some(InputAlert::NoHooks) => parts.push(
             tr(
                 "tray.tooltip_no_keyboard",
                 "⚠ no keyboard access, see Setup Guide",
             )
             .to_owned(),
-        );
+        ),
+        Some(InputAlert::NoCorrections) => parts.push(
+            tr(
+                "tray.tooltip_no_corrections",
+                "⚠ words are not corrected, see Setup Guide",
+            )
+            .to_owned(),
+        ),
+        None => {}
     }
     // The mark on the icon says *that* something is waiting; the tooltip
     // is the only place the count fits without opening anything.
@@ -97,18 +106,28 @@ pub(crate) fn refresh_tray(tray: &Tray, item_pause: &MenuItem, state: &TrayState
 /// words exist here and nowhere else, so the menu on screen and the
 /// menu after a language change cannot drift apart.
 ///
-/// `hooks_missing` picks which failure the Setup entry names — fixed at
+/// `input_alert` picks which failure the Setup entry names — fixed at
 /// startup, since the only recovery is fixing permissions and
-/// relaunching.
-pub(crate) fn relabel_menu(menu: &TrayMenu, hooks_missing: bool, pending: Option<&PendingUpdate>) {
+/// relaunching. With none, the entry exists because the layout switcher
+/// failed.
+pub(crate) fn relabel_menu(
+    menu: &TrayMenu,
+    input_alert: Option<InputAlert>,
+    pending: Option<&PendingUpdate>,
+) {
     if let Some(item) = &menu.setup {
-        item.set_text(if hooks_missing {
-            tr("tray.alert_hooks", "⚠ Keyboard hooks unavailable — Setup…")
-        } else {
-            tr(
+        item.set_text(match input_alert {
+            Some(InputAlert::NoHooks) => {
+                tr("tray.alert_hooks", "⚠ Keyboard hooks unavailable — Setup…")
+            }
+            Some(InputAlert::NoCorrections) => tr(
+                "tray.alert_corrections",
+                "⚠ Words can't be corrected — Setup…",
+            ),
+            None => tr(
                 "tray.alert_switching",
                 "⚠ Layout switching unavailable — Setup…",
-            )
+            ),
         });
     }
     menu.settings_ui.set_text(tr("tray.settings", "Settings…"));

@@ -57,10 +57,12 @@
 "tray.quit" = "Beenden"
 "tray.alert_hooks" = "⚠ Kein Tastaturzugriff — System…"
 "tray.alert_switching" = "⚠ Umschalten der Belegung nicht möglich — System…"
+"tray.alert_corrections" = "⚠ Wörter werden nicht korrigiert — System…"
 "tray.deferred" = "Verpasstes Wort ins Wörterbuch aufnehmen…"
 "tray.deferred_empty" = "Noch keine verpassten Wörter"
 "tray.tooltip_paused" = "(pausiert)"
 "tray.tooltip_no_keyboard" = "⚠ kein Tastaturzugriff, siehe System"
+"tray.tooltip_no_corrections" = "⚠ Wörter werden nicht korrigiert, siehe System"
 "tray.tooltip_draft" = "1 Entwurf wartet"
 "tray.tooltip_drafts" = "{} Entwürfe warten"
 

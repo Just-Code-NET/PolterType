@@ -185,7 +185,7 @@ zbus  = { version = "5", default-features = false, features = ["async-io", "bloc
 # iced's tiny-skia renderer and tray-icon's Wayland support, so they
 # add no new licences and almost no compile time.
 tiny-skia   = "0.11"
-cosmic-text = "0.12"
+cosmic-text = "0.15"
 smithay-client-toolkit = "0.19"
 wayland-client         = "0.31"
 

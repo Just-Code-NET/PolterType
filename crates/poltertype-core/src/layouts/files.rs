@@ -45,7 +45,7 @@ pub fn build_dictionary(
     overlay_dir: Option<&Path>,
 ) -> Option<LayoutDictionary> {
     let fst_path = data_dir.join("wordlists").join(format!("{stem}.fst"));
-    let bytes = match std::fs::read(&fst_path) {
+    let leaked = match super::fst_cache::leaked_bytes(&fst_path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             warn!(
@@ -59,10 +59,6 @@ pub fn build_dictionary(
             return None;
         }
     };
-    // Loaded once at startup and cloned into detectors that live for the
-    // whole program, so leaking costs one allocation per language and
-    // gives the `&'static [u8]` the FST reader wants.
-    let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
     let bundled_fst = match FstSet::new(leaked) {
         Ok(s) => s,
         Err(e) => {
@@ -91,22 +87,19 @@ pub fn build_dictionary(
 
     let mut dict = LayoutDictionary::new(bundled_fst, user_overlay, short_stop_words, weak);
 
-    // Surface-form FST (suggestions corpus), leaked like the membership
+    // Surface-form FST (suggestions corpus), shared like the membership
     // one. Missing file is fine: older data dirs predate suggestions and
     // the feature degrades to overlay-only candidates.
     let surface_path = data_dir
         .join("wordlists")
         .join(format!("{stem}-surface.fst"));
-    match std::fs::read(&surface_path) {
-        Ok(bytes) => {
-            let leaked: &'static [u8] = Box::leak(bytes.into_boxed_slice());
-            match FstSet::new(leaked) {
-                Ok(s) => dict = dict.with_surface(s),
-                Err(e) => {
-                    tracing::error!(stem, err = %e, "surface FST is malformed; suggestions degraded for this layout");
-                }
+    match super::fst_cache::leaked_bytes(&surface_path) {
+        Ok(leaked) => match FstSet::new(leaked) {
+            Ok(s) => dict = dict.with_surface(s),
+            Err(e) => {
+                tracing::error!(stem, err = %e, "surface FST is malformed; suggestions degraded for this layout");
             }
-        }
+        },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             info!(stem, "no surface FST; suggestions degraded for this layout");
         }

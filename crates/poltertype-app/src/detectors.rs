@@ -176,7 +176,7 @@ pub(crate) fn collect_dicts(
 
 /// Append `word` to the user's global overlay for `layout` and insert it
 /// into the running set in place. Deliberately not a full
-/// `reload_user_dictionaries`, which re-reads and re-leaks every FST blob.
+/// `reload_user_dictionaries`, which rebuilds every loaded dictionary.
 ///
 /// Known edge: while a per-app profile is active, the next profile swap
 /// replaces the in-memory set with its startup-built cache and hides
@@ -218,11 +218,32 @@ pub(crate) fn add_word_to_user_overlay(
 ///
 /// `[[commands]]` text triggers are the exception: the engine reads them
 /// from `settings.snapshot()` on every word boundary.
-pub(crate) fn reload_user_dictionaries(handle: &DictionaryDetector) -> usize {
+///
+/// Limited to the layouts `current` already holds. Unfiltered, this
+/// loaded every bundled language — each one's FST into memory and its
+/// dictionary into the engine's candidate set, keyboards the user does
+/// not even have (issue #76).
+pub(crate) fn reload_user_dictionaries(
+    handle: &DictionaryDetector,
+    current: &LayoutDb,
+    data_dir: &Path,
+) -> usize {
     let wordlist_dir = poltertype_core::layouts::user_wordlist_dir();
     let layout_dir = poltertype_core::layouts::user_layout_dir();
-    let new_layouts =
-        LayoutDb::load_with_user_layouts(layout_dir.as_deref(), wordlist_dir.as_deref());
+    let active: Vec<LayoutId> = current.ids().cloned().collect();
+    let new_layouts = match LayoutDb::load(poltertype_core::layouts::LoadOptions {
+        data_dir: Some(data_dir),
+        active_filter: Some(&active),
+        user_layout_dir: layout_dir.as_deref(),
+        user_wordlist_dir: wordlist_dir.as_deref(),
+        os_keymaps: None,
+    }) {
+        Ok(db) => db,
+        Err(e) => {
+            warn!(?e, "could not reload wordlists; keeping the current ones");
+            return 0;
+        }
+    };
     let new_dicts = collect_dicts(&new_layouts);
     let n = new_dicts.len();
     handle.replace_dicts(new_dicts);

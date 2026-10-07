@@ -25,6 +25,7 @@ mod consts;
 mod db;
 mod enums;
 mod files;
+mod fst_cache;
 mod helpers;
 mod os_keymap;
 mod plugins;

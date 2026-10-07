@@ -57,10 +57,12 @@
 "tray.quit" = "Quitter"
 "tray.alert_hooks" = "⚠ Pas d'accès au clavier — Système…"
 "tray.alert_switching" = "⚠ Changement de disposition impossible — Système…"
+"tray.alert_corrections" = "⚠ Les mots ne sont pas corrigés — Système…"
 "tray.deferred" = "Ajouter au dictionnaire un mot manqué…"
 "tray.deferred_empty" = "Aucun mot manqué pour l'instant"
 "tray.tooltip_paused" = "(en pause)"
 "tray.tooltip_no_keyboard" = "⚠ pas d'accès au clavier, voir Système"
+"tray.tooltip_no_corrections" = "⚠ les mots ne sont pas corrigés, voir Système"
 "tray.tooltip_draft" = "1 brouillon en attente"
 "tray.tooltip_drafts" = "{} brouillons en attente"
 

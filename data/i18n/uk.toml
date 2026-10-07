@@ -55,10 +55,12 @@
 "tray.quit" = "Вийти"
 "tray.alert_hooks" = "⚠ Немає доступу до клавіатури — Система…"
 "tray.alert_switching" = "⚠ Перемикання розкладки недоступне — Система…"
+"tray.alert_corrections" = "⚠ Слова не виправляються — Система…"
 "tray.deferred" = "Додати пропущене слово до словника…"
 "tray.deferred_empty" = "Пропущених слів ще немає"
 "tray.tooltip_paused" = "(призупинено)"
 "tray.tooltip_no_keyboard" = "⚠ немає доступу до клавіатури, див. Систему"
+"tray.tooltip_no_corrections" = "⚠ слова не виправляються, див. Систему"
 # One form for every count: Ukrainian needs three, and the interface
 # has two branches, so the number goes after the noun.
 "tray.tooltip_draft" = "чекає 1 чернетка"

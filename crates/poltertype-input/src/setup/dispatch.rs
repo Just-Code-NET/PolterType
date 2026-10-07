@@ -24,6 +24,13 @@ pub fn probe_setup(local_signing_identity: &str) -> SetupReport {
     imp::probe(local_signing_identity)
 }
 
+/// True when keys can be read but corrections cannot be typed back —
+/// the half-alive state the tray has to name, because nothing else
+/// fails loudly in it. Only macOS has such a split today.
+pub fn corrections_blocked() -> bool {
+    !imp::can_post_events()
+}
+
 /// Trigger the OS's own permission dialog (macOS only).
 ///
 /// Returns whether the permission is granted after the call. On

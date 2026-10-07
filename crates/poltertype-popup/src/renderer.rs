@@ -281,9 +281,10 @@ impl Renderer {
         buffer.set_text(
             &mut self.fonts,
             text,
-            Attrs::new().family(Family::SansSerif).weight(weight),
+            &Attrs::new().family(Family::SansSerif).weight(weight),
             // Advanced shaping: Cyrillic, apostrophes, combining marks.
             Shaping::Advanced,
+            None,
         );
         buffer.shape_until_scroll(&mut self.fonts, false);
         buffer

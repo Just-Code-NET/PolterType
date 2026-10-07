@@ -55,10 +55,12 @@
 "tray.quit" = "Salir"
 "tray.alert_hooks" = "⚠ Sin acceso al teclado — Sistema…"
 "tray.alert_switching" = "⚠ No se puede cambiar la distribución — Sistema…"
+"tray.alert_corrections" = "⚠ No se pueden corregir palabras — Sistema…"
 "tray.deferred" = "Añadir al diccionario una palabra perdida…"
 "tray.deferred_empty" = "Todavía no hay palabras perdidas"
 "tray.tooltip_paused" = "(en pausa)"
 "tray.tooltip_no_keyboard" = "⚠ sin acceso al teclado, mira la guía de Sistema"
+"tray.tooltip_no_corrections" = "⚠ las palabras no se corrigen, mira la guía de Sistema"
 "tray.tooltip_draft" = "1 borrador en espera"
 "tray.tooltip_drafts" = "{} borradores en espera"
 

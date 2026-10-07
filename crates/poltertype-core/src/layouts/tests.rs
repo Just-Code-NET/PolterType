@@ -1103,3 +1103,27 @@ fn transliterate_refuses_text_the_source_layout_never_typed() {
     // Pure punctuation travels with no letters at all — refused too.
     assert_eq!(ru.transliterate_to(".,-!?", en), None);
 }
+
+/// A rebuild — a profile cache, a Settings window closing — must share
+/// the FST bytes already in memory rather than leak another copy of
+/// them (issue #76).
+#[test]
+fn rebuilding_a_dictionary_reuses_the_loaded_fst() {
+    let data_dir = crate::data_dir::resolve().expect("data dir");
+    let first = files::build_dictionary(&data_dir, "en_us", None).expect("en_us dictionary");
+    let second = files::build_dictionary(&data_dir, "en_us", None).expect("en_us dictionary");
+    assert_eq!(
+        first.embedded.as_fst().as_bytes().as_ptr(),
+        second.embedded.as_fst().as_bytes().as_ptr(),
+    );
+}
+
+#[test]
+fn a_file_changed_on_disk_is_read_again() {
+    let dir = TmpDir::new("fst-cache");
+    let path = dir.0.join("words.fst");
+    dir.write("words.fst", "old");
+    assert_eq!(fst_cache::leaked_bytes(&path).expect("read"), b"old");
+    dir.write("words.fst", "newer");
+    assert_eq!(fst_cache::leaked_bytes(&path).expect("read"), b"newer");
+}

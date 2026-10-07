@@ -21,3 +21,7 @@ pub(super) fn settings_pane_url(_permission: Permission) -> Option<&'static str>
 pub(super) fn setup_local_signing(_name: &str) -> Result<(), String> {
     Err("local update signing is a macOS mechanism".to_owned())
 }
+
+pub(super) fn can_post_events() -> bool {
+    true
+}

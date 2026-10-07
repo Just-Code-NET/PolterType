@@ -51,6 +51,10 @@ pub(super) fn setup_local_signing(_name: &str) -> Result<(), String> {
     Err("local update signing is a macOS mechanism".to_owned())
 }
 
+pub(super) fn can_post_events() -> bool {
+    true
+}
+
 fn wayland_report() -> SetupReport {
     // The two capabilities, probed independently: reading the keyboard
     // and typing the correction are separate permissions and fail
