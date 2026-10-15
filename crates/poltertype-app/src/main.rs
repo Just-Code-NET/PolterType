@@ -104,6 +104,20 @@ fn main() -> Result<()> {
                 };
                 return cli::print_plugin_strings(&id);
             }
+            "--install-plugin" => {
+                let Some(dir) = args.next() else {
+                    eprintln!("poltertype: --install-plugin needs the plug-in's directory");
+                    return Err(anyhow::anyhow!("missing plug-in directory"));
+                };
+                return cli::install_plugin(&dir);
+            }
+            "--remove-plugin" => {
+                let Some(id) = args.next() else {
+                    eprintln!("poltertype: --remove-plugin needs a plug-in id");
+                    return Err(anyhow::anyhow!("missing plug-in id"));
+                };
+                return cli::remove_plugin(&id);
+            }
             "--version" | "-V" => {
                 println!("{APP_NAME} {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());

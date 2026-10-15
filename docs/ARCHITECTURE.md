@@ -333,6 +333,13 @@ Four things the supervisor deliberately does not do:
   never logging typed text binds PolterType; a plug-in that reads
   keystrokes was trusted with them by being installed at all.
 
+Every plug-in process is started with two variables: `POLTERTYPE_LOCALE`,
+so what it prints comes out in the user's language, and
+`POLTERTYPE_DATA_DIR`, the data directory this PolterType resolved. A
+plug-in built on `poltertype-core` would otherwise look for layouts and
+wordlists beside its own executable, in `plugins/<id>/bin/`, find
+nothing, and fail on the first thing that needs a layout.
+
 Stopping is a declared `stop` command rather than a signal, on every
 platform. SIGTERM still requires the plug-in to install a handler, and
 Windows' console control event was measured and refused — addressed to

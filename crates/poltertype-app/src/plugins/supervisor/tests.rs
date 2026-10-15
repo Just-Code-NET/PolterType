@@ -8,7 +8,7 @@ use crate::plugins::consts::STOP_COMMAND;
 
 use super::commands::{declares_stop, run_command};
 use super::consts::{LOG_LINE_CHARS, LOG_TAIL_BYTES};
-use super::process::{last_line, last_words};
+use super::process::{capture_output, last_line, last_words};
 use super::state::Supervisor;
 
 /// The interpreter these fixtures drive, and the flag that makes it
@@ -376,4 +376,32 @@ fn a_question_replaces_its_placeholder_whole_and_nothing_else() {
         "only the argument that IS the placeholder is replaced, and what \
          replaces it is not searched in turn"
     );
+}
+
+#[test]
+fn a_plugin_is_told_where_the_hosts_data_lives() {
+    // An installed plug-in sits in `plugins/<id>/bin/`, where nothing it
+    // would resolve on its own exists; without this it cannot load a
+    // single layout.
+    let Ok(data) = poltertype_core::data_dir::resolve() else {
+        return;
+    };
+    let (exe, flag) = shell();
+    let print = if cfg!(windows) {
+        "echo %POLTERTYPE_DATA_DIR%"
+    } else {
+        "printf %s \"$POLTERTYPE_DATA_DIR\""
+    };
+    let ext = DiscoveredExtension {
+        exe,
+        ..sleeper(false)
+    };
+    let out = capture_output(
+        &ext,
+        &[flag.to_owned(), print.to_owned()],
+        std::time::Duration::from_secs(5),
+        "env",
+    )
+    .unwrap();
+    assert_eq!(out.trim(), data.display().to_string());
 }

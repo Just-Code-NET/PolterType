@@ -26,14 +26,8 @@ pub(super) fn spawn(
         // The plug-in's own directory, so a relative path in its
         // config means what its author expected.
         .current_dir(dir)
-        // The manifest is translated from its own catalog, but what a
-        // plug-in *prints* — report text, the rows of a list — only it
-        // can translate, and only if it is told which language to use.
-        .env(
-            poltertype_core::i18n::LOCALE_ENV,
-            poltertype_core::i18n::active_locale(),
-        )
         .stdin(Stdio::null());
+    host_env(&mut cmd);
     // Both streams to the same file, in the order the plug-in wrote them.
     // Without a log file we inherit, which is right when there *is* a
     // terminal.
@@ -51,6 +45,28 @@ pub(super) fn spawn(
     cmd.spawn()
 }
 
+/// What every plug-in process is told about the PolterType running it.
+///
+/// The locale: the manifest is translated from its own catalog, but what
+/// a plug-in *prints* — report text, the rows of a list — only it can
+/// translate, and only if it is told which language to use.
+///
+/// The data directory: a plug-in built on `poltertype-core` resolves the
+/// layouts and wordlists relative to its own executable, and an
+/// installed one lives in `plugins/<id>/bin/`, where none of those paths
+/// exist — it would fail on the first thing that needs a layout. Handing
+/// it the directory this process resolved means one copy of the data,
+/// and the same version of it on both sides.
+fn host_env(cmd: &mut Command) {
+    cmd.env(
+        poltertype_core::i18n::LOCALE_ENV,
+        poltertype_core::i18n::active_locale(),
+    );
+    if let Ok(data) = poltertype_core::data_dir::resolve() {
+        cmd.env(poltertype_core::data_dir::ENV_OVERRIDE, data);
+    }
+}
+
 /// Run `args` against the plug-in and collect stdout, or give up.
 /// Shared by the state read and the report read, so there is one place
 /// that knows how to wait for a plug-in without being taken hostage.
@@ -63,12 +79,9 @@ pub(super) fn capture_output(
     use std::io::Read as _;
 
     let mut cmd = Command::new(&ext.exe);
+    host_env(&mut cmd);
     cmd.args(args)
         .current_dir(&ext.dir)
-        .env(
-            poltertype_core::i18n::LOCALE_ENV,
-            poltertype_core::i18n::active_locale(),
-        )
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         // Drained but never *shown* on success: a program says why it

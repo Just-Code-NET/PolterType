@@ -229,3 +229,24 @@ fn an_installed_plugin_is_not_shadowed_by_a_checkout_of_the_same_id() {
     assert!(!found[0].development, "the installed copy must win");
     fs::remove_dir_all(&root).unwrap();
 }
+
+#[test]
+fn a_plugin_the_user_installed_wins_over_the_installs_copy() {
+    // The per-user root is the only one a packaged install can write
+    // without root, so an update the user installed must be the one run.
+    let root = scratch("user-root");
+    let user = root.join("user");
+    let data_dir = root.join("data");
+    for (base, exe) in [(&user, "new"), (&data_dir, "old")] {
+        let dir = base.join(PLUGINS_DIR).join("same-id");
+        write_extension(&dir, "same-id", exe);
+        put_binary(&dir.join(EXTENSION_BIN_DIR).join(exe));
+    }
+
+    let found = extensions_in(&[user.clone(), data_dir.clone()], &[]);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].dir.starts_with(&user), "{:?}", found[0].dir);
+    assert!(!found[0].development);
+    fs::remove_dir_all(&root).unwrap();
+}

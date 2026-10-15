@@ -12,6 +12,8 @@ pub(crate) fn print_help() {
             poltertype                      start the tray app\n  \
             poltertype --settings           open the settings window\n  \
             poltertype --setup              open the settings window on the Setup pane\n  \
+            poltertype --install-plugin DIR install a plug-in for this user\n  \
+            poltertype --remove-plugin ID   remove a plug-in this user installed\n  \
             poltertype --plugin-strings ID  print a plug-in's translatable strings\n  \
             poltertype --version            print version and exit\n  \
             poltertype --help               show this help",
@@ -58,6 +60,38 @@ pub(crate) fn print_plugin_strings(id: &str) -> Result<()> {
     for (key, english) in poltertype_core::plugins::strings(&ext.manifest) {
         println!("{} = {}", quoted(&key), quoted(&english));
     }
+    Ok(())
+}
+
+/// Install the plug-in in `dir` for this user, replacing any earlier
+/// copy of the same id.
+///
+/// Per user rather than beside the bundled data: on a packaged or
+/// AppImage install that directory belongs to root or is read-only.
+pub(crate) fn install_plugin(dir: &str) -> Result<()> {
+    let root = poltertype_core::plugins::user_root().context("find this user's data directory")?;
+    let pack = poltertype_core::plugins::install(std::path::Path::new(dir), &root)
+        .with_context(|| format!("install the plug-in in {dir}"))?;
+    println!(
+        "Installed {} {} into {}.",
+        pack.name,
+        pack.version,
+        pack.path.display()
+    );
+    for skipped in &pack.skipped {
+        println!("  not copied: {skipped}");
+    }
+    println!("Restart PolterType to start it.");
+    Ok(())
+}
+
+/// Remove a plug-in this user installed.
+pub(crate) fn remove_plugin(id: &str) -> Result<()> {
+    let root = poltertype_core::plugins::user_root().context("find this user's data directory")?;
+    if !poltertype_core::plugins::uninstall(id, &root)? {
+        bail!("no plug-in {id:?} is installed for this user");
+    }
+    println!("Removed {id}. Restart PolterType to stop it.");
     Ok(())
 }
 

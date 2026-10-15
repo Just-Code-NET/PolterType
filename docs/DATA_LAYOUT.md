@@ -190,7 +190,11 @@ Three rules make this directory safe to delete at any time:
 
 The `plugins/` directory under `<data_dir>/` holds data-only language
 packs. **The loader is live** — what's still missing is the
-install/update UX, not the mechanism. The contract a third-party pack
+install/update UX, not the mechanism. Extensions (plug-ins that ship a
+program) are also looked for per user, and that is where
+`poltertype --install-plugin DIR` puts them — the one place a packaged
+or AppImage install can write without root; `--remove-plugin ID` takes
+one out again. The contract a third-party pack
 has to satisfy:
 
 ```
@@ -262,6 +266,7 @@ two layers solve different problems:
 |---|---|---|---|
 | Bundled `<data_dir>/` | install dir (read-only after install) | every user of this install | shipped with the app |
 | Plug-in pack `<data_dir>/plugins/<id>/` | install dir | every user of this install | per-pack manifest |
+| Extension `<data_local_dir>/poltertype/plugins/<id>/` | per-user profile (`~/.local/share/poltertype` on Linux) | one user; wins over the install's copy of the same id | per-pack manifest |
 | User overlay `<config-dir>/…` | per-user profile | one user | not versioned (live edit) |
 | Per-app overlay `<config-dir>/poltertype/wordlists/profiles/<id>/<stem>.txt` | per-user profile | one user, one set of apps | not versioned (live edit) |
 

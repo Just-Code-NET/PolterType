@@ -1,8 +1,11 @@
 //! Finding plug-ins: the installed ones, plus whatever a developer is
 //! working on. Three sources, in order of precedence:
 //!
-//! 1. **Installed** — `<data_dir>/plugins/<id>/`, put there by
-//!    [`super::install`].
+//! 1. **Installed** — per user first, `<user_root>/plugins/<id>/`
+//!    (see [`user_root`]), then for the whole install,
+//!    `<data_dir>/plugins/<id>/`. Both are put there by
+//!    [`super::install`]; only the first is writable without root on a
+//!    packaged or AppImage install, which is where a bought plug-in goes.
 //! 2. **`POLTERTYPE_PLUGIN_PATH`** — a `PATH`-style list, honoured in
 //!    every build. An explicit, visible way to run an uninstalled
 //!    plug-in.
@@ -52,7 +55,19 @@ pub struct DiscoveredExtension {
 pub fn extensions(data_dir: &Path) -> Vec<DiscoveredExtension> {
     let mut extra = path_dirs();
     extra.extend(sibling_dirs());
-    extensions_from(data_dir, &extra)
+    let mut roots: Vec<PathBuf> = user_root().into_iter().collect();
+    roots.push(data_dir.to_path_buf());
+    extensions_in(&roots, &extra)
+}
+
+/// Where this user's own plug-ins are installed: the per-user data
+/// directory (`~/.local/share/poltertype` on Linux), holding a
+/// `plugins/` of the same shape as the install's. `None` when the OS
+/// names no home for this user.
+pub fn user_root() -> Option<PathBuf> {
+    crate::settings::SettingsStore::project_dirs()
+        .ok()
+        .map(|d| d.data_local_dir().to_path_buf())
 }
 
 /// The same, with the development directories supplied rather than
@@ -60,9 +75,14 @@ pub fn extensions(data_dir: &Path) -> Vec<DiscoveredExtension> {
 /// the environment — which this crate cannot do anyway: it forbids
 /// `unsafe`, and `set_var` is unsafe.
 pub fn extensions_from(data_dir: &Path, extra: &[PathBuf]) -> Vec<DiscoveredExtension> {
+    extensions_in(&[data_dir.to_path_buf()], extra)
+}
+
+/// The same over several install roots, the earliest winning for an id.
+pub fn extensions_in(roots: &[PathBuf], extra: &[PathBuf]) -> Vec<DiscoveredExtension> {
     let mut found: Vec<DiscoveredExtension> = Vec::new();
 
-    for dir in installed_dirs(data_dir) {
+    for dir in roots.iter().flat_map(|r| installed_dirs(r)) {
         push_extension(&mut found, &dir, false);
     }
     for dir in extra {
