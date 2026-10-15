@@ -295,6 +295,13 @@ setups that never set it — `DISPLAY` present with no `WAYLAND_DISPLAY`.
 Under XWayland both are set, and there the compositor owns input, so we
 correctly take the Wayland path instead.
 
+The one exception to "we don't grab" is narrow: while a suggestion
+tooltip is on screen and you have chosen `F1`–`F9` or arrow-key
+navigation to accept it, PolterType takes a passive grab on exactly
+those keys (and on the digit accept chord), so that `F5` does not
+reload a page and `Enter` does not send a message. The grabs go the
+moment the tooltip does; every other key is never touched.
+
 ### Sending keys (corrections) on Wayland
 
 * `uinput`, via the same device permissions `setup-linux.sh` grants —
@@ -336,6 +343,13 @@ permission is needed — it uses the `/dev/input/event*` access
 > every correction and then arrive together, which reads as the caret
 > lagging behind your typing. That trades a rare mangled word for a
 > constant delay, and it is not a trade to make on everybody's behalf.
+>
+> The same hook can keep single keys from the application regardless
+> of that switch: with `F1`–`F9` or arrow navigation chosen for the
+> suggestion tooltip, those keys and the digit accept chord go to
+> PolterType alone while the tooltip is on screen, and to the
+> application the rest of the time. macOS can do this only with
+> `[engine] hold_keys` on; on Wayland nothing can.
 > Switch it on if you type fast enough to hit the race — and see
 > [issue #7](https://github.com/Just-Code-NET/PolterType/issues/7) for
 > the measurements. No keyboard wedge was observed at any point.

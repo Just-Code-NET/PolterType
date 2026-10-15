@@ -1,4 +1,4 @@
-# Known gaps (as of v0.36.5)
+# Known gaps (as of v0.37.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,25 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.37.0 pass actually checked (2026-10-15).** The
+suggestion tooltip's new keys, size and place, in the desktop-matrix
+guest with a debug build of the release code, and nowhere else. On
+**Cinnamon X11** (the reporter's desktop for #77–#81): a word accepted
+with `Ctrl+Shift+1` keeps the space before it in a GTK text field and in
+xterm; Down + Enter, F1 and Up/Down/Enter replace the word with nothing
+reaching the application, and no key stays grabbed after the app
+exits; with `Xft.dpi` at 192 the tooltip draws at twice its size by
+itself, `scale_percent = 200` doubles it again, and the bottom-centre,
+top-right and middle-left cells land exactly where the window's
+rectangle puts them. The desktop's scale was raised through its text
+scaling factor, which feeds the same `Xft.dpi` as the display's
+interface scaling. On **KDE Plasma Wayland**: the GTK field keeps the
+space; F-keys and arrows are left to the application and nothing is
+replaced; xterm ends one Backspace short, as the entry below says. The
+merged Settings pane was looked at on Hyprland. **Windows and macOS
+were not run** — their key-claiming code is compiled by CI alone — and
+neither were GNOME Wayland or a real 5120×2160 screen.
 
 **What the 0.36.5 pass actually checked (2026-10-07).** On **Hyprland**
 on this machine, and nowhere else. Idle memory of a debug build with
@@ -1481,9 +1500,10 @@ move too fast to be true.
   the text, and a rejected caret costs that window the caret rung, not
   the tooltip.
 
-- **The tooltip's size and its place in the window are unverified on
-  real HiDPI and multi-platform hardware (#79, #81, unreleased).**
-  What is true by construction, and covered by unit tests only:
+- **The tooltip's size and its place in the window are verified on X11
+  only (#79, #81).** Measured on the matrix guest's Cinnamon X11 session
+  (see the 0.37.0 pass above); everything else here is true by
+  construction and covered by unit tests:
   - *Size.* `[suggestions].scale_percent` multiplies whatever scale the
     backend already uses — output scale on Wayland, monitor DPI on
     Windows, backing scale on macOS, and on X11 `Xft.dpi / 96` from the
@@ -1493,9 +1513,11 @@ move too fast to be true.
     one below 96, gets the designed size and the setting is the way to
     change it. Read in the source of gnome-settings-daemon,
     cinnamon-settings-daemon, mate-settings-daemon and xfsettingsd that
-    each writes it; **Plasma on X11 is unconfirmed**, and no desktop has
-    been looked at live — the reporter's Cinnamon at 5120×2160
-    included. Wayland's scale is the output's integer one, so on a
+    each writes it, and Cinnamon's was watched doing so live; **Plasma
+    on X11 is unconfirmed**, and no real 5120×2160 screen has been
+    looked at. A desktop scale and `scale_percent` multiply, and a
+    tooltip that ends up taller than the screen is pinned to its top
+    edge and cut off at the bottom rather than shrunk. Wayland's scale is the output's integer one, so on a
     fractional 1.5 the compositor downsamples a 2× buffer, as before.
   - *Place in the window.* The 3×3 picker needs the focused window's
     rectangle, which Windows, macOS, Hyprland and X11 report and
@@ -1507,8 +1529,7 @@ move too fast to be true.
   - `caret_anchor = false` now means "always the window" on Windows and
     macOS as well; it used to be ignored there. A config that had it
     off on those platforms changes behaviour on upgrade.
-- **F-key accept and arrow navigation in the tooltip (#78, #80, not
-  yet released) need a listener that can keep one key from the
+- **F-key accept and arrow navigation in the tooltip (#78, #80) need a listener that can keep one key from the
   application.** The Windows low-level hook and X11 (a passive key grab
   while the tooltip is up) can; macOS can only with `[engine]
   hold_keys` on, since otherwise its event tap is listen-only; Linux on
@@ -1521,7 +1542,8 @@ move too fast to be true.
   replace the word with nothing leaking; Enter with nothing highlighted,
   Esc, and the arrows with no tooltip up reach the application; and
   after the app exits F1, the arrows and `Ctrl+Shift+1` reach xterm
-  again — no grab is left behind. **The Windows hook and the macOS tap
+  again — no grab is left behind. On KDE Plasma Wayland the same keys
+  were left to the application and nothing was replaced. **The Windows hook and the macOS tap
   have not been run live**, and their code is compiled by CI alone. Two
   smaller edges: on X11 a key another client already grabs (a desktop
   binding bare F1 to help) stays that client's and is simply not

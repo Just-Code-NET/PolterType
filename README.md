@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.36.5**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.37.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -286,7 +286,13 @@ Wrong-layout words get auto-corrected; plain typos get *suggested*.
 When a word you just finished isn't in the dictionary for the
 language you're typing, a small tooltip appears near the focused
 window with up to 5 nearby dictionary words — click one, or press
-`Ctrl+Shift+<digit>`, and the word is replaced in place. When the
+`Ctrl+Shift+<digit>`, and the word is replaced in place. Where a
+desktop already owns those chords, `F1`–`F9` can take their place,
+and the arrow keys with `Enter` can walk the list instead; both need
+a listener able to keep a key from the application, which Windows and
+X11 have and Wayland does not
+([KNOWN-GAPS](docs/KNOWN-GAPS.md)). The tooltip's size and its place
+in the window — one of nine — are settings too. When the
 engine saw a possible wrong-layout word but wasn't confident enough
 to auto-switch, that candidate leads the list with a layout badge, so
 the borderline cases become your one-click call.
