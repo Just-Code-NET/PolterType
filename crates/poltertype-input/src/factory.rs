@@ -31,6 +31,15 @@ pub fn create_key_gate(hold_keys: bool) -> KeyGate {
     imp::create_key_gate(hold_keys)
 }
 
+/// Whether the listener this session gets can claim keys for the
+/// suggestion tooltip — [`KeyGate::can_claim`] answered ahead of time,
+/// for the Settings window, which runs without a listener. `hold_keys`
+/// is `[engine].hold_keys`: on macOS only a tap the key gate made
+/// active can keep a key back.
+pub fn suggestion_keys_claimable(hold_keys: bool) -> bool {
+    imp::suggestion_keys_claimable(hold_keys)
+}
+
 /// Construct the listener appropriate for the current OS, wired to
 /// `gate` where the backend supports one.
 pub fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputError> {

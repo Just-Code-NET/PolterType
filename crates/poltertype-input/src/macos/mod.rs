@@ -21,6 +21,8 @@
 pub(crate) mod codes;
 
 #[cfg(target_os = "macos")]
+mod accessibility;
+#[cfg(target_os = "macos")]
 mod consts;
 #[cfg(target_os = "macos")]
 mod emitter;

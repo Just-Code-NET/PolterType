@@ -40,6 +40,18 @@ pub struct PopupModel {
     pub timeout: Duration,
     /// Where to appear.
     pub anchor: PopupAnchor,
+    /// Size multiplier on top of whatever scale the display reports:
+    /// `1.0` draws the tooltip as designed, `2.0` twice as large —
+    /// text, padding and panel alike. Out-of-range values are clamped
+    /// by the renderer.
+    pub scale: f32,
+    /// `F1`..`F9` accept instead of `accept_hint` + digit.
+    pub function_keys: bool,
+    /// `Down` / `Up` / `Enter` navigate — said in the footer.
+    pub arrows: bool,
+    /// The row the keyboard highlighted. Drawn like a hovered row; the
+    /// app re-shows the model to move it.
+    pub selected: Option<usize>,
 }
 
 /// One clickable row, in pixmap (device-pixel) coordinates.

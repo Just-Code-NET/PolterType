@@ -6,6 +6,54 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-10-15 — The tooltip's size follows the desktop; where it sits in a window is the user's
+
+Two requests in one week about the same surface: on a 5120×2160 X11
+screen the tooltip was too small to read (#79), and someone wanted it
+in a corner of the window rather than above its bottom edge (#81).
+
+**Size: `Xft.dpi` first, a multiplier on top.** The X11 backend drew
+at 1.0 always — the one backend with no scale at all, which is the
+report. X11 has no per-monitor scale, but every desktop settings
+daemon checked writes `Xft.dpi` into the root window's
+`RESOURCE_MANAGER` — gnome-settings-daemon and its Cinnamon and MATE
+forks as the configured DPI times the window scale, xfsettingsd as its
+own DPI setting (read in each one's xsettings source, 2026-10-15) —
+and GTK and Qt size their text from it. Plasma was not confirmed. Reading it
+is one `GetProperty` per show, so the tooltip grows exactly when the
+desktop's own text does, with no setting touched; below 96 it is
+ignored rather than obeyed, so a tooltip is never shrunk by a desktop.
+`[suggestions].scale_percent` multiplies whatever the backend's own
+scale is — `Xft.dpi` here, the output scale on Wayland, the monitor DPI
+on Windows, the backing scale on macOS — so it is the same knob
+everywhere and its default, 100, changes nothing. The multiplier is
+applied in logical pixels and the panel rounded up there, because a
+Wayland buffer must stay an exact multiple of its integer scale.
+
+Rejected: a manual scale replacing detection (the reporter's own
+second choice — it would leave every other HiDPI X11 user where they
+were), and reading `GDK_SCALE` / `QT_SCALE_FACTOR` from our own
+environment (a tray started by autostart inherits whatever the session
+had at login, and neither is set on most desktops anyway).
+
+**Placement: a 3×3 grid inside the window, and the cursor option is
+the mode.** `[suggestions].window_anchor` picks the cell,
+`window_margin` the inset from the edges it touches; the defaults —
+bottom centre, 96 px — are exactly the arithmetic every backend had
+hard-coded, which is now one shared function instead of four copies.
+"Window always" versus "window only without a caret" did not get a
+setting of its own: `caret_anchor = false` already meant the window
+every time on Linux, so it now means that on Windows and macOS too,
+where it used to be ignored. A second switch would have had two
+spellings for one choice and a combination that means nothing.
+
+The grid needs the focused window's rectangle, which Windows, macOS,
+Hyprland and X11 report and GNOME/KDE Wayland do not; there the
+tooltip keeps falling to the bottom centre of the screen, and
+`KNOWN-GAPS.md` says so.
+
+---
+
 ## 2026-09-30 — A correction waits for held keys to come up, not for the gate to be smarter
 
 An automatic correction is triggered by the *press* of the boundary
@@ -3811,7 +3859,17 @@ fall back to `send_text`.
 
 * The accept chord's keypress still reaches the focused app (we
   never block keys) — same accepted risk as the Wayland hotkeys;
-  `Ctrl+Shift+digit` is bound by virtually nothing.
+  `Ctrl+Shift+digit` is bound by virtually nothing. It reaches the
+  app as a shortcut, not text: every accept chord holds Ctrl, Alt or
+  Meta (bare `Shift` is refused, it would type `!`), so the
+  replacement deletes the word and its separators and nothing more.
+  Erasing a "typed" digit as well ate the space before the word
+  (issue #77). Where Alt still types — macOS Option, AltGr, Windows
+  `Ctrl+Alt` on layouts with a third level on the digit row — an
+  `Alt` chord leaves that character behind; the engine reads every
+  Ctrl/Alt/Meta keystroke as a shortcut everywhere else too.
+  The F-keys and arrows added later cannot take the pass-through risk
+  and are claimed instead — see 2026-10-15.
 * An offer dies when the *next* word completes — the tooltip's
   full 30 s apply only while the word is still the last thing the
   buffer can vouch for. A tooltip that outlives its ability to act
@@ -4877,3 +4935,87 @@ also asks only for the layouts already loaded: a language the user has
 no keyboard for has no business entering the candidate set because a
 window closed.
 
+## 2026-10-15 — The tooltip claims its keys where the listener can keep them, and nowhere else
+
+Issues #78 and #80 asked for `F1`–`F9` and for `Up` / `Down` / `Enter`
+as ways to accept a suggestion. Both break the trade-off the tooltip
+was built on (2026-07-24: *the accept chord's keypress still reaches
+the focused app — we never block keys*). `Ctrl+Shift+digit` survives
+reaching the application because almost nothing binds it. These do
+not: `F5` reloads a browser page, `F1` opens help, an `Enter` that
+reaches the application is a newline or a sent message, and an arrow
+that reaches it moves the caret the replacement is about to backspace
+from. So each of them is only offered where the listener can keep that
+one key from the application — a *claim* — and the engine is told, per
+event, that it did (`KeyEvent::claimed`).
+
+What each listener can do, read from the code:
+
+| Listener | Keep one key back? | How |
+|---|---|---|
+| Windows `WH_KEYBOARD_LL` | yes, always | the hook returns non-zero for that event |
+| macOS `CGEventTap` | only with `[engine] hold_keys` | an active tap drops it; the default tap is listen-only and its answer is ignored |
+| X11 (XInput2 raw events) | yes | a passive `XGrabKey` on the root window while the claim lasts |
+| Linux evdev (Wayland) | no | `EVIOCGRAB` takes the whole device — the key gate's tool, sized for a correction burst of milliseconds, not a tooltip that stays up for thirty seconds |
+
+The engine asks `KeyGate::can_claim` when it makes an offer. Where the
+answer is no, F-keys and arrows stay off for that offer and the digit
+chord stays on; the Settings window, which has no listener, asks
+`suggestion_keys_claimable` for the same answer ahead of time and says
+so in place.
+
+**What is claimed, and when.** Only while an offer is live, and only
+the keys it answers to: `F1`…`F<n>` for an offer of `n` rows, the two
+arrows, and `Enter` only once a row is highlighted — `Enter` with
+nothing highlighted is the user's. A claim carries the offer's
+deadline, so a wedged engine costs the arrows a few seconds, never the
+session. A key is claimed whole: once a press is kept back, its
+repeats and its release are too, even after the claim ended — the
+accept itself ends it while `Enter` is still down, and an application
+that receives a lone autorepeated `Enter` types a newline. `Esc` is
+never claimed: the buffer already dismisses an offer on it, and an
+editor that needs it (Vim) must still get it.
+
+**How X11 knows it kept a key.** A passive grab is not something the
+listener can consult per event — the server decides. What the server
+does give is evidence, measured on Cinnamon X11 the same day: the raw
+press of a grabbed key reaches every listener as usual, and the
+grabbing client alone then receives a core `KeyPress` for it. From
+then on the grab is active, and the key's raw repeats and raw release
+reach **nobody, the grabbing client included** — only the core events
+do. The first build read only raw events, never saw the release, and
+every accept then sat out its wait for the key to come up and was
+abandoned. So the listener holds a raw press of a grabbed key back for
+one read (at most 5 ms), stamps it `claimed` only if the core twin
+follows, and from there reads that key from its core events until the
+release. Our own belief about which grabs are in force, or which
+modifiers are held, never decides: a key stamped claimed that the
+application did see would have the engine apply a suggestion behind a
+newline the user had just typed. A missed twin errs the safe way — the
+engine treats the key as typed and the offer goes stale. While a
+grabbed key is down the server delivers every keystroke to us, our own
+XTest replay included, so an accept waits for that key to come up the
+way a hotkey's correction does.
+
+**The digit chord is claimed too, wherever claiming works.** #77
+removed the Backspace that used to erase the chord's digit, on the
+grounds that under `Ctrl` a digit types nothing. xterm disagrees — it
+types `!` for `Ctrl+Shift+1` — so whether that Backspace is owed
+depends on the application, which the engine cannot see. Claiming the
+chord (the digits `1`..`<n>` with exactly the accept modifiers) means no
+application sees it at all, and the count is exact. On Wayland nothing
+can be claimed and the chord is matched off the key stream as before,
+with #77's assumption.
+
+**The highlight** is the engine's (`PendingSuggestion::highlight`); the
+popup is told with `SuggestionHighlighted` and the app re-shows the
+same model with that row selected — every backend already rebuilds its
+window per `show`, so no platform code moved. Each move also restarts
+the offer's lifetime: someone reading the list is not idle.
+
+**Left out.** The shortcut-activated navigation mode #80 also asked
+for: it needs one more chord to configure and to claim, with the same
+per-platform limits, and Off-by-default direct arrows already keep the
+arrows the user's unless they opt in. Per-suggestion custom bindings
+(#78's third option) would be a key-binding language for nine rows;
+two fixed sets cover the conflict the issue reports.

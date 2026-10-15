@@ -28,6 +28,7 @@ mod macos;
 mod windows;
 
 mod chords;
+mod claims;
 mod consts;
 mod enums;
 mod factory;
@@ -39,6 +40,10 @@ mod hotkey_env;
 // runs CI.
 #[cfg(any(windows, target_os = "macos", test))]
 mod hold;
+// The claim decision those two hooks take per keystroke; X11 claims by
+// key grab instead. Same reasoning as `hold`.
+#[cfg(any(windows, target_os = "macos", test))]
+mod claim_filter;
 mod traits;
 mod types;
 

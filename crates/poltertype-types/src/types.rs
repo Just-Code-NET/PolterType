@@ -81,6 +81,13 @@ pub struct KeyEvent {
     /// deletion more than the screen saw. Backends whose repeats are
     /// the ones the app gets leave this false.
     pub kernel_repeat: bool,
+    /// The listener kept this keystroke from the focused application
+    /// because the engine had claimed it for the suggestion tooltip
+    /// (arrow navigation, F-key accept). The application never saw it,
+    /// so it is neither typing nor a caret move — the engine must not
+    /// feed it to the word buffer. Always `false` on backends that
+    /// cannot keep a key back.
+    pub claimed: bool,
     /// Best-effort monotonic timestamp in ms.
     pub timestamp_ms: u64,
 }

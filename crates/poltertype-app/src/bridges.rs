@@ -75,6 +75,7 @@ pub(crate) fn handle_engine_event(
         // the popup handle / dict handle / focus tracker, which are
         // loop-local).
         SwitcherEvent::SuggestionsReady { .. }
+        | SwitcherEvent::SuggestionHighlighted { .. }
         | SwitcherEvent::SuggestionsDismissed { .. }
         | SwitcherEvent::SuggestionApplied { .. }
         | SwitcherEvent::AddToDictionary { .. }

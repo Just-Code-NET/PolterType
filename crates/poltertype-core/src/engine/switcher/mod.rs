@@ -14,6 +14,7 @@
 //! | [`correction`] | emitting the correction; absorbing raced input |
 //! | [`commands`] | keystream hotkey chords, smart-command dispatch |
 //! | [`suggestions`] | spelling-suggestion offers, accepts, dismissal |
+//! | [`suggest_keys`] | the tooltip's claimed keys: F-key accept, arrow navigation |
 
 mod commands;
 mod correction;
@@ -21,6 +22,7 @@ mod decide;
 mod echo;
 mod engine;
 mod run_loop;
+mod suggest_keys;
 mod suggestions;
 mod types;
 

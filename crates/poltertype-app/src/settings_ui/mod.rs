@@ -24,6 +24,7 @@ mod update;
 mod view;
 mod view_plugins;
 mod view_setup;
+mod view_tooltip_look;
 
 pub use run::{run, run_on};
 

@@ -32,6 +32,9 @@ pub(super) struct WinView {
     pub(super) gc: Gcontext,
     pub(super) rendered: RenderedPopup,
     pub(super) model: PopupModel,
+    /// The desktop scale the frame was rendered at; hover re-renders
+    /// reuse it so the window never changes size under the pointer.
+    pub(super) scale: f32,
     pub(super) hover: Option<usize>,
     pub(super) deadline: Instant,
 }

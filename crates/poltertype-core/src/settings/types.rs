@@ -320,6 +320,16 @@ pub struct SuggestionSettings {
     /// up. Parsed like `[hotkeys]` strings; empty disables keyboard
     /// accept, leaving click-to-apply only.
     pub accept_modifiers: String,
+    /// Which keys pick a suggestion by number: `"modifier_digits"`
+    /// (`accept_modifiers` + digit) or `"function_keys"` (`F1`..`F9`),
+    /// see [`AcceptKeys`](super::AcceptKeys). F-keys need a listener
+    /// that can keep them from the application; elsewhere the digit
+    /// chord stays in force.
+    pub accept_keys: String,
+    /// `"arrows"` lets `Down` / `Up` move a highlight through the
+    /// tooltip and `Enter` accept it; `"off"` leaves the keys alone. See
+    /// [`SuggestionNavigation`](super::SuggestionNavigation).
+    pub navigation: String,
     /// Put the tooltip next to the text cursor rather than at the
     /// window.
     ///
@@ -338,6 +348,23 @@ pub struct SuggestionSettings {
     /// side effect outside this process and ignore this setting. The
     /// tracker is built at startup, so a change needs a restart.
     pub caret_anchor: bool,
+
+    // ── Tooltip look and placement (issues #79, #81) ───────────────
+    /// Where in the focused window the tooltip sits whenever it is not
+    /// at the text cursor: always with `caret_anchor = false`, and as
+    /// the fallback when no caret is known. One of `top_left`,
+    /// `top_center`, `top_right`, `middle_left`, `center`,
+    /// `middle_right`, `bottom_left`, `bottom_center`, `bottom_right`;
+    /// see [`TooltipSpot`]. Read per tooltip, so a change applies to
+    /// the next one.
+    pub window_anchor: String,
+    /// Distance in pixels between the tooltip and each window edge its
+    /// `window_anchor` touches. Clamped to 0..=400 at read time.
+    pub window_margin: u32,
+    /// Tooltip size in percent — text, padding and panel together —
+    /// on top of the display's own scaling. Clamped to 50..=300 at
+    /// read time.
+    pub scale_percent: u32,
 }
 
 impl Default for SuggestionSettings {
@@ -347,7 +374,12 @@ impl Default for SuggestionSettings {
             max_suggestions: 5,
             tooltip_timeout_secs: 30,
             accept_modifiers: "Ctrl+Shift".into(),
+            accept_keys: "modifier_digits".into(),
+            navigation: "off".into(),
             caret_anchor: true,
+            window_anchor: TooltipSpot::default().config_value().into(),
+            window_margin: TOOLTIP_DEFAULT_MARGIN,
+            scale_percent: 100,
         }
     }
 }
@@ -362,6 +394,23 @@ impl SuggestionSettings {
     /// unusable) and ceiling (an hour-long tooltip is a leak).
     pub fn timeout(&self) -> Duration {
         Duration::from_secs(self.tooltip_timeout_secs.clamp(3, 600))
+    }
+
+    /// `window_anchor`, parsed.
+    pub fn window_spot(&self) -> TooltipSpot {
+        TooltipSpot::from_config(&self.window_anchor)
+    }
+
+    /// `window_margin`, held to what still leaves a window to sit in.
+    pub fn window_margin_clamped(&self) -> u32 {
+        self.window_margin.min(TOOLTIP_MAX_MARGIN)
+    }
+
+    /// `scale_percent` as a multiplier: `1.0` is the designed size.
+    pub fn tooltip_scale(&self) -> f32 {
+        self.scale_percent
+            .clamp(TOOLTIP_MIN_SCALE_PERCENT, TOOLTIP_MAX_SCALE_PERCENT) as f32
+            / 100.0
     }
 }
 

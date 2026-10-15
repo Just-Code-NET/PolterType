@@ -57,6 +57,13 @@ impl SwitcherEngine {
                     }
                     *self.held_modifiers.write() = ev.modifiers;
                     self.track_keys_down(&ev);
+                    if ev.claimed {
+                        // Kept from the application: not typing, not
+                        // idleness, not a caret move.
+                        last_event_at = Instant::now();
+                        self.handle_claimed_key(&ev, &mut buffer, &key_rx);
+                        continue;
+                    }
                     self.click_grace_tick(&ev);
                     self.check_keystream_hotkeys(&ev, &mut buffer, &key_rx);
                     if last_event_at.elapsed() > idle_timeout {
@@ -269,17 +276,9 @@ impl SwitcherEngine {
             EngineCommand::AcceptSuggestion {
                 generation,
                 index,
-                typed_digit,
                 from_pointer,
             } => {
-                self.accept_suggestion(
-                    generation,
-                    index,
-                    typed_digit,
-                    from_pointer,
-                    buffer,
-                    key_rx,
-                );
+                self.accept_suggestion(generation, index, from_pointer, buffer, key_rx);
             }
             EngineCommand::DismissSuggestions { generation } => {
                 self.dismiss_suggestions(Some(generation));

@@ -6,6 +6,16 @@ pub(crate) const SCHEMA_VERSION: u32 = 1;
 /// Never check more often than this, whatever `config.toml` says.
 pub const MIN_UPDATE_INTERVAL_HOURS: u64 = 1;
 
+/// `[suggestions].window_margin` out of the box: the gap the tooltip
+/// always kept above the window's bottom edge.
+pub const TOOLTIP_DEFAULT_MARGIN: u32 = 96;
+/// Largest `[suggestions].window_margin` honoured.
+pub const TOOLTIP_MAX_MARGIN: u32 = 400;
+/// `[suggestions].scale_percent` bounds: half size is the smallest
+/// still readable, three times fills a 4K panel's corner.
+pub const TOOLTIP_MIN_SCALE_PERCENT: u32 = 50;
+pub const TOOLTIP_MAX_SCALE_PERCENT: u32 = 300;
+
 /// The `[exceptions].disabled_apps` list PolterType shipped as a
 /// default up to and including v0.4.1, frozen verbatim.
 ///

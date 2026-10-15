@@ -486,6 +486,7 @@ pub(crate) fn translate(ev: &InputEvent, modifiers: Modifiers, from_us: bool) ->
             modifiers,
             injected: from_us,
             kernel_repeat: false,
+            claimed: false,
             timestamp_ms: 0,
         });
     }
@@ -497,6 +498,7 @@ pub(crate) fn translate(ev: &InputEvent, modifiers: Modifiers, from_us: bool) ->
         modifiers,
         injected: from_us,
         kernel_repeat: ev.value() == 2,
+        claimed: false,
         timestamp_ms: 0,
     })
 }

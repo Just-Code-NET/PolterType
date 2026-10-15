@@ -81,7 +81,7 @@ impl X11State {
             return;
         }
         view.hover = hover;
-        view.rendered = self.renderer.render(&view.model, hover, 1.0);
+        view.rendered = self.renderer.render(&view.model, hover, view.scale);
         if let Err(err) = self.paint() {
             warn!(err = %err, "x11 popup repaint failed");
         }

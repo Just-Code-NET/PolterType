@@ -4,6 +4,76 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **The suggestion tooltip can be made larger, and follows the
+  desktop's scaling on X11**
+  ([#79](https://github.com/Just-Code-NET/PolterType/issues/79)). On
+  X11 it was drawn at one size whatever the screen, which on a
+  5120×2160 display meant text too small to read. It now reads the
+  scale the desktop's own settings write (`Xft.dpi` — what GNOME,
+  Cinnamon, MATE and Xfce set when you choose a larger scale), so it
+  grows with everything else. On top of that, Settings →
+  Suggestions → *Size* sets it from 50% to 300% on every platform —
+  text, spacing and panel together. 100% leaves it as it was.
+
+- **A place in the window for the tooltip**
+  ([#81](https://github.com/Just-Code-NET/PolterType/issues/81)).
+  When there is no text cursor to sit by, the tooltip goes to one of
+  nine places in the focused window — a 3×3 picker in Settings →
+  Suggestions — with a distance from the edges you choose. The
+  default is where it always went: centred, just above the bottom
+  edge. Turning off *Place the tooltip at the text cursor* now uses
+  that place every time on Windows and macOS too; it used to be a
+  Linux-only setting. The tooltip never leaves the screen, and on
+  GNOME and KDE Wayland, which do not say where windows are, it stays
+  at the bottom of the screen as before.
+
+- **F1–F9 can accept a suggestion instead of a modifier chord**
+  ([#78](https://github.com/Just-Code-NET/PolterType/issues/78)).
+  Settings → Suggestions → Keyboard accept → *F1–F9*, or
+  `accept_keys = "function_keys"` in `[suggestions]`. Where a desktop
+  owns every free `modifier+digit` — Cinnamon binds `Meta+1`… itself —
+  F1 applies the first suggestion, F2 the second. While the tooltip is
+  up those keys go to PolterType alone, so they cannot reload a page or
+  open an application's help; the rest of the time they are the
+  application's as always. That needs a listener able to keep one key
+  back: Windows and X11 have one, macOS only with `[engine] hold_keys`
+  on, and Wayland does not — there the setting says so and the
+  modifier + digit chord stays in force. The chord remains the
+  default.
+- **Arrow keys can walk the suggestion tooltip**
+  ([#80](https://github.com/Just-Code-NET/PolterType/issues/80)).
+  Settings → Suggestions → *Arrow keys*, or `navigation = "arrows"`.
+  While the tooltip is up, the first `Down` highlights the first
+  suggestion and the first `Up` the last; further presses move the
+  highlight round the list, `Enter` applies it and `Esc` closes the
+  tooltip. Nothing is applied by an arrow alone, and `Enter` stays the
+  application's until something is highlighted. The trade-off is why it
+  is off by default: while the tooltip is up, `Up` and `Down` do not
+  move the text cursor. Same platforms as the F-keys. A navigation mode
+  switched on by a shortcut, also asked for in #80, is not part of
+  this.
+
+### Fixed
+
+- **Accepting a suggestion from the keyboard no longer eats the space
+  before the word** ([#77](https://github.com/Just-Code-NET/PolterType/issues/77)).
+  `Hello wrold` fixed with `Ctrl+Shift+1` came out `Helloworld`.
+  PolterType deleted one character more than the word, expecting the
+  digit of the chord to have been typed — but under `Ctrl` or `Meta`
+  the digit is a shortcut and types nothing, so the extra Backspace
+  took the space to the left of the word. Clicking a suggestion was
+  never affected. Not every application agrees, though — xterm types
+  `!` for `Ctrl+Shift+1` — so on Windows, X11 and macOS with
+  `[engine] hold_keys` the chord is now kept from the application while
+  the tooltip is up, the same way the F-keys are, and the count is
+  exact everywhere there. On Wayland the chord still reaches the
+  application, and one that types a character for it is left one
+  Backspace short.
+
 ## [0.36.5] — what it held on to
 
 ### Fixed

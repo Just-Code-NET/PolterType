@@ -5,8 +5,10 @@
 mod anchor;
 mod consts;
 mod show;
+mod types;
 
 pub(crate) use show::show_suggestion_popup;
+pub(crate) use types::PopupOffer;
 
 #[cfg(test)]
 mod tests;

@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use crate::enums::PopupAnchor;
+use crate::enums::{PopupAnchor, WindowSpot};
 
 use super::monitors::{self, MonitorRect, containing};
 use super::show::place;
@@ -80,12 +80,71 @@ fn a_window_anchor_is_pulled_back_inside_its_monitor() {
         y: 200,
         width: 340,
         height: 900,
+        spot: WindowSpot::BottomCenter,
+        margin: 96,
     };
     let (x, _) = place(RIGHT, W, H, &win);
     assert!(
         x as i32 >= RIGHT.x && x as i32 + W as i32 <= RIGHT.x + RIGHT.w,
         "window-anchored popup left its monitor: x={x}"
     );
+}
+
+#[test]
+fn the_default_window_spot_is_where_the_window_anchor_always_was() {
+    // Bottom-centre, 96 px up: the placement before the grid existed.
+    let win = PopupAnchor::WindowRect {
+        x: 200,
+        y: 300,
+        width: 1000,
+        height: 600,
+        spot: WindowSpot::default(),
+        margin: 96,
+    };
+    let (x, y) = place(LEFT, W, H, &win);
+    assert_eq!(x as i32, 200 + (1000 - W as i32) / 2);
+    assert_eq!(y as i32, 300 + 600 - 96 - H as i32);
+}
+
+#[test]
+fn a_corner_spot_sits_in_that_corner_of_the_window() {
+    let at = |spot| {
+        place(
+            LEFT,
+            W,
+            H,
+            &PopupAnchor::WindowRect {
+                x: 200,
+                y: 300,
+                width: 1000,
+                height: 600,
+                spot,
+                margin: 16,
+            },
+        )
+    };
+    assert_eq!(at(WindowSpot::TopLeft), (216, 316));
+    assert_eq!(
+        at(WindowSpot::BottomRight),
+        ((1200 - 16 - W as i32) as i16, (900 - 16 - H as i32) as i16)
+    );
+}
+
+#[test]
+fn a_window_spot_off_the_monitor_is_pulled_back_onto_it() {
+    // A window hanging off the left monitor's bottom-left corner: its
+    // bottom-left spot lies off screen, the tooltip must not.
+    let win = PopupAnchor::WindowRect {
+        x: -300,
+        y: 900,
+        width: 800,
+        height: 700,
+        spot: WindowSpot::BottomLeft,
+        margin: 16,
+    };
+    let (x, y) = place(LEFT, W, H, &win);
+    assert_eq!(x as i32, LEFT.x);
+    assert_eq!(y as i32, LEFT.y + LEFT.h - H as i32);
 }
 
 #[test]
@@ -165,6 +224,10 @@ fn a_popup_with_nothing_to_anchor_to_lands_wholly_on_one_monitor() {
         accept_hint: Some("Ctrl+Shift".into()),
         timeout: Duration::from_secs(30),
         anchor: PopupAnchor::ScreenBottom,
+        scale: 1.0,
+        function_keys: false,
+        arrows: false,
+        selected: None,
     });
     std::thread::sleep(Duration::from_millis(1500));
 
@@ -254,4 +317,32 @@ fn monitors_of(conn: &x11rb::rust_connection::RustConnection, root: u32) -> Vec<
             .collect(),
         Err(_) => Vec::new(),
     }
+}
+
+// ─── Desktop scale (`Xft.dpi`) ───────────────────────────────────────
+
+use super::dpi::scale_from_resources;
+
+#[test]
+fn xft_dpi_sets_the_desktop_scale() {
+    // What cinnamon-settings-daemon writes at "User interface scaling:
+    // Double", among the other Xft keys it manages.
+    let cinnamon_2x = "Xft.antialias:\t1\nXft.dpi:\t192\nXft.hinting:\t1\n";
+    assert_eq!(scale_from_resources(cinnamon_2x), 2.0);
+    assert_eq!(scale_from_resources("Xft.dpi: 144\n"), 1.5);
+    assert_eq!(scale_from_resources("Xft.dpi:\t120"), 1.25);
+}
+
+#[test]
+fn no_or_nonsense_xft_dpi_draws_as_designed() {
+    assert_eq!(scale_from_resources(""), 1.0);
+    assert_eq!(scale_from_resources("Xcursor.size:\t48\n"), 1.0);
+    assert_eq!(scale_from_resources("Xft.dpi:\tlarge\n"), 1.0);
+    assert_eq!(scale_from_resources("Xft.dpi:\t0\n"), 1.0);
+    // A desktop set below standard does not shrink the tooltip, and a
+    // typo the size of a wall does not grow it past a screen.
+    assert_eq!(scale_from_resources("Xft.dpi:\t72\n"), 1.0);
+    assert_eq!(scale_from_resources("Xft.dpi:\t9600\n"), 4.0);
+    // A different key that merely ends in the same name is not it.
+    assert_eq!(scale_from_resources("MyApp.Xft.dpi:\t192\n"), 1.0);
 }

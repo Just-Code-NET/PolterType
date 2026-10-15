@@ -24,8 +24,8 @@ use crate::render::hit_row;
 use crate::renderer::Renderer;
 use crate::types::{PopupModel, RenderedPopup};
 
-/// Popup bottom edge floats this many px above the anchor window's
-/// bottom edge (or the screen bottom). Matches the X11 backend.
+/// Popup bottom edge floats this many px above the screen bottom when
+/// nothing is known about the focused window. Matches the X11 backend.
 const BOTTOM_OFFSET: i32 = 96;
 
 /// What is on screen right now.
@@ -124,8 +124,9 @@ fn anchor_probe(anchor: &PopupAnchor) -> (i32, i32) {
             y,
             width,
             height,
-            ..
-        } => (x + width as i32 / 2, y + height as i32 / 2),
+            spot,
+            margin,
+        } => crate::place::window_spot_point((x, y, width, height), spot, margin),
         PopupAnchor::ScreenBottom => {
             let (vx, vy, vw, vh) = PopupWindow::virtual_screen();
             (vx + vw / 2, vy + vh / 2)
@@ -134,9 +135,8 @@ fn anchor_probe(anchor: &PopupAnchor) -> (i32, i32) {
 }
 
 /// Virtual-screen placement: the shared side-picker around the caret
-/// for `Point`, centred on the anchor window with the bottom edge
-/// `BOTTOM_OFFSET` above its bottom for `WindowRect`; clamped to the
-/// virtual desktop either way.
+/// for `Point`, the chosen spot inside the anchor window for
+/// `WindowRect`; clamped to the virtual desktop either way.
 fn place(w: i32, h: i32, anchor: &PopupAnchor) -> (i32, i32) {
     let (vx, vy, vw, vh) = PopupWindow::virtual_screen();
     let (px, py) = match *anchor {
@@ -159,11 +159,9 @@ fn place(w: i32, h: i32, anchor: &PopupAnchor) -> (i32, i32) {
             y,
             width,
             height,
-            ..
-        } => (
-            x + (width as i32 - w) / 2,
-            y + height as i32 - BOTTOM_OFFSET - h,
-        ),
+            spot,
+            margin,
+        } => crate::place::place_in_window((x, y, width, height), spot, margin, w, h),
         PopupAnchor::ScreenBottom => (vx + (vw - w) / 2, vy + vh - BOTTOM_OFFSET - h),
     };
     (

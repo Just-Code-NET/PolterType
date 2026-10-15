@@ -17,12 +17,13 @@ use x11rb::wrapper::ConnectionExt as _;
 use crate::enums::PopupAnchor;
 use crate::types::PopupModel;
 
+use super::dpi::desktop_scale;
 use super::monitors::{self, MonitorRect};
 use super::types::WinView;
 use super::x11_state::X11State;
 
-/// Popup bottom edge floats this many px above the anchor window's
-/// bottom edge (or the screen bottom).
+/// Popup bottom edge floats this many px above the screen bottom when
+/// nothing is known about the focused window.
 const BOTTOM_OFFSET: i32 = 96;
 
 impl X11State {
@@ -32,8 +33,10 @@ impl X11State {
     pub(super) fn show(&mut self, model: PopupModel) -> Result<(), ReplyOrIdError> {
         self.destroy_window();
 
-        // X11 has no per-monitor scale story worth chasing here.
-        let rendered = self.renderer.render(&model, None, 1.0);
+        // One scale for the whole screen: X11 has no per-monitor one,
+        // and `Xft.dpi` is what every toolkit on it already obeys.
+        let scale = desktop_scale(&self.conn, self.root);
+        let rendered = self.renderer.render(&model, None, scale);
         let w = rendered.pixmap.width().min(u16::MAX as u32) as u16;
         let h = rendered.pixmap.height().min(u16::MAX as u32) as u16;
         let whole_root = MonitorRect {
@@ -105,6 +108,7 @@ impl X11State {
             entries = model.entries.len(),
             w,
             h,
+            scale,
             argb = self.visual.argb,
             "popup window mapped"
         );
@@ -114,6 +118,7 @@ impl X11State {
             gc,
             rendered,
             model,
+            scale,
             hover: None,
             deadline,
         });
@@ -124,10 +129,10 @@ impl X11State {
 }
 
 /// Root-coordinate placement *within `mon`*: the shared side-picker
-/// around the pointer for `Point`, centred on the anchor window with
-/// the bottom edge `BOTTOM_OFFSET` above its bottom for `WindowRect`,
-/// centred on the monitor for `ScreenBottom`; clamped to the monitor
-/// either way.
+/// around the pointer for `Point`, the chosen spot inside the anchor
+/// window for `WindowRect`, centred with the bottom edge
+/// `BOTTOM_OFFSET` above the monitor's bottom for `ScreenBottom`;
+/// clamped to the monitor either way.
 pub(super) fn place(mon: MonitorRect, w: u16, h: u16, anchor: &PopupAnchor) -> (i16, i16) {
     let (px, py) = match *anchor {
         PopupAnchor::Point { x, y, height, .. } => {
@@ -148,11 +153,9 @@ pub(super) fn place(mon: MonitorRect, w: u16, h: u16, anchor: &PopupAnchor) -> (
             y,
             width,
             height,
-            ..
-        } => (
-            x + (width as i32 - w as i32) / 2,
-            y + height as i32 - BOTTOM_OFFSET - h as i32,
-        ),
+            spot,
+            margin,
+        } => crate::place::place_in_window((x, y, width, height), spot, margin, w as i32, h as i32),
         PopupAnchor::ScreenBottom => (
             mon.x + (mon.w - w as i32) / 2,
             mon.y + mon.h - BOTTOM_OFFSET - h as i32,

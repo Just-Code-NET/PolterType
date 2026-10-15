@@ -13,6 +13,10 @@ use disabled::DisabledGate as Backend;
 mod disabled;
 
 use std::sync::Arc;
+use std::time::Instant;
+
+use crate::ClaimSet;
+use crate::claims::KeyClaims;
 
 /// Holds physical keystrokes back from applications for the duration of
 /// a correction burst, then lets them through again.
@@ -27,9 +31,15 @@ use std::sync::Arc;
 /// A gate reporting `available() == false` is a no-op, and that is the
 /// common case. Callers must treat [`hold`](Self::hold) returning
 /// `false` as normal and stay correct without it.
+///
+/// The same seam carries the suggestion tooltip's *claims* — single
+/// keys kept from the application while an offer is up, see
+/// [`claim`](Self::claim). Separate from the hold because the two are
+/// enforced by different backends: X11 claims keys but never holds.
 #[derive(Clone, Default)]
 pub struct KeyGate {
     inner: Option<Arc<Backend>>,
+    claims: Arc<KeyClaims>,
 }
 
 impl KeyGate {
@@ -45,7 +55,23 @@ impl KeyGate {
     /// GateDevice>` needs a concrete device type a `dyn` backend would
     /// lose.
     pub(crate) fn with_backend(inner: Arc<Backend>) -> Self {
-        Self { inner: Some(inner) }
+        Self {
+            inner: Some(inner),
+            claims: Arc::default(),
+        }
+    }
+
+    /// A gate whose claims are honoured as if a listener were enforcing
+    /// them — the stand-in engine tests use for a backend that can keep
+    /// keys back. Nothing is kept from anything: no listener reads it.
+    pub fn claiming_without_listener() -> Self {
+        let gate = Self::default();
+        gate.claims.set_supported(true);
+        gate
+    }
+
+    pub(crate) fn claims(&self) -> &Arc<KeyClaims> {
+        &self.claims
     }
 
     pub(crate) fn backend(&self) -> Option<&Arc<Backend>> {
@@ -77,10 +103,41 @@ impl KeyGate {
     }
 }
 
+impl KeyGate {
+    /// Can keys be claimed for the suggestion tooltip here? `false` on
+    /// backends that cannot keep a single key from the focused
+    /// application — Linux/evdev, and macOS with a listen-only tap.
+    /// Known only once the listener has started.
+    pub fn can_claim(&self) -> bool {
+        self.claims.supported()
+    }
+
+    /// Keep `keys` from the focused application until `until`, or until
+    /// the next `claim` / [`release_claim`](Self::release_claim).
+    /// Kept keys still reach the engine, stamped
+    /// [`claimed`](poltertype_types::KeyEvent::claimed). Returns whether
+    /// the claim is in force — `false` means the keys go to the
+    /// application as always.
+    pub fn claim(&self, keys: ClaimSet, until: Instant) -> bool {
+        if !self.can_claim() {
+            return false;
+        }
+        self.claims.arm(keys, until);
+        true
+    }
+
+    /// Let every claimed key through again. Idempotent. A key whose
+    /// press was already kept back stays kept back until its release.
+    pub fn release_claim(&self) {
+        self.claims.disarm();
+    }
+}
+
 impl std::fmt::Debug for KeyGate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KeyGate")
             .field("available", &self.available())
+            .field("can_claim", &self.can_claim())
             .finish()
     }
 }

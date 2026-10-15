@@ -26,10 +26,9 @@ use crate::enums::{PopupAnchor, PopupUiEvent};
 use crate::renderer::Renderer;
 use crate::types::PopupModel;
 
-/// Popup bottom edge floats this many logical px above the anchor
-/// window's bottom edge (or the screen bottom) — the neighbourhood of
-/// chat inputs and shell prompts. `Point` anchors use [`crate::place`]
-/// instead.
+/// Popup bottom edge floats this many logical px above the screen
+/// bottom when the compositor picks the output. `Point` and
+/// `WindowRect` anchors use [`crate::place`] instead.
 const BOTTOM_OFFSET: i32 = 96;
 
 pub(super) struct WlState {
@@ -256,9 +255,9 @@ impl WlState {
 }
 
 /// The global point that decides which output the tooltip belongs to:
-/// the caret itself, or — for a window anchor — the spot near the
-/// window's bottom edge the tooltip is about to occupy, which is what
-/// matters for a window straddling two screens.
+/// the caret itself, or — for a window anchor — the spot inside the
+/// window the tooltip is about to occupy, which is what matters for a
+/// window straddling two screens.
 fn anchor_point(anchor: &PopupAnchor) -> Option<(i32, i32)> {
     match *anchor {
         PopupAnchor::Point { x, y, .. } => Some((x, y)),
@@ -267,9 +266,12 @@ fn anchor_point(anchor: &PopupAnchor) -> Option<(i32, i32)> {
             y,
             width,
             height,
-        } => Some((
-            x + width as i32 / 2,
-            (y + height as i32 - BOTTOM_OFFSET).max(y),
+            spot,
+            margin,
+        } => Some(crate::place::window_spot_point(
+            (x, y, width, height),
+            spot,
+            margin,
         )),
         PopupAnchor::ScreenBottom => None,
     }
@@ -299,10 +301,13 @@ fn place_on_output(
             y,
             width,
             height,
-        } => Some((
-            ((x - ox) + (width as i32 - w) / 2).clamp(0, (bw - w).max(0)),
-            ((y - oy) + height as i32 - BOTTOM_OFFSET - h).clamp(0, (bh - h).max(0)),
-        )),
+            spot,
+            margin,
+        } => {
+            let (lx, ly) =
+                crate::place::place_in_window((x - ox, y - oy, width, height), spot, margin, w, h);
+            Some((lx.clamp(0, (bw - w).max(0)), ly.clamp(0, (bh - h).max(0))))
+        }
         PopupAnchor::ScreenBottom => None,
     }
 }

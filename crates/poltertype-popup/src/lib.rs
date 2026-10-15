@@ -52,7 +52,7 @@ mod macos;
 #[cfg(windows)]
 mod windows;
 
-pub use enums::{PopupAnchor, PopupUiEvent};
+pub use enums::{PopupAnchor, PopupUiEvent, WindowSpot};
 pub use factory::create_popup;
 pub use traits::SuggestionPopup;
 pub use types::{PopupEntry, PopupModel};

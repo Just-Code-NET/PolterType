@@ -1,11 +1,20 @@
-//! Anchor-chain tests. Pure logic — no compositor, no a11y bus.
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+//! Anchor-chain and tooltip-preference tests. Pure logic — no
+//! compositor, no a11y bus.
 
 use std::time::Duration;
 
 use poltertype_input::focus::{CaretHint, FocusedWindowGeometry};
-use poltertype_popup::PopupAnchor;
+use poltertype_popup::{PopupAnchor, WindowSpot};
 
 use super::anchor::resolve_anchor;
+use super::types::PopupOffer;
+
+/// The chain with the out-of-the-box window spot.
+fn resolve(geometry: Option<FocusedWindowGeometry>, caret: Option<CaretHint>) -> PopupAnchor {
+    resolve_anchor(geometry, caret, WindowSpot::default(), 96)
+}
 
 /// PID of the window every test focuses.
 const FOCUSED_PID: u32 = 1234;
@@ -37,7 +46,7 @@ fn caret(x: i32, y: i32, age: Duration) -> CaretHint {
 
 #[test]
 fn fresh_caret_inside_the_window_wins() {
-    let anchor = resolve_anchor(
+    let anchor = resolve(
         Some(window()),
         Some(caret(187, 1216, Duration::from_millis(40))),
     );
@@ -54,7 +63,7 @@ fn fresh_caret_inside_the_window_wins() {
 
 #[test]
 fn no_caret_falls_back_to_the_window() {
-    let anchor = resolve_anchor(Some(window()), None);
+    let anchor = resolve(Some(window()), None);
     assert!(
         matches!(
             anchor,
@@ -70,7 +79,7 @@ fn no_caret_falls_back_to_the_window() {
 
 #[test]
 fn stale_caret_falls_back_to_the_window() {
-    let anchor = resolve_anchor(
+    let anchor = resolve(
         Some(window()),
         Some(caret(187, 1216, Duration::from_secs(30))),
     );
@@ -84,7 +93,7 @@ fn stale_caret_falls_back_to_the_window() {
 fn caret_outside_the_window_falls_back_to_the_window() {
     // A broken a11y bridge answering in screen coordinates: composing
     // with the window origin doubles it and lands off the window.
-    let anchor = resolve_anchor(
+    let anchor = resolve(
         Some(window()),
         Some(caret(3540, 1400, Duration::from_millis(40))),
     );
@@ -96,7 +105,7 @@ fn caret_outside_the_window_falls_back_to_the_window() {
 
 #[test]
 fn no_geometry_falls_back_to_the_screen_bottom() {
-    let anchor = resolve_anchor(None, Some(caret(187, 1216, Duration::from_millis(40))));
+    let anchor = resolve(None, Some(caret(187, 1216, Duration::from_millis(40))));
     assert_eq!(anchor, PopupAnchor::ScreenBottom);
 }
 
@@ -107,12 +116,14 @@ fn no_geometry_falls_back_to_the_screen_bottom() {
 fn an_idle_pointer_cannot_drag_the_tooltip_across_the_screen() {
     let g = window();
     assert_eq!(
-        resolve_anchor(Some(window()), None),
+        resolve(Some(window()), None),
         PopupAnchor::WindowRect {
             x: g.x,
             y: g.y,
             width: g.width,
             height: g.height,
+            spot: WindowSpot::BottomCenter,
+            margin: 96,
         }
     );
 }
@@ -126,7 +137,7 @@ fn an_idle_pointer_cannot_drag_the_tooltip_across_the_screen() {
 fn a_caret_from_another_application_is_refused() {
     let mut other_app = caret(187, 1216, Duration::from_millis(40));
     other_app.pid = Some(FOCUSED_PID + 1);
-    let anchor = resolve_anchor(Some(window()), Some(other_app));
+    let anchor = resolve(Some(window()), Some(other_app));
     assert!(
         matches!(anchor, PopupAnchor::WindowRect { .. }),
         "another app's caret must not anchor this window's tooltip, got {anchor:?}"
@@ -141,7 +152,7 @@ fn a_caret_from_another_application_is_refused() {
 fn a_caret_from_another_window_of_the_same_process_is_refused() {
     let mut other_window = caret(187, 1216, Duration::from_millis(40));
     other_window.window = Some((1200, 1340));
-    let anchor = resolve_anchor(Some(window()), Some(other_window));
+    let anchor = resolve(Some(window()), Some(other_window));
     assert!(
         matches!(anchor, PopupAnchor::WindowRect { .. }),
         "a caret measured against another window must not win, got {anchor:?}"
@@ -155,7 +166,7 @@ fn a_window_size_off_by_rounding_still_matches() {
     let mut rounded = caret(187, 1216, Duration::from_millis(40));
     rounded.window = Some((2398, 1341));
     assert!(matches!(
-        resolve_anchor(Some(window()), Some(rounded)),
+        resolve(Some(window()), Some(rounded)),
         PopupAnchor::Point { .. }
     ));
 }
@@ -171,7 +182,146 @@ fn an_unidentified_caret_and_window_still_pair_up() {
     hint.pid = None;
     hint.window = None;
     assert!(matches!(
-        resolve_anchor(Some(g), Some(hint)),
+        resolve(Some(g), Some(hint)),
         PopupAnchor::Point { .. }
     ));
+}
+
+// ─── The user's choices (#79, #81) ───────────────────────────────────
+
+use std::sync::{Arc, Mutex};
+
+use poltertype_core::engine::{SuggestionAction, SuggestionEntry};
+use poltertype_core::settings::{SuggestionSettings, TooltipSpot};
+use poltertype_input::FocusTracker;
+use poltertype_popup::{PopupModel, SuggestionPopup};
+
+use super::show::{show_suggestion_popup, window_spot};
+
+#[test]
+fn the_chosen_spot_and_margin_reach_the_window_anchor() {
+    let anchor = resolve_anchor(Some(window()), None, WindowSpot::TopRight, 12);
+    assert!(
+        matches!(
+            anchor,
+            PopupAnchor::WindowRect {
+                spot: WindowSpot::TopRight,
+                margin: 12,
+                ..
+            }
+        ),
+        "got {anchor:?}"
+    );
+}
+
+#[test]
+fn every_settings_spot_maps_to_the_same_popup_spot() {
+    let pairs = [
+        (TooltipSpot::TopLeft, WindowSpot::TopLeft),
+        (TooltipSpot::TopCenter, WindowSpot::TopCenter),
+        (TooltipSpot::TopRight, WindowSpot::TopRight),
+        (TooltipSpot::MiddleLeft, WindowSpot::MiddleLeft),
+        (TooltipSpot::Center, WindowSpot::Center),
+        (TooltipSpot::MiddleRight, WindowSpot::MiddleRight),
+        (TooltipSpot::BottomLeft, WindowSpot::BottomLeft),
+        (TooltipSpot::BottomCenter, WindowSpot::BottomCenter),
+        (TooltipSpot::BottomRight, WindowSpot::BottomRight),
+    ];
+    for (setting, popup) in pairs {
+        assert_eq!(window_spot(setting), popup);
+    }
+    assert_eq!(
+        window_spot(TooltipSpot::default()),
+        WindowSpot::default(),
+        "the two defaults must agree, or an untouched config moves the tooltip"
+    );
+}
+
+/// A tracker that always has both a window and a fresh caret in it.
+struct BothKnown;
+
+impl FocusTracker for BothKnown {
+    fn focused_exe(&self) -> Option<String> {
+        None
+    }
+    fn focused_window_geometry(&self) -> Option<FocusedWindowGeometry> {
+        Some(window())
+    }
+    fn caret_hint(&self) -> Option<CaretHint> {
+        Some(caret(187, 1216, Duration::from_millis(40)))
+    }
+    fn backend_name(&self) -> &'static str {
+        "test"
+    }
+}
+
+#[derive(Default)]
+struct Captured(Mutex<Option<PopupModel>>);
+
+impl SuggestionPopup for Captured {
+    fn show(&self, model: PopupModel) {
+        if let Ok(mut slot) = self.0.lock() {
+            *slot = Some(model);
+        }
+    }
+    fn hide(&self) {}
+    fn backend_name(&self) -> &'static str {
+        "test"
+    }
+}
+
+fn shown_with(prefs: &SuggestionSettings) -> PopupModel {
+    let popup = Captured::default();
+    let tracker: Arc<dyn FocusTracker> = Arc::new(BothKnown);
+    show_suggestion_popup(
+        &popup,
+        &tracker,
+        prefs,
+        PopupOffer {
+            generation: 1,
+            original: "manana".into(),
+            entries: vec![SuggestionEntry {
+                text: "mañana".into(),
+                switch_to: None,
+                action: SuggestionAction::Replace,
+            }],
+            timeout: Duration::from_secs(5),
+            accept_modifiers: String::new(),
+            function_keys: false,
+            arrows: false,
+        },
+    );
+    popup.0.lock().unwrap().take().expect("nothing shown")
+}
+
+#[test]
+fn the_default_settings_keep_the_caret_and_the_designed_size() {
+    let model = shown_with(&SuggestionSettings::default());
+    assert!(matches!(model.anchor, PopupAnchor::Point { .. }));
+    assert_eq!(model.scale, 1.0);
+}
+
+#[test]
+fn window_placement_ignores_even_a_good_caret() {
+    let prefs = SuggestionSettings {
+        caret_anchor: false,
+        window_anchor: "top_left".into(),
+        window_margin: 8,
+        scale_percent: 150,
+        ..SuggestionSettings::default()
+    };
+    let model = shown_with(&prefs);
+    assert!(
+        matches!(
+            model.anchor,
+            PopupAnchor::WindowRect {
+                spot: WindowSpot::TopLeft,
+                margin: 8,
+                ..
+            }
+        ),
+        "got {:?}",
+        model.anchor
+    );
+    assert_eq!(model.scale, 1.5);
 }

@@ -1481,6 +1481,63 @@ move too fast to be true.
   the text, and a rejected caret costs that window the caret rung, not
   the tooltip.
 
+- **The tooltip's size and its place in the window are unverified on
+  real HiDPI and multi-platform hardware (#79, #81, unreleased).**
+  What is true by construction, and covered by unit tests only:
+  - *Size.* `[suggestions].scale_percent` multiplies whatever scale the
+    backend already uses — output scale on Wayland, monitor DPI on
+    Windows, backing scale on macOS, and on X11 `Xft.dpi / 96` from the
+    root window's `RESOURCE_MANAGER`. That last one is new: X11 used to
+    draw at 1.0 whatever the screen. It is one scale for every monitor,
+    because X11 has no other; a desktop that writes no `Xft.dpi`, or
+    one below 96, gets the designed size and the setting is the way to
+    change it. Read in the source of gnome-settings-daemon,
+    cinnamon-settings-daemon, mate-settings-daemon and xfsettingsd that
+    each writes it; **Plasma on X11 is unconfirmed**, and no desktop has
+    been looked at live — the reporter's Cinnamon at 5120×2160
+    included. Wayland's scale is the output's integer one, so on a
+    fractional 1.5 the compositor downsamples a 2× buffer, as before.
+  - *Place in the window.* The 3×3 picker needs the focused window's
+    rectangle, which Windows, macOS, Hyprland and X11 report and
+    **GNOME and KDE on Wayland do not**: there the tooltip stays at the
+    bottom centre of the screen whatever is picked. The margin is in
+    the backend's own pixels — physical on Windows, root pixels on X11,
+    logical on Wayland and macOS — so on a scaled X11 or Windows screen
+    96 is visually less than it reads.
+  - `caret_anchor = false` now means "always the window" on Windows and
+    macOS as well; it used to be ignored there. A config that had it
+    off on those platforms changes behaviour on upgrade.
+- **F-key accept and arrow navigation in the tooltip (#78, #80, not
+  yet released) need a listener that can keep one key from the
+  application.** The Windows low-level hook and X11 (a passive key grab
+  while the tooltip is up) can; macOS can only with `[engine]
+  hold_keys` on, since otherwise its event tap is listen-only; Linux on
+  Wayland cannot at all — the evdev listener's only way to keep a key
+  from the compositor is `EVIOCGRAB` of the whole device. Where it
+  cannot, the Suggestions pane says so, F1–F9 fall back to the modifier
+  + digit chord and the arrows stay the application's. **X11 verified
+  live** on the matrix guest's Cinnamon X11 session, debug build,
+  2026-10-15, typing into xterm: Down + Enter, F1 and Up/Down/Enter each
+  replace the word with nothing leaking; Enter with nothing highlighted,
+  Esc, and the arrows with no tooltip up reach the application; and
+  after the app exits F1, the arrows and `Ctrl+Shift+1` reach xterm
+  again — no grab is left behind. **The Windows hook and the macOS tap
+  have not been run live**, and their code is compiled by CI alone. Two
+  smaller edges: on X11 a key another client already grabs (a desktop
+  binding bare F1 to help) stays that client's and is simply not
+  claimed; and every highlight move re-creates the tooltip window,
+  which can flicker. See `docs/DECISIONS.md`, 2026-10-15.
+
+- **On Wayland the digit accept chord still reaches the application.**
+  Where keys can be claimed (Windows, X11, macOS with `hold_keys`) the
+  chord is kept from the application while the tooltip is up, so the
+  replacement erases exactly the word. On Wayland it cannot be, and the
+  replacement assumes the chord typed nothing — true of GTK and Qt text
+  fields, false of xterm, which types `!` for `Ctrl+Shift+1` and is
+  then left one Backspace short (a stray character before the word).
+  Verified both ways on Cinnamon X11, 2026-10-15, before and after the
+  claim (#77).
+
 - **Selection conversion is unavailable on GNOME and Cinnamon's
   Wayland sessions, and on macOS.** Reading the clipboard from a
   process that holds no window and never takes focus needs a

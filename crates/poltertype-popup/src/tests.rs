@@ -28,6 +28,10 @@ fn model(entries: Vec<PopupEntry>, accept_hint: Option<&str>) -> PopupModel {
         accept_hint: accept_hint.map(str::to_string),
         timeout: Duration::from_secs(4),
         anchor: PopupAnchor::ScreenBottom,
+        scale: 1.0,
+        function_keys: false,
+        arrows: false,
+        selected: None,
     }
 }
 
@@ -123,6 +127,100 @@ fn scale_doubles_device_size() {
     let s2 = renderer.render(&m, None, 2.0);
     assert_eq!(s2.pixmap.width(), s1.pixmap.width() * 2);
     assert_eq!(s2.pixmap.height(), s1.pixmap.height() * 2);
+}
+
+#[test]
+fn the_size_multiplier_grows_the_whole_panel_proportionally() {
+    let mut renderer = Renderer::new();
+    let m = model(vec![entry("ok", None), entry("no", None)], None);
+    let base = renderer.render(&m, None, 1.0);
+    for (zoom, factor) in [(1.25_f32, 1.25_f32), (1.5, 1.5), (2.0, 2.0)] {
+        let zoomed = renderer.render(
+            &PopupModel {
+                scale: zoom,
+                ..m.clone()
+            },
+            None,
+            1.0,
+        );
+        let (bw, bh) = (base.pixmap.width() as f32, base.pixmap.height() as f32);
+        // Within a pixel of exact: the panel is rounded up per side.
+        assert!((zoomed.pixmap.width() as f32 - bw * factor).abs() <= 1.0);
+        assert!((zoomed.pixmap.height() as f32 - bh * factor).abs() <= 1.0);
+        // Rows — the click targets — grow with it.
+        assert_eq!(zoomed.rows[0].h, base.rows[0].h * factor);
+    }
+}
+
+#[test]
+fn the_multiplier_on_an_integer_scale_keeps_the_size_divisible() {
+    // Wayland hands the compositor a buffer at an integer scale and
+    // the surface's size is that buffer divided by it — it must divide.
+    let mut renderer = Renderer::new();
+    let m = PopupModel {
+        scale: 1.75,
+        ..model(
+            vec![entry("mañana", Some("ES")), entry("manana", None)],
+            None,
+        )
+    };
+    for scale in [1_u32, 2, 3] {
+        let r = renderer.render(&m, None, scale as f32);
+        assert_eq!(r.pixmap.width() % scale, 0, "width at x{scale}");
+        assert_eq!(r.pixmap.height() % scale, 0, "height at x{scale}");
+    }
+}
+
+#[test]
+fn text_at_double_size_is_not_cut_short() {
+    let mut renderer = Renderer::new();
+    if !renderer.has_fonts() {
+        return;
+    }
+    // Twice the size must mean twice the width for the same words —
+    // a panel that grew less than its text would ellipsize them.
+    let m = model(
+        vec![entry("España", Some("ES")), entry("mañana", None)],
+        None,
+    );
+    let one = renderer.render(&m, None, 1.0);
+    let two = renderer.render(
+        &PopupModel {
+            scale: 2.0,
+            ..m.clone()
+        },
+        None,
+        1.0,
+    );
+    assert!(two.pixmap.width() >= one.pixmap.width() * 2 - 1);
+}
+
+#[test]
+fn a_nonsense_multiplier_draws_as_designed() {
+    let mut renderer = Renderer::new();
+    let m = model(vec![entry("ok", None)], None);
+    let base = renderer.render(&m, None, 1.0);
+    for bad in [0.0_f32, -1.0, f32::NAN, f32::INFINITY] {
+        let r = renderer.render(
+            &PopupModel {
+                scale: bad,
+                ..m.clone()
+            },
+            None,
+            1.0,
+        );
+        assert_eq!(r.pixmap.width(), base.pixmap.width(), "scale {bad}");
+    }
+    // Absurdly large is held to four times, not obeyed.
+    let huge = renderer.render(
+        &PopupModel {
+            scale: 50.0,
+            ..m.clone()
+        },
+        None,
+        1.0,
+    );
+    assert!(huge.pixmap.height() <= base.pixmap.height() * 4 + 1);
 }
 
 #[test]
@@ -248,4 +346,80 @@ fn place_respects_the_caret_line_height() {
         y + H <= 700,
         "above placement must clear the caret top, got y={y}"
     );
+}
+
+// ─── Window spots ────────────────────────────────────────────────────
+
+use crate::enums::WindowSpot;
+use crate::place::{place_in_window, window_spot_point};
+
+const WINDOW: (i32, i32, u32, u32) = (100, 50, 1000, 800);
+
+#[test]
+fn every_spot_lands_in_its_cell_of_the_window() {
+    let (w, h) = (200, 100);
+    let m = 10;
+    let at = |spot| place_in_window(WINDOW, spot, m, w, h);
+    let (left, mid_x, right) = (110, 100 + (1000 - w) / 2, 1100 - 10 - w);
+    let (top, mid_y, bottom) = (60, 50 + (800 - h) / 2, 850 - 10 - h);
+    assert_eq!(at(WindowSpot::TopLeft), (left, top));
+    assert_eq!(at(WindowSpot::TopCenter), (mid_x, top));
+    assert_eq!(at(WindowSpot::TopRight), (right, top));
+    assert_eq!(at(WindowSpot::MiddleLeft), (left, mid_y));
+    assert_eq!(at(WindowSpot::Center), (mid_x, mid_y));
+    assert_eq!(at(WindowSpot::MiddleRight), (right, mid_y));
+    assert_eq!(at(WindowSpot::BottomLeft), (left, bottom));
+    assert_eq!(at(WindowSpot::BottomCenter), (mid_x, bottom));
+    assert_eq!(at(WindowSpot::BottomRight), (right, bottom));
+}
+
+#[test]
+fn the_default_spot_is_the_old_window_anchor() {
+    // Centred, the bottom edge 96 px above the window's — what every
+    // backend computed before the grid.
+    assert_eq!(WindowSpot::default(), WindowSpot::BottomCenter);
+    let (x, y) = place_in_window(WINDOW, WindowSpot::default(), 96, 220, 140);
+    assert_eq!((x, y), (100 + (1000 - 220) / 2, 50 + 800 - 96 - 140));
+}
+
+#[test]
+fn the_spot_point_stays_inside_the_window() {
+    assert_eq!(
+        window_spot_point(WINDOW, WindowSpot::BottomCenter, 96),
+        (600, 754)
+    );
+    // A margin wider than the window must not pick the next screen.
+    let (x, y) = window_spot_point((0, 0, 50, 40), WindowSpot::BottomRight, 400);
+    assert!((0..50).contains(&x) && (0..40).contains(&y), "({x}, {y})");
+}
+
+#[test]
+fn footer_names_the_keys_that_accept() {
+    use crate::render::footer_text;
+    let two = || vec![entry("a", None), entry("b", None)];
+    assert_eq!(
+        footer_text(&model(two(), Some("Ctrl+Shift"))),
+        "Ctrl+Shift+1\u{2026}2 · click to replace"
+    );
+    let mut m = model(two(), None);
+    m.function_keys = true;
+    m.arrows = true;
+    assert_eq!(
+        footer_text(&m),
+        "F1\u{2026}F2 · Up/Down, Enter · click to replace"
+    );
+    assert_eq!(footer_text(&model(two(), None)), "click to replace");
+}
+
+/// The keyboard highlight must be visible without the pointer near.
+#[test]
+fn a_selected_row_is_drawn_highlighted() {
+    let mut renderer = Renderer::new();
+    let mut m = model(vec![entry("перше", None), entry("друге", None)], None);
+    let plain = renderer.render(&m, None, 1.0);
+    m.selected = Some(1);
+    let selected = renderer.render(&m, None, 1.0);
+    let hovered = renderer.render(&model(m.entries.clone(), None), Some(1), 1.0);
+    assert_ne!(plain.pixmap.data(), selected.pixmap.data());
+    assert_eq!(selected.pixmap.data(), hovered.pixmap.data());
 }

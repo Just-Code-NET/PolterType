@@ -37,7 +37,15 @@ pub enum SwitcherEvent {
         /// Digit-chord hint for the tooltip footer, e.g.
         /// `"Ctrl+Shift"` — empty when keyboard accept is disabled.
         accept_modifiers: String,
+        /// `F1`..`F9` accept instead of the digit chord.
+        function_keys: bool,
+        /// `Down` / `Up` move a highlight and `Enter` accepts it.
+        arrows: bool,
     },
+    /// The keyboard moved the tooltip's highlight to row `index` of
+    /// offer `generation`. The offer's lifetime restarts with it, so
+    /// the tooltip's timer should too.
+    SuggestionHighlighted { generation: u64, index: usize },
     /// The offer identified by `generation` is no longer actionable
     /// (next word committed, caret moved, pause, …) — hide the
     /// tooltip if it is still showing it.
@@ -104,13 +112,6 @@ pub enum EngineCommand {
     AcceptSuggestion {
         generation: u64,
         index: usize,
-        /// The accept came from a digit chord matched off the key
-        /// stream, so the digit itself was typed into the document on
-        /// the way past and now sits left of the caret — it has to be
-        /// erased along with the word. Chords are matched, not
-        /// grabbed: registering nine global hotkeys would steal those
-        /// combinations from every application.
-        typed_digit: bool,
         from_pointer: bool,
     },
     /// The tooltip for offer `generation` went away on the popup side

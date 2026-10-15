@@ -841,7 +841,9 @@ impl SwitcherEngine {
                 self.track_trigger_key(&ev);
                 self.observe_swallowed_release(&ev);
             }
-            if ev.injected || ev.direction != KeyDirection::Press {
+            // A claimed key never reached the application, so it is
+            // not text racing the correction.
+            if ev.injected || ev.claimed || ev.direction != KeyDirection::Press {
                 continue;
             }
             if self.is_own_hotkey_press(&ev) {

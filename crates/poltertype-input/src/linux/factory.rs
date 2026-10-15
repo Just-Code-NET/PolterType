@@ -11,7 +11,9 @@ use super::{portal, wayland, x11};
 
 pub(crate) fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputError> {
     match session_kind() {
-        SessionKind::X11 => Ok(Box::new(x11::X11Listener::new())),
+        SessionKind::X11 => Ok(Box::new(x11::X11Listener::with_claims(Arc::clone(
+            gate.claims(),
+        )))),
         SessionKind::Wayland | SessionKind::Unknown => Ok(Box::new(match gate.backend() {
             Some(g) => wayland::EvdevListener::with_gate(Arc::clone(g)),
             None => wayland::EvdevListener::new(),
@@ -38,6 +40,13 @@ pub(crate) fn create_key_gate(_hold_keys: bool) -> KeyGate {
             KeyGate::with_backend(Arc::new(wayland::EvdevGate::new()))
         }
     }
+}
+
+/// X11 claims a key with a passive key grab. evdev could only take the
+/// whole device, which is the key gate's job and far too blunt for a
+/// tooltip that stays up for seconds.
+pub(crate) fn suggestion_keys_claimable(_hold_keys: bool) -> bool {
+    session_kind() == SessionKind::X11
 }
 
 /// Pick the emitter for this session.

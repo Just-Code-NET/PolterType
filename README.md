@@ -333,6 +333,15 @@ takes ones it must never touch.
 > trusted, too (on macOS, Chrome and Terminal report one nowhere near
 > the text), and failing that check costs the window its caret, not
 > its tooltip.
+>
+> **Where in the window, and how large**, are yours to choose under
+> Settings → Suggestions → *Size and position*: any of nine places in
+> the focused window, used whenever there is no caret — or always,
+> with *Place the tooltip at the text cursor* off — and a size from
+> 50% to 300%. On X11 the tooltip already follows the desktop's own
+> scaling (`Xft.dpi`); the size multiplies that. Window places need the
+> window's outline, which GNOME and KDE on Wayland do not give out:
+> there the tooltip stays at the bottom of the screen.
 
 ## Smart commands (text triggers)
 

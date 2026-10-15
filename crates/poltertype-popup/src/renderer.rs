@@ -11,9 +11,9 @@ use tiny_skia::Pixmap;
 use crate::consts::{
     ACTION_FG, BADGE_BG, BADGE_BG_HOVER, BADGE_FG, BADGE_FONT, BADGE_GAP, BADGE_RADIUS, BADGE_SIZE,
     DIVIDER, ELLIPSIS, FOOTER_FG, FOOTER_FONT, FOOTER_H, HEADER_FG, HEADER_FONT, HEADER_H,
-    HOVER_BG, HOVER_RADIUS, LINE_HEIGHT_FACTOR, MAX_W, MIN_W, PAD, PANEL_BG, PANEL_BORDER,
-    PANEL_RADIUS, ROW_FG, ROW_FONT, ROW_GAP, ROW_H, Rgba, TAG_BG, TAG_FG, TAG_FONT, TAG_GAP,
-    TAG_PAD_X, TAG_PAD_Y, TAG_RADIUS,
+    HOVER_BG, HOVER_RADIUS, LINE_HEIGHT_FACTOR, MAX_W, MAX_ZOOM, MIN_W, MIN_ZOOM, PAD, PANEL_BG,
+    PANEL_BORDER, PANEL_RADIUS, ROW_FG, ROW_FONT, ROW_GAP, ROW_H, Rgba, TAG_BG, TAG_FG, TAG_FONT,
+    TAG_GAP, TAG_PAD_X, TAG_PAD_Y, TAG_RADIUS,
 };
 use crate::render::{blit_mask, centered_top, fill, fill_rect, footer_text, rounded_rect, stroke};
 use crate::types::{PopupModel, RenderedPopup, RowRect};
@@ -51,8 +51,13 @@ impl Renderer {
         self.fonts.db().faces().next().is_some()
     }
 
-    /// Render `model` at `scale` (integer-ish device scale; logical
-    /// sizes multiply by it). `hover` highlights that row.
+    /// Render `model` at `scale` (the display's device scale; logical
+    /// sizes multiply by it) and the model's own size multiplier.
+    /// `hover` highlights that row.
+    ///
+    /// The multiplier is applied in logical px and the panel rounded
+    /// up there, so the device size stays an exact multiple of an
+    /// integer `scale` — what a Wayland buffer scale requires.
     pub fn render(
         &mut self,
         model: &PopupModel,
@@ -62,24 +67,30 @@ impl Renderer {
         // A zero/negative scale would produce a zero-size pixmap (and a
         // zero font size, which cosmic-text refuses); never trust it.
         let s = if scale > 0.0 { scale } else { 1.0 };
+        let z = zoom(model.scale);
+        // Device px per design unit — every metric below is drawn at it.
+        let f = s * z;
         let n = model.entries.len();
 
-        // Content-driven width, decided in logical px so the final
-        // device size divides evenly by the scale.
+        // Content-driven width, decided in zoomed logical px so the
+        // final device size divides evenly by the scale.
         let footer = footer_text(model);
-        let mut content_w = self.measure(&model.original, HEADER_FONT, Weight::NORMAL);
-        content_w = content_w.max(self.measure(&footer, FOOTER_FONT, Weight::NORMAL));
+        let mut content_w = self.measure(&model.original, HEADER_FONT * z, Weight::NORMAL);
+        content_w = content_w.max(self.measure(&footer, FOOTER_FONT * z, Weight::NORMAL));
         for entry in &model.entries {
-            let mut w =
-                BADGE_SIZE + BADGE_GAP + self.measure(&entry.text, ROW_FONT, Weight::NORMAL);
+            let mut w = (BADGE_SIZE + BADGE_GAP) * z
+                + self.measure(&entry.text, ROW_FONT * z, Weight::NORMAL);
             if let Some(tag) = &entry.badge {
-                w += TAG_GAP + self.measure(tag, TAG_FONT, Weight::NORMAL) + 2.0 * TAG_PAD_X;
+                w += (TAG_GAP + 2.0 * TAG_PAD_X) * z
+                    + self.measure(tag, TAG_FONT * z, Weight::NORMAL);
             }
             content_w = content_w.max(w);
         }
-        let panel_w = (content_w + 2.0 * PAD).clamp(MIN_W, MAX_W).ceil();
+        let panel_w = (content_w + 2.0 * PAD * z)
+            .clamp(MIN_W * z, MAX_W * z)
+            .ceil();
         let rows_h = n as f32 * ROW_H + n.saturating_sub(1) as f32 * ROW_GAP;
-        let panel_h = (2.0 * PAD + HEADER_H + rows_h + FOOTER_H).ceil();
+        let panel_h = ((2.0 * PAD + HEADER_H + rows_h + FOOTER_H) * z).ceil();
 
         let w_px = (panel_w * s).round().max(1.0) as u32;
         let h_px = (panel_h * s).round().max(1.0) as u32;
@@ -94,45 +105,45 @@ impl Renderer {
 
         let pw = panel_w * s;
         let ph = panel_h * s;
-        if let Some(path) = rounded_rect(0.5 * s, 0.5 * s, pw - s, ph - s, PANEL_RADIUS * s) {
+        if let Some(path) = rounded_rect(0.5 * f, 0.5 * f, pw - f, ph - f, PANEL_RADIUS * f) {
             fill(&mut pixmap, &path, PANEL_BG);
-            stroke(&mut pixmap, &path, PANEL_BORDER, s);
+            stroke(&mut pixmap, &path, PANEL_BORDER, f);
         }
 
-        let header_avail = (panel_w - 2.0 * PAD) * s;
+        let header_avail = pw - 2.0 * PAD * f;
         let header_txt = self.ellipsize(
             &model.original,
-            HEADER_FONT * s,
+            HEADER_FONT * f,
             Weight::NORMAL,
             header_avail,
         );
-        let header_w = self.measure(&header_txt, HEADER_FONT * s, Weight::NORMAL);
+        let header_w = self.measure(&header_txt, HEADER_FONT * f, Weight::NORMAL);
         self.draw_text(
             &mut pixmap,
             &header_txt,
             (
-                PAD * s,
-                centered_top(PAD * s, HEADER_H * s, HEADER_FONT * s),
+                PAD * f,
+                centered_top(PAD * f, HEADER_H * f, HEADER_FONT * f),
             ),
-            HEADER_FONT * s,
+            HEADER_FONT * f,
             HEADER_FG,
             Weight::NORMAL,
         );
         fill_rect(
             &mut pixmap,
-            PAD * s,
-            (PAD + HEADER_H / 2.0) * s,
+            PAD * f,
+            (PAD + HEADER_H / 2.0) * f,
             header_w,
-            1.0 * s,
+            1.0 * f,
             HEADER_FG,
         );
 
         let mut rows = Vec::with_capacity(n);
-        let row_x = PAD * s;
-        let row_w = (panel_w - 2.0 * PAD) * s;
+        let row_x = PAD * f;
+        let row_w = pw - 2.0 * PAD * f;
         for (i, entry) in model.entries.iter().enumerate() {
-            let row_y = (PAD + HEADER_H + i as f32 * (ROW_H + ROW_GAP)) * s;
-            let hovered = hover == Some(i);
+            let row_y = (PAD + HEADER_H + i as f32 * (ROW_H + ROW_GAP)) * f;
+            let hovered = hover == Some(i) || model.selected == Some(i);
 
             // Hairline separating the "replace with…" rows from the
             // "do something else" ones.
@@ -143,7 +154,7 @@ impl Renderer {
                     .is_some_and(|p| !p.is_action)
             {
                 if let Some(rect) =
-                    tiny_skia::Rect::from_xywh(row_x, row_y - (ROW_GAP / 2.0) * s, row_w, 1.0 * s)
+                    tiny_skia::Rect::from_xywh(row_x, row_y - (ROW_GAP / 2.0) * f, row_w, 1.0 * f)
                 {
                     let path = tiny_skia::PathBuilder::from_rect(rect);
                     fill(&mut pixmap, &path, DIVIDER);
@@ -151,18 +162,18 @@ impl Renderer {
             }
 
             if hovered {
-                if let Some(path) = rounded_rect(row_x, row_y, row_w, ROW_H * s, HOVER_RADIUS * s) {
+                if let Some(path) = rounded_rect(row_x, row_y, row_w, ROW_H * f, HOVER_RADIUS * f) {
                     fill(&mut pixmap, &path, HOVER_BG);
                 }
             }
 
-            let badge_y = row_y + (ROW_H - BADGE_SIZE) / 2.0 * s;
+            let badge_y = row_y + (ROW_H - BADGE_SIZE) / 2.0 * f;
             if let Some(path) = rounded_rect(
                 row_x,
                 badge_y,
-                BADGE_SIZE * s,
-                BADGE_SIZE * s,
-                BADGE_RADIUS * s,
+                BADGE_SIZE * f,
+                BADGE_SIZE * f,
+                BADGE_RADIUS * f,
             ) {
                 fill(
                     &mut pixmap,
@@ -171,52 +182,52 @@ impl Renderer {
                 );
             }
             let digit = (i + 1).to_string();
-            let digit_w = self.measure(&digit, BADGE_FONT * s, Weight::BOLD);
+            let digit_w = self.measure(&digit, BADGE_FONT * f, Weight::BOLD);
             self.draw_text(
                 &mut pixmap,
                 &digit,
                 (
-                    row_x + (BADGE_SIZE * s - digit_w) / 2.0,
-                    centered_top(badge_y, BADGE_SIZE * s, BADGE_FONT * s),
+                    row_x + (BADGE_SIZE * f - digit_w) / 2.0,
+                    centered_top(badge_y, BADGE_SIZE * f, BADGE_FONT * f),
                 ),
-                BADGE_FONT * s,
+                BADGE_FONT * f,
                 BADGE_FG,
                 Weight::BOLD,
             );
 
-            let mut text_avail = row_w - (BADGE_SIZE + BADGE_GAP) * s;
+            let mut text_avail = row_w - (BADGE_SIZE + BADGE_GAP) * f;
             if let Some(tag) = &entry.badge {
-                let tag_w = self.measure(tag, TAG_FONT * s, Weight::NORMAL);
-                let pill_w = tag_w + 2.0 * TAG_PAD_X * s;
-                let pill_h = TAG_FONT * s * LINE_HEIGHT_FACTOR + 2.0 * TAG_PAD_Y * s;
+                let tag_w = self.measure(tag, TAG_FONT * f, Weight::NORMAL);
+                let pill_w = tag_w + 2.0 * TAG_PAD_X * f;
+                let pill_h = TAG_FONT * f * LINE_HEIGHT_FACTOR + 2.0 * TAG_PAD_Y * f;
                 let pill_x = row_x + row_w - pill_w;
-                let pill_y = row_y + (ROW_H * s - pill_h) / 2.0;
-                if let Some(path) = rounded_rect(pill_x, pill_y, pill_w, pill_h, TAG_RADIUS * s) {
+                let pill_y = row_y + (ROW_H * f - pill_h) / 2.0;
+                if let Some(path) = rounded_rect(pill_x, pill_y, pill_w, pill_h, TAG_RADIUS * f) {
                     fill(&mut pixmap, &path, TAG_BG);
                 }
                 self.draw_text(
                     &mut pixmap,
                     tag,
                     (
-                        pill_x + TAG_PAD_X * s,
-                        centered_top(pill_y, pill_h, TAG_FONT * s),
+                        pill_x + TAG_PAD_X * f,
+                        centered_top(pill_y, pill_h, TAG_FONT * f),
                     ),
-                    TAG_FONT * s,
+                    TAG_FONT * f,
                     TAG_FG,
                     Weight::NORMAL,
                 );
-                text_avail -= pill_w + TAG_GAP * s;
+                text_avail -= pill_w + TAG_GAP * f;
             }
 
-            let text = self.ellipsize(&entry.text, ROW_FONT * s, Weight::NORMAL, text_avail);
+            let text = self.ellipsize(&entry.text, ROW_FONT * f, Weight::NORMAL, text_avail);
             self.draw_text(
                 &mut pixmap,
                 &text,
                 (
-                    row_x + (BADGE_SIZE + BADGE_GAP) * s,
-                    centered_top(row_y, ROW_H * s, ROW_FONT * s),
+                    row_x + (BADGE_SIZE + BADGE_GAP) * f,
+                    centered_top(row_y, ROW_H * f, ROW_FONT * f),
                 ),
-                ROW_FONT * s,
+                ROW_FONT * f,
                 if entry.is_action { ACTION_FG } else { ROW_FG },
                 Weight::NORMAL,
             );
@@ -226,19 +237,19 @@ impl Renderer {
                 x: row_x,
                 y: row_y,
                 w: row_w,
-                h: ROW_H * s,
+                h: ROW_H * f,
             });
         }
 
-        let footer_y = (PAD + HEADER_H + rows_h) * s;
+        let footer_y = (PAD + HEADER_H + rows_h) * f;
         self.draw_text(
             &mut pixmap,
             &footer,
             (
-                PAD * s,
-                centered_top(footer_y, FOOTER_H * s, FOOTER_FONT * s),
+                PAD * f,
+                centered_top(footer_y, FOOTER_H * f, FOOTER_FONT * f),
             ),
-            FOOTER_FONT * s,
+            FOOTER_FONT * f,
             FOOTER_FG,
             Weight::NORMAL,
         );
@@ -325,5 +336,16 @@ impl Renderer {
                 }
             }
         }
+    }
+}
+
+/// The model's size multiplier, held to what still fits a screen. A
+/// hand-edited `0` or `NaN` draws the tooltip as designed rather than
+/// not at all.
+fn zoom(requested: f32) -> f32 {
+    if requested.is_finite() && requested > 0.0 {
+        requested.clamp(MIN_ZOOM, MAX_ZOOM)
+    } else {
+        1.0
     }
 }

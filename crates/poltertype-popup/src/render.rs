@@ -16,10 +16,18 @@ pub(crate) fn hit_row(rows: &[RowRect], x: f32, y: f32) -> Option<usize> {
 }
 
 pub(crate) fn footer_text(model: &PopupModel) -> String {
-    match &model.accept_hint {
-        Some(hint) => format!("{hint}+1\u{2026}{} · click to replace", model.entries.len()),
-        None => "click to replace".to_string(),
+    let n = model.entries.len();
+    let mut parts = Vec::with_capacity(3);
+    if model.function_keys {
+        parts.push(format!("F1\u{2026}F{n}"));
+    } else if let Some(hint) = &model.accept_hint {
+        parts.push(format!("{hint}+1\u{2026}{n}"));
     }
+    if model.arrows {
+        parts.push("Up/Down, Enter".to_string());
+    }
+    parts.push("click to replace".to_string());
+    parts.join(" · ")
 }
 
 /// Top edge that vertically centers a `font_size`-tall line (with its

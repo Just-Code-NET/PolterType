@@ -13,10 +13,16 @@ pub(crate) fn create_key_gate(_hold_keys: bool) -> KeyGate {
 pub(crate) fn create_listener(gate: &KeyGate) -> Result<Box<dyn InputListener>, InputError> {
     // The hook callback needs the gate to decide what to swallow;
     // without it the listener observes and never blocks.
-    Ok(Box::new(match gate.backend() {
+    let listener = match gate.backend() {
         Some(g) => WindowsListener::with_gate(Arc::clone(g)),
         None => WindowsListener::new(),
-    }))
+    };
+    Ok(Box::new(listener.with_claims(Arc::clone(gate.claims()))))
+}
+
+/// The low-level hook can swallow any keystroke, gate or no gate.
+pub(crate) fn suggestion_keys_claimable(_hold_keys: bool) -> bool {
+    true
 }
 
 pub(crate) fn create_emitter(_speed: ReplaySpeed) -> Result<Box<dyn KeyEmitter>, InputError> {

@@ -12,7 +12,7 @@ use iced::widget::{
 use iced::{Alignment, Element, Font, Length, Padding};
 
 use poltertype_core::i18n::{tr, tr_args};
-use poltertype_core::settings::TrayIconStyle;
+use poltertype_core::settings::{AcceptKeys, SuggestionNavigation, TrayIconStyle};
 use poltertype_input::ReplaySpeed;
 
 use crate::consts::{
@@ -1455,15 +1455,59 @@ impl SettingsApp {
             .push(
                 Text::new(tr(
                     "suggestions.caret_anchor_hint",
-                    "Linux only, and it reaches outside PolterType: the cursor's position \
-                     comes from the accessibility bus, and an application that joins that bus \
-                     is what makes Qt ones — Telegram among them — announce that a screen \
-                     reader is running. Off, the tooltip sits at the window instead. Takes \
-                     effect on restart.",
+                    "Off, the tooltip always sits at the place in the window chosen below. \
+                     On Linux this reaches outside PolterType: the cursor's position comes \
+                     from the accessibility bus, and an application that joins that bus is \
+                     what makes Qt ones — Telegram among them — announce that a screen reader \
+                     is running. There, turning it back on takes effect on restart.",
                 ))
                 .size(11)
                 .color(b.muted),
             );
+
+        // F-keys and arrows only work where the listener can keep them
+        // from the application — answered here without one, since this
+        // window is its own process.
+        let claimable = poltertype_input::suggestion_keys_claimable(self.settings.engine.hold_keys);
+        let accept_keys = AcceptKeys::from_config(&s.accept_keys);
+        let navigation = SuggestionNavigation::from_config(&s.navigation);
+        let chip = |label: &'static str, selected: bool, msg: Message| {
+            let btn = Button::new(Text::new(label).size(12))
+                .style(theme::chip(selected))
+                .padding(Padding {
+                    top: 5.0,
+                    right: 12.0,
+                    bottom: 5.0,
+                    left: 12.0,
+                });
+            if s.enabled { btn.on_press(msg) } else { btn }
+        };
+        let unavailable = |text: &'static str| Text::new(text).size(11).color(b.warn);
+
+        let mut accept_row = Row::new()
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(Text::new(tr("suggestions.accept_with", "Accept by number:")).size(13));
+        for (choice, label) in [
+            (
+                AcceptKeys::ModifierDigits,
+                tr("suggestions.accept_modifier_digits", "Modifiers + 1–9"),
+            ),
+            (
+                AcceptKeys::FunctionKeys,
+                tr("suggestions.accept_function_keys", "F1–F9"),
+            ),
+        ] {
+            accept_row = accept_row.push(chip(
+                label,
+                accept_keys == choice,
+                Message::SuggestionAcceptKeysChanged(choice),
+            ));
+        }
+        // With F-keys in force the chord is not listened for and its
+        // field goes; where F-keys cannot be claimed, the chord is what
+        // still works, so it stays.
+        let function_keys_live = accept_keys == AcceptKeys::FunctionKeys && claimable;
 
         // A `TextInput` without `on_input` renders disabled.
         let mut modifiers_input = TextInput::new(
@@ -1483,45 +1527,110 @@ impl SettingsApp {
                 b,
                 tr("suggestions.keyboard_accept", "Keyboard accept"),
             ))
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_y(Alignment::Center)
-                    .push(
-                        Text::new(tr(
-                            "suggestions.keyboard_accept_modifiers",
-                            "Keyboard accept modifiers:",
-                        ))
-                        .size(13),
-                    )
-                    .push(modifiers_input),
-            )
-            .push(
-                Text::new(tr_args(
-                    "suggestions.modifiers_hint",
-                    "'+'-separated: {} — e.g. Ctrl+Shift. Applied with \
-                     digit keys 1–9. Leave empty to disable keyboard accept.",
-                    &[&named_key_list(&["Ctrl", "Shift", "Alt", "Meta"], ", ")],
+            .push(accept_row);
+        if accept_keys == AcceptKeys::FunctionKeys {
+            chord_card = chord_card.push(if claimable {
+                Text::new(tr(
+                    "suggestions.function_keys_hint",
+                    "F1 applies the first suggestion, F2 the second, and so on. While the \
+                     tooltip is up these keys go to PolterType alone, so they cannot reload \
+                     a page or open an application's help.",
+                ))
+                .size(11)
+                .color(b.muted)
+            } else {
+                unavailable(tr(
+                    "suggestions.function_keys_unavailable",
+                    "Not available on this system: PolterType cannot keep a key from the \
+                     application here (Wayland, or macOS without [engine].hold_keys), and F5 \
+                     would reload a browser page. The modifier + digit chord below stays in \
+                     use.",
+                ))
+            });
+        }
+        if !function_keys_live {
+            chord_card = chord_card
+                .push(
+                    Row::new()
+                        .spacing(10)
+                        .align_y(Alignment::Center)
+                        .push(
+                            Text::new(tr(
+                                "suggestions.keyboard_accept_modifiers",
+                                "Keyboard accept modifiers:",
+                            ))
+                            .size(13),
+                        )
+                        .push(modifiers_input),
+                )
+                .push(
+                    Text::new(tr_args(
+                        "suggestions.modifiers_hint",
+                        "'+'-separated: {} — e.g. Ctrl+Shift. Applied with \
+                         digit keys 1–9. Leave empty to disable keyboard accept.",
+                        &[&named_key_list(&["Ctrl", "Shift", "Alt", "Meta"], ", ")],
+                    ))
+                    .size(11)
+                    .color(b.muted),
+                );
+            // Non-empty but chord-disabling input (bare `Shift`, a typo)
+            // warns instead of being rejected: the engine treats it as "no
+            // chord", so without this the setting looks configured while
+            // doing nothing.
+            if !s.accept_modifiers.trim().is_empty()
+                && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
+            {
+                chord_card = chord_card.push(
+                    Text::new(tr_args(
+                        "suggestions.modifiers_required",
+                        "At least one of {} is required — as written, keyboard \
+                         accept is off (clicking a suggestion still works).",
+                        &[&named_key_list(&["Ctrl", "Alt", "Meta"], " / ")],
+                    ))
+                    .size(11)
+                    .color(b.warn),
+                );
+            }
+        }
+
+        let mut nav_row = Row::new()
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .push(Text::new(tr("suggestions.navigation", "Arrow keys:")).size(13));
+        for (choice, label) in [
+            (
+                SuggestionNavigation::Off,
+                tr("suggestions.navigation_off", "Off"),
+            ),
+            (
+                SuggestionNavigation::Arrows,
+                tr("suggestions.navigation_arrows", "Up/Down + Enter"),
+            ),
+        ] {
+            nav_row = nav_row.push(chip(
+                label,
+                navigation == choice,
+                Message::SuggestionNavigationChanged(choice),
+            ));
+        }
+        chord_card = chord_card.push(nav_row);
+        if navigation == SuggestionNavigation::Arrows && !claimable {
+            chord_card = chord_card.push(unavailable(tr(
+                "suggestions.navigation_unavailable",
+                "Not available on this system: PolterType cannot keep the arrow keys from \
+                 the application here (Wayland, or macOS without [engine].hold_keys).",
+            )));
+        } else {
+            chord_card = chord_card.push(
+                Text::new(tr(
+                    "suggestions.navigation_hint",
+                    "While the tooltip is up, Down highlights the first suggestion and Up the \
+                     last; further presses move the highlight, Enter applies it and Esc closes \
+                     the tooltip. Until the tooltip goes away, Up and Down do not move the text \
+                     cursor, which is why this is off by default.",
                 ))
                 .size(11)
                 .color(b.muted),
-            );
-        // Non-empty but chord-disabling input (bare `Shift`, a typo)
-        // warns instead of being rejected: the engine treats it as "no
-        // chord", so without this the setting looks configured while
-        // doing nothing.
-        if !s.accept_modifiers.trim().is_empty()
-            && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
-        {
-            chord_card = chord_card.push(
-                Text::new(tr_args(
-                    "suggestions.modifiers_required",
-                    "At least one of {} is required — as written, keyboard \
-                     accept is off (clicking a suggestion still works).",
-                    &[&named_key_list(&["Ctrl", "Alt", "Meta"], " / ")],
-                ))
-                .size(11)
-                .color(b.warn),
             );
         }
 
@@ -1539,6 +1648,7 @@ impl SettingsApp {
                 .to_owned(),
             ))
             .push(card(tooltip_card))
+            .push(card(self.tooltip_look_card()))
             .push(card(chord_card))
             .push(tip(
                 b,

@@ -34,6 +34,53 @@ fn old_config_missing_new_field_still_parses() {
     assert!(s.engine.suppress_for_all_caps);
 }
 
+/// A `[suggestions]` block written before issues #78 / #80 keeps the
+/// digit chord and leaves the arrows alone.
+#[test]
+fn a_suggestions_block_predating_accept_keys_keeps_todays_behaviour() {
+    let raw = "schema_version = 1\n\n[suggestions]\naccept_modifiers = \"Alt\"\n";
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert_eq!(s.suggestions.accept_modifiers, "Alt");
+    assert_eq!(
+        AcceptKeys::from_config(&s.suggestions.accept_keys),
+        AcceptKeys::ModifierDigits
+    );
+    assert_eq!(
+        SuggestionNavigation::from_config(&s.suggestions.navigation),
+        SuggestionNavigation::Off
+    );
+}
+
+#[test]
+fn suggestion_key_modes_round_trip_and_forgive_junk() {
+    for keys in [AcceptKeys::ModifierDigits, AcceptKeys::FunctionKeys] {
+        assert_eq!(AcceptKeys::from_config(keys.config_value()), keys);
+    }
+    for nav in [SuggestionNavigation::Off, SuggestionNavigation::Arrows] {
+        assert_eq!(SuggestionNavigation::from_config(nav.config_value()), nav);
+    }
+    assert_eq!(
+        AcceptKeys::from_config(" Function_Keys "),
+        AcceptKeys::FunctionKeys
+    );
+    assert_eq!(
+        AcceptKeys::from_config("f-keys"),
+        AcceptKeys::ModifierDigits
+    );
+    assert_eq!(
+        SuggestionNavigation::from_config("vim"),
+        SuggestionNavigation::Off
+    );
+
+    let raw = "schema_version = 1\n\n[suggestions]\naccept_keys = \"function_keys\"\n\
+               navigation = \"arrows\"\n";
+    let s: Settings = toml::from_str(raw).expect("parse");
+    let back: Settings =
+        toml::from_str(&toml::to_string_pretty(&s).expect("serialize")).expect("parse round-trip");
+    assert_eq!(back.suggestions.accept_keys, "function_keys");
+    assert_eq!(back.suggestions.navigation, "arrows");
+}
+
 /// Every user upgrading from 0.3.x has a `config.toml` with no
 /// `[updates]` section at all. It has to keep working, and it has to
 /// land on "updates on" — a silent fallback to *off* would mean the
@@ -465,4 +512,68 @@ fn the_pause_state_round_trips_and_defaults_to_running() {
     let text = toml::to_string_pretty(&paused).expect("serialize");
     let back: Settings = toml::from_str(&text).expect("parse");
     assert!(back.general.paused);
+}
+
+// ─── Tooltip look and placement (#79, #81) ──────────────────────────
+
+#[test]
+fn a_config_predating_the_tooltip_look_keeps_the_old_tooltip() {
+    let raw = "schema_version = 1\n\n[suggestions]\nenabled = true\nmax_suggestions = 4\n";
+    let s: Settings = toml::from_str(raw).expect("parse");
+    assert_eq!(s.suggestions.window_spot(), TooltipSpot::BottomCenter);
+    assert_eq!(s.suggestions.window_margin_clamped(), 96);
+    assert_eq!(s.suggestions.tooltip_scale(), 1.0);
+}
+
+#[test]
+fn tooltip_look_round_trips_through_config_toml() {
+    let mut s = Settings::default();
+    s.suggestions.window_anchor = TooltipSpot::TopRight.config_value().into();
+    s.suggestions.window_margin = 16;
+    s.suggestions.scale_percent = 175;
+    let text = toml::to_string_pretty(&s).expect("serialize");
+    assert!(text.contains("window_anchor = \"top_right\""), "{text}");
+    let back: Settings = toml::from_str(&text).expect("parse");
+    assert_eq!(back, s);
+    assert_eq!(back.suggestions.window_spot(), TooltipSpot::TopRight);
+    assert_eq!(back.suggestions.tooltip_scale(), 1.75);
+}
+
+#[test]
+fn every_tooltip_spot_survives_its_own_spelling() {
+    for spot in [
+        TooltipSpot::TopLeft,
+        TooltipSpot::TopCenter,
+        TooltipSpot::TopRight,
+        TooltipSpot::MiddleLeft,
+        TooltipSpot::Center,
+        TooltipSpot::MiddleRight,
+        TooltipSpot::BottomLeft,
+        TooltipSpot::BottomCenter,
+        TooltipSpot::BottomRight,
+    ] {
+        assert_eq!(TooltipSpot::from_config(spot.config_value()), spot);
+    }
+    // Forgiving about a hand-edited file, never failing the parse.
+    assert_eq!(TooltipSpot::from_config(" Top-Left "), TooltipSpot::TopLeft);
+    assert_eq!(
+        TooltipSpot::from_config("nowhere"),
+        TooltipSpot::BottomCenter
+    );
+}
+
+#[test]
+fn hand_edited_tooltip_numbers_are_clamped_not_obeyed() {
+    let s = SuggestionSettings {
+        window_margin: 5000,
+        scale_percent: 5,
+        ..SuggestionSettings::default()
+    };
+    assert_eq!(s.window_margin_clamped(), TOOLTIP_MAX_MARGIN);
+    assert_eq!(s.tooltip_scale(), 0.5);
+    let s = SuggestionSettings {
+        scale_percent: 1000,
+        ..SuggestionSettings::default()
+    };
+    assert_eq!(s.tooltip_scale(), 3.0);
 }

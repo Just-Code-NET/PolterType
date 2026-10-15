@@ -46,4 +46,9 @@ pub(crate) const TAG_BG: Rgba = (0xFF, 0xFF, 0xFF, 0x14);
 pub(crate) const HOVER_BG: Rgba = (0xFF, 0xFF, 0xFF, 0x12);
 pub(crate) const FOOTER_FG: Rgba = (0x70, 0x70, 0x8A, 0xFF);
 
+/// Bounds of [`crate::PopupModel::scale`]. Below half size the text is
+/// unreadable; past four times the panel outgrows a laptop screen.
+pub(crate) const MIN_ZOOM: f32 = 0.5;
+pub(crate) const MAX_ZOOM: f32 = 4.0;
+
 pub(crate) const ELLIPSIS: char = '…';

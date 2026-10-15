@@ -6,7 +6,7 @@ use iced::widget::text_editor;
 use poltertype_core::engine::{ModRole, ModSet};
 use poltertype_core::i18n::tr;
 use poltertype_core::plugins::SettingValue;
-use poltertype_core::settings::TrayIconStyle;
+use poltertype_core::settings::{AcceptKeys, SuggestionNavigation, TooltipSpot, TrayIconStyle};
 use poltertype_input::ReplaySpeed;
 use poltertype_layout::LayoutId;
 
@@ -295,6 +295,17 @@ pub enum Message {
     /// the pane hints inline about strings that disable the chord
     /// instead of rejecting keystrokes, so typos can be fixed in place.
     SuggestionModifiersChanged(String),
+    // Tooltip size and position (#79, #81) — the pane's own card.
+    /// `[suggestions].scale_percent`, stepped by the ± buttons.
+    SuggestionScaleDelta(i64),
+    /// `[suggestions].window_anchor`, one cell of the 3×3 picker.
+    SuggestionWindowSpotChosen(TooltipSpot),
+    /// `[suggestions].window_margin`, stepped by the ± buttons.
+    SuggestionMarginDelta(i64),
+    /// `[suggestions].accept_keys` chips: digit chord or F-keys.
+    SuggestionAcceptKeysChanged(AcceptKeys),
+    /// `[suggestions].navigation` chips.
+    SuggestionNavigationChanged(SuggestionNavigation),
 
     /// Segmented theme picker on the General pane. Applies to the
     /// window immediately; persisted via the normal footer Save.

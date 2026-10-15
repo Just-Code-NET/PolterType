@@ -241,3 +241,23 @@ fn an_idle_keyboard_needs_no_resync_at_all() {
     m.release(EV_LEFTALT);
     assert!(!m.any_held());
 }
+
+/// What the X11 grabs claim has to be the key the engine reads back
+/// from the stamped event's scancode.
+#[test]
+fn claim_keys_round_trip_through_their_evdev_codes() {
+    use crate::ClaimKey;
+    let keys = [ClaimKey::Up, ClaimKey::Down, ClaimKey::Enter]
+        .into_iter()
+        .chain((1..=9).map(ClaimKey::Function))
+        .chain((1..=9).map(ClaimKey::Digit));
+    for key in keys {
+        for evdev in evdev_codes_for(key) {
+            assert_eq!(claim_key_for_evdev(evdev), Some(key), "evdev {evdev}");
+            assert_eq!(ClaimKey::from_scancode(evdev), Some(key), "evdev {evdev}");
+        }
+    }
+    // The keypad's 8 and 2 share SC-1's arrow codes; they are not ours.
+    assert_eq!(claim_key_for_evdev(72), None);
+    assert_eq!(claim_key_for_evdev(80), None);
+}

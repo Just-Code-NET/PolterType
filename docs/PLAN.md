@@ -443,7 +443,12 @@ enabled              = true
 max_suggestions      = 5            # clamped to 1..=9 (one digit key each)
 tooltip_timeout_secs = 30           # clamped to 3..=600 at read time
 accept_modifiers     = "Ctrl+Shift" # + digit 1..9; "" disables keyboard accept
-caret_anchor         = true         # Linux: ask the a11y bus where the caret is
+accept_keys          = "modifier_digits" # or "function_keys": F1..F9 (#78)
+navigation           = "off"        # or "arrows": Down/Up highlight, Enter applies (#80)
+caret_anchor         = true         # false: always at window_anchor, never the caret
+window_anchor        = "bottom_center" # 3×3 cell in the focused window (#81)
+window_margin        = 96           # px from the edges that cell touches; 0..=400
+scale_percent        = 100          # tooltip size on top of the desktop's scale; 50..=300 (#79)
 
 # Converting a *selected* passage with the force-switch key, rather
 # than the last word — added 2026-08-28 (v0.24.0), issue #32. OFF by

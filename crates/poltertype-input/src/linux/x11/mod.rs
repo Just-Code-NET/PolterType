@@ -24,6 +24,7 @@ mod consts;
 mod emit;
 mod emitter;
 mod events;
+mod key_grabs;
 mod listener;
 mod types;
 

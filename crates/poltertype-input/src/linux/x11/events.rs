@@ -2,7 +2,9 @@
 
 use super::codes::*;
 use super::consts::*;
+use super::key_grabs::{KeyGrabs, core_key_event, is_core_twin};
 use super::types::*;
+use crate::claims::KeyClaims;
 use crate::{InputError, KeyDirection, KeyEvent};
 use crossbeam_channel::Sender;
 use poltertype_types::SC_POINTER_BUTTON;
@@ -73,8 +75,19 @@ pub(crate) fn connect_and_select() -> Result<RustConnection, InputError> {
     Ok(conn)
 }
 
-pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: Arc<AtomicBool>) {
+pub(crate) fn drain_events(
+    conn: RustConnection,
+    sink: Sender<KeyEvent>,
+    stop: Arc<AtomicBool>,
+    claims: Option<Arc<KeyClaims>>,
+) {
     let mut mods = ModState::default();
+    let mut grabs = claims
+        .as_ref()
+        .and_then(|_| conn.setup().roots.first().map(|s| KeyGrabs::new(s.root)));
+    // A raw event of a grabbed key, held until we know whether the core
+    // event that says "this went to us" follows it.
+    let mut deferred: Option<KeyEvent> = None;
     let mut last_resync = Instant::now();
     let mut last_caps_resync = Instant::now();
     // Seed the latch: the session may well have started with Caps Lock
@@ -87,19 +100,51 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
         // that would be read through it, not after them.
         resync_caps(&conn, &mut mods, &mut last_caps_resync, false);
         resync_modifiers(&conn, &mut mods, &mut last_resync);
+        if let (Some(g), Some(c)) = (grabs.as_mut(), claims.as_ref()) {
+            g.sync(&conn, c);
+        }
         let mut idle = true;
+        let mut twin_waited = false;
         loop {
             match conn.poll_for_event() {
                 Ok(Some(ev)) => {
                     idle = false;
+                    if let Some(raw) = deferred.take() {
+                        let twin = is_core_twin(&raw, &ev);
+                        deliver(&sink, grabs.as_mut(), raw, twin);
+                        if twin {
+                            continue;
+                        }
+                    }
+                    if grabs.is_some()
+                        && let Some(core) = core_key_event(&ev, mods.snapshot())
+                    {
+                        deliver(&sink, grabs.as_mut(), core, true);
+                        continue;
+                    }
                     if let Some(out) = translate(&ev, &mut mods) {
                         trace!(vk = out.vk, dir = ?out.direction, "x11 raw event");
-                        if sink.try_send(out).is_err() {
-                            debug!("x11 sink full — dropping event");
+                        if grabs.as_ref().is_some_and(|g| g.owns(&out)) {
+                            continue;
+                        }
+                        if grabs.as_ref().is_some_and(|g| g.may_claim(&out)) {
+                            deferred = Some(out);
+                            twin_waited = false;
+                        } else {
+                            deliver(&sink, None, out, false);
                         }
                     }
                 }
-                Ok(None) => break,
+                Ok(None) if deferred.is_some() && !twin_waited => {
+                    twin_waited = true;
+                    wait_for_server(&conn, TWIN_WAIT);
+                }
+                Ok(None) => {
+                    if let Some(raw) = deferred.take() {
+                        deliver(&sink, grabs.as_mut(), raw, false);
+                    }
+                    break;
+                }
                 // The connection is gone (X server shut down, session
                 // ended). There is nothing to recover to — exit the
                 // thread rather than spin on a dead socket forever.
@@ -110,10 +155,26 @@ pub(crate) fn drain_events(conn: RustConnection, sink: Sender<KeyEvent>, stop: A
             }
         }
         if idle {
-            wait_for_server(&conn, IDLE_WAIT);
+            let grabbing = grabs.as_ref().is_some_and(KeyGrabs::active);
+            wait_for_server(&conn, if grabbing { CLAIM_WAIT } else { IDLE_WAIT });
         }
     }
+    if let Some(g) = grabs.as_mut() {
+        g.release_all(&conn);
+    }
     info!("x11 listener thread exiting");
+}
+
+/// Hand one event to the engine, stamped with whether the application
+/// was kept from it, and let the grabs know how a deferred one ended.
+fn deliver(sink: &Sender<KeyEvent>, grabs: Option<&mut KeyGrabs>, mut ev: KeyEvent, claimed: bool) {
+    ev.claimed = claimed;
+    if let Some(g) = grabs {
+        g.record(&ev, claimed);
+    }
+    if sink.try_send(ev).is_err() {
+        debug!("x11 sink full — dropping event");
+    }
 }
 
 /// Wait until the server has something to say, or `timeout` runs out.
@@ -239,6 +300,7 @@ pub(crate) fn translate(ev: &Event, mods: &mut ModState) -> Option<KeyEvent> {
                 modifiers: mods.snapshot(),
                 injected: false,
                 kernel_repeat: false,
+                claimed: false,
                 timestamp_ms: 0,
             })
         }
@@ -246,7 +308,11 @@ pub(crate) fn translate(ev: &Event, mods: &mut ModState) -> Option<KeyEvent> {
     }
 }
 
-fn key_event(evdev: u32, direction: KeyDirection, modifiers: crate::Modifiers) -> KeyEvent {
+pub(crate) fn key_event(
+    evdev: u32,
+    direction: KeyDirection,
+    modifiers: crate::Modifiers,
+) -> KeyEvent {
     KeyEvent {
         vk: evdev,
         // evdev codes and Win SC Set-1 scancodes coincide across every
@@ -260,6 +326,7 @@ fn key_event(evdev: u32, direction: KeyDirection, modifiers: crate::Modifiers) -
         // via the emitter's echo log instead (see `KeyEmitter::take_emitted`).
         injected: false,
         kernel_repeat: false,
+        claimed: false,
         timestamp_ms: 0,
     }
 }

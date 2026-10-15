@@ -7,8 +7,9 @@ use objc2_foundation::{MainThreadMarker, NSPoint, NSRect};
 
 use crate::enums::PopupAnchor;
 
-/// Popup bottom edge floats this many px above the anchor window's
-/// bottom edge (or the screen bottom). Matches the other backends.
+/// Popup bottom edge floats this many px above the screen bottom when
+/// nothing is known about the focused window. Matches the other
+/// backends.
 const BOTTOM_OFFSET: i32 = 96;
 
 /// Height of the primary screen — the flip reference between the CG
@@ -45,11 +46,12 @@ fn anchor_point(anchor: &PopupAnchor) -> (f64, f64) {
             y,
             width,
             height,
-            ..
-        } => (
-            (x + width as i32 / 2) as f64,
-            (y + height as i32 / 2) as f64,
-        ),
+            spot,
+            margin,
+        } => {
+            let (px, py) = crate::place::window_spot_point((x, y, width, height), spot, margin);
+            (px as f64, py as f64)
+        }
         PopupAnchor::ScreenBottom => {
             let (vx, vy, vw, vh) = display_union();
             (vx + vw / 2.0, vy + vh / 2.0)
@@ -87,10 +89,9 @@ fn display_union() -> (f64, f64, f64, f64) {
 }
 
 /// Placement in CG coordinates: the shared side-picker around the
-/// caret for `Point`, centred on the anchor window with the bottom
-/// edge `BOTTOM_OFFSET` above its bottom for `WindowRect`; clamped to
-/// the display union either way. Mirrors `place` in the Windows
-/// backend.
+/// caret for `Point`, the chosen spot inside the anchor window for
+/// `WindowRect`; clamped to the display union either way. Mirrors
+/// `place` in the Windows backend.
 pub(super) fn place(w: f64, h: f64, anchor: &PopupAnchor) -> (f64, f64) {
     let (vx, vy, vw, vh) = display_union();
     let (wi, hi) = (w.ceil() as i32, h.ceil() as i32);
@@ -114,11 +115,13 @@ pub(super) fn place(w: f64, h: f64, anchor: &PopupAnchor) -> (f64, f64) {
             y,
             width,
             height,
-            ..
-        } => (
-            x as f64 + (width as f64 - w) / 2.0,
-            y as f64 + height as f64 - BOTTOM_OFFSET as f64 - h,
-        ),
+            spot,
+            margin,
+        } => {
+            let (px, py) =
+                crate::place::place_in_window((x, y, width, height), spot, margin, wi, hi);
+            (px as f64, py as f64)
+        }
         PopupAnchor::ScreenBottom => (vx + (vw - w) / 2.0, vy + vh - BOTTOM_OFFSET as f64 - h),
     };
     (

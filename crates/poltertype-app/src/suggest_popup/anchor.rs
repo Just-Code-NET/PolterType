@@ -4,7 +4,7 @@
 //! chain is unit-testable without a compositor.
 
 use poltertype_input::focus::{CaretHint, FocusedWindowGeometry};
-use poltertype_popup::PopupAnchor;
+use poltertype_popup::{PopupAnchor, WindowSpot};
 use tracing::debug;
 
 use super::consts::{CARET_MAX_AGE, WINDOW_SIZE_SLACK};
@@ -14,9 +14,12 @@ use super::consts::{CARET_MAX_AGE, WINDOW_SIZE_SLACK};
 /// 1. **AT-SPI caret** — the real insertion point, when the app exposes
 ///    it, the sample is fresh, and it provably belongs to the focused
 ///    window, so a caret from a previous window cannot win.
-/// 2. **Focused window** — bottom-centre, the neighbourhood of chat
-///    inputs and prompts.
+/// 2. **Focused window** — at `spot`, `margin` px in from its edges;
+///    bottom-centre by default, the neighbourhood of chat inputs and
+///    prompts.
 /// 3. **Screen bottom** — nothing known.
+///
+/// A caller that wants the window every time passes no caret.
 ///
 /// The pointer deliberately no longer sits between the first two: an
 /// idle mouse parked mid-screen dragged the tooltip there while the
@@ -25,6 +28,8 @@ use super::consts::{CARET_MAX_AGE, WINDOW_SIZE_SLACK};
 pub(super) fn resolve_anchor(
     geometry: Option<FocusedWindowGeometry>,
     caret: Option<CaretHint>,
+    spot: WindowSpot,
+    margin: u32,
 ) -> PopupAnchor {
     let Some(g) = geometry else {
         return PopupAnchor::ScreenBottom;
@@ -36,6 +41,8 @@ pub(super) fn resolve_anchor(
             y: g.y,
             width: g.width,
             height: g.height,
+            spot,
+            margin,
         },
     }
 }

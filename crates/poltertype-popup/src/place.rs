@@ -1,6 +1,7 @@
-//! Placement of the tooltip around its anchor point — the text caret.
+//! Placement of the tooltip: around its anchor point — the text caret —
+//! or at a spot inside the focused window.
 //!
-//! Prefers to hang *above* the point, then walks above → below → right
+//! Around a point it prefers to hang *above* the point, then walks above → below → right
 //! → left for the first side that fits fully on screen. Whatever side
 //! wins, the transverse coordinate is clamped inside the screen with a
 //! small margin, so a point near a corner slides the tooltip along the
@@ -8,6 +9,8 @@
 //!
 //! Coordinates are the anchor's space: output-local logical px on
 //! Wayland, root pixels on X11.
+
+use crate::enums::WindowSpot;
 
 /// Gap between the point and the tooltip's bottom edge when above.
 const GAP_ABOVE: i32 = 18;
@@ -68,4 +71,73 @@ pub(crate) fn place_near_point(
     // Nothing fits cleanly (tiny screen / huge tooltip): fall back to
     // the above attempt, clamped fully on-screen.
     (clamp_x(centered_x), clamp_y(above_y))
+}
+
+/// Where along one axis of the window a spot sits.
+enum Align {
+    Start,
+    Middle,
+    End,
+}
+
+fn axes(spot: WindowSpot) -> (Align, Align) {
+    use Align::{End, Middle, Start};
+    match spot {
+        WindowSpot::TopLeft => (Start, Start),
+        WindowSpot::TopCenter => (Middle, Start),
+        WindowSpot::TopRight => (End, Start),
+        WindowSpot::MiddleLeft => (Start, Middle),
+        WindowSpot::Center => (Middle, Middle),
+        WindowSpot::MiddleRight => (End, Middle),
+        WindowSpot::BottomLeft => (Start, End),
+        WindowSpot::BottomCenter => (Middle, End),
+        WindowSpot::BottomRight => (End, End),
+    }
+}
+
+fn along(start: i32, len: i32, size: i32, margin: i32, align: &Align) -> i32 {
+    match align {
+        Align::Start => start + margin,
+        Align::Middle => start + (len - size) / 2,
+        Align::End => start + len - margin - size,
+    }
+}
+
+/// Top-left position for a `w`×`h` tooltip at `spot` inside the window
+/// `(x, y, width, height)`, held `margin` in from each edge the spot
+/// touches. Unclamped — the caller keeps it on its screen, which is the
+/// one thing it knows and this does not.
+pub(crate) fn place_in_window(
+    window: (i32, i32, u32, u32),
+    spot: WindowSpot,
+    margin: u32,
+    w: i32,
+    h: i32,
+) -> (i32, i32) {
+    let (x, y, width, height) = window;
+    let (col, row) = axes(spot);
+    let margin = i32::try_from(margin).unwrap_or(i32::MAX / 4);
+    let (width, height) = (
+        i32::try_from(width).unwrap_or(i32::MAX / 4),
+        i32::try_from(height).unwrap_or(i32::MAX / 4),
+    );
+    (
+        along(x, width, w, margin, &col),
+        along(y, height, h, margin, &row),
+    )
+}
+
+/// The point inside the window the tooltip will sit at — what picks
+/// the screen for a window straddling two. Kept inside the window, so a
+/// margin wider than the window cannot pick the screen next to it.
+pub(crate) fn window_spot_point(
+    window: (i32, i32, u32, u32),
+    spot: WindowSpot,
+    margin: u32,
+) -> (i32, i32) {
+    let (x, y, width, height) = window;
+    let (px, py) = place_in_window(window, spot, margin, 0, 0);
+    let right = x.saturating_add_unsigned(width.saturating_sub(1));
+    let bottom = y.saturating_add_unsigned(height.saturating_sub(1));
+    (px.clamp(x, right.max(x)), py.clamp(y, bottom.max(y)))
 }

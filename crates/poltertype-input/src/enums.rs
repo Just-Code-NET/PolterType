@@ -128,5 +128,61 @@ impl ReplaySpeed {
     }
 }
 
+/// A key the engine can claim for the suggestion tooltip: kept from
+/// the focused application for as long as an offer is up, and handed
+/// to the engine instead. See [`KeyGate::claim`](crate::KeyGate::claim).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimKey {
+    Up,
+    Down,
+    /// Return and keypad Enter alike.
+    Enter,
+    /// `F1`..=`F9`, by number.
+    Function(u8),
+    /// The main row's `1`..=`9`, by number — claimed only together with
+    /// the accept chord's modifiers, see
+    /// [`ClaimSet::with_digit_modifiers`](crate::ClaimSet::with_digit_modifiers).
+    Digit(u8),
+}
+
+impl ClaimKey {
+    /// Which claimable key an engine scancode names. Meaningful only
+    /// for an event a listener stamped
+    /// [`claimed`](poltertype_types::KeyEvent::claimed): the engine's
+    /// two code spaces — SC Set-1 from Windows and macOS, evdev from
+    /// Linux — disagree on the arrows and keypad Enter, and SC-1's
+    /// arrow codes are evdev's keypad digits, which no listener ever
+    /// claims.
+    pub fn from_scancode(sc: u32) -> Option<Self> {
+        match sc {
+            0x48 | 0x67 => Some(Self::Up),
+            0x50 | 0x6C => Some(Self::Down),
+            0x1C | 0x60 => Some(Self::Enter),
+            0x3B..=0x43 => Some(Self::Function((sc - 0x3A) as u8)),
+            0x02..=0x0A => Some(Self::Digit((sc - 0x01) as u8)),
+            _ => None,
+        }
+    }
+
+    /// The one bit this key occupies in a [`ClaimSet`](crate::ClaimSet).
+    pub(crate) fn bit(self) -> u32 {
+        match self {
+            Self::Up => 1,
+            Self::Down => 1 << 1,
+            Self::Enter => 1 << 2,
+            Self::Function(n) => 1 << (2 + u32::from(n.clamp(1, 9))),
+            Self::Digit(n) => 1 << (11 + u32::from(n.clamp(1, 9))),
+        }
+    }
+
+    /// Every claimable key, in bit order.
+    pub(crate) fn all() -> impl Iterator<Item = Self> {
+        [Self::Up, Self::Down, Self::Enter]
+            .into_iter()
+            .chain((1..=9).map(Self::Function))
+            .chain((1..=9).map(Self::Digit))
+    }
+}
+
 #[cfg(test)]
 mod tests;

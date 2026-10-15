@@ -41,11 +41,7 @@ impl MacosGate {
         // 2026-08-30), and the probe-and-repair fallback is
         // probabilistic — see docs/PERMISSIONS.md for the latency
         // trade that keeps the default off.
-        let enabled = match std::env::var(HOLD_KEYS_ENV).as_deref() {
-            Ok("1") => true,
-            Ok("0") => false,
-            _ => config_hold_keys,
-        };
+        let enabled = Self::enabled_by(config_hold_keys);
         if enabled {
             info!(
                 "key gate on ([engine].hold_keys / {HOLD_KEYS_ENV}) — keystrokes are held \
@@ -56,6 +52,16 @@ impl MacosGate {
             state: HoldState::new(),
             enabled,
             tap_running: AtomicBool::new(false),
+        }
+    }
+
+    /// Whether the gate is on: the env override if set, the config
+    /// value otherwise.
+    pub(crate) fn enabled_by(config_hold_keys: bool) -> bool {
+        match std::env::var(HOLD_KEYS_ENV).as_deref() {
+            Ok("1") => true,
+            Ok("0") => false,
+            _ => config_hold_keys,
         }
     }
 

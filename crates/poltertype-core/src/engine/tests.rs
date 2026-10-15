@@ -360,6 +360,49 @@ mod engine_integration_tests {
             tweak: impl FnOnce(&mut crate::settings::Settings),
             clipboard: Option<Arc<dyn poltertype_input::Clipboard>>,
         ) -> Self {
+            Self::start_gated(
+                idle_timeout_ms,
+                emitter,
+                fail_switch,
+                suggester,
+                detectors_override,
+                accept_modifiers,
+                tweak,
+                clipboard,
+                // The gate is a no-op in most tests: they exercise the
+                // path taken when keystrokes cannot be held back.
+                poltertype_input::KeyGate::disabled(),
+            )
+        }
+
+        /// The suggestion harness on a backend that can claim keys for
+        /// the tooltip, with `tweak` choosing which.
+        fn start_claiming(tweak: impl FnOnce(&mut crate::settings::Settings)) -> Self {
+            Self::start_gated(
+                60_000,
+                MockEmitter::default(),
+                false,
+                Some(Arc::new(FixedSuggestions(vec!["hello"]))),
+                Some(vec![Box::new(NoOpinionDetector)]),
+                None,
+                tweak,
+                None,
+                poltertype_input::KeyGate::claiming_without_listener(),
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        fn start_gated(
+            idle_timeout_ms: u64,
+            emitter: MockEmitter,
+            fail_switch: bool,
+            suggester: Option<Arc<dyn poltertype_detect::SuggestionProvider>>,
+            detectors_override: Option<Vec<Box<dyn Detector>>>,
+            accept_modifiers: Option<&str>,
+            tweak: impl FnOnce(&mut crate::settings::Settings),
+            clipboard: Option<Arc<dyn poltertype_input::Clipboard>>,
+            key_gate: poltertype_input::KeyGate,
+        ) -> Self {
             let mut settings = crate::settings::Settings::default();
             settings.engine.idle_timeout_ms = idle_timeout_ms;
             if let Some(m) = accept_modifiers {
@@ -406,9 +449,7 @@ mod engine_integration_tests {
                 // conversion is off by default, which is also its
                 // shipped default.
                 clipboard,
-                // The gate is a no-op in tests: these exercise the
-                // path taken when keystrokes cannot be held back.
-                key_gate: poltertype_input::KeyGate::disabled(),
+                key_gate,
                 focus_tracker: Arc::new(NoopFocusTracker),
                 audio: Arc::new(audio),
                 out_tx,
@@ -475,9 +516,33 @@ mod engine_integration_tests {
                     modifiers,
                     injected: false,
                     kernel_repeat: false,
+                    claimed: false,
                     timestamp_ms: 0,
                 })
                 .expect("engine alive");
+        }
+
+        /// A press and release the listener kept from the application
+        /// for the suggestion tooltip.
+        fn claimed_tap(&self, sc: u32) {
+            self.claimed_tap_mods(sc, poltertype_types::Modifiers::NONE);
+        }
+
+        fn claimed_tap_mods(&self, sc: u32, modifiers: poltertype_types::Modifiers) {
+            for direction in [KeyDirection::Press, KeyDirection::Release] {
+                self.key_tx
+                    .send(KeyEvent {
+                        vk: sc,
+                        scancode: sc,
+                        direction,
+                        modifiers,
+                        injected: false,
+                        kernel_repeat: false,
+                        claimed: true,
+                        timestamp_ms: 0,
+                    })
+                    .expect("engine alive");
+            }
         }
 
         /// Block until an event matching `pred` arrives (draining and
@@ -1425,6 +1490,7 @@ mod engine_integration_tests {
                 modifiers: poltertype_types::Modifiers::NONE,
                 injected: false,
                 kernel_repeat: false,
+                claimed: false,
                 timestamp_ms: 0,
             });
         }
@@ -1998,6 +2064,7 @@ mod engine_integration_tests {
                 modifiers: poltertype_types::Modifiers::NONE,
                 injected: false,
                 kernel_repeat: true,
+                claimed: false,
                 timestamp_ms: 0,
             })
             .expect("engine alive");
@@ -2036,7 +2103,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: add_index,
-                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -2093,7 +2159,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
-                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -2146,12 +2211,258 @@ mod engine_integration_tests {
                 // The chord's own Ctrl+Shift are still down; typing
                 // under them would produce shortcuts, not text.
                 EmitOp::ReleaseModifiers,
-                // 5 word + 1 boundary + the chord's own digit, which
-                // the application received on its way past us.
-                EmitOp::Backspaces(7),
+                // 5 word + 1 boundary. The digit reached the app under
+                // Ctrl+Shift, where it is a shortcut and types nothing.
+                EmitOp::Backspaces(6),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ]
         );
+    }
+
+    /// Where the listener claims the chord, the digit never reached the
+    /// application, whatever that application would have made of it —
+    /// xterm types one, a GTK text view does not.
+    #[test]
+    fn a_claimed_digit_chord_replaces_the_word() {
+        let h = Harness::start_claiming(|_| {});
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _ = ready_generation(&h);
+        let chord = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.claimed_tap_mods(0x02, chord);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::ReleaseModifiers,
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ]
+        );
+    }
+
+    const SC_UP: u32 = 0x48;
+    const SC_DOWN: u32 = 0x50;
+    const SC_ENTER: u32 = 0x1C;
+    const SC_F1: u32 = 0x3B;
+
+    fn arrows_harness() -> Harness {
+        Harness::start_claiming(|s| s.suggestions.navigation = "arrows".into())
+    }
+
+    fn highlighted(h: &Harness) -> usize {
+        match h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionHighlighted { .. })) {
+            SwitcherEvent::SuggestionHighlighted { index, .. } => index,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Issue #80: `Down` highlights, `Enter` accepts. Neither reached
+    /// the application, so nothing extra sits left of the caret.
+    #[test]
+    fn arrow_down_then_enter_replaces_the_word() {
+        let h = arrows_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady { arrows, .. } = ev else {
+            unreachable!()
+        };
+        assert!(arrows, "a claiming backend turns the arrows on");
+        h.claimed_tap(SC_DOWN);
+        assert_eq!(highlighted(&h), 0, "first Down highlights the first row");
+        h.claimed_tap(SC_ENTER);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ]
+        );
+    }
+
+    #[test]
+    fn arrows_start_at_either_end_and_wrap() {
+        let h = arrows_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _ = ready_generation(&h);
+        // `hello` + the add-to-dictionary row.
+        h.claimed_tap(SC_UP);
+        assert_eq!(highlighted(&h), 1, "first Up highlights the last row");
+        h.claimed_tap(SC_DOWN);
+        assert_eq!(highlighted(&h), 0, "Down past the end wraps to the top");
+        h.claimed_tap(SC_UP);
+        assert_eq!(highlighted(&h), 1, "Up past the top wraps to the end");
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty(), "moving the highlight types nothing");
+    }
+
+    /// Enter with nothing highlighted is the user's — the listener does
+    /// not even claim it then. Should one arrive claimed anyway, it
+    /// still accepts nothing.
+    #[test]
+    fn enter_without_a_highlight_accepts_nothing() {
+        let h = arrows_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _ = ready_generation(&h);
+        h.claimed_tap(SC_ENTER);
+        h.settle();
+        let (ops, evs) = h.stop();
+        assert!(ops.is_empty());
+        assert!(
+            !evs.iter()
+                .any(|e| matches!(e, SwitcherEvent::SuggestionApplied { .. }))
+        );
+    }
+
+    /// An Enter that did reach the application is a newline after the
+    /// word: the offer is stale and must not be applied by it.
+    #[test]
+    fn an_unclaimed_enter_after_a_highlight_is_typing() {
+        let h = arrows_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _ = ready_generation(&h);
+        h.claimed_tap(SC_DOWN);
+        let _ = highlighted(&h);
+        h.tap(SC_ENTER);
+        h.settle();
+        let (ops, evs) = h.stop();
+        assert!(ops.is_empty(), "got {ops:?}");
+        assert!(
+            !evs.iter()
+                .any(|e| matches!(e, SwitcherEvent::SuggestionApplied { .. }))
+        );
+    }
+
+    /// Issue #78: `F1` accepts the first row. Unlike a digit chord the
+    /// key typed nothing, so only word + boundary are erased.
+    #[test]
+    fn function_key_accepts_by_number() {
+        let h = Harness::start_claiming(|s| s.suggestions.accept_keys = "function_keys".into());
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady {
+            function_keys,
+            accept_modifiers,
+            ..
+        } = ev
+        else {
+            unreachable!()
+        };
+        assert!(function_keys);
+        assert!(
+            accept_modifiers.is_empty(),
+            "F-keys replace the digit chord rather than adding to it"
+        );
+        h.claimed_tap(SC_F1);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ]
+        );
+    }
+
+    /// Where the listener cannot keep a key from the application, F-keys
+    /// and arrows would reach it — `F5` reloads a page, `Enter` sends a
+    /// message — so they stay off and the digit chord stays on.
+    #[test]
+    fn without_claims_the_digit_chord_stands_in() {
+        let h = Harness::start_configured(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(FixedSuggestions(vec!["hello"]))),
+            Some(vec![Box::new(NoOpinionDetector)]),
+            None,
+            |s| {
+                s.suggestions.accept_keys = "function_keys".into();
+                s.suggestions.navigation = "arrows".into();
+            },
+            None,
+        );
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady {
+            function_keys,
+            arrows,
+            accept_modifiers,
+            ..
+        } = ev
+        else {
+            unreachable!()
+        };
+        assert!(!function_keys);
+        assert!(!arrows);
+        assert_eq!(accept_modifiers, "Ctrl+Shift");
+        h.stop();
+    }
+
+    /// Issue #77: `Hello wrold` + Ctrl+Shift+1 came out `Helloworld` — a
+    /// Backspace budgeted for a digit that was never typed ate the
+    /// space before the word.
+    #[test]
+    fn accept_digit_chord_keeps_the_separator_before_the_word() {
+        let h = suggestion_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _first = ready_generation(&h);
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _second = ready_generation(&h);
+        let chord = poltertype_types::Modifiers {
+            control: true,
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x02, KeyDirection::Press, chord);
+        h.key_mods(0x02, KeyDirection::Release, chord);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::ReleaseModifiers,
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ],
+            "only the second word and its own space may be deleted"
+        );
+    }
+
+    /// Shift alone would make the digit type `!`, so it is refused as an
+    /// accept chord — the guarantee the replacement's Backspace count
+    /// rests on.
+    #[test]
+    fn shift_only_accept_chord_is_never_armed() {
+        let h = suggestion_harness_with_chord(Some("Shift"));
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _generation = ready_generation(&h);
+        let shift = poltertype_types::Modifiers {
+            shift: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x02, KeyDirection::Press, shift);
+        h.key_mods(0x02, KeyDirection::Release, shift);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty(), "Shift+1 must stay a `!`, got {ops:?}");
     }
 
     /// A tooltip click reaches the engine twice: as the physical
@@ -2173,7 +2484,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
-                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -2203,7 +2513,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
-                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -2239,7 +2548,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
-                typed_digit: false,
                 from_pointer: true,
             })
             .expect("engine alive");
@@ -2288,7 +2596,7 @@ mod engine_integration_tests {
                 // No `ReleaseModifiers`: this run lets Ctrl and Shift
                 // back up while the correction is still absorbing, so by
                 // the time it types nothing is held.
-                EmitOp::Backspaces(7),
+                EmitOp::Backspaces(6),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ],
             "the accept chord must survive its own modifier presses and an idle-length pause"
@@ -2310,7 +2618,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation: first,
                 index: 0,
-                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -2336,7 +2643,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
-                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -2378,7 +2684,6 @@ mod engine_integration_tests {
             .send(EngineCommand::AcceptSuggestion {
                 generation,
                 index: 0,
-                typed_digit: false,
                 from_pointer: false,
             })
             .expect("engine alive");
@@ -5147,6 +5452,7 @@ mod chord_tests {
             modifiers: mods,
             injected: false,
             kernel_repeat: false,
+            claimed: false,
             timestamp_ms: 0,
         }
     }
@@ -5282,6 +5588,7 @@ mod mod_chord_tests {
             modifiers: Modifiers::NONE,
             injected: false,
             kernel_repeat: false,
+            claimed: false,
             timestamp_ms: 0,
         }
     }
@@ -5434,6 +5741,7 @@ mod paste_shortcut_tests {
             modifiers: mods,
             injected: false,
             kernel_repeat: false,
+            claimed: false,
             timestamp_ms: 0,
         }
     }

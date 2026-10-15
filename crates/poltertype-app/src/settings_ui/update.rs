@@ -4,7 +4,10 @@ use iced::Task;
 use iced::widget::text_editor;
 use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::plugins::SettingValue;
-use poltertype_core::settings::{MIN_UPDATE_INTERVAL_HOURS, Settings, SettingsStore};
+use poltertype_core::settings::{
+    MIN_UPDATE_INTERVAL_HOURS, Settings, SettingsStore, TOOLTIP_MAX_MARGIN,
+    TOOLTIP_MAX_SCALE_PERCENT, TOOLTIP_MIN_SCALE_PERCENT,
+};
 use tracing::{info, warn};
 
 use super::doc_links;
@@ -468,6 +471,30 @@ impl SettingsApp {
             }
             Message::SuggestionModifiersChanged(s) => {
                 self.settings.suggestions.accept_modifiers = s
+            }
+            // The read-time clamps of `SuggestionSettings`, so the
+            // stepper never shows a value the tooltip would not obey.
+            Message::SuggestionScaleDelta(delta) => {
+                let cur = i64::from(self.settings.suggestions.scale_percent);
+                let next = (cur + delta).clamp(
+                    i64::from(TOOLTIP_MIN_SCALE_PERCENT),
+                    i64::from(TOOLTIP_MAX_SCALE_PERCENT),
+                );
+                self.settings.suggestions.scale_percent = u32::try_from(next).unwrap_or(100);
+            }
+            Message::SuggestionWindowSpotChosen(spot) => {
+                self.settings.suggestions.window_anchor = spot.config_value().to_owned();
+            }
+            Message::SuggestionMarginDelta(delta) => {
+                let cur = i64::from(self.settings.suggestions.window_margin_clamped());
+                let next = (cur + delta).clamp(0, i64::from(TOOLTIP_MAX_MARGIN));
+                self.settings.suggestions.window_margin = u32::try_from(next).unwrap_or(0);
+            }
+            Message::SuggestionAcceptKeysChanged(choice) => {
+                self.settings.suggestions.accept_keys = choice.config_value().to_owned();
+            }
+            Message::SuggestionNavigationChanged(choice) => {
+                self.settings.suggestions.navigation = choice.config_value().to_owned();
             }
 
             Message::ThemeChoiceChanged(choice) => {

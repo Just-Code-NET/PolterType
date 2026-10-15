@@ -24,7 +24,7 @@ use crate::engine::types::{
     AcceptModifiers, Correction, FrozenScreen, PendingSuggestion, PlannedReplacement,
     SuggestionEntry,
 };
-use crate::settings::Settings;
+use crate::settings::{AcceptKeys, Settings, SuggestionNavigation};
 
 use super::engine::SwitcherEngine;
 
@@ -112,18 +112,38 @@ impl SwitcherEngine {
         });
 
         let generation = self.suggestion_generation.fetch_add(1, Ordering::Relaxed) + 1;
-        let accept = AcceptModifiers::parse(&snap.suggestions.accept_modifiers);
+        // F-keys and arrows reach the application unless the listener
+        // keeps them back: `F5` reloads a browser page, `Enter` sends
+        // the message. Where it cannot, they stay off and the digit
+        // chord stays on.
+        let can_claim = self.key_gate.can_claim();
+        let function_keys = can_claim
+            && AcceptKeys::from_config(&snap.suggestions.accept_keys) == AcceptKeys::FunctionKeys;
+        let arrows = can_claim
+            && SuggestionNavigation::from_config(&snap.suggestions.navigation)
+                == SuggestionNavigation::Arrows;
+        let accept = if function_keys {
+            None
+        } else {
+            AcceptModifiers::parse(&snap.suggestions.accept_modifiers)
+        };
         let timeout = snap.suggestions.timeout();
-        *self.pending_suggestion.lock() = Some(PendingSuggestion {
+        let deadline = Instant::now() + timeout;
+        let pending = PendingSuggestion {
             generation,
             keys: keys.to_vec(),
             rendered: current_text.to_owned(),
             layout: current_layout.clone(),
             entries: entries.clone(),
-            deadline: Instant::now() + timeout,
+            deadline,
             accept,
+            function_keys,
+            arrows,
+            highlight: None,
             frozen: None,
-        });
+        };
+        self.claim_suggestion_keys(&pending);
+        *self.pending_suggestion.lock() = Some(pending);
         debug!(
             generation,
             candidates = entries.len(),
@@ -139,6 +159,8 @@ impl SwitcherEngine {
             } else {
                 String::new()
             },
+            function_keys,
+            arrows,
         });
     }
 
@@ -224,6 +246,7 @@ impl SwitcherEngine {
                     // the slot itself and announces its own dismissal.
                     let missed = (p.layout.clone(), p.rendered.clone());
                     *slot = None;
+                    self.key_gate.release_claim();
                     (g, missed)
                 }
                 _ => return,
@@ -246,7 +269,6 @@ impl SwitcherEngine {
         &self,
         generation: u64,
         index: usize,
-        typed_digit: bool,
         from_pointer: bool,
         buffer: &mut WordBuffer,
         key_rx: &Receiver<KeyEvent>,
@@ -257,6 +279,7 @@ impl SwitcherEngine {
         let taken = {
             let mut slot = self.pending_suggestion.lock();
             if slot.as_ref().is_some_and(|p| p.generation == generation) {
+                self.key_gate.release_claim();
                 slot.take()
             } else {
                 None
@@ -325,9 +348,7 @@ impl SwitcherEngine {
         // flight rather than abort on it. An unused allowance is
         // harmless: it only ever ignores pointer presses.
         let click_allowance = usize::from(from_pointer);
-        let Some(plan) =
-            self.plan_suggestion_replacement(&pending, &entry, &run, &tail, typed_digit)
-        else {
+        let Some(plan) = self.plan_suggestion_replacement(&pending, &entry, &run, &tail) else {
             return;
         };
         self.apply_suggestion_replacement(&pending, &entry, &plan, click_allowance, buffer, key_rx);
@@ -343,7 +364,6 @@ impl SwitcherEngine {
         entry: &SuggestionEntry,
         boundary_run: &[(u32, bool)],
         tail_keys: &[WordKey],
-        typed_digit: bool,
     ) -> Option<PlannedReplacement> {
         let target_layout = entry
             .switch_to
@@ -359,10 +379,11 @@ impl SwitcherEngine {
         let caps_on = self.caps_on();
 
         // Screen model left of the caret:
-        // `<word><boundary_run><in-progress keys>[<chord digit>][caret]`
-        // — delete all of it, retype with the word replaced.
-        let backspaces =
-            pending.keys.len() + boundary_run.len() + tail_keys.len() + usize::from(typed_digit);
+        // `<word><boundary_run><in-progress keys>[caret]` — delete all
+        // of it, retype with the word replaced. The accept chord's digit
+        // is not on screen: every chord holds Ctrl, Alt or Meta, and the
+        // engine reads such a keystroke as a shortcut, not text.
+        let backspaces = pending.keys.len() + boundary_run.len() + tail_keys.len();
         if boundary_run.is_empty() {
             // Belt and braces: the run can only shrink via backspacing,
             // which re-opens the word and clears `completed()` anyway.

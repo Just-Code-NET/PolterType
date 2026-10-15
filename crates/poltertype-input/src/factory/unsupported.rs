@@ -19,3 +19,7 @@ pub(crate) fn create_emitter(_speed: ReplaySpeed) -> Result<Box<dyn KeyEmitter>,
         std::env::consts::OS
     )))
 }
+
+pub(crate) fn suggestion_keys_claimable(_hold_keys: bool) -> bool {
+    false
+}

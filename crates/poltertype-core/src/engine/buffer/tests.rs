@@ -12,6 +12,7 @@ fn press(sc: u32) -> KeyEvent {
         modifiers: Modifiers::NONE,
         injected: false,
         kernel_repeat: false,
+        claimed: false,
         timestamp_ms: 0,
     }
 }
@@ -222,6 +223,7 @@ fn held_backspace(b: &mut WordBuffer) -> WordBoundary {
     b.feed(
         KeyEvent {
             kernel_repeat: true,
+            claimed: false,
             ..press(0x0E)
         },
         None,

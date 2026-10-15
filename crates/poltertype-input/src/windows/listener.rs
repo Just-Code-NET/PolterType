@@ -25,7 +25,9 @@ use super::consts::EMITTER_MARKER;
 use super::gate::WindowsGate;
 use super::modifiers::modifiers_for_event;
 use super::types::WorkerHandle;
-use crate::{InputError, InputListener, KeyDirection, KeyEvent};
+use crate::claim_filter::ClaimFilter;
+use crate::claims::KeyClaims;
+use crate::{ClaimKey, InputError, InputListener, KeyDirection, KeyEvent};
 
 /// Sender shared with the C-callable hook procedure. There can only be
 /// one global keyboard hook per process at a time. `parking_lot::RwLock`
@@ -38,6 +40,14 @@ static EVENT_SINK: OnceLock<parking_lot::RwLock<Option<Sender<KeyEvent>>>> = Onc
 /// the gate is switched off — the callback then never swallows anything.
 static GATE: OnceLock<parking_lot::RwLock<Option<Arc<WindowsGate>>>> = OnceLock::new();
 
+/// The suggestion tooltip's key claims, shared with the hook procedure
+/// the same way. `None` swallows nothing.
+static CLAIMS: OnceLock<parking_lot::RwLock<Option<Arc<ClaimFilter>>>> = OnceLock::new();
+
+fn claims_slot() -> &'static parking_lot::RwLock<Option<Arc<ClaimFilter>>> {
+    CLAIMS.get_or_init(|| parking_lot::RwLock::new(None))
+}
+
 fn gate_slot() -> &'static parking_lot::RwLock<Option<Arc<WindowsGate>>> {
     GATE.get_or_init(|| parking_lot::RwLock::new(None))
 }
@@ -49,6 +59,7 @@ fn sink_slot() -> &'static parking_lot::RwLock<Option<Sender<KeyEvent>>> {
 pub struct WindowsListener {
     worker: Option<WorkerHandle>,
     gate: Option<Arc<WindowsGate>>,
+    claims: Option<Arc<KeyClaims>>,
 }
 
 impl WindowsListener {
@@ -56,6 +67,7 @@ impl WindowsListener {
         Self {
             worker: None,
             gate: None,
+            claims: None,
         }
     }
 
@@ -65,7 +77,15 @@ impl WindowsListener {
         Self {
             worker: None,
             gate: Some(gate),
+            claims: None,
         }
+    }
+
+    /// Let the hook callback keep the suggestion tooltip's claimed keys
+    /// from the focused application.
+    pub(crate) fn with_claims(mut self, claims: Arc<KeyClaims>) -> Self {
+        self.claims = Some(claims);
+        self
     }
 }
 
@@ -77,6 +97,7 @@ impl InputListener for WindowsListener {
 
         *sink_slot().write() = Some(sink);
         *gate_slot().write() = self.gate.clone();
+        *claims_slot().write() = self.claims.clone().map(|c| Arc::new(ClaimFilter::new(c)));
 
         let stopping = std::sync::Arc::new(AtomicBool::new(false));
         let stopping_clone = stopping.clone();
@@ -92,6 +113,9 @@ impl InputListener for WindowsListener {
         })?;
 
         info!(thread_id, "Windows LL keyboard hook installed");
+        if let Some(c) = self.claims.as_ref() {
+            c.set_supported(true);
+        }
         self.worker = Some(WorkerHandle {
             join,
             thread_id,
@@ -119,6 +143,12 @@ impl InputListener for WindowsListener {
         // Drop the gate reference too: a hook that is gone must not
         // leave a swallow decision reachable behind it.
         if let Some(slot) = GATE.get() {
+            *slot.write() = None;
+        }
+        if let Some(c) = self.claims.as_ref() {
+            c.set_supported(false);
+        }
+        if let Some(slot) = CLAIMS.get() {
             *slot.write() = None;
         }
         info!("Windows LL keyboard hook removed");
@@ -204,15 +234,23 @@ unsafe extern "system" fn low_level_keyboard_proc(
             // else. The key gate below still asks about `ours`, which
             // is the question *it* needs.
             let ours = kb.dwExtraInfo == EMITTER_MARKER;
-            let event = KeyEvent {
+            let mut event = KeyEvent {
                 vk: kb.vkCode,
                 scancode: kb.scanCode,
                 direction,
                 modifiers: modifiers_for_event(kb.vkCode, direction),
                 injected: ours,
                 kernel_repeat: false,
+                claimed: false,
                 timestamp_ms: kb.time as u64,
             };
+            // Decided before the send, so the event can say so.
+            let key = claim_key_for_vk(kb.vkCode);
+            event.claimed = CLAIMS
+                .get()
+                .and_then(|slot| slot.read().as_ref().map(|c| c.decide_event(key, &event)))
+                .unwrap_or(false);
+            let claimed = event.claimed;
 
             if let Some(slot) = EVENT_SINK.get() {
                 if let Some(sink) = slot.read().as_ref() {
@@ -229,10 +267,11 @@ unsafe extern "system" fn low_level_keyboard_proc(
             // focused application. Two atomic loads and a comparison,
             // and deliberately no logging: the one thing worse than a
             // slow hook is a slow hook that writes to disk.
-            let swallow = GATE
-                .get()
-                .and_then(|slot| slot.read().as_ref().map(|g| g.swallow(ours)))
-                .unwrap_or(false);
+            let swallow = claimed
+                || GATE
+                    .get()
+                    .and_then(|slot| slot.read().as_ref().map(|g| g.swallow(ours)))
+                    .unwrap_or(false);
             if swallow {
                 return LRESULT(1);
             }
@@ -243,4 +282,18 @@ unsafe extern "system" fn low_level_keyboard_proc(
     // arg is the hook handle; passing a default works per docs (it is
     // ignored for WH_KEYBOARD_LL since Win XP, but we still must call).
     unsafe { CallNextHookEx(HHOOK(std::ptr::null_mut()), code, wparam, lparam) }
+}
+
+/// The claimable key a virtual-key code is. By virtual key rather than
+/// scancode: the keypad's `8` shares the Up arrow's scancode, and with
+/// Num Lock on it types a digit.
+fn claim_key_for_vk(vk: u32) -> Option<ClaimKey> {
+    match vk {
+        0x26 => Some(ClaimKey::Up),
+        0x28 => Some(ClaimKey::Down),
+        0x0D => Some(ClaimKey::Enter),
+        0x70..=0x78 => Some(ClaimKey::Function((vk - 0x6F) as u8)),
+        0x31..=0x39 => Some(ClaimKey::Digit((vk - 0x30) as u8)),
+        _ => None,
+    }
 }

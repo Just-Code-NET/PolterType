@@ -2,6 +2,7 @@
 //! `tests.rs` without an X server.
 
 use super::consts::*;
+use crate::ClaimKey;
 
 /// X11 keycode → evdev keycode (which the engine treats as an SC Set-1
 /// scancode; see [`EVDEV_OFFSET`]).
@@ -18,6 +19,29 @@ pub(crate) fn x11_to_evdev(keycode: u32) -> Option<u32> {
 /// not a key we can synthesise.
 pub(crate) fn evdev_to_x11(evdev: u32) -> Option<u8> {
     u8::try_from(evdev + EVDEV_OFFSET).ok()
+}
+
+/// The claimable key an evdev code is, if any.
+pub(crate) fn claim_key_for_evdev(evdev: u32) -> Option<ClaimKey> {
+    match evdev {
+        EV_UP => Some(ClaimKey::Up),
+        EV_DOWN => Some(ClaimKey::Down),
+        EV_ENTER | EV_KPENTER => Some(ClaimKey::Enter),
+        EV_F1..=EV_F9 => Some(ClaimKey::Function((evdev - EV_F1 + 1) as u8)),
+        EV_1..=EV_9 => Some(ClaimKey::Digit((evdev - EV_1 + 1) as u8)),
+        _ => None,
+    }
+}
+
+/// Every evdev code that is `key` — two for Enter, one otherwise.
+pub(crate) fn evdev_codes_for(key: ClaimKey) -> Vec<u32> {
+    match key {
+        ClaimKey::Up => vec![EV_UP],
+        ClaimKey::Down => vec![EV_DOWN],
+        ClaimKey::Enter => vec![EV_ENTER, EV_KPENTER],
+        ClaimKey::Function(n) => vec![EV_F1 + u32::from(n.clamp(1, 9)) - 1],
+        ClaimKey::Digit(n) => vec![EV_1 + u32::from(n.clamp(1, 9)) - 1],
+    }
 }
 
 /// Is this X11 keycode down, per an `XQueryKeymap` bit vector?

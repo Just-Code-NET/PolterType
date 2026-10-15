@@ -55,8 +55,13 @@ pub(super) fn for_anchor(
             y,
             width,
             height,
-            ..
-        } => Some((x + width as i32 / 2, y + height as i32 / 2)),
+            spot,
+            margin,
+        } => Some(crate::place::window_spot_point(
+            (x, y, width, height),
+            spot,
+            margin,
+        )),
         // Nothing in the anchor says where the text is, so ask the
         // server where the user is.
         PopupAnchor::ScreenBottom => typing_point(conn, root),

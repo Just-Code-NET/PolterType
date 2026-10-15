@@ -12,9 +12,11 @@
 //! | [`run_loop`] | the thread loop, command dispatch |
 //! | [`show`] | creating and placing the window |
 //! | [`monitors`] | which physical screen a popup belongs on |
+//! | [`dpi`] | how large the desktop draws things (`Xft.dpi`) |
 //! | [`paint`] | uploading the rendered pixmap |
 //! | [`events`] | the X event loop, hover, deadline, teardown |
 
+mod dpi;
 mod events;
 mod monitors;
 mod paint;

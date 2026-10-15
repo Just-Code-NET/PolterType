@@ -18,44 +18,17 @@ use core_graphics::event::{
 use crossbeam_channel::Sender;
 use tracing::{debug, info, trace};
 
+use super::accessibility::request_accessibility_prompt;
 use super::codes::{flags_changed_direction, mac_keycode_to_sc1};
 use super::consts::{
     EMITTER_TAG, K_CG_EVENT_SOURCE_USER_DATA, K_CG_KEYBOARD_EVENT_KEYCODE,
     K_CG_MOUSE_EVENT_BUTTON_NUMBER,
 };
 use super::gate::MacosGate;
-use crate::{InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
+use crate::claim_filter::ClaimFilter;
+use crate::claims::KeyClaims;
+use crate::{ClaimKey, InputError, InputListener, KeyDirection, KeyEvent, Modifiers};
 use poltertype_types::SC_POINTER_BUTTON;
-
-// ─── Accessibility permission prompt ─────────────────────────────────
-//
-// `CGEventTapCreate` fails *silently* without Accessibility rights — no
-// system dialog. `AXIsProcessTrustedWithOptions` with the prompt option
-// is the supported way to ask; without it a first-launch user gets a
-// dead tray icon and no explanation.
-
-use core_foundation::dictionary::CFDictionaryRef;
-use core_foundation::string::CFStringRef;
-
-#[link(name = "ApplicationServices", kind = "framework")]
-unsafe extern "C" {
-    fn AXIsProcessTrustedWithOptions(options: CFDictionaryRef) -> bool;
-    static kAXTrustedCheckOptionPrompt: CFStringRef;
-}
-
-fn request_accessibility_prompt() {
-    unsafe {
-        let key =
-            core_foundation::string::CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
-        let value = core_foundation::boolean::CFBoolean::true_value();
-        let options = core_foundation::dictionary::CFDictionary::from_CFType_pairs(&[(
-            key.as_CFType(),
-            value.as_CFType(),
-        )]);
-        let trusted = AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef());
-        debug!(trusted, "AXIsProcessTrustedWithOptions(prompt) result");
-    }
-}
 
 // ─── Listener ────────────────────────────────────────────────────────
 
@@ -73,6 +46,9 @@ pub struct MacosListener {
     /// The key gate the tap callback consults on every keystroke.
     /// `None` = observe only, never swallow.
     gate: Option<Arc<MacosGate>>,
+    /// The suggestion tooltip's claims. Enforced only by an active tap,
+    /// i.e. with the key gate on.
+    claims: Option<Arc<KeyClaims>>,
 }
 
 impl MacosListener {
@@ -80,7 +56,14 @@ impl MacosListener {
         Self {
             started: false,
             gate: None,
+            claims: None,
         }
+    }
+
+    /// Let the tap callback keep the tooltip's claimed keys back.
+    pub(crate) fn with_claims(mut self, claims: Arc<KeyClaims>) -> Self {
+        self.claims = Some(claims);
+        self
     }
 
     /// Wire the listener to the engine's gate, so the tap callback may
@@ -89,6 +72,7 @@ impl MacosListener {
         Self {
             started: false,
             gate: Some(gate),
+            claims: None,
         }
     }
 }
@@ -101,10 +85,11 @@ impl InputListener for MacosListener {
         *sink_slot().write() = Some(sink);
 
         let gate = self.gate.clone();
+        let claims = self.claims.clone();
         let (ready_tx, ready_rx) = crossbeam_channel::bounded::<Result<(), String>>(1);
         thread::Builder::new()
             .name("poltertype-input-macos-tap".into())
-            .spawn(move || run_tap_thread(gate, ready_tx))
+            .spawn(move || run_tap_thread(gate, claims, ready_tx))
             .map_err(|e| InputError::Os(format!("spawn tap thread: {e}")))?;
 
         match ready_rx.recv_timeout(Duration::from_secs(3)) {
@@ -160,6 +145,7 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
             },
             injected: event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA) != 0,
             kernel_repeat: false,
+            claimed: false,
             timestamp_ms: 0,
         });
     }
@@ -197,6 +183,7 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
         },
         injected: event.get_integer_value_field(K_CG_EVENT_SOURCE_USER_DATA) != 0,
         kernel_repeat: false,
+        claimed: false,
         timestamp_ms: 0,
     })
 }
@@ -210,7 +197,11 @@ fn to_key_event(ev_type: CGEventType, event: &CGEvent) -> Option<KeyEvent> {
 /// the application — the safe direction.
 static TAP_PORT: OnceLock<usize> = OnceLock::new();
 
-fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), String>>) {
+fn run_tap_thread(
+    gate: Option<Arc<MacosGate>>,
+    claims: Option<Arc<KeyClaims>>,
+    ready_tx: Sender<Result<(), String>>,
+) {
     use core_graphics::event::CGEventTapProxy;
 
     // The gate only gets to make swallow decisions when the tap is
@@ -218,6 +209,7 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     // window server. A gate disabled by env keeps a listen-only tap.
     let active = gate.as_ref().is_some_and(|g| g.wants_active_tap());
     let gate_for_callback = gate.clone();
+    let claims_for_callback = claims.clone().filter(|_| active).map(ClaimFilter::new);
 
     let callback =
         move |_proxy: CGEventTapProxy, ev_type: CGEventType, event: &CGEvent| -> CallbackResult {
@@ -235,7 +227,14 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                 return CallbackResult::Keep;
             }
 
-            if let Some(ev_out) = to_key_event(ev_type, event) {
+            if let Some(mut ev_out) = to_key_event(ev_type, event) {
+                // Decided before the send, so the event can say so.
+                if let Some(c) = claims_for_callback.as_ref() {
+                    if matches!(ev_type, CGEventType::KeyDown | CGEventType::KeyUp) {
+                        let key = ClaimKey::from_scancode(ev_out.scancode);
+                        ev_out.claimed = c.decide_event(key, &ev_out);
+                    }
+                }
                 // Every injected key-down that made it back through the
                 // window server bumps the counter the emitter paces
                 // its backspace burst against — see
@@ -265,6 +264,9 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
                     }
                 }
 
+                if ev_out.claimed {
+                    return CallbackResult::Drop;
+                }
                 // While a correction burst is on the wire the user's
                 // keystrokes are swallowed here — the engine already has
                 // them and replays them behind the correction. Our own
@@ -347,6 +349,9 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     if let Some(g) = gate.as_ref() {
         g.set_tap_running(true);
     }
+    if let Some(c) = claims.as_ref() {
+        c.set_supported(active);
+    }
 
     let _ = ready_tx.send(Ok(()));
 
@@ -365,6 +370,9 @@ fn run_tap_thread(gate: Option<Arc<MacosGate>>, ready_tx: Sender<Result<(), Stri
     }
     if let Some(g) = gate.as_ref() {
         g.set_tap_running(false);
+    }
+    if let Some(c) = claims.as_ref() {
+        c.set_supported(false);
     }
     info!("macOS CGEventTap thread exiting");
 }

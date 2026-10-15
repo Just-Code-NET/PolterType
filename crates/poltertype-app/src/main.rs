@@ -75,7 +75,7 @@ use poltertype_detect::Detector;
 use poltertype_input::{
     KeyEvent, ReplaySpeed, create_emitter, create_focus_tracker, create_key_gate, create_listener,
 };
-use poltertype_popup::{PopupUiEvent, create_popup};
+use poltertype_popup::{PopupModel, PopupUiEvent, create_popup};
 use poltertype_tray::Tray;
 use poltertype_types::LayoutId;
 use tao::event::Event;
@@ -677,6 +677,9 @@ fn main() -> Result<()> {
     let popup = create_popup(popup_event_tx);
     spawn_popup_bridge(event_loop.create_proxy(), popup_event_rx)?;
     let focus_for_popup = Arc::clone(&focus_tracker);
+    // The model on screen, kept so the keyboard highlight can re-show
+    // it with a row selected.
+    let mut shown_popup: Option<PopupModel> = None;
 
     // The worker owns every network call this app makes; the event loop
     // only sees results. `check_now_tx` cuts its sleep short, bounded at
@@ -1013,18 +1016,35 @@ fn main() -> Result<()> {
                     entries,
                     timeout,
                     accept_modifiers,
+                    function_keys,
+                    arrows,
                 } => {
-                    show_suggestion_popup(
+                    shown_popup = Some(show_suggestion_popup(
                         popup.as_ref(),
                         &focus_for_popup,
-                        generation,
-                        original,
-                        entries,
-                        timeout,
-                        accept_modifiers,
-                    );
+                        &settings_for_loop.snapshot().suggestions,
+                        PopupOffer {
+                            generation,
+                            original,
+                            entries,
+                            timeout,
+                            accept_modifiers,
+                            function_keys,
+                            arrows,
+                        },
+                    ));
                 }
-                SwitcherEvent::SuggestionsDismissed { .. } => popup.hide(),
+                SwitcherEvent::SuggestionHighlighted { generation, index } => {
+                    if let Some(model) = shown_popup.as_mut().filter(|m| m.generation == generation)
+                    {
+                        model.selected = Some(index);
+                        popup.show(model.clone());
+                    }
+                }
+                SwitcherEvent::SuggestionsDismissed { .. } => {
+                    shown_popup = None;
+                    popup.hide();
+                }
                 SwitcherEvent::SuggestionApplied { .. } => {
                     // The engine already played the sound; the tooltip
                     // hid on click. Nothing tray-side to update, and
@@ -1067,7 +1087,6 @@ fn main() -> Result<()> {
             Event::UserEvent(UserEvent::Popup(pe)) => match pe {
                 PopupUiEvent::Accepted { generation, index } => {
                     let _ = cmd_tx_for_loop.send(EngineCommand::AcceptSuggestion {
-                        typed_digit: false,
                         generation,
                         index,
                         from_pointer: true,

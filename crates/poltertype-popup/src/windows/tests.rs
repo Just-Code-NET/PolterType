@@ -26,6 +26,10 @@ fn model() -> PopupModel {
         accept_hint: Some("Ctrl+Shift".to_owned()),
         timeout: Duration::from_millis(50),
         anchor: PopupAnchor::ScreenBottom,
+        scale: 1.0,
+        function_keys: false,
+        arrows: false,
+        selected: None,
     }
 }
 

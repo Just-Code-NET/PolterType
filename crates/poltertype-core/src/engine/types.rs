@@ -321,6 +321,13 @@ pub struct PendingSuggestion {
     pub deadline: std::time::Instant,
     /// Parsed accept chord; `None` = click-to-apply only.
     pub accept: Option<AcceptModifiers>,
+    /// `F1`..`F9` accept this offer — claimed from the application, so
+    /// only ever set where the listener can claim.
+    pub function_keys: bool,
+    /// `Down` / `Up` / `Enter` navigate this offer. Claimed likewise.
+    pub arrows: bool,
+    /// The row the arrows have highlighted, if any yet.
+    pub highlight: Option<usize>,
     /// Screen state frozen the instant a pointer press was observed —
     /// see [`FrozenScreen`]. `None` until a click happens.
     pub frozen: Option<FrozenScreen>,

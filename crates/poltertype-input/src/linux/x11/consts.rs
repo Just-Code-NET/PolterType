@@ -25,6 +25,14 @@ pub(crate) const EV_RIGHTCTRL: u32 = 97;
 pub(crate) const EV_RIGHTALT: u32 = 100;
 pub(crate) const EV_LEFTMETA: u32 = 125;
 pub(crate) const EV_RIGHTMETA: u32 = 126;
+pub(crate) const EV_1: u32 = 2;
+pub(crate) const EV_9: u32 = 10;
+pub(crate) const EV_ENTER: u32 = 28;
+pub(crate) const EV_F1: u32 = 59;
+pub(crate) const EV_F9: u32 = 67;
+pub(crate) const EV_KPENTER: u32 = 96;
+pub(crate) const EV_UP: u32 = 103;
+pub(crate) const EV_DOWN: u32 = 108;
 
 // ── Timing ──────────────────────────────────────────────────────────
 
@@ -37,6 +45,17 @@ pub(crate) const EV_RIGHTMETA: u32 = 126;
 /// five hundred times a second on an idle keyboard
 /// ([#63](https://github.com/Just-Code-NET/PolterType/issues/63)).
 pub(crate) const IDLE_WAIT: Duration = Duration::from_millis(250);
+
+/// Longest wait between rounds while a key grab is held for the
+/// suggestion tooltip. Nothing tells this thread that the engine
+/// dropped its claim, and a grab outliving it keeps one keystroke from
+/// the application that should have had it.
+pub(crate) const CLAIM_WAIT: Duration = Duration::from_millis(20);
+
+/// How long a raw key event of a grabbed key waits for the core event
+/// our grab delivers right behind it. The server writes the two in one
+/// go, so this only matters when a read splits them.
+pub(crate) const TWIN_WAIT: Duration = Duration::from_millis(5);
 
 /// Shortest gap between two `XQueryKeymap` round-trips when reconciling
 /// a modifier we believe is held (`ModState::resync`).
