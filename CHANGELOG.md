@@ -4,6 +4,16 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Pausing mid-word no longer closes the suggestion tooltip.** With
+  the next word half-typed, a pause of more than two seconds to read
+  the tooltip made the accept chord's first key — Ctrl — close it
+  instead, with nothing replaced. A live tooltip now holds the word
+  being typed through the pause, as it already did between words.
+
 ## [0.38.0] — the tooltip waits for you
 
 ### Added

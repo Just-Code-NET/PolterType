@@ -2603,6 +2603,47 @@ mod engine_integration_tests {
         );
     }
 
+    /// The same pause with the next word half-typed — where someone
+    /// typing on actually is when they notice the tooltip. The idle
+    /// abandon used to drop that word, and the offer with it, on the
+    /// chord's own Ctrl.
+    #[test]
+    fn accept_chord_survives_an_idle_pause_mid_word() {
+        let h = Harness::start_full(
+            400, // idle_timeout_ms — the pause below exceeds it
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(FixedSuggestions(vec!["hello"]))),
+            Some(vec![Box::new(NoOpinionDetector)]),
+        );
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let _generation = ready_generation(&h);
+        type_word(&h, &[0x1E, 0x30]); // `ab`, unfinished
+        std::thread::sleep(Duration::from_millis(700)); // reading the tooltip
+
+        let m = |control: bool, shift: bool| poltertype_types::Modifiers {
+            control,
+            shift,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x1D, KeyDirection::Press, m(true, false));
+        h.key_mods(0x2A, KeyDirection::Press, m(true, true));
+        h.key_mods(0x02, KeyDirection::Press, m(true, true));
+        h.key_mods(0x02, KeyDirection::Release, m(true, true));
+        h.key_mods(0x2A, KeyDirection::Release, m(true, false));
+        h.key_mods(0x1D, KeyDirection::Release, m(false, false));
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(8),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE, 0x1E, 0x30]).collect()),
+            ]
+        );
+    }
+
     #[test]
     fn stale_generation_accept_is_ignored() {
         let h = suggestion_harness();

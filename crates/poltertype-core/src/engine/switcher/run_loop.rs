@@ -67,12 +67,15 @@ impl SwitcherEngine {
                     self.click_grace_tick(&ev);
                     self.check_keystream_hotkeys(&ev, &mut buffer, &key_rx);
                     if last_event_at.elapsed() > idle_timeout {
-                        // A live offer overrides idle hygiene while no
-                        // word is mid-flight: pausing to read the
-                        // tooltip is the expected interaction, and
-                        // anything that really invalidates the caret
-                        // dismisses through its own path.
-                        if self.has_live_suggestion() && buffer.keys().is_empty() {
+                        // A live offer overrides idle hygiene: pausing
+                        // to read the tooltip is the expected
+                        // interaction, and anything that really
+                        // invalidates the caret dismisses through its
+                        // own path. Mid-word too — the offer outlives
+                        // typing on, so that is where the reader
+                        // usually stops, and abandoning the word took
+                        // the offer down on the chord's own Ctrl.
+                        if self.has_live_suggestion() {
                             debug!("idle timeout skipped — live suggestion offer");
                         } else {
                             debug!("idle timeout — abandoning word buffer");
