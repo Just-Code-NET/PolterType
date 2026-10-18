@@ -4,6 +4,37 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.38.0] — the tooltip waits for you
+
+### Added
+
+- **Plug-ins install per user.** `poltertype --install-plugin DIR`
+  copies a plug-in into your own data directory
+  (`~/.local/share/poltertype/plugins/` on Linux) and
+  `poltertype --remove-plugin ID` takes it out again — the one place a
+  packaged or AppImage install can write without root. Plug-ins
+  installed beside the app still load; a per-user copy of the same id
+  wins. Every plug-in process is now told where PolterType's data
+  lives (`POLTERTYPE_DATA_DIR`), so one built on the same engine finds
+  its layouts and dictionaries.
+
+### Changed
+
+- **A suggestion can still be accepted after you typed on.** The
+  tooltip used to go dead the moment another word was finished — and
+  with a second layout that puts a letter on the comma key, typing
+  `, ` after the word was enough.
+  Now the offer stays open while you keep typing: accepting it fixes
+  the word, then types everything after it back. Enter or Tab after
+  the word, a backspace into the word itself, a click or a shortcut,
+  a layout switch by hand, or another misspelling (which gets the
+  tooltip instead) still close it. After a suggestion from the other
+  layout, each finished word typed after it is checked again: it
+  follows the switch when it is a dictionary word there and not one
+  in the layout it was typed in, and keeps its letters otherwise. A
+  comma typed straight after the word is no longer eaten by the
+  replacement.
+
 ## [0.37.0] — keys of your own
 
 ### Added
