@@ -230,6 +230,10 @@ impl SwitcherEngine {
             "applying correction"
         );
 
+        // Whatever this retypes may sit inside an open offer's trail. An
+        // accept took its own offer out of the slot before getting here.
+        self.dismiss_suggestions(None);
+
         // A same-layout replacement (spelling suggestion) has no layout
         // to flip; everything switch-related below is keyed off this.
         let switching = from != to;

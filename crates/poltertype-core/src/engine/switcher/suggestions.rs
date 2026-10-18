@@ -2,6 +2,7 @@
 //! validated, and applying the replacement through the same
 //! absorb → delete → replay machinery as layout corrections.
 //!
+//! An offer survives the words typed after it — see `suggest_trail`.
 //! An accept is re-validated against generation, deadline and the
 //! buffer's own screen model before anything is emitted, and anything
 //! that invalidates the word's screen position dismisses the offer via
@@ -19,29 +20,30 @@ use tracing::{debug, warn};
 
 use crate::engine::buffer::WordBuffer;
 use crate::engine::enums::{DictionaryAddOrigin, SuggestionAction, SwitcherEvent};
-use crate::engine::heuristics::is_submission_scancode;
 use crate::engine::types::{
-    AcceptModifiers, Correction, FrozenScreen, PendingSuggestion, PlannedReplacement,
-    SuggestionEntry,
+    AcceptModifiers, Correction, PendingSuggestion, PlannedReplacement, SuggestionEntry, TrailKey,
 };
 use crate::settings::{AcceptKeys, Settings, SuggestionNavigation};
 
 use super::engine::SwitcherEngine;
 
-/// How long a click-frozen offer stays acceptable: long enough for the
+/// How long a clicked offer stays acceptable: long enough for the
 /// tooltip's `Accepted` event to cross popup thread → app loop → engine
-/// channel, short enough that a click *elsewhere* (which also freezes,
-/// because the engine cannot tell them apart) cannot authorise a
-/// replacement after the user moved on.
+/// channel, short enough that a click *elsewhere* (which also opens
+/// the window, because the engine cannot tell them apart) cannot
+/// authorise a replacement after the user moved on.
 const CLICK_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl SwitcherEngine {
     /// Offer suggestions for a just-completed word the engine decided
     /// to keep. Silent unless every gate below passes.
+    ///
+    /// `run` is the buffer's separator run, which at this moment is the
+    /// separator that closed the word.
     pub(super) fn maybe_offer_suggestions(
         &self,
-        keys: &[WordKey],
-        current_text: &str,
+        token: &[WordKey],
+        run: &[(u32, bool)],
         current_layout: &LayoutId,
         low_conf_alt: Option<(LayoutId, String)>,
         snap: &Settings,
@@ -52,6 +54,25 @@ impl SwitcherEngine {
         if !snap.suggestions.enabled {
             return;
         }
+        let Some(mapping) = self.layouts.get(current_layout) else {
+            return;
+        };
+        // Punctuation on a key that is a letter in another active layout
+        // (`,` is `б` in uk-UA) reaches us glued to the word. It is not
+        // part of what gets spelled, and a replacement must not eat it:
+        // it goes to the front of the trail instead.
+        let glued = token
+            .iter()
+            .rev()
+            .take_while(|k| {
+                mapping
+                    .translate_key(**k)
+                    .is_some_and(|c| !c.is_alphanumeric())
+            })
+            .count();
+        let (keys, glued) = token.split_at(token.len() - glued);
+        let rendered = mapping.translate_buffer(keys);
+        let current_text = rendered.as_str();
         let stripped = letters_only_lower(current_text);
         if stripped.chars().count() < 3 {
             return;
@@ -111,6 +132,22 @@ impl SwitcherEngine {
             action: SuggestionAction::AddToDictionary,
         });
 
+        // One tooltip at a time: the previous offer goes, reported as
+        // missed, before this one takes the slot.
+        self.dismiss_suggestions(None);
+        let trail: Vec<TrailKey> = glued
+            .iter()
+            .map(|&key| TrailKey { key, word: true })
+            .chain(run.iter().map(|&(scancode, shift)| TrailKey {
+                key: WordKey {
+                    scancode,
+                    shift,
+                    caps: false,
+                    timestamp_ms: 0,
+                },
+                word: false,
+            }))
+            .collect();
         let generation = self.suggestion_generation.fetch_add(1, Ordering::Relaxed) + 1;
         // F-keys and arrows reach the application unless the listener
         // keeps them back: `F5` reloads a browser page, `Enter` sends
@@ -135,12 +172,13 @@ impl SwitcherEngine {
             rendered: current_text.to_owned(),
             layout: current_layout.clone(),
             entries: entries.clone(),
+            trail,
             deadline,
             accept,
             function_keys,
             arrows,
             highlight: None,
-            frozen: None,
+            click_grace_until: None,
         };
         self.claim_suggestion_keys(&pending);
         *self.pending_suggestion.lock() = Some(pending);
@@ -173,31 +211,18 @@ impl SwitcherEngine {
             .is_some_and(|p| Instant::now() <= p.deadline)
     }
 
-    /// Freeze the screen model into the pending offer before a pointer
-    /// press abandons the buffer, in case the click landed on the
-    /// tooltip and its `Accepted` event arrives a beat later. Only
-    /// freezes while the buffer still vouches for the word.
+    /// Open the click-grace window before a pointer press abandons the
+    /// buffer, in case the click landed on the tooltip and its
+    /// `Accepted` event arrives a beat later. Only while the buffer
+    /// still agrees with the trail.
     pub(super) fn freeze_suggestion_for_click(&self, buffer: &WordBuffer) {
         let mut slot = self.pending_suggestion.lock();
         let Some(p) = slot.as_mut() else { return };
         let now = Instant::now();
-        if now > p.deadline {
+        if now > p.deadline || !Self::trail_agrees_with_buffer(p, buffer) {
             return;
         }
-        let same_word = buffer.completed().len() == p.keys.len()
-            && buffer
-                .completed()
-                .iter()
-                .zip(&p.keys)
-                .all(|(a, b)| a.scancode == b.scancode && a.shift == b.shift);
-        if !same_word {
-            return;
-        }
-        p.frozen = Some(FrozenScreen {
-            run: buffer.boundary_run().to_vec(),
-            tail: buffer.keys().to_vec(),
-            until: now + CLICK_GRACE,
-        });
+        p.click_grace_until = Some(now + CLICK_GRACE);
     }
 
     /// True while a click-grace window is open: the run loop then skips
@@ -206,20 +231,20 @@ impl SwitcherEngine {
         self.pending_suggestion
             .lock()
             .as_ref()
-            .and_then(|p| p.frozen.as_ref())
-            .is_some_and(|f| Instant::now() <= f.until)
+            .and_then(|p| p.click_grace_until)
+            .is_some_and(|until| Instant::now() <= until)
     }
 
-    /// Per-event grace bookkeeping: a frozen offer dies on the first
+    /// Per-event grace bookkeeping: a clicked offer dies on the first
     /// non-pointer keypress — the user clicked elsewhere and moved on,
     /// so the caret is somewhere we cannot vouch for — or once the
     /// window lapses.
     pub(super) fn click_grace_tick(&self, ev: &KeyEvent) {
         let stale = {
             let slot = self.pending_suggestion.lock();
-            match slot.as_ref().and_then(|p| p.frozen.as_ref()) {
-                Some(f) => {
-                    Instant::now() > f.until
+            match slot.as_ref().and_then(|p| p.click_grace_until) {
+                Some(until) => {
+                    Instant::now() > until
                         || (!ev.injected
                             && ev.direction == poltertype_input::KeyDirection::Press
                             && ev.scancode != poltertype_types::SC_POINTER_BUTTON)
@@ -262,9 +287,9 @@ impl SwitcherEngine {
     }
 
     /// Handle an accept (tooltip click or digit chord). Validates the
-    /// generation, the deadline, and that the mistyped word is still the
-    /// last completed word the buffer can vouch for. Anything else is
-    /// silently declined — the tooltip is gone or lying about the screen.
+    /// generation, the deadline, and that the screen still reads the
+    /// way the offer's trail says. Anything else is silently declined —
+    /// the tooltip is gone or lying about the screen.
     pub(super) fn accept_suggestion(
         &self,
         generation: u64,
@@ -319,36 +344,25 @@ impl SwitcherEngine {
         }
 
         // Two ways the screen can be vouched for: the live buffer still
-        // holds the offered word, or the click's own pointer press
-        // abandoned the buffer but froze the state first and the grace
-        // window is open — a click ON the overlay never reached the app,
-        // so the frozen copy is exact.
-        let same_word = buffer.completed().len() == pending.keys.len()
-            && buffer
-                .completed()
-                .iter()
-                .zip(&pending.keys)
-                .all(|(a, b)| a.scancode == b.scancode && a.shift == b.shift);
-        let screen = if same_word {
-            Some((buffer.boundary_run().to_vec(), buffer.keys().to_vec()))
-        } else {
-            match pending.frozen.as_ref() {
-                Some(f) if Instant::now() <= f.until => Some((f.run.clone(), f.tail.clone())),
-                _ => None,
-            }
-        };
-        let Some((run, tail)) = screen else {
+        // ends the way the trail does, or the click's own pointer press
+        // abandoned the buffer after opening the grace window — a click
+        // ON the overlay never reached the app, so the trail is exact.
+        let vouched = Self::trail_agrees_with_buffer(&pending, buffer)
+            || pending
+                .click_grace_until
+                .is_some_and(|until| Instant::now() <= until);
+        if !vouched {
             debug!(
                 generation,
-                "suggestion accept declined: word no longer last on screen"
+                "suggestion accept declined: the screen no longer matches the offer"
             );
             return;
-        };
+        }
         // The absorb machinery must swallow the one physical click in
         // flight rather than abort on it. An unused allowance is
         // harmless: it only ever ignores pointer presses.
         let click_allowance = usize::from(from_pointer);
-        let Some(plan) = self.plan_suggestion_replacement(&pending, &entry, &run, &tail) else {
+        let Some(plan) = self.plan_suggestion_replacement(&pending, &entry) else {
             return;
         };
         self.apply_suggestion_replacement(&pending, &entry, &plan, click_allowance, buffer, key_rx);
@@ -362,8 +376,6 @@ impl SwitcherEngine {
         &self,
         pending: &PendingSuggestion,
         entry: &SuggestionEntry,
-        boundary_run: &[(u32, bool)],
-        tail_keys: &[WordKey],
     ) -> Option<PlannedReplacement> {
         let target_layout = entry
             .switch_to
@@ -373,23 +385,29 @@ impl SwitcherEngine {
             warn!(%target_layout, "suggestion target layout not in DB");
             return None;
         };
+        if pending.trail.iter().all(|t| t.word) {
+            // Belt and braces: losing the word's separator dismisses the
+            // offer, see `track_suggestion_trail`.
+            debug!("suggestion accept declined: no separator after the word");
+            return None;
+        }
+        // The trail is scancodes, and only the layout they were typed in
+        // turns them back into the same text. A hand switch since then
+        // would retype the user's words as another script.
+        if self.layout_switcher.current().ok().as_ref() != Some(&pending.layout) {
+            debug!("suggestion accept declined: the layout changed since the offer");
+            return None;
+        }
 
         // Read once: this plan turns *characters* back into keystrokes,
         // and Caps Lock decides which Shift state produces each one.
         let caps_on = self.caps_on();
 
-        // Screen model left of the caret:
-        // `<word><boundary_run><in-progress keys>[caret]` — delete all
-        // of it, retype with the word replaced. The accept chord's digit
-        // is not on screen: every chord holds Ctrl, Alt or Meta, and the
-        // engine reads such a keystroke as a shortcut, not text.
-        let backspaces = pending.keys.len() + boundary_run.len() + tail_keys.len();
-        if boundary_run.is_empty() {
-            // Belt and braces: the run can only shrink via backspacing,
-            // which re-opens the word and clears `completed()` anyway.
-            debug!("suggestion accept declined: boundary run empty");
-            return None;
-        }
+        // Screen model left of the caret: `<word><trail>[caret]` —
+        // delete all of it, retype with the word replaced. The accept
+        // chord's digit is not on screen: every chord holds Ctrl, Alt or
+        // Meta, and the engine reads such a keystroke as a shortcut.
+        let backspaces = pending.keys.len() + pending.trail.len();
 
         // Cross-layout entries replay the original scancodes under the
         // switched layout; spelling entries reverse-map the suggestion
@@ -417,55 +435,16 @@ impl SwitcherEngine {
                 })
                 .collect()
         };
+        let word_text = if entry.switch_to.is_some() {
+            target_mapping.translate_buffer(&pending.keys)
+        } else {
+            entry.text.clone()
+        };
 
-        // Separators + the user's in-progress next word, re-emitted
-        // after the replacement. Enter/Tab in a separator run must not
-        // be re-pressed (submits the line) — substitute Space, same as
-        // `force_switch_last`.
-        let extra: Vec<ReplayKey> = boundary_run
-            .iter()
-            .map(|&(sc, shift)| {
-                if is_submission_scancode(sc) {
-                    ReplayKey {
-                        scancode: 0x39,
-                        shift: false,
-                    }
-                } else {
-                    ReplayKey {
-                        scancode: sc,
-                        shift,
-                    }
-                }
-            })
-            .chain(tail_keys.iter().map(|k| ReplayKey {
-                scancode: k.scancode,
-                shift: k.shift,
-            }))
-            .collect();
-
-        // Rendered form of the full replacement — the `Corrected`
-        // event payload and the text-injection fallback body.
-        let mut corrected = entry.text.clone();
-        for rk in &extra {
-            let ch = target_mapping
-                .translate_key(WordKey {
-                    scancode: rk.scancode,
-                    shift: rk.shift,
-                    // Separator run — nothing here is alphabetic, so
-                    // the lock cannot change the level.
-                    caps: false,
-                    timestamp_ms: 0,
-                })
-                .or(match rk.scancode {
-                    0x39 => Some(' '),
-                    _ => None,
-                })
-                .unwrap_or(' ');
-            corrected.push(ch);
-        }
-
-        let full_replay: Option<Vec<ReplayKey>> = word_replay.map(|mut w| {
-            w.extend(extra.iter().copied());
+        let rest = self.replay_trail(&pending.trail, &pending.layout, &target_layout)?;
+        let corrected = word_text + &rest.text;
+        let full_replay: Option<Vec<ReplayKey>> = word_replay.zip(rest.keys).map(|(mut w, r)| {
+            w.extend(r);
             w
         });
         let reason = if entry.switch_to.is_some() {
@@ -499,6 +478,7 @@ impl SwitcherEngine {
             replay: full_replay,
             reason,
             replacement_keys,
+            stash_stale: rest.stash_stale,
         })
     }
 
@@ -538,25 +518,42 @@ impl SwitcherEngine {
             replacement: entry.text.clone(),
         });
 
-        // A cross-layout entry leaves the scancodes unchanged, so the
-        // buffer stash stays valid; a spelling entry changes them and
-        // the stash has to follow, or backspacing re-opens the old word.
+        // A cross-layout entry leaves the word's scancodes unchanged, so
+        // the buffer stash stays valid unless the trail was retyped on
+        // other keys; a spelling entry changes them and the stash has to
+        // follow, or backspacing re-opens the old word. Only while the
+        // stash still names the offered word: after a finished word in
+        // the trail it names that one, retyped as it was.
         //
         // The manual switch-last stash is dropped either way:
         // re-transliterating a word the user just hand-picked is never
         // what the hotkey should do next.
-        if entry.switch_to.is_none() {
-            let still_same = buffer.completed().len() == pending.keys.len()
-                && buffer
-                    .completed()
-                    .iter()
-                    .zip(&pending.keys)
-                    .all(|(a, b)| a.scancode == b.scancode && a.shift == b.shift);
-            if still_same {
-                // `None` (text injection, no scancode form) forgets the
-                // stash rather than pointing it off screen.
-                buffer.replace_completed(plan.replacement_keys.clone().unwrap_or_default());
-            }
+        let glued: Vec<WordKey> = pending
+            .trail
+            .iter()
+            .take_while(|t| t.word)
+            .map(|t| t.key)
+            .collect();
+        let names_offered = buffer.completed().len() == pending.keys.len() + glued.len()
+            && buffer
+                .completed()
+                .iter()
+                .zip(pending.keys.iter().chain(&glued))
+                .all(|(a, b)| a.scancode == b.scancode && a.shift == b.shift);
+        if plan.stash_stale {
+            buffer.forget_completed();
+        } else if entry.switch_to.is_none() && names_offered {
+            // `None` (text injection, no scancode form) forgets the
+            // stash rather than pointing it off screen.
+            buffer.replace_completed(
+                plan.replacement_keys
+                    .clone()
+                    .map(|mut k| {
+                        k.extend(glued);
+                        k
+                    })
+                    .unwrap_or_default(),
+            );
         }
         *self.last_word.write() = None;
     }

@@ -45,8 +45,7 @@ pub struct Correction<'a> {
 /// anything reaches the screen.
 pub struct PlannedReplacement {
     pub target_layout: LayoutId,
-    /// On-screen characters to delete: the word, the separator run,
-    /// the in-progress next word, and the chord digit if one was typed.
+    /// On-screen characters to delete: the word and its whole trail.
     pub backspaces: usize,
     /// The full replacement as rendered text — event payload, and the
     /// body of the text-injection fallback.
@@ -60,6 +59,8 @@ pub struct PlannedReplacement {
     /// the boundary re-opens the right thing. `None` when the layout
     /// cannot type every character and text injection was used.
     pub replacement_keys: Option<Vec<WordKey>>,
+    /// See [`TrailReplay::stash_stale`].
+    pub stash_stale: bool,
 }
 
 /// A resolved hotkey chord matched against the raw key stream.
@@ -303,12 +304,7 @@ pub struct SuggestionEntry {
     pub action: SuggestionAction,
 }
 
-/// A suggestion offer awaiting the user's accept. Separators and any
-/// in-progress next word are deliberately absent: they may legitimately
-/// change while the tooltip is up, so they are read from the live
-/// [`WordBuffer`] at accept time.
-///
-/// [`WordBuffer`]: crate::engine::buffer::WordBuffer
+/// A suggestion offer awaiting the user's accept.
 #[derive(Debug, Clone)]
 pub struct PendingSuggestion {
     /// Ties accepts/dismissals to this exact offer.
@@ -317,6 +313,10 @@ pub struct PendingSuggestion {
     pub rendered: String,
     pub layout: LayoutId,
     pub entries: Vec<SuggestionEntry>,
+    /// Everything typed right of the word since, oldest first: the
+    /// punctuation glued to it, its separator, and any words after.
+    /// An accept erases and retypes all of it.
+    pub trail: Vec<TrailKey>,
     /// Accepts after this instant are ignored (the tooltip is gone).
     pub deadline: std::time::Instant,
     /// Parsed accept chord; `None` = click-to-apply only.
@@ -328,27 +328,31 @@ pub struct PendingSuggestion {
     pub arrows: bool,
     /// The row the arrows have highlighted, if any yet.
     pub highlight: Option<usize>,
-    /// Screen state frozen the instant a pointer press was observed —
-    /// see [`FrozenScreen`]. `None` until a click happens.
-    pub frozen: Option<FrozenScreen>,
+    /// Set by a pointer press while the buffer still agreed with the
+    /// trail: a click *on the tooltip* abandons the buffer without
+    /// moving the caret, and its `Accepted` event arrives a beat later.
+    /// Accepts after this instant can no longer rely on that.
+    pub click_grace_until: Option<std::time::Instant>,
 }
 
-/// The buffer's screen model, captured *just before* a pointer press
-/// abandons it.
-///
-/// A click rightly abandons the buffer, since the caret usually moved —
-/// but a click *on the tooltip* never reaches the app below, so text and
-/// caret are exactly where they were. The tooltip's `Accepted` event
-/// races the evdev observation of that same click, so the deletion math
-/// is frozen here and honoured within a short grace window.
+/// One keystroke of [`PendingSuggestion::trail`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrailKey {
+    pub key: WordKey,
+    /// The buffer read it as part of a word rather than a separator.
+    pub word: bool,
+}
+
+/// A suggestion trail as it is typed back after the replacement.
 #[derive(Debug, Clone)]
-pub struct FrozenScreen {
-    /// Boundary keys after the offered word (`WordBuffer::boundary_run`).
-    pub run: Vec<(u32, bool)>,
-    /// In-progress next-word keys (`WordBuffer::keys`).
-    pub tail: Vec<poltertype_types::WordKey>,
-    /// Grace deadline — accepts after this are declined.
-    pub until: std::time::Instant,
+pub struct TrailReplay {
+    /// `None` once some character has no key in the target layout: the
+    /// whole replacement then goes out as text.
+    pub keys: Option<Vec<ReplayKey>>,
+    pub text: String,
+    /// The buffer's stash no longer matches the screen in scancodes —
+    /// a separator or a kept word was retyped on other keys.
+    pub stash_stale: bool,
 }
 
 #[derive(Debug, Clone)]

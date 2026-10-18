@@ -263,6 +263,9 @@ impl SwitcherEngine {
             focused_basename.as_deref(),
             &history,
         ) {
+            // The trigger is about to be erased from under an open
+            // offer's trail.
+            self.dismiss_suggestions(None);
             // Counting keys rather than rendered chars survives
             // scancodes the mapping table cannot render.
             self.dispatch_smart_command(cmd, erase_len(cmd, keys.len()), boundary_char);
@@ -498,7 +501,7 @@ impl SwitcherEngine {
                 if started_clean {
                     self.maybe_offer_suggestions(
                         &keys,
-                        &current_text,
+                        buffer.boundary_run(),
                         &current_layout,
                         low_conf_alt,
                         &snap,

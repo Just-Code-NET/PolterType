@@ -6,6 +6,46 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-10-18 — A suggestion offer follows the typing after its word
+
+An accept used to need the offered word to be the buffer's last
+completed one, and every completed word dismissed the offer. With
+en-US + uk-UA that included `hwllo␣,␣ab`: `,` is `б`'s key, so it is a
+one-key word, and its space killed the tooltip the user was about to
+use.
+
+**What changed.** `PendingSuggestion::trail` records every keystroke
+the buffer takes after the word (`suggest_trail.rs`, mirrored from
+`feed_buffer`), so the screen model is `<word><trail>[caret]` however
+many words follow. An accept deletes all of it and retypes the
+replacement plus the trail in one burst. It replaces the click
+freeze: the trail already is the screen, the click only opens the
+grace window.
+
+**Where it gives up instead.** A submission key after the word (the
+line may be sent), a backspace that removes the word's separator
+(the buffer re-opened it), a held Backspace, more than
+`MAX_SUGGESTION_TRAIL` keys, a hand layout switch (the trail is
+scancodes), a buffer that disagrees with the trail's last segment,
+and anything that retypes text — `apply_correction`, smart commands,
+the switch-last gesture all dismiss first. A newer offer replaces
+the old one rather than queueing: one tooltip.
+
+**Re-checking only where something changed.** A same-layout
+replacement retypes the trail key for key; its words were already
+judged and nothing about them moved. A cross-layout one switches the
+layout under the trail, so each *finished* word is judged again: it
+follows the switch only when its new reading is a dictionary word and
+the typed one is not; otherwise it keeps its characters, on whatever
+keys type them now (text injection if none do). Re-running the full
+`decide` pipeline was rejected: it has side effects and would emit a
+burst per word. The unfinished word at the caret follows the switch,
+as before — it is what the user types next.
+
+**Glued punctuation.** A trailing key that renders as punctuation is
+cut off the offered word into the trail, so `hwllo,` is spelled as
+`hwllo` and the comma survives the replacement.
+
 ## 2026-10-15 — The tooltip's size follows the desktop; where it sits in a window is the user's
 
 Two requests in one week about the same surface: on a 5120×2160 X11

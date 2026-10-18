@@ -15,6 +15,7 @@
 //! | [`commands`] | keystream hotkey chords, smart-command dispatch |
 //! | [`suggestions`] | spelling-suggestion offers, accepts, dismissal |
 //! | [`suggest_keys`] | the tooltip's claimed keys: F-key accept, arrow navigation |
+//! | [`suggest_trail`] | what was typed after an offered word, and typing it back |
 
 mod commands;
 mod correction;
@@ -23,6 +24,7 @@ mod echo;
 mod engine;
 mod run_loop;
 mod suggest_keys;
+mod suggest_trail;
 mod suggestions;
 mod types;
 

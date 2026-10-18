@@ -2710,6 +2710,279 @@ mod engine_integration_tests {
         );
     }
 
+    /// Knows a fixed word list, and suggests only for listed typos — so
+    /// the words typed after an offer stay quiet and leave it open.
+    struct Lexicon {
+        known: &'static [(&'static str, &'static str)],
+        fixes: &'static [(&'static str, &'static str)],
+    }
+
+    impl poltertype_detect::SuggestionProvider for Lexicon {
+        fn is_known(&self, layout: &LayoutId, typed: &str) -> bool {
+            let typed = poltertype_detect::letters_only_lower(typed);
+            typed.chars().count() <= 2
+                || self
+                    .known
+                    .iter()
+                    .any(|(l, w)| layout.as_str() == *l && typed == *w)
+        }
+        fn suggest(
+            &self,
+            _layout: &LayoutId,
+            typed: &str,
+            _max: usize,
+        ) -> Vec<poltertype_detect::Suggestion> {
+            self.fixes
+                .iter()
+                .filter(|(t, _)| *t == typed)
+                .map(|(_, s)| poltertype_detect::Suggestion {
+                    text: (*s).to_owned(),
+                    score: 0.5,
+                })
+                .collect()
+        }
+    }
+
+    /// `TimidOther` for the first word only, no opinion after it.
+    struct TimidOnce(std::sync::atomic::AtomicBool);
+
+    impl Detector for TimidOnce {
+        fn name(&self) -> &'static str {
+            "test-timid-once"
+        }
+        fn judge(&self, ctx: &poltertype_detect::DetectionContext<'_>) -> Verdict {
+            if self.0.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                return Verdict::NoOpinion;
+            }
+            TimidOther(LayoutId::from("en-US"), LayoutId::from("uk-UA")).judge(ctx)
+        }
+    }
+
+    const LEXICON: Lexicon = Lexicon {
+        known: &[("en-US", "world"), ("uk-UA", "світ")],
+        fixes: &[("hwllo", "hello")],
+    };
+    const WORLD: [u32; 5] = [0x11, 0x18, 0x13, 0x26, 0x20];
+    /// `світ` typed under en-US.
+    const CDSN: [u32; 4] = [0x2E, 0x20, 0x1F, 0x31];
+    const AB: [u32; 2] = [0x1E, 0x30];
+    const COMMA: u32 = 0x33;
+
+    fn trail_harness() -> Harness {
+        Harness::start_tuned(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(LEXICON)),
+            Some(vec![Box::new(NoOpinionDetector)]),
+            None,
+        )
+    }
+
+    fn accept(h: &Harness, generation: u64) {
+        h.settle();
+        h.cmd_tx
+            .send(EngineCommand::AcceptSuggestion {
+                generation,
+                index: 0,
+                from_pointer: false,
+            })
+            .expect("engine alive");
+        h.settle();
+    }
+
+    fn keys(parts: &[&[u32]]) -> Vec<u32> {
+        parts.iter().flat_map(|p| p.iter().copied()).collect()
+    }
+
+    /// The offer outlives a finished word and a half-typed one after
+    /// it: the accept fixes the word and types the rest back.
+    #[test]
+    fn accept_after_more_words_retypes_the_rest() {
+        let h = trail_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        type_word(&h, &WORLD);
+        h.tap(SPACE);
+        type_word(&h, &AB);
+        accept(&h, generation);
+        let (ops, events) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(14),
+                EmitOp::Keys(keys(&[&HELLO, &[SPACE], &WORLD, &[SPACE], &AB])),
+            ]
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, SwitcherEvent::SuggestionApplied { .. }))
+        );
+    }
+
+    /// The reported case: comma, space, two letters, then the chord.
+    /// Under en-US + uk-UA the comma is `б`'s key, so it arrives as a
+    /// one-key "word" and its space used to dismiss the offer.
+    #[test]
+    fn a_comma_typed_after_the_space_keeps_the_offer() {
+        let h = trail_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        h.tap(COMMA);
+        h.tap(SPACE);
+        type_word(&h, &AB);
+        accept(&h, generation);
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(10),
+                EmitOp::Keys(keys(&[&HELLO, &[SPACE, COMMA, SPACE], &AB])),
+            ]
+        );
+    }
+
+    /// The same comma typed straight after the word reaches the engine
+    /// glued to it: it is spelled without it and survives the accept.
+    #[test]
+    fn a_comma_glued_to_the_word_survives_the_accept() {
+        let h = trail_harness();
+        type_word(&h, &HWLLO);
+        h.tap(COMMA);
+        h.tap(SPACE);
+        let ev = h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. }));
+        let SwitcherEvent::SuggestionsReady {
+            generation,
+            original,
+            ..
+        } = ev
+        else {
+            unreachable!()
+        };
+        assert_eq!(original, "hwllo");
+        type_word(&h, &AB);
+        accept(&h, generation);
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(9),
+                EmitOp::Keys(keys(&[&HELLO, &[COMMA, SPACE], &AB])),
+            ]
+        );
+    }
+
+    #[test]
+    fn backspacing_inside_the_trail_keeps_the_offer() {
+        let h = trail_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        type_word(&h, &AB);
+        h.tap(BACKSPACE);
+        accept(&h, generation);
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(7),
+                EmitOp::Keys(keys(&[&HELLO, &[SPACE], &AB[..1]])),
+            ]
+        );
+    }
+
+    /// Backspacing the word's own separator re-opens the word for
+    /// editing; Enter after it may have sent the line. Neither leaves a
+    /// screen an accept may retype.
+    #[test]
+    fn reopening_the_word_or_submitting_dismisses_the_offer() {
+        for after in [&[BACKSPACE][..], &[0x11, 0x18, 0x1C][..]] {
+            let h = trail_harness();
+            type_word(&h, &HWLLO);
+            h.tap(SPACE);
+            let generation = ready_generation(&h);
+            for &sc in after {
+                h.tap(sc);
+            }
+            h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsDismissed { .. }));
+            accept(&h, generation);
+            let (ops, _) = h.stop();
+            assert!(ops.is_empty(), "after {after:?}: {ops:?}");
+        }
+    }
+
+    /// A later typo gets the tooltip; the earlier offer is gone, so a
+    /// late accept of it does nothing.
+    #[test]
+    fn a_later_offer_replaces_the_earlier_one() {
+        let h = trail_harness();
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let first = ready_generation(&h);
+        type_word(&h, &HWLLO);
+        h.tap(SPACE);
+        let second = ready_generation(&h);
+        assert_ne!(first, second);
+        accept(&h, first);
+        let (ops, _) = h.stop();
+        assert!(ops.is_empty(), "{ops:?}");
+    }
+
+    fn cross_trail_harness() -> Harness {
+        Harness::start_tuned(
+            60_000,
+            MockEmitter::default(),
+            false,
+            Some(Arc::new(LEXICON)),
+            Some(vec![Box::new(TimidOnce(Default::default()))]),
+            None,
+        )
+    }
+
+    /// A cross-layout accept checks the finished words after the word
+    /// again: `cdsn` reads as the dictionary word `світ` under the new
+    /// layout and is not an English word, so it follows the switch.
+    #[test]
+    fn cross_layout_accept_switches_a_finished_word_that_reads_right_there() {
+        let h = cross_trail_harness();
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        type_word(&h, &CDSN);
+        h.tap(SPACE);
+        accept(&h, generation);
+        assert_eq!(*h.switcher.switches.lock(), vec![LayoutId::from("uk-UA")]);
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![
+                EmitOp::Backspaces(12),
+                EmitOp::Keys(keys(&[&GHBDSN, &[SPACE], &CDSN, &[SPACE]])),
+            ]
+        );
+    }
+
+    /// An English word after it keeps its letters; uk-UA has no key for
+    /// them, so the replacement goes out as text.
+    #[test]
+    fn cross_layout_accept_keeps_a_finished_word_that_was_right() {
+        let h = cross_trail_harness();
+        type_word(&h, &GHBDSN);
+        h.tap(SPACE);
+        let generation = ready_generation(&h);
+        type_word(&h, &WORLD);
+        h.tap(SPACE);
+        accept(&h, generation);
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops,
+            vec![EmitOp::Backspaces(13), EmitOp::Text("привіт world ".into()),]
+        );
+    }
+
     /// `[exceptions].word_whitelist` says "never auto-correct this
     /// word"; it once only silenced the suggestion tooltip while the
     /// correction went ahead regardless. The detector here switches

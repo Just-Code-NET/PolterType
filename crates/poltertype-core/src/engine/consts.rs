@@ -242,3 +242,8 @@ pub const SC_SPACE: u32 = 0x39;
 /// SC Set-1 scancode for Backspace. Also layout-independent, and also
 /// not text — it has to be re-emitted as a keypress, in order.
 pub const SC_BACKSPACE: u32 = 0x0E;
+
+/// Most keystrokes an open suggestion offer follows past its word. An
+/// accept erases and retypes all of them in one burst, so past a short
+/// sentence the offer is dismissed instead.
+pub const MAX_SUGGESTION_TRAIL: usize = 64;

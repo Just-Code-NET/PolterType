@@ -8,7 +8,7 @@ use poltertype_input::{KeyDirection, KeyEvent};
 use tracing::{debug, info};
 
 use crate::audio::SoundEvent;
-use crate::engine::buffer::{WordBoundary, WordBuffer};
+use crate::engine::buffer::{WordBoundary, WordBuffer, classify};
 use crate::engine::consts::{
     FOCUS_SETTLE, FORCE_SWITCH_REARM, LAST_WORD_TTL, PASTE_GUARD, SC_BACKSPACE,
 };
@@ -165,6 +165,12 @@ impl SwitcherEngine {
                     debug!("manual switch-last ignored: within the re-arm window of the last one");
                     return;
                 }
+                // Every branch below may retype text an open offer's
+                // trail describes. Even the word switch: it replays the
+                // same scancodes, so the offer's identity check would
+                // still pass and a late click would replace the
+                // transliterated word with the old word's suggestion.
+                self.dismiss_suggestions(None);
                 // Which word the caret is sitting after decides the
                 // rest. `completed() + boundary_run() + keys()` is the
                 // buffer's model of the text left of the caret, and a
@@ -208,11 +214,6 @@ impl SwitcherEngine {
                     self.last_word.write().take()
                 };
                 if let Some(word) = taken {
-                    // The force-switch replays the same scancodes, so
-                    // the pending offer's identity check would still
-                    // pass and a late click would replace the
-                    // transliterated word with the old word's suggestion.
-                    self.dismiss_suggestions(None);
                     // Taking the stash is how we got here, and a press
                     // that ends up doing nothing — most often because
                     // the key is still down — must not have eaten it.
@@ -309,6 +310,7 @@ impl SwitcherEngine {
             None
         };
 
+        self.track_suggestion_trail(&ev, classify(ev.scancode, produced, letter_in_any_layout));
         let before = buffer.keys().len();
         let outcome = buffer.feed(ev, produced, letter_in_any_layout);
         if before == 0 && !buffer.keys().is_empty() {
@@ -447,11 +449,12 @@ impl SwitcherEngine {
                 tainted,
                 started_clean,
             } => {
-                // Whatever happens to this word, the previous word's
-                // offer no longer points at the last thing on screen —
-                // `decide()` below may immediately issue a fresh one.
-                self.dismiss_suggestions(None);
+                // An open offer outlives this word as long as the word
+                // stays as typed: its keys are already in the offer's
+                // trail. Whatever `decide()` retypes dismisses it on the
+                // way, and a fresh offer replaces it.
                 if tainted {
+                    self.dismiss_suggestions(None);
                     debug!("completed word is tainted — skipping decision");
                     *self.last_word.write() = None;
                     let _ = self.out_tx.send(SwitcherEvent::KeptCurrent {
