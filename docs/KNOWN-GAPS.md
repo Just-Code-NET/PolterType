@@ -1,4 +1,4 @@
-# Known gaps (as of v0.38.0)
+# Known gaps (as of v0.38.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,14 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.38.1 pass actually checked (2026-10-18).** The one fix,
+in the desktop-matrix guest with a debug build of the release code:
+`hwllo wor`, 3.5 s of reading (past the 2 s idle timeout), then
+`Ctrl+Shift+1` came back as `hello wor` on **KDE Plasma Wayland** (foot)
+and **Cinnamon X11** (xterm). The same run against 0.38.0 left `hwllo
+wor`, which is the report. The five 0.38.0 phases were re-run beside it
+and passed on both. Nothing else was re-run; no bullet below moved.
 
 **What the 0.38.0 pass actually checked (2026-10-18).** A suggestion
 accepted after typing on, in the desktop-matrix guest with a debug

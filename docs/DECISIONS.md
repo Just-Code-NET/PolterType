@@ -6,6 +6,21 @@ and any **alternatives** considered.
 
 ---
 
+## 2026-10-18 — A live offer holds the half-typed word through an idle pause
+
+The idle carve-out for a live suggestion applied only with no word
+mid-flight, a condition written when an offer died at the next word
+anyway. Once an offer follows the typing after it (entry below), a
+reader pausing mid-word is the common case, and the idle abandon then
+dropped that word — and the offer with it — on the accept chord's own
+`Ctrl`. Now a live offer skips idle hygiene outright.
+
+**The cost** is the one the carve-out already accepted between words:
+an unseen caret move during the pause (a click on Windows or macOS,
+where the pointer is invisible to us) followed by the chord replaces at
+the wrong place. Bounded by the offer's own timeout, 30 s by default;
+without a live offer the idle abandon is unchanged.
+
 ## 2026-10-18 — A suggestion offer follows the typing after its word
 
 An accept used to need the offered word to be the buffer's last
