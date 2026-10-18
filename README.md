@@ -303,12 +303,16 @@ distance that knows `hwllo` is a slipped finger away from `hello`.
 The last row of every tooltip is **Add to dictionary** — one click
 teaches PolterType your jargon for good, and other forms of the word
 come with it — add `mañana`, and `mañanas` stops being flagged too.
-The tooltip never steals keyboard focus and disappears after 30 seconds or
-the moment you type past it. Tune or disable it on the **Suggestions**
-pane (`[suggestions]` in `config.toml`).
+The tooltip never steals keyboard focus and stays up for 30 seconds
+while you keep typing: accept it a few words later and the word is
+fixed, with everything you typed after it put back as it was. It goes
+early on Enter or Tab, when you backspace into the word, click
+elsewhere, or make another typo — which gets the tooltip instead.
+Tune or disable it on the **Suggestions** pane (`[suggestions]` in
+`config.toml`).
 
-Typing past it is easy to do — so the offer is not lost with it. The
-last eight words a tooltip offered and you typed past wait under **Add
+Letting it go is easy to do — so the offer is not lost with it. The
+last eight words a tooltip offered and you let go wait under **Add
 a missed word…** in the tray menu, and picking one adds it exactly as
 the tooltip row would. That list lives in memory only: it is never
 written to a file, never logged, and it goes when PolterType does.

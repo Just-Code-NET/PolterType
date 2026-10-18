@@ -1,4 +1,4 @@
-# Known gaps (as of v0.37.0)
+# Known gaps (as of v0.38.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,18 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.38.0 pass actually checked (2026-10-18).** A suggestion
+accepted after typing on, in the desktop-matrix guest with a debug
+build of the release code (`suggest-trail-probe.py`), on **KDE Plasma
+Wayland** in foot and on **Cinnamon X11** in xterm, each `Ctrl+Shift+1`:
+`hwllo world ab`, `hwllo , ab` and `hwllo, ab` came back as `hello
+world ab`, `hello , ab` and `hello, ab`, and `hwllo ` as `hello `;
+after Enter the chord changed nothing above it. The Settings window
+was looked at on Cinnamon. Nothing else was re-run: not the per-user
+plug-in install (`--install-plugin`), which has unit tests only, not
+Windows or macOS, not GNOME. Every bullet below was read against the
+two changes and none of them moved.
 
 **What the 0.37.0 pass actually checked (2026-10-15).** The
 suggestion tooltip's new keys, size and place, in the desktop-matrix
@@ -1876,7 +1888,8 @@ move too fast to be true.
   Settings window; Wayland's security model means we don't see global
   key presses while another app has focus.
 - **Downloading plug-in packs.** Installing one is supported since
-  0.10.0 (`poltertype_core::plugins::install`) — but from a directory
+  0.10.0 (`poltertype_core::plugins::install`, and since 0.38.0 per
+  user with `poltertype --install-plugin DIR`) — but from a directory
   already on disk, never from a URL. That is the security boundary,
   not a missing feature: fetching third-party content into a process
   that reads every keystroke is a much wider channel than the
