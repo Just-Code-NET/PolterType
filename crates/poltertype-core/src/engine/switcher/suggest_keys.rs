@@ -101,7 +101,23 @@ impl SwitcherEngine {
         // The replacement waits for this key to come up, as it does for
         // a hotkey's: on X11 the grab that kept it back delivers every
         // keystroke to us until its release — our own typing included.
-        self.chord_state.lock().trigger_down = Some(ev.scancode);
+        // A digit waits for its chord's modifiers too.
+        let accept_mods = matches!(
+            ClaimKey::from_scancode(ev.scancode),
+            Some(ClaimKey::Digit(_))
+        )
+        .then(|| {
+            self.pending_suggestion
+                .lock()
+                .as_ref()
+                .and_then(|p| p.accept)
+        })
+        .flatten();
+        {
+            let mut st = self.chord_state.lock();
+            st.trigger_down = Some(ev.scancode);
+            st.accept_mods = accept_mods;
+        }
         self.handle_command(
             EngineCommand::AcceptSuggestion {
                 generation,

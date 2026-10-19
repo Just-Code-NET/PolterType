@@ -1560,37 +1560,45 @@ mod engine_integration_tests {
         );
     }
 
-    /// A correction fired by a chord starts while that chord's modifiers
-    /// are still down, and the replay reaches the application the way
-    /// the user's keys do — so under a held Ctrl every replayed key
-    /// arrives as a shortcut and nothing is typed.
+    /// Under a held Ctrl every replayed key arrives as a shortcut — in
+    /// Sublime Text `Ctrl+Meta` held a beat after the digit typed the
+    /// replacement as shortcuts and its `Ctrl+W` closed the tab. So the
+    /// replacement waits for the chord to come up, well past the absorb
+    /// window's own deadline, and types into a keyboard nobody holds.
     #[test]
-    fn accept_chord_releases_its_own_modifiers_before_typing() {
+    fn accept_chord_waits_for_its_modifiers_before_typing() {
         // `Ctrl+Meta` also exercises parsing `Meta` — the half the
         // default `Ctrl+Shift` never touches.
         let h = suggestion_harness_with_chord(Some("Ctrl+Meta"));
         type_word(&h, &HWLLO);
         h.tap(SPACE);
         let _generation = ready_generation(&h);
-        let chord = poltertype_types::Modifiers {
-            control: true,
-            meta: true,
+        let m = |control: bool, meta: bool| poltertype_types::Modifiers {
+            control,
+            meta,
             ..poltertype_types::Modifiers::NONE
         };
-        h.key_mods(0x1D, KeyDirection::Press, chord);
-        h.key_mods(0x7D, KeyDirection::Press, chord);
-        h.key_mods(0x02, KeyDirection::Press, chord);
+        h.key_mods(0x1D, KeyDirection::Press, m(true, false));
+        h.key_mods(0x7D, KeyDirection::Press, m(true, true));
+        h.key_mods(0x02, KeyDirection::Press, m(true, true));
+        h.key_mods(0x02, KeyDirection::Release, m(true, true));
+        std::thread::sleep(Duration::from_millis(1200));
+        assert!(
+            h.emitter.ops().is_empty(),
+            "nothing may be typed while the chord is held, got {:?}",
+            h.emitter.ops()
+        );
+        h.key_mods(0x7D, KeyDirection::Release, m(true, false));
+        h.key_mods(0x1D, KeyDirection::Release, m(false, false));
         h.settle();
 
         let (ops, _) = h.stop();
         assert_eq!(
-            ops.first(),
-            Some(&EmitOp::ReleaseModifiers),
-            "the chord's modifiers must be let go before anything is typed, got {ops:?}"
-        );
-        assert!(
-            ops.iter().any(|o| matches!(o, EmitOp::Keys(_))),
-            "and the replacement must still be typed, got {ops:?}"
+            ops,
+            vec![
+                EmitOp::Backspaces(6),
+                EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
+            ]
         );
     }
 
@@ -1994,6 +2002,21 @@ mod engine_integration_tests {
     const HWLLO: [u32; 5] = [0x23, 0x11, 0x26, 0x26, 0x18];
     const HELLO: [u32; 5] = [0x23, 0x12, 0x26, 0x26, 0x18];
 
+    /// Let go of the default accept chord's modifiers: the replacement
+    /// waits for them.
+    fn release_ctrl_shift(h: &Harness) {
+        let ctrl = poltertype_types::Modifiers {
+            control: true,
+            ..poltertype_types::Modifiers::NONE
+        };
+        h.key_mods(0x2A, KeyDirection::Release, ctrl);
+        h.key_mods(
+            0x1D,
+            KeyDirection::Release,
+            poltertype_types::Modifiers::NONE,
+        );
+    }
+
     fn ready_generation(h: &Harness) -> u64 {
         match h.wait_for(|e| matches!(e, SwitcherEvent::SuggestionsReady { .. })) {
             SwitcherEvent::SuggestionsReady { generation, .. } => generation,
@@ -2203,14 +2226,12 @@ mod engine_integration_tests {
         };
         h.key_mods(0x02, KeyDirection::Press, chord); // Ctrl+Shift+1
         h.key_mods(0x02, KeyDirection::Release, chord);
+        release_ctrl_shift(&h);
         h.settle();
         let (ops, _) = h.stop();
         assert_eq!(
             ops,
             vec![
-                // The chord's own Ctrl+Shift are still down; typing
-                // under them would produce shortcuts, not text.
-                EmitOp::ReleaseModifiers,
                 // 5 word + 1 boundary. The digit reached the app under
                 // Ctrl+Shift, where it is a shortcut and types nothing.
                 EmitOp::Backspaces(6),
@@ -2234,12 +2255,12 @@ mod engine_integration_tests {
             ..poltertype_types::Modifiers::NONE
         };
         h.claimed_tap_mods(0x02, chord);
+        release_ctrl_shift(&h);
         h.settle();
         let (ops, _) = h.stop();
         assert_eq!(
             ops,
             vec![
-                EmitOp::ReleaseModifiers,
                 EmitOp::Backspaces(6),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ]
@@ -2432,12 +2453,12 @@ mod engine_integration_tests {
         };
         h.key_mods(0x02, KeyDirection::Press, chord);
         h.key_mods(0x02, KeyDirection::Release, chord);
+        release_ctrl_shift(&h);
         h.settle();
         let (ops, _) = h.stop();
         assert_eq!(
             ops,
             vec![
-                EmitOp::ReleaseModifiers,
                 EmitOp::Backspaces(6),
                 EmitOp::Keys(HELLO.iter().copied().chain([SPACE]).collect()),
             ],

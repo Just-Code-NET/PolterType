@@ -147,10 +147,26 @@ impl SwitcherEngine {
     /// down, and making *that* wait would stall ordinary typing. The
     /// held set has to be exactly some chord's.
     pub(super) fn trigger_key_down(&self) -> bool {
-        if self.chord_state.lock().trigger_down.is_some() {
-            return true;
-        }
         let m = *self.held_modifiers.read();
+        {
+            let st = self.chord_state.lock();
+            if st.trigger_down.is_some() {
+                return true;
+            }
+            // Any one of the accept chord's modifiers is enough: typed
+            // under a held Ctrl, the replacement arrives as shortcuts —
+            // `Ctrl+W` closed an editor tab — and releasing it from
+            // our own device does not take with every compositor while
+            // Meta is down too.
+            if st.accept_mods.is_some_and(|a| {
+                (a.ctrl && m.control)
+                    || (a.shift && m.shift)
+                    || (a.alt && m.alt)
+                    || (a.meta && m.meta)
+            }) {
+                return true;
+            }
+        }
         if !(m.control || m.shift || m.alt || m.meta) {
             return false;
         }
@@ -225,7 +241,7 @@ impl SwitcherEngine {
                     }
                     *latched = true;
                 }
-                let generation = {
+                let matched = {
                     let slot = self.pending_suggestion.lock();
                     slot.as_ref().and_then(|p| {
                         let a = p.accept?;
@@ -234,10 +250,15 @@ impl SwitcherEngine {
                             && ev.modifiers.alt == a.alt
                             && ev.modifiers.meta == a.meta
                             && index < p.entries.len())
-                        .then_some(p.generation)
+                        .then_some((p.generation, a))
                     })
                 };
-                if let Some(generation) = generation {
+                if let Some((generation, accept)) = matched {
+                    {
+                        let mut st = self.chord_state.lock();
+                        st.trigger_down.get_or_insert(ev.scancode);
+                        st.accept_mods = Some(accept);
+                    }
                     self.handle_command(
                         EngineCommand::AcceptSuggestion {
                             generation,

@@ -283,6 +283,10 @@ impl SwitcherEngine {
                 from_pointer,
             } => {
                 self.accept_suggestion(generation, index, from_pointer, buffer, key_rx);
+                // Done waiting on them, whichever way the accept went: a
+                // later correction must not stall on a Ctrl held for
+                // something else.
+                self.chord_state.lock().accept_mods = None;
             }
             EngineCommand::DismissSuggestions { generation } => {
                 self.dismiss_suggestions(Some(generation));

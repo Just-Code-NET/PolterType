@@ -226,6 +226,10 @@ pub struct ChordState {
     /// key's release. Covers chords an OS grab owns too, which nothing
     /// else here tracks. See `SwitcherEngine::track_trigger_key`.
     pub trigger_down: Option<u32>,
+    /// The accept chord's modifiers while its replacement waits for
+    /// them to come up. Set by the chord, cleared once the accept is
+    /// done with.
+    pub accept_mods: Option<AcceptModifiers>,
 }
 
 /// Everything one hotkey has to remember between key events.

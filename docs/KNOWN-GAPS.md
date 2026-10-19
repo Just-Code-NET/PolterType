@@ -1580,6 +1580,20 @@ move too fast to be true.
   Verified both ways on Cinnamon X11, 2026-10-15, before and after the
   claim (#77).
 
+- **A `Meta` accept chord collides with desktops that own the Super
+  key.** On Ubuntu's GNOME `Ctrl+Super+1` launches the dock's first
+  application, and focus goes with it; on IceWM (`Win95Keys=1`, the
+  default) the window manager grabs Super, so PolterType never sees it
+  held and the chord types its digit instead. Neither is something the
+  app can take back, and `Ctrl+Shift`, the default, works on both.
+  Measured 2026-10-18 in the desktop-matrix guest, the same with 0.38.1
+  and with the fix after it.
+
+- **No tooltip where there is no layout backend.** Suggestions read the
+  word in the layout it was typed in, so a session PolterType cannot ask
+  for the current layout — Budgie, labwc and Xfce's Wayland session in
+  the matrix — offers none, as it corrects none.
+
 - **Selection conversion is unavailable on GNOME and Cinnamon's
   Wayland sessions, and on macOS.** Reading the clipboard from a
   process that holds no window and never takes focus needs a

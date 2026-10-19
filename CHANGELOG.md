@@ -4,6 +4,19 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Accepting a suggestion no longer types shortcuts while the chord
+  is still held.** The replacement went out about half a second after
+  the digit whether or not the chord's modifiers were up, and with
+  `Ctrl+Meta` held a moment longer it arrived as shortcuts instead of
+  text — in Sublime Text the word stayed as it was and `Ctrl+W` closed
+  the tab. The replacement now waits until the whole chord is let go,
+  as the manual switch hotkey already did, and is skipped if it is
+  still held after five seconds.
+
 ## [0.38.1] — time to read
 
 ### Fixed
