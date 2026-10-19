@@ -1,4 +1,4 @@
-# Known gaps (as of v0.38.1)
+# Known gaps (as of v0.38.2)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,17 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.38.2 pass actually checked (2026-10-19).** The accept
+chord held past the digit, in the desktop-matrix guest with a debug
+build of the release code: `Ctrl+Meta` held 1.5 s typed 0.38.1's
+replacement as shortcuts on **KDE Plasma Wayland** (with and without
+keyd) and **sway**, and the fix is clean there and on **Cinnamon,
+Xfce, LXQt, i3, Openbox and Fluxbox** (X11), with the fast `Ctrl+Shift`
+chord clean on all of them too. Ubuntu's GNOME and IceWM fail the
+`Meta` chord the same way before and after (entry under the tooltip
+keys below); the sessions with no layout backend offer no tooltip. Not
+run on Hyprland, Windows or macOS.
 
 **What the 0.38.1 pass actually checked (2026-10-18).** The one fix,
 in the desktop-matrix guest with a debug build of the release code:
