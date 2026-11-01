@@ -1705,8 +1705,17 @@ mod engine_integration_tests {
     /// clipboard to fall back to, with the focused application's half
     /// of a copy wired to the emitter: press copy, and `selection`
     /// appears on the clipboard, exactly as an application answers
-    /// `Ctrl+C`.
+    /// `Ctrl+C`. Default settings in every other respect.
     fn selection_harness(selection: &str) -> (Harness, Arc<MockClipboard>) {
+        selection_harness_configured(selection, |_| {})
+    }
+
+    /// The wide harness: `tweak` gets the whole `Settings` before the
+    /// engine starts; this harness always enables `[selection]`.
+    fn selection_harness_configured(
+        selection: &str,
+        tweak: impl FnOnce(&mut crate::settings::Settings),
+    ) -> (Harness, Arc<MockClipboard>) {
         let clipboard = Arc::new(MockClipboard::default());
         let emitter = MockEmitter::default();
         let cb = Arc::clone(&clipboard);
@@ -1724,7 +1733,10 @@ mod engine_integration_tests {
             None,
             None,
             None,
-            |s| s.selection.enabled = true,
+            |s| {
+                s.selection.enabled = true;
+                tweak(s);
+            },
             Some(Arc::clone(&clipboard) as Arc<dyn poltertype_input::Clipboard>),
         );
         (h, clipboard)
@@ -1759,6 +1771,35 @@ mod engine_integration_tests {
             Some("something the user copied earlier"),
             "and the user's own clipboard must be the last thing put back: {writes:?}"
         );
+        assert!(
+            matches!(
+                h.sounds().as_slice(),
+                [crate::audio::SoundEvent::Correct, ..]
+            ),
+            "and a converted selection must chime like every other correction: {:?}",
+            h.sounds()
+        );
+    }
+
+    /// Issue #47's lesson read on the selection path too: the chime
+    /// gate must hold there as well. Chime off still converts — it
+    /// just says nothing.
+    #[test]
+    fn a_converted_selection_is_silent_when_the_chime_is_off() {
+        let (h, clipboard) =
+            selection_harness_configured("ghbdsn", |s| s.general.sound_on_correct = false);
+        h.cmd_tx
+            .send(EngineCommand::SwitchLastForcefully)
+            .expect("engine alive");
+        h.settle();
+
+        assert!(
+            clipboard.writes().iter().any(|w| w == "привіт"),
+            "the conversion must still happen: {:?}",
+            clipboard.writes()
+        );
+        let sounds = h.sounds();
+        assert!(sounds.is_empty(), "chime off means no chime: {sounds:?}");
     }
 
     /// Issue #51, the half that only X11 shows: while the chord that
