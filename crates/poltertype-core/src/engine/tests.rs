@@ -811,6 +811,17 @@ mod engine_integration_tests {
                 render(typed)
             );
         }
+        // بسرعه and كتب carry no long vowel: one consonant cluster to the
+        // shape score, while their en-US renderings look like words.
+        // Typed in Arabic they must stay Arabic.
+        for typed in ["fsvui", ";jf"] {
+            assert_eq!(
+                judge(&ar, typed),
+                None,
+                "{} is Arabic typed in Arabic",
+                render(typed)
+            );
+        }
         for typed in ["hello", "world", "table", "school"] {
             assert_eq!(judge(&en, typed), None, "{typed:?} is English");
             assert_eq!(
