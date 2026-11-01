@@ -12,7 +12,7 @@ fn embedded_layouts_load() {
     let db = LayoutDb::load_embedded();
     for id in [
         "en-US", "uk-UA", "ru-RU", "de-DE", "es-ES", "fr-FR", "pl-PL", "cs-CZ", "el-GR", "he-IL",
-        "tr-TR", "bg-BG", "it-IT", "pt-PT", "pt-BR",
+        "tr-TR", "bg-BG", "it-IT", "pt-PT", "pt-BR", "ar",
     ] {
         assert!(
             db.get(&LayoutId::from(id)).is_some(),
@@ -112,6 +112,9 @@ fn new_languages_translate_distinctive_keys() {
         // Hebrew is unicase — the letter positions are RTL glyphs.
         ("he-IL", 0x1E, false, 'ש'),
         ("he-IL", 0x14, false, 'א'),
+        // Arabic is unicase too; `B` types lam-alef as one code point.
+        ("ar", 0x1E, false, 'ش'),
+        ("ar", 0x30, false, '\u{FEFB}'),
         // Turkish's dotless/dotted i pair, the one that bites.
         ("tr-TR", 0x17, false, 'ı'),
         ("tr-TR", 0x17, true, 'I'),
@@ -233,6 +236,7 @@ fn every_bundled_dictionary_knows_its_own_words() {
         ("cs-CZ", &["ahoj", "slovo", "dobrý", "protože", "děkuji"]),
         ("el-GR", &["λέξη", "είναι", "καλημέρα", "ευχαριστώ"]),
         ("he-IL", &["שלום", "מילה", "ספר", "תודה"]),
+        ("ar", &["كتاب", "مدرسة", "شكرا", "جميل"]),
         (
             "tr-TR",
             &["kitap", "merhaba", "kelime", "güzel", "teşekkür"],
