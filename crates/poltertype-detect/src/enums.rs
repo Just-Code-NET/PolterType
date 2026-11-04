@@ -47,7 +47,9 @@ impl Script {
             0x0370..=0x03FF => Self::Greek,
             0x0530..=0x058F => Self::Armenian,
             0x0590..=0x05FF => Self::Hebrew,
-            0x0600..=0x06FF => Self::Arabic,
+            // The presentation forms count too: the lam-alef keys of an
+            // Arabic keyboard type U+FEFB and its siblings.
+            0x0600..=0x06FF | 0x0750..=0x077F | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF => Self::Arabic,
             _ => Self::Other,
         }
     }

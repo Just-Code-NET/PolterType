@@ -386,22 +386,22 @@ them on the **Commands** pane in Settings.
 
 ## Languages
 
-Fifteen layouts ship with the app, each with a full dictionary:
+Sixteen layouts ship with the app, each with a full dictionary:
 
 **English (US) · Ukrainian · Russian · German · Spanish · French ·
 Polish · Czech · Greek · Hebrew · Turkish · Bulgarian · Italian ·
-Portuguese (PT) · Portuguese (BR)**
+Portuguese (PT) · Portuguese (BR) · Arabic**
 
 PolterType only loads the ones your OS actually has enabled, so
-bundling fifteen costs a two-keyboard user nothing at runtime.
+bundling sixteen costs a two-keyboard user nothing at runtime.
 
 **On Windows the bundled table is only a starting point.** A Windows
 layout is named after a *language*, but a language is not a keyboard —
 Bulgarian alone ships in three genuinely different arrangements. Since
 v0.14.3 PolterType asks Windows what each of your installed keyboards
 actually produces and uses that answer, so variants and even custom
-layouts we have never heard of come out right. Linux and macOS read
-the bundled tables, and a TOML of your own in
+layouts we have never heard of come out right; macOS does the same
+through `UCKeyTranslate`. Linux reads the bundled tables, and a TOML of your own in
 `<config-dir>/poltertype/layouts/` still outranks everything,
 everywhere.
 
@@ -418,6 +418,11 @@ Two are worth a footnote rather than a surprise:
   because expanding its clitic prefixes yields 60 million of them.
   Hebrew shares its script with nothing else bundled, so detection
   leans on that and the dictionary refines it.
+- **Arabic** follows Hebrew for the same reason — its article and
+  clitic particles are prefixes — and adds the article forms (`ال`,
+  `بال`, `لل`, …) back to the list. The lam-alef keys (`لا` on `B`) type
+  two code points, and a key here is one character, so they carry the
+  single-code-point form `ﻻ`, which looks the same.
 
 **Yours isn't here?** Adding a language is one TOML file and one
 wordlist — no Rust required. The walkthrough is

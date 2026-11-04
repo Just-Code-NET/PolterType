@@ -16,9 +16,11 @@ use core_foundation::base::{CFRelease, CFTypeRef, OSStatus, TCFType};
 use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
 use core_foundation::string::{CFString, CFStringRef};
 
-use crate::{LayoutError, LayoutId, LayoutSwitcher};
+use crate::{LayoutError, LayoutId, LayoutSwitcher, OsKeymap};
 
+mod consts;
 mod ids;
+mod keymap;
 use ids::{bcp47_to_tis_id, source_id_string, source_id_to_layout_id, tis_id_to_bcp47};
 
 // ─── Carbon FFI ──────────────────────────────────────────────────────
@@ -152,6 +154,10 @@ impl LayoutSwitcher for MacosLayoutSwitcher {
     fn backend_name(&self) -> &'static str {
         "macos-tis"
     }
+
+    fn describe_keymaps(&self) -> Result<Vec<OsKeymap>, LayoutError> {
+        run_on_main(keymap::describe_all)
+    }
 }
 
 fn current_impl() -> Result<LayoutId, LayoutError> {
@@ -170,8 +176,9 @@ fn current_impl() -> Result<LayoutId, LayoutError> {
     }
 }
 
-fn list_active_impl() -> Result<Vec<LayoutId>, LayoutError> {
-    // Filter for keyboard sources that the user can select.
+/// The keyboard sources the user can select — what `list_active` names
+/// and `describe_keymaps` describes. `None` when TIS returns no list.
+fn selectable_keyboards() -> Option<CFArray<CFTypeRef>> {
     let filter = unsafe {
         let category_key = CFString::wrap_under_get_rule(kTISPropertyInputSourceCategory);
         let category_val = CFString::wrap_under_get_rule(kTISCategoryKeyboardInputSource);
@@ -189,17 +196,24 @@ fn list_active_impl() -> Result<Vec<LayoutId>, LayoutError> {
     unsafe {
         let arr_ref = TISCreateInputSourceList(filter.as_concrete_TypeRef(), false);
         if arr_ref.is_null() {
-            return Ok(Vec::new());
+            return None;
         }
-        let arr: CFArray<CFTypeRef> = CFArray::wrap_under_create_rule(arr_ref);
-        let mut out = Vec::with_capacity(arr.len() as usize);
-        for src in arr.iter() {
-            if let Some(id) = source_id_to_layout_id(*src) {
-                out.push(id);
-            }
-        }
-        Ok(out)
+        Some(CFArray::wrap_under_create_rule(arr_ref))
     }
+}
+
+fn list_active_impl() -> Result<Vec<LayoutId>, LayoutError> {
+    let Some(arr) = selectable_keyboards() else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(arr.len() as usize);
+    for src in arr.iter() {
+        // Safety: `src` lives as long as `arr`.
+        if let Some(id) = unsafe { source_id_to_layout_id(*src) } {
+            out.push(id);
+        }
+    }
+    Ok(out)
 }
 
 fn switch_to_impl(id: &LayoutId) -> Result<(), LayoutError> {
@@ -236,3 +250,6 @@ fn switch_to_impl(id: &LayoutId) -> Result<(), LayoutError> {
 
     Err(LayoutError::NotActive(id.clone()))
 }
+
+#[cfg(test)]
+mod tests;

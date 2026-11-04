@@ -1,0 +1,77 @@
+# Hand-curated 1- and 2-letter Arabic stop words (compile-time
+# baseline).
+#
+# `DictionaryDetector` consults this list **instead of** the embedded
+# FST for buffers ≤2 letters long, because the FST ships too many
+# spurious short "words" that would block real corrections.
+#
+# Runtime extension (no rebuild needed): drop matching files into
+# `<config-dir>/poltertype/wordlists/`:
+#   * `ar-stop.txt`    → merged into THIS list at startup / reload
+#   * `ar-extras.txt`  → merged into the user-overlay HashSet
+#   * `ar.txt`         → same as -extras, just a different filename
+# All three accept the same format and reload via "Reload Settings".
+#
+# Format: one word per line; blank lines and `#` comments ignored.
+#
+# Every entry was checked against `en_us-stop.txt` through the Arabic
+# (101) key positions: none of them is what an English stop word types
+# as on this layout, so none can veto an English → Arabic correction of
+# a real English word. (`فخ` = "to" and `هب` = "if" are left out for
+# exactly that reason.)
+
+# 1-letter — deliberately empty. Arabic's one-letter forms
+# (و ف ب ل ك) are mostly prefixes written attached to the next word,
+# and listing them would veto legitimate corrections.
+
+# 2-letter — particles, pronouns, prepositions and a few common nouns.
+# Hamza spellings are listed both ways (أن / ان) because informal
+# typing often drops the hamza.
+في
+من
+عن
+ما
+لا
+لم
+لن
+إن
+أن
+ان
+إذ
+اذ
+هو
+هي
+هم
+هن
+مع
+يا
+كم
+قد
+ثم
+أو
+او
+بل
+لو
+كل
+أي
+اي
+به
+بك
+بي
+له
+لك
+لي
+أب
+اب
+أخ
+اخ
+أم
+ام
+يد
+دم
+فم
+عم
+حب
+سن
+جو
+ذا

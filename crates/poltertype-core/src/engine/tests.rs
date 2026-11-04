@@ -754,6 +754,84 @@ mod engine_integration_tests {
         );
     }
 
+    /// Both directions of the Arabic ↔ English mix-up through the real
+    /// pipeline, and neither word disturbed in its own layout. Renders
+    /// each word through both tables the way the engine does, then asks
+    /// the detectors.
+    #[test]
+    fn arabic_and_english_typed_in_the_wrong_layout_are_switched() {
+        use crate::layouts::LayoutDb;
+        let db = LayoutDb::load_embedded();
+        let (en, ar) = (LayoutId::from("en-US"), LayoutId::from("ar"));
+        let en_map = db.get(&en).expect("en-US");
+        let ar_map = db.get(&ar).expect("ar");
+        let render = |typed: &str| -> String {
+            typed
+                .chars()
+                .map(|ch| {
+                    let (sc, shift) = en_us_key(en_map, ch);
+                    let (plain, shifted) = ar_map.keys[&sc];
+                    if shift {
+                        shifted.unwrap_or(plain)
+                    } else {
+                        plain
+                    }
+                })
+                .collect()
+        };
+        let judge = |current: &LayoutId, typed: &str| -> Option<LayoutId> {
+            let candidates = vec![(en.clone(), typed.to_owned()), (ar.clone(), render(typed))];
+            let ctx = poltertype_detect::DetectionContext {
+                current_layout: current,
+                candidates: &candidates,
+                recent_context: "",
+            };
+            for d in real_detectors() {
+                match d.judge(&ctx) {
+                    Verdict::NoOpinion => continue,
+                    Verdict::Keep { .. } => return None,
+                    Verdict::Switch(v) => return Some(v.best_layout),
+                }
+            }
+            None
+        };
+        // السلام عليكم, كتاب, مدرسة on Arabic 101 — and السلام again
+        // with its lam-alef typed on `B`, which renders as `ﻻ`.
+        for typed in ["hgsghl", "ugd;l", ";jhf", "l]vsm", "hgsbl"] {
+            assert_eq!(
+                judge(&en, typed),
+                Some(ar.clone()),
+                "{typed:?} -> {}",
+                render(typed)
+            );
+            assert_eq!(
+                judge(&ar, typed),
+                None,
+                "{} is Arabic typed in Arabic",
+                render(typed)
+            );
+        }
+        // بسرعه and كتب carry no long vowel: one consonant cluster to the
+        // shape score, while their en-US renderings look like words.
+        // Typed in Arabic they must stay Arabic.
+        for typed in ["fsvui", ";jf"] {
+            assert_eq!(
+                judge(&ar, typed),
+                None,
+                "{} is Arabic typed in Arabic",
+                render(typed)
+            );
+        }
+        for typed in ["hello", "world", "table", "school"] {
+            assert_eq!(judge(&en, typed), None, "{typed:?} is English");
+            assert_eq!(
+                judge(&ar, typed),
+                Some(en.clone()),
+                "{typed:?} typed in Arabic"
+            );
+        }
+    }
+
     /// Issue #33, the residue on 0.21.0: `auto-switch ` typed in
     /// en-US came back as `ФГЕЩ-ЫЦШЕСР `. Both halves of that need
     /// explaining, and this pins the half that needs no Caps Lock —

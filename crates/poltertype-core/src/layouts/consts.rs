@@ -11,7 +11,7 @@
 /// "missing TOML" warning at startup, never silently.
 pub const BUNDLED_LAYOUT_STEMS: &[&str] = &[
     "en_us", "uk_ua", "ru_ru", "de_de", "es_es", "fr_fr", "pl_pl", "cs_cz", "el_gr", "he_il",
-    "tr_tr", "bg_bg", "it_it", "pt_pt", "pt_br",
+    "tr_tr", "bg_bg", "it_it", "pt_pt", "pt_br", "ar",
 ];
 
 /// Fewest keys an [`poltertype_types::OsKeymap`] must carry before it

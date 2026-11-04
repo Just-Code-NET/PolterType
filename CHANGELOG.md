@@ -6,7 +6,33 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [Unreleased]
+
+### Added
+
+- **Arabic.** A bundled `ar` layout (Arabic 101, read off the OS rather
+  than transcribed), a 2.5 M-form dictionary from Ayaspell's stems
+  with the article forms added, Arabic's long vowels for the
+  plausibility detector, and a short
+  stop-word list checked so that none of its words is what an English
+  stop word types as. macOS maps `Arabic`, `Arabic - PC`,
+  `Arabic - QWERTY`, `Arabic - AZERTY` and `Arabic - North Africa` to
+  it; Linux maps `ara`.
+- **macOS reads your keyboards from the OS.** The layout backend now
+  answers `describe_keymaps` with `UCKeyTranslate`, as the Windows one
+  does with `ToUnicodeEx`, so a variant whose keys differ from the
+  bundled table — Apple's own Arabic against Arabic 101, Russian
+  Phonetic against Russian — is corrected on the keys you actually
+  have.
+
 ### Fixed
+
+- **Arabic presentation forms count as Arabic script.** `ﻻ` and the
+  rest of U+FB50–FDFF and U+FE70–FEFF read as "other script" and
+  dragged a word's script fit down.
+- **`cargo xtask wordlists fetch` finds a `SET` anywhere in the `.aff`,
+  tab-separated or not,** and no longer parses rules it will not use
+  for a stems-only dictionary.
 
 - **Converting a selection now plays the correction chime.** With
   `[selection] enabled`, pressing the force-switch hotkey on a selected
@@ -15,6 +41,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
   that worked looked like one that did nothing. The selection path now
   chimes too, on the same "Play a soft chime on correction" setting as
   every other path, and stays silent when there was nothing to convert.
+
 
 ## [0.38.2] — hands off first
 

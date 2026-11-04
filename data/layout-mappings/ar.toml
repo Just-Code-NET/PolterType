@@ -1,0 +1,96 @@
+# Layout mapping: العربية (Arabic, standard "Arabic (101)").
+#
+# Keyed by Win SC Set-1 scancode (hex). Read off the OS rather than
+# transcribed: `UCKeyTranslate` against macOS `com.apple.keylayout.ArabicPC`,
+# which is the Arabic (101) arrangement Windows ships and xkeyboard-config's
+# `ara` follows. Arabic is unicase; the shifted level carries harakat,
+# hamza forms and punctuation.
+#
+# The lam-alef keys produce a two-code-point ligature (`لا` on 0x30 `B`,
+# `لإ` / `لأ` on shifted 0x14 / 0x22, `لآ` on shifted `B`), and a key
+# here is one character. They carry the single-code-point presentation
+# forms instead (U+FEFB, U+FEF9, U+FEF7, U+FEF5), which render the same.
+# Leaving them out is worse: an unmapped key is dropped from a
+# translation, so `gdb` would read as `لي`, a real word, and `B` would
+# vanish from every corrected word. The wordlist carries each `لا` word
+# in this spelling too, so `hgsbl` still finds `السلام`.
+#
+# And one character is kept off the table on purpose: tatweel `ـ`
+# (U+0640) is Unicode-alphabetic but a stretching mark, not a letter.
+# Listed on Shift+`-` it would make `_` read as a letter in some layout
+# and switch off the snake_case heuristic for everyone, so 0x0C keeps
+# Arabic 101's `_` and 0x24 carries no shifted level.
+#
+# Apple's own `Arabic` / `Arabic - North Africa` layouts differ from this
+# one on several letter keys (B, N, M, comma, period, slash and the
+# brackets); all Mac variants map to this id, and the macOS backend
+# reads the keyboard actually installed from the OS, which outranks
+# this table.
+#
+# The plausibility detector counts Arabic's written long vowels (alef,
+# waw, yeh, alef maksura, and the lam-alef keys) — see `derive_vowels` —
+# and the wordlist makes ar ↔ en-US sharp. No other bundled layout uses
+# the Arabic script.
+
+id     = "ar"
+name   = "العربية"
+script = "Arabic"
+
+[keys]
+
+# Backtick
+0x29 = { plain = "ذ", shift = "ّ" }
+
+# Number row
+0x02 = { plain = "١", shift = "!" }
+0x03 = { plain = "٢", shift = "@" }
+0x04 = { plain = "٣", shift = "#" }
+0x05 = { plain = "٤", shift = "$" }
+0x06 = { plain = "٥", shift = "٪" }
+0x07 = { plain = "٦", shift = "^" }
+0x08 = { plain = "٧", shift = "&" }
+0x09 = { plain = "٨", shift = "*" }
+0x0A = { plain = "٩", shift = ")" }
+0x0B = { plain = "٠", shift = "(" }
+0x0C = { plain = "-", shift = "_" }
+0x0D = { plain = "=", shift = "+" }
+
+# Top row
+0x10 = { plain = "ض", shift = "َ" }
+0x11 = { plain = "ص", shift = "ً" }
+0x12 = { plain = "ث", shift = "ُ" }
+0x13 = { plain = "ق", shift = "ٌ" }
+0x14 = { plain = "ف", shift = "ﻹ" }
+0x15 = { plain = "غ", shift = "إ" }
+0x16 = { plain = "ع", shift = "‘" }
+0x17 = { plain = "ه", shift = "÷" }
+0x18 = { plain = "خ", shift = "×" }
+0x19 = { plain = "ح", shift = "؛" }
+0x1A = { plain = "ج", shift = "<" }
+0x1B = { plain = "د", shift = ">" }
+
+# Home row
+0x1E = { plain = "ش", shift = "ِ" }
+0x1F = { plain = "س", shift = "ٍ" }
+0x20 = { plain = "ي", shift = "]" }
+0x21 = { plain = "ب", shift = "[" }
+0x22 = { plain = "ل", shift = "ﻷ" }
+0x23 = { plain = "ا", shift = "أ" }
+0x24 = { plain = "ت" }
+0x25 = { plain = "ن", shift = "،" }
+0x26 = { plain = "م", shift = "/" }
+0x27 = { plain = "ك", shift = ":" }
+0x28 = { plain = "ط", shift = "\"" }
+
+# Bottom row
+0x2B = { plain = "\\", shift = "|" }
+0x2C = { plain = "ئ", shift = "~" }
+0x2D = { plain = "ء", shift = "ْ" }
+0x2E = { plain = "ؤ", shift = "}" }
+0x2F = { plain = "ر", shift = "{" }
+0x30 = { plain = "ﻻ", shift = "ﻵ" }
+0x31 = { plain = "ى", shift = "آ" }
+0x32 = { plain = "ة", shift = "’" }
+0x33 = { plain = "و", shift = "," }
+0x34 = { plain = "ز", shift = "." }
+0x35 = { plain = "ظ", shift = "؟" }

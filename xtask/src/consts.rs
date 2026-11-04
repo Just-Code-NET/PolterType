@@ -1,7 +1,7 @@
 //! Upstream dictionary source URLs.
 
 use crate::enums::ExpandMode;
-use crate::types::HunspellSource;
+use crate::types::{Extras, HunspellSource};
 
 pub(crate) const EN_URL: &str =
     "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt";
@@ -17,6 +17,13 @@ pub(crate) const UK_README_URL: &str =
 /// Keep in lock-step with `poltertype-core/build.rs::LAYOUTS`: a
 /// language with a layout but no entry here gets an empty FST and
 /// plausibility-only detection, which is legal but rarely intended.
+/// The [`Extras`] of a dictionary that needs none.
+pub(crate) const NO_EXTRAS: Extras = Extras {
+    prefixes: &[],
+    respell: &[],
+    drop: &[],
+};
+
 pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
     HunspellSource {
         base: "uk_UA",
@@ -24,6 +31,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.aff",
         output: "uk_ua.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "ru_RU",
@@ -31,6 +39,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ru_RU/ru_RU.aff",
         output: "ru_ru.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "de_DE_frami",
@@ -38,6 +47,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff",
         output: "de_de.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "es_ES",
@@ -45,6 +55,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.aff",
         output: "es_es.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     // French moved down a level upstream (`fr_FR/` → `fr_FR/
     // dictionaries/`) and the old URLs 404'd for months, because the
@@ -57,6 +68,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/dictionaries/fr.aff",
         output: "fr_fr.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "pl_PL",
@@ -64,6 +76,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pl_PL/pl_PL.aff",
         output: "pl_pl.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "cs_CZ",
@@ -71,6 +84,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.aff",
         output: "cs_cz.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "el_GR",
@@ -78,6 +92,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.aff",
         output: "el_gr.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "he_IL",
@@ -85,6 +100,29 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/he_IL/he_IL.aff",
         output: "he_il.txt.gz",
         expand: ExpandMode::StemsOnly,
+        extras: NO_EXTRAS,
+    },
+    HunspellSource {
+        base: "ar",
+        dic: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
+        aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.aff",
+        output: "ar.txt.gz",
+        expand: ExpandMode::StemsOnly,
+        extras: Extras {
+            // The definite article and the clitics that fuse with it.
+            // Stems carry none of them, and `ال` starts a large share
+            // of running Arabic text. Safe against English: every one
+            // ends in `hg` / `gg` on the en-US keys, which no English
+            // word starts with.
+            prefixes: &["ال", "وال", "بال", "فال", "كال", "لل"],
+            // The lam-alef keys type one presentation-form code point
+            // (see `ar.toml`), so `hgsbl` renders as `السﻻم`.
+            respell: &[("لا", "ﻻ"), ("لأ", "ﻷ"), ("لإ", "ﻹ"), ("لآ", "ﻵ")],
+            // `حصي` is what `pwd` types as on Arabic 101, and the
+            // standard spelling of "pebbles" is `حصى` — kept out so the
+            // shell entry in `en_us-extras.txt` does not veto it.
+            drop: &["حصي"],
+        },
     },
     HunspellSource {
         base: "tr_TR",
@@ -92,6 +130,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.aff",
         output: "tr_tr.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "bg_BG",
@@ -99,6 +138,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.aff",
         output: "bg_bg.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "it_IT",
@@ -106,6 +146,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.aff",
         output: "it_it.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "pt_PT",
@@ -113,6 +154,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_PT/pt_PT.aff",
         output: "pt_pt.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
     HunspellSource {
         base: "pt_BR",
@@ -120,6 +162,7 @@ pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
         aff: "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_BR/pt_BR.aff",
         output: "pt_br.txt.gz",
         expand: ExpandMode::Full,
+        extras: NO_EXTRAS,
     },
 ];
 

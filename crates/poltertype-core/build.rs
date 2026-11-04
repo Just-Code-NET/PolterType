@@ -42,6 +42,7 @@ const LAYOUTS: &[(&str, &str)] = &[
     ("it_it", "it-IT"),
     ("pt_pt", "pt-PT"),
     ("pt_br", "pt-BR"),
+    ("ar", "ar"),
 ];
 
 fn main() {

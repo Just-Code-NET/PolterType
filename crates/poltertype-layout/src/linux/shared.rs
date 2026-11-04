@@ -100,6 +100,7 @@ pub fn bcp47_to_xkb(bcp: &str) -> Option<&'static str> {
         "hy-AM" => "am",
         "ka-GE" => "ge",
         "he-IL" => "il",
+        "ar" => "ara",
         "ja-JP" => "jp",
         "ko-KR" => "kr",
         _ => return None,

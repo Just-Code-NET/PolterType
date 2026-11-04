@@ -46,6 +46,11 @@ pub fn derive_vowels(id: &LayoutId, script: Script) -> Vec<char> {
         "bg-BG" => "аеиоуъюя".chars().collect(),
         "it-IT" => "aeiouàèéìíîòóùú".chars().collect(),
         "pt-PT" | "pt-BR" => "aeiouáàâãéêíóôõúü".chars().collect(),
+        // Arabic writes only its long vowels: alef in every hamza and
+        // madda form, waw, yeh, alef maksura, and the lam-alef keys.
+        // An empty set scored every Arabic word as one long consonant
+        // cluster — 0.0 — so plausibility could never pick Arabic.
+        "ar" => "اأإآويىﻻﻵﻷﻹ".chars().collect(),
         _ => match script {
             Script::Latin => "aeiouy".chars().collect(),
             Script::Cyrillic => "аеиіоуюяєїыэё".chars().collect(),

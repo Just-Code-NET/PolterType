@@ -80,7 +80,9 @@ pub(crate) fn fetch_hunspell(src_dir: &Path, wl_dir: &Path, source: &HunspellSou
     }
 
     let out = wl_dir.join(source.output);
-    if let Err(e) = process_hunspell_with_aff(&dic_path, &aff_path, &out, source.expand) {
+    if let Err(e) =
+        process_hunspell_with_aff(&dic_path, &aff_path, &out, source.expand, &source.extras)
+    {
         eprintln!("  process {} failed: {e}", dic_path.display());
         return false;
     }
@@ -116,14 +118,21 @@ pub(crate) fn encoding_of_aff(bytes: &[u8]) -> Result<Encoding> {
     // first line and hide a `SET` sitting there — pt_BR ships one.
     let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
 
-    // Latin-1 view of the first 2 KB: safe on any byte, which matters
-    // because the encoding is what we are still looking for.
-    let preview: String = bytes.iter().take(2048).map(|&b| b as char).collect();
+    // Latin-1 view of the whole file: safe on any byte, which matters
+    // because the encoding is what we are still looking for. Not just
+    // the head — ar.aff declares `SET` on line 360, after its `AF` table —
+    // and the separator may be a tab (`SET\tUTF-8`), as ar.aff writes it.
+    let preview: String = bytes.iter().map(|&b| b as char).collect();
     let declared = preview
         .lines()
         .filter_map(|l| l.split('#').next())
-        .find_map(|l| l.trim().strip_prefix("SET "))
-        .map(|s| s.trim().to_uppercase());
+        .find_map(|l| {
+            let mut words = l.split_whitespace();
+            (words.next() == Some("SET"))
+                .then(|| words.next())
+                .flatten()
+        })
+        .map(str::to_uppercase);
 
     let normalized = declared
         .as_deref()
@@ -212,12 +221,23 @@ pub(crate) fn process_hunspell_with_aff(
     aff: &Path,
     output: &Path,
     mode: ExpandMode,
+    extras: &Extras,
 ) -> Result<()> {
     // The .aff declares the encoding for both halves of the pair.
     let encoding = detect_encoding(aff)?;
-    let aff_text = read_hunspell_text(aff, encoding)?;
-    let parsed =
-        hunspell::Aff::parse(&aff_text).with_context(|| format!("parse {}", aff.display()))?;
+    // Stems-only never reads a rule, so it never needs the rules parsed:
+    // ar.aff uses `FLAG long` with an `AF` alias table, which the
+    // expander does not model and has no reason to for stems.
+    let parsed = match mode {
+        ExpandMode::Full => {
+            let aff_text = read_hunspell_text(aff, encoding)?;
+            Some(
+                hunspell::Aff::parse(&aff_text)
+                    .with_context(|| format!("parse {}", aff.display()))?,
+            )
+        }
+        ExpandMode::StemsOnly => None,
+    };
 
     let dic_text = read_hunspell_text(dic, encoding)?;
     let mut words: BTreeSet<String> = BTreeSet::new();
@@ -238,9 +258,9 @@ pub(crate) fn process_hunspell_with_aff(
             continue;
         }
         stem_count += 1;
-        let forms = match mode {
-            ExpandMode::Full => parsed.expand(stem, flags),
-            ExpandMode::StemsOnly => std::iter::once(stem.to_owned()).collect(),
+        let forms = match &parsed {
+            Some(parsed) => parsed.expand(stem, flags),
+            None => std::iter::once(stem.to_owned()).collect(),
         };
         for form in forms {
             let lower: String = form.chars().flat_map(char::to_lowercase).collect();
@@ -253,6 +273,7 @@ pub(crate) fn process_hunspell_with_aff(
             }
         }
     }
+    apply_extras(&mut words, extras);
 
     write_sorted(output, &words)?;
     let name = output.file_name().and_then(|s| s.to_str()).unwrap_or("?");
@@ -295,4 +316,27 @@ pub(crate) fn http_get(url: &str) -> Result<Vec<u8>> {
     let mut buf = Vec::new();
     resp.into_reader().read_to_end(&mut buf)?;
     Ok(buf)
+}
+
+/// [`Extras`] in field order: prefixes, then respellings of the
+/// prefixed forms too, then drops — so a dropped form cannot come back
+/// through a prefix or a respelling.
+fn apply_extras(words: &mut BTreeSet<String>, extras: &Extras) {
+    let prefixed: Vec<String> = extras
+        .prefixes
+        .iter()
+        .flat_map(|p| words.iter().map(move |w| format!("{p}{w}")))
+        .collect();
+    words.extend(prefixed);
+    for (from, to) in extras.respell {
+        let respelled: Vec<String> = words
+            .iter()
+            .filter(|w| w.contains(from))
+            .map(|w| w.replace(from, to))
+            .collect();
+        words.extend(respelled);
+    }
+    for form in extras.drop {
+        words.remove(*form);
+    }
 }

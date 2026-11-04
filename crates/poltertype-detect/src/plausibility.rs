@@ -98,6 +98,22 @@ impl WordPlausibilityDetector {
         None
     }
 
+    /// Whether `text` is wholly letters of `layout`'s own abjad. Arabic
+    /// and Hebrew leave short vowels unwritten, so a correctly typed word
+    /// reads as one consonant cluster (`بسرعه` scores 0.0) while its
+    /// Latin rendering lands vowels (`fsnui` scores 0.75) and wins.
+    /// Shape cannot tell those apart; only the dictionary can.
+    fn abjad_in_own_script(&self, layout: &LayoutId, text: &str) -> bool {
+        let Some(prof) = self.profiles.get(layout) else {
+            return false;
+        };
+        let mut letters = text.chars().filter(|c| c.is_alphabetic()).peekable();
+        matches!(prof.script, Script::Arabic | Script::Hebrew)
+            && non_word_char_count(text) == 0
+            && letters.peek().is_some()
+            && letters.all(|c| Script::of(c) == prof.script)
+    }
+
     /// The plain word-shape score, with no compound handling.
     fn score(prof: &LayoutProfile, text: &str) -> f32 {
         let letters: Vec<char> = text
@@ -212,6 +228,19 @@ impl Detector for WordPlausibilityDetector {
                 reason: format!(
                     "current {} looks like an all-caps acronym",
                     logsafe::redact_word(current_text)
+                ),
+            };
+        }
+
+        // Leaving an abjad is the dictionary's call: an English word typed
+        // on the Arabic keys is a dictionary hit there, and anything less
+        // is safer kept as typed than replaced on shape alone.
+        if self.abjad_in_own_script(ctx.current_layout, current_text) {
+            return Verdict::Keep {
+                reason: format!(
+                    "current {} is in {}'s own abjad; left to the dictionary",
+                    logsafe::redact_word(current_text),
+                    ctx.current_layout
                 ),
             };
         }

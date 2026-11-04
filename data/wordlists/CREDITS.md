@@ -71,6 +71,7 @@ was wrong about at least Russian, which is BSD.
 | `it_it` | `it_IT/it_IT.dic` | GPL-3 | 3.3 M |
 | `pt_pt` | `pt_PT/pt_PT.dic` | GPL-2-or-later | 1.3 M |
 | `pt_br` | `pt_BR/pt_BR.dic` | LGPL-3 / MPL | 8.1 M |
+| `ar` | `ar/ar.dic` | GPL-2.0+ / LGPL-2.1+ / MPL-1.1+ (Ayaspell; pick one) | 2.5 M |
 
 ### Hebrew is the row to look at twice
 
@@ -87,6 +88,20 @@ set to drop: nothing else bundled uses the Hebrew script, so the
 plausibility detector separates he-IL from every other layout on
 script alone and the dictionary is a refinement, not the load-bearing
 signal.
+
+### Arabic ships stems too
+
+Ayaspell's `ar.aff` compresses its flags into a 333-entry `AF` alias
+table under `FLAG long`, and its rules attach the article and the
+clitic particles (ال و ف ب ل ك) as prefixes — the same combinatorial
+shape as Hebrew. `ar` is therefore processed with
+`ExpandMode::StemsOnly`, and the article forms come back through the
+source's `Extras` instead of the affix rules: every stem is also
+emitted behind `ال`, `وال`, `بال`, `فال`, `كال` and `لل`, then every
+form holding `لا` (or `لأ`, `لإ`, `لآ`) also in the one-code-point
+spelling the `B` key types. That gives 2.5 M forms from 466 k `.dic`
+lines. A word with a bare one-letter clitic (`وكتاب`, `بسم`) still
+misses the dictionary and is scored on plausibility.
 
 ### Hebrew also ships stems, not surface forms
 

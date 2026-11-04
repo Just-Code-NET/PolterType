@@ -64,6 +64,23 @@ fn leading_bom_does_not_hide_the_set_line() {
     );
 }
 
+/// ar's `.aff` writes `SET\tUTF-8` on line 360, after a 333-entry `AF`
+/// table — past any head-of-file preview and not matched by `"SET "`.
+#[test]
+fn tab_separated_set_deep_in_the_file_is_found() {
+    let mut text = String::from("FLAG\tlong\n");
+    for i in 0..400 {
+        text.push_str(&format!(
+            "AF TaTbTcTdTeTfThTiTjTkTlTmTnToTpTqTrTsTtTuTvTxTy # {i}\n"
+        ));
+    }
+    text.push_str("SET\tUTF-8\nTRY\tabc\n");
+    assert_eq!(
+        encoding_of_aff(text.as_bytes()).expect("late, tab-separated SET must be found"),
+        Encoding::Utf8
+    );
+}
+
 /// Both of these used to silently mean "decode as Latin-1", which is
 /// the behaviour that shipped broken dictionaries. They must fail.
 #[test]
@@ -73,4 +90,20 @@ fn unknown_and_missing_encodings_are_errors() {
 
     let err = encoding_of_aff(b"TRY abc\nSFX A Y 0\n").expect_err("missing SET must fail");
     assert!(err.to_string().contains("SET"), "explains itself: {err}");
+}
+
+#[test]
+fn extras_prefix_then_respell_then_drop() {
+    let mut words: BTreeSet<String> = ["سلام", "كتاب", "حصي"].map(String::from).into();
+    let extras = Extras {
+        prefixes: &["ال"],
+        respell: &[("لا", "ﻻ")],
+        drop: &["حصي"],
+    };
+    apply_extras(&mut words, &extras);
+    for want in ["سلام", "السلام", "سﻻم", "السﻻم", "الكتاب", "الحصي"]
+    {
+        assert!(words.contains(want), "missing `{want}`");
+    }
+    assert!(!words.contains("حصي"), "a dropped form must stay dropped");
 }
