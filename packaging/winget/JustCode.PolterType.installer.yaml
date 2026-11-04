@@ -6,7 +6,7 @@
 # that is the supported way to bump it.
 
 PackageIdentifier: JustCode.PolterType
-PackageVersion: 0.38.2
+PackageVersion: 0.39.0
 MinimumOSVersion: 10.0.0.0
 InstallerType: wix
 # Per-user by design (installers/wix/main.wxs), which is what lets the
@@ -22,10 +22,10 @@ UpgradeBehavior: install
 # The self-updater and winget do not fight: the updater only ever
 # replaces installs it recognises as its own, and an MSI-over-MSI
 # upgrade keeps the per-user layout. Nothing special is needed here.
-ReleaseDate: 2026-10-19
+ReleaseDate: 2026-11-04
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/Just-Code-NET/PolterType/releases/download/v0.38.2/poltertype-0.38.2-x86_64-pc-windows-msvc.msi
-    InstallerSha256: AEAE1422B44CE4C0EF249E44A73B4BC0231172F2B9EB39B47417FD58937D171A
+    InstallerUrl: https://github.com/Just-Code-NET/PolterType/releases/download/v0.39.0/poltertype-0.39.0-x86_64-pc-windows-msvc.msi
+    InstallerSha256: C2C5914DD19C3B2D79E946164F17E7DE8B754C78CE6D6CC6AE20A32F061D92AB
 ManifestType: installer
 ManifestVersion: 1.6.0
