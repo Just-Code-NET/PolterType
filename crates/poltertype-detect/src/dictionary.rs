@@ -59,6 +59,26 @@ pub struct LayoutDictionary {
 }
 
 impl LayoutDictionary {
+    /// How many leading letters of `word` begin some word of the embedded
+    /// list. A word this list lacks can still share a long stem with it,
+    /// which a whole-word lookup cannot see.
+    pub(crate) fn prefix_letters(&self, word: &str) -> usize {
+        let fst = self.embedded.as_fst();
+        let mut node = fst.root();
+        let mut letters = 0;
+        for ch in word.chars() {
+            let mut buf = [0u8; 4];
+            for &byte in ch.encode_utf8(&mut buf).as_bytes() {
+                let Some(i) = node.find_input(byte) else {
+                    return letters;
+                };
+                node = fst.node(node.transition(i).addr);
+            }
+            letters += 1;
+        }
+        letters
+    }
+
     pub fn new(
         embedded: FstSet<&'static [u8]>,
         user_overlay: HashSet<String>,

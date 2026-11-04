@@ -23,9 +23,11 @@ looked at. sway recognises `Arabic` as `ar`, but that rig scrambles
 keystrokes with or without Arabic, so nothing else was read from it.
 Windows and macOS were compiled, not run: `describe_keymaps` on macOS,
 the `ar-*` mapping and `switch_to` change on Windows. The chime on a
-converted selection is proved by tests only, because the guest's sound
-card hangs VirtualBox on this host and is switched off. Every other
-bullet was re-read and not re-measured.
+converted selection reached the guest's sound card (the PCM ran around the
+conversion with the chime on, 69 of 93 polls, and never with it off, 0 of
+77). Out-of-dictionary words were measured on about 90,000 Arabic, 74,000
+Hebrew and 3,600 out-of-dictionary English words from Wikipedia through the
+real detectors. Every other bullet was re-read and not re-measured.
 
 **What the 0.38.2 pass actually checked (2026-10-19).** The accept
 chord held past the digit, in the desktop-matrix guest with a debug
@@ -1247,12 +1249,15 @@ move too fast to be true.
   screen, which a correction erases with two Backspaces: measured under
   GTK and xterm, where libX11's Compose table makes the pair, and assumed
   on macOS and Windows. An application that shows xkb's U+FEFB uncomposed
-  would lose one character more. A lam-alef key pressed *during* a
-  correction's burst still counts as one. Converting a selection reads any
+  would lose one character more. Converting a selection reads any
   `لا` as that one key, so `gh` typed on `G` and `H` comes back as `b`.
-  Words with a bare one-letter clitic (`وكتاب`) miss the dictionary, and in
-  Arabic or Hebrew an English word the dictionary does not know stays as
-  typed.
+  Words with a bare one-letter clitic (`وكتاب`) miss the dictionary. On an
+  Arabic or Hebrew keyboard about 60 % of out-of-dictionary English still
+  stays as typed (`debian`, `ubuntu`, `linux` on Arabic), because keeping a
+  real word matters more. A real word whose rendering is itself in the
+  English list (`שביקר` → `acher`, about 4 in 10,000 Arabic and 22 in 10,000
+  Hebrew words on Wikipedia) is still switched: that is the dictionary sweep
+  every layout has, not this rule.
 
 - **On macOS the OS answers too, since this release.** `describe_keymaps`
   reads each keyboard with `UCKeyTranslate` and replaces the bundled table,

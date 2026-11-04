@@ -372,6 +372,7 @@ mod engine_integration_tests {
                 // The gate is a no-op in most tests: they exercise the
                 // path taken when keystrokes cannot be held back.
                 poltertype_input::KeyGate::disabled(),
+                ["en-US", "uk-UA"],
             )
         }
 
@@ -388,6 +389,27 @@ mod engine_integration_tests {
                 tweak,
                 None,
                 poltertype_input::KeyGate::claiming_without_listener(),
+                ["en-US", "uk-UA"],
+            )
+        }
+
+        /// en-US and Arabic active, with a detector that always wants the
+        /// other one: what a lam-alef key costs is the whole question.
+        fn start_arabic() -> Self {
+            Self::start_gated(
+                60_000,
+                MockEmitter::default(),
+                false,
+                None,
+                Some(vec![Box::new(AlwaysOther(
+                    LayoutId::from("en-US"),
+                    LayoutId::from("ar"),
+                ))]),
+                None,
+                |_| {},
+                None,
+                poltertype_input::KeyGate::disabled(),
+                ["en-US", "ar"],
             )
         }
 
@@ -402,6 +424,7 @@ mod engine_integration_tests {
             tweak: impl FnOnce(&mut crate::settings::Settings),
             clipboard: Option<Arc<dyn poltertype_input::Clipboard>>,
             key_gate: poltertype_input::KeyGate,
+            active_layouts: [&str; 2],
         ) -> Self {
             let mut settings = crate::settings::Settings::default();
             settings.engine.idle_timeout_ms = idle_timeout_ms;
@@ -416,7 +439,7 @@ mod engine_integration_tests {
             // which keys count as letters. bg-BG puts `б` on the `/`
             // key, which quietly made `/tmp` one four-key token here
             // while a real en-US + uk-UA machine sees a path.
-            let active = [LayoutId::from("en-US"), LayoutId::from("uk-UA")];
+            let active = active_layouts.map(LayoutId::from);
             let layouts = Arc::new(
                 LayoutDb::load(crate::layouts::LoadOptions {
                     active_filter: Some(&active),
@@ -425,7 +448,7 @@ mod engine_integration_tests {
                 .expect("bundled layouts load"),
             );
             let emitter = Arc::new(emitter);
-            let mut switcher = MockSwitcher::new("en-US", &["en-US", "uk-UA"]);
+            let mut switcher = MockSwitcher::new(active_layouts[0], &active_layouts);
             switcher.fail_switch = fail_switch;
             let switcher = Arc::new(switcher);
             let detectors: Vec<Box<dyn Detector>> = detectors_override.unwrap_or_else(|| {
@@ -832,36 +855,77 @@ mod engine_integration_tests {
         }
     }
 
-    /// Hebrew shares Arabic's unwritten short vowels, so the same rule
-    /// holds: a Hebrew word the stems list lacks
-    /// stays, and an English word typed on the Hebrew keys still leaves on
-    /// the dictionary's word.
-    #[test]
-    fn hebrew_is_left_to_the_dictionary_like_arabic() {
+    /// What real detectors make of `typed` on an abjad layout's keys.
+    fn judge_on_abjad(abjad: &str, typed: &str) -> Option<LayoutId> {
         use crate::layouts::LayoutDb;
         let db = LayoutDb::load_embedded();
-        let (en, he) = (LayoutId::from("en-US"), LayoutId::from("he-IL"));
+        let (en, other) = (LayoutId::from("en-US"), LayoutId::from(abjad));
         let en_map = db.get(&en).expect("en-US");
-        let he_map = db.get(&he).expect("he-IL");
-        let judge = |typed: &str| -> Option<LayoutId> {
-            let hebrew = en_map.transliterate_to(typed, he_map).expect("renders");
-            let candidates = vec![(en.clone(), typed.to_owned()), (he.clone(), hebrew)];
-            let ctx = poltertype_detect::DetectionContext {
-                current_layout: &he,
-                candidates: &candidates,
-                recent_context: "",
-            };
-            for d in real_detectors() {
-                match d.judge(&ctx) {
-                    Verdict::NoOpinion => continue,
-                    Verdict::Keep { .. } => return None,
-                    Verdict::Switch(v) => return Some(v.best_layout),
-                }
-            }
-            None
+        let other_map = db.get(&other).expect("abjad");
+        let rendered = en_map.transliterate_to(typed, other_map).expect("renders");
+        // Selection paste expands lam-alef; a word in the buffer holds the
+        // key's one code point.
+        let rendered = rendered.replace("\u{0644}\u{0627}", "\u{FEFB}");
+        let candidates = vec![(en.clone(), typed.to_owned()), (other.clone(), rendered)];
+        let ctx = poltertype_detect::DetectionContext {
+            current_layout: &other,
+            candidates: &candidates,
+            recent_context: "",
         };
-        assert_eq!(judge("hello"), Some(en.clone()), "a dictionary hit leaves");
-        assert_eq!(judge("qwrtpz"), None, "shape alone does not");
+        for d in real_detectors() {
+            match d.judge(&ctx) {
+                Verdict::NoOpinion => continue,
+                Verdict::Keep { .. } => return None,
+                Verdict::Switch(v) => return Some(v.best_layout),
+            }
+        }
+        None
+    }
+
+    /// English the dictionary lacks, typed on an Arabic or Hebrew keyboard,
+    /// comes back; gibberish does not, since no dictionary follows it.
+    #[test]
+    fn english_outside_the_dictionary_leaves_an_abjad_on_its_stem() {
+        let en = LayoutId::from("en-US");
+        for abjad in ["ar", "he-IL"] {
+            for typed in ["hello", "microsoft", "macos", "posix", "distros"] {
+                assert_eq!(
+                    judge_on_abjad(abjad, typed),
+                    Some(en.clone()),
+                    "{abjad}: {typed}"
+                );
+            }
+            assert_eq!(judge_on_abjad(abjad, "qwrtpz"), None, "{abjad}: gibberish");
+        }
+    }
+
+    /// The commonest words of Wikipedia text that the stems lists lack, in
+    /// their own layouts: inflected, or behind a clitic. Shape alone turned
+    /// a fifth of running Hebrew into Latin (DECISIONS.md, 2026-11-04).
+    #[test]
+    fn real_words_outside_the_dictionary_stay_in_their_abjad() {
+        let db = crate::layouts::LayoutDb::load_embedded();
+        let en_map = db.get(&LayoutId::from("en-US")).expect("en-US");
+        for (abjad, words) in [
+            (
+                "ar",
+                "العربية المصرية المسلمين الإسلامية الشمسية اللغات الرياضية الآلات عربية مختلفة الرئيسية العالمية الرسمية التاريخية البيانات باستعمال العلمية معينة",
+            ),
+            (
+                "he-IL",
+                "בישראל בעיר המאה בירושלים המדינה ההיסטוריה בעיקר המחשב הספר בעולם כאשר במהלך המשחק באופן העולם הכדורגל הראשון כיום השנים במקום הרפואה",
+            ),
+        ] {
+            let layout = db.get(&LayoutId::from(abjad)).expect("abjad");
+            for word in words.split_whitespace() {
+                let typed = layout.transliterate_to(word, en_map).expect("renders");
+                assert_eq!(
+                    judge_on_abjad(abjad, &typed),
+                    None,
+                    "{abjad}: {word} ({typed})"
+                );
+            }
+        }
     }
 
     /// Issue #33, the residue on 0.21.0: `auto-switch ` typed in
@@ -1528,6 +1592,51 @@ mod engine_integration_tests {
             ops.get(2),
             Some(&EmitOp::Backspaces(7)),
             "raced key must be part of the next tracked word, got {ops:?}"
+        );
+    }
+
+    /// `B` on Arabic is `لا`: two code points for one key. Typed as part of
+    /// the word, or raced in behind it, it costs a second Backspace.
+    #[test]
+    fn a_lam_alef_key_is_erased_as_two_code_points() {
+        const B: u32 = 0x30;
+        let h = Harness::start_arabic();
+        *h.switcher.current.lock() = LayoutId::from("ar");
+        type_word(&h, &[0x14, B, 0x22]);
+        h.tap(SPACE);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops[0],
+            EmitOp::Backspaces(5),
+            "3 keys, 1 pair, 1 space: {ops:?}"
+        );
+
+        let h = Harness::start_arabic();
+        type_word(&h, &[0x14, 0x22]);
+        h.tap(SPACE);
+        h.press(B);
+        h.release(B);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops[0],
+            EmitOp::Backspaces(5),
+            "a raced `B` landed under the Arabic it was switched to: {ops:?}"
+        );
+
+        let h = Harness::start_arabic();
+        *h.switcher.current.lock() = LayoutId::from("ar");
+        type_word(&h, &[0x14, 0x22]);
+        h.tap(SPACE);
+        h.press(B);
+        h.release(B);
+        h.settle();
+        let (ops, _) = h.stop();
+        assert_eq!(
+            ops[0],
+            EmitOp::Backspaces(4),
+            "a raced `B` landed under the English it was switched to: {ops:?}"
         );
     }
 

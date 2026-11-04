@@ -12,6 +12,8 @@ use crate::text::{letters_only_lower, non_word_char_count, paired_segments, segm
 use crate::traits::Detector;
 use crate::types::DetectionContext;
 
+mod abjad;
+
 /// Looks the rendered text up in per-layout dictionaries.
 ///
 /// * `current_text` is in its layout's dictionary → `Keep` (the user
@@ -337,6 +339,10 @@ impl Detector for DictionaryDetector {
                     ctx.current_layout
                 ),
             };
+        }
+
+        if !current_has_stray && let Some(switch) = self.escape_from_abjad(&current_text, ctx) {
+            return switch;
         }
 
         Verdict::NoOpinion

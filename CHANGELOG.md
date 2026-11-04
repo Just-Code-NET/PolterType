@@ -41,8 +41,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - **A correctly typed Hebrew word is no longer replaced on shape alone.**
   Hebrew writes no short vowels, so a word missing from its stems list
   scored as one consonant cluster and could lose to its Latin rendering.
-  Leaving Hebrew or Arabic is now the dictionary's call; the cost is that
-  an English word it does not know stays as typed there.
+  Leaving Hebrew or Arabic is now the dictionaries' call: a word in neither
+  moves only when the other layout's dictionary follows much more of it
+  than its own, so `microsoft` comes back and `בישראל` stays. On Wikipedia
+  text about 40 % of out-of-dictionary English returns, and none of the real
+  words the shape check used to replace is touched by this rule.
 - **On Windows, switching between two keyboards of one language now lands
   on the keyboard whose table PolterType holds,** rather than on whichever
   the OS listed last.

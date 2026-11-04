@@ -5099,3 +5099,27 @@ reader of `keys`.
 more than it should. None measured here does. Selection text is ambiguous
 the other way: `لا` reads back as `B`, not `G` + `H`, because `B` is by far
 the commoner source.
+
+## 2026-11-04 — Leaving an abjad: how far each dictionary follows the word
+
+An abjad leaves short vowels unwritten, so a real word in Arabic or Hebrew
+reads as one consonant cluster and its Latin rendering usually scores better
+on shape. PR #83 stopped plausibility from deciding here at all. Measured on
+Wikipedia, tokens of three letters or more that this would otherwise replace:
+
+| Rule | Arabic words damaged (of 90,086) | Hebrew words damaged (of 74,071) | English out of dictionary corrected |
+|---|---|---|---|
+| shape alone, as before #83 | 816 | 14,319 (19 %) | ~80–90 % |
+| shape, with stems after a clitic kept | 554 | 1,164 | ~80–90 % |
+| the veto alone, as in #83 | 0 | 0 | 0 |
+| **prefix share ≥ 0.34, 5+ letters** | **0** | **0** | **~40 %** |
+
+**Decision:** keep the veto in plausibility, and let `DictionaryDetector` move
+a word only when another layout's FST follows at least 0.34 more of its letters
+than its own does, counting the own side after stripping a clitic. It is a
+question only a dictionary can answer, since a real word usually shares a stem
+with the list even when it is missing from it.
+
+**Cost:** most unknown English stays as typed on those keyboards; a word put
+right by hand costs a keypress and a word destroyed costs trust. Common
+Arabic letter runs defeat it (`linux`, `debian`).

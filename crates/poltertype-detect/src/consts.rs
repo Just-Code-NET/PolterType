@@ -41,3 +41,23 @@ pub(crate) const WEAK_PENALTY: f32 = 0.6;
 /// candidates that start the way the user actually typed.
 pub(crate) const PREFIX_BONUS: f32 = 0.08;
 pub(crate) const PREFIX_BONUS_CAP: usize = 4;
+
+/// Fewest letters a word needs before a dictionary's prefixes may move it
+/// out of an abjad. Shorter stems match anything; see
+/// [`crate::DictionaryDetector`] and DECISIONS.md (2026-11-04).
+pub(crate) const ABJAD_ESCAPE_MIN_LETTERS: usize = 5;
+
+/// How much more of a word another layout's dictionary must recognise, as
+/// a share of its letters, than its own does.
+pub(crate) const ABJAD_ESCAPE_ADVANTAGE: f32 = 0.34;
+
+/// Particles Arabic writes joined to the next word, which the stems list
+/// mostly lacks: a real word behind one is still the writer's own.
+pub(crate) const ARABIC_CLITICS: &[&str] = &[
+    "ال", "وال", "بال", "فال", "كال", "لل", "و", "ف", "ب", "ل", "ك", "س", "وب", "ول", "فب", "فل",
+];
+
+/// The same for Hebrew, whose stems list carries no prefixes at all.
+pub(crate) const HEBREW_CLITICS: &[&str] = &[
+    "ה", "ו", "ב", "כ", "ל", "מ", "ש", "וה", "וב", "ול", "שה", "שב", "של", "כש", "מה", "ומ",
+];

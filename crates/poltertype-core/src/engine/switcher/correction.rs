@@ -256,6 +256,9 @@ impl SwitcherEngine {
         let mut live = live;
         let mut click_allowance = pointer_click_allowance;
         let mut tail: Vec<KeyEvent> = Vec::new();
+        // What the keys in `tail` cost beyond one Backspace each, counted
+        // under the layout in effect when each landed.
+        let mut tail_extra = 0usize;
         let mut resume: Option<KeyEvent> = None;
         let mut suspicious = false;
 
@@ -276,6 +279,7 @@ impl SwitcherEngine {
                     && Instant::now() < deadline
                 {
                     let w = self.drain_correction_window(rx, &mut click_allowance);
+                    tail_extra += self.extra_for_events(from, &w.word_keys);
                     tail.extend(w.word_keys);
                     suspicious |= w.suspicious;
                     resume = w.resume;
@@ -350,6 +354,7 @@ impl SwitcherEngine {
             let mut quiet_probes = 0u8;
             loop {
                 let w = self.drain_correction_window(rx, &mut click_allowance);
+                tail_extra += self.extra_for_events(to, &w.word_keys);
                 tail.extend(w.word_keys);
                 suspicious |= w.suspicious;
                 if let Some(r) = w.resume {
@@ -450,7 +455,7 @@ impl SwitcherEngine {
 
         let mut held = HeldKeys::acquire(&self.key_gate);
         let mut repairs_left = INTRUSION_REPAIRS;
-        let mut to_delete = backspaces + tail.len() + usize::from(resume.is_some());
+        let mut to_delete = backspaces + tail.len() + tail_extra + usize::from(resume.is_some());
         loop {
             // ── Delete: word + boundary + absorbed tail ─────────────
             //
@@ -474,7 +479,7 @@ impl SwitcherEngine {
                 std::thread::sleep(POST_EMIT_LAG);
                 let w = self.drain_correction_window(rx, &mut click_allowance);
                 suspicious |= w.suspicious;
-                let mut extra = w.word_keys.len();
+                let mut extra = w.word_keys.len() + self.extra_for_events(to, &w.word_keys);
                 tail.extend(w.word_keys);
                 if let Some(r) = w.resume {
                     if is_submission_scancode(r.scancode) || resume.is_some() {
@@ -683,7 +688,7 @@ impl SwitcherEngine {
                 let w = self.drain_correction_window(rx, &mut click_allowance);
                 let saw_press = w.saw_user_press;
                 suspicious |= w.suspicious;
-                intruders += w.word_keys.len();
+                intruders += w.word_keys.len() + self.extra_for_events(to, &w.word_keys);
                 tail.extend(w.word_keys);
                 if let Some(r) = w.resume {
                     if is_submission_scancode(r.scancode) || resume.is_some() {
@@ -1027,6 +1032,11 @@ impl SwitcherEngine {
         self.layouts
             .get(layout)
             .map_or(0, |m| m.extra_backspaces(keys))
+    }
+
+    /// [`Self::extra_backspaces`] for keystrokes off the live stream.
+    fn extra_for_events(&self, layout: &LayoutId, keys: &[KeyEvent]) -> usize {
+        self.extra_backspaces(layout, keys.iter().map(|k| (k.scancode, k.modifiers.shift)))
     }
 
     /// Wait for the finger to come off the hotkey before anything is
