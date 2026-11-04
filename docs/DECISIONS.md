@@ -5074,3 +5074,28 @@ per-platform limits, and Off-by-default direct arrows already keep the
 arrows the user's unless they opt in. Per-suggestion custom bindings
 (#78's third option) would be a key-binding language for nine rows;
 two fixed sets cover the conflict the issue reports.
+
+## 2026-11-04 — A key table entry stays one `char`; lam-alef is a fact the engine knows
+
+Arabic's `B` key types `لا`, two code points, and a key table holds one
+`char`. PR #83 had the table carry the presentation form `ﻻ`. That keeps
+translation and dictionary lookups simple, but the erase counts assumed one
+code point per key, which is what `Keys, not rendered chars` had always
+meant: in the guest, `table` typed on Arabic came back `فtable`.
+
+The first fix had backends report which keys were pairs, on the theory that
+xkb really types U+FEFB and only macOS and Windows produce two. Measuring
+killed the theory: libX11's Compose table maps `<UFEFB>` to `لا`, so GTK and
+xterm hold two code points as well. A per-keyboard field then described a
+difference that does not exist, and it came out again.
+
+**Decision:** the four forms mean a pair everywhere, in
+`poltertype_types::lam_alef`, and `LayoutMapping::extra_backspaces` turns
+that into an erase count. Widening the table to `String` would have been the
+general answer for a case that has exactly one instance, across every
+reader of `keys`.
+
+**Cost:** an application that shows U+FEFB uncomposed loses one character
+more than it should. None measured here does. Selection text is ambiguous
+the other way: `لا` reads back as `B`, not `G` + `H`, because `B` is by far
+the commoner source.

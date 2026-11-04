@@ -1,4 +1,4 @@
-# Known gaps (as of v0.38.2)
+# Known gaps (as of v0.39.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,20 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.39.0 pass actually checked (2026-11-04).** Arabic in a
+real session, in the desktop-matrix guest on openbox X11, against xterm
+and a GTK text field, read back byte for byte: both directions of a
+correction, a word typed with the lam-alef key, a suggestion accepted on
+one, the manual hotkey undoing and redoing one, and a selection converted
+with the clipboard restored. The tooltip and the Languages pane were
+looked at. sway recognises `Arabic` as `ar`, but that rig scrambles
+keystrokes with or without Arabic, so nothing else was read from it.
+Windows and macOS were compiled, not run: `describe_keymaps` on macOS,
+the `ar-*` mapping and `switch_to` change on Windows. The chime on a
+converted selection is proved by tests only, because the guest's sound
+card hangs VirtualBox on this host and is switched off. Every other
+bullet was re-read and not re-measured.
 
 **What the 0.38.2 pass actually checked (2026-10-19).** The accept
 chord held past the digit, in the desktop-matrix guest with a debug
