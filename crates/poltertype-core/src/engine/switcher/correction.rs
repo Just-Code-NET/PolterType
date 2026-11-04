@@ -999,6 +999,11 @@ impl SwitcherEngine {
         std::thread::sleep(PASTE_SETTLE);
         self.restore_clipboard(clipboard, previous.as_deref());
 
+        // Text was just replaced on screen as in `apply_correction`; with no
+        // chime here a press that worked looked like one that did nothing.
+        if self.settings.snapshot().general.sound_on_correct {
+            self.audio.play(SoundEvent::Correct);
+        }
         info!(%from, %to, "selection converted");
         let _ = self.out_tx.send(SwitcherEvent::Corrected {
             from_layout: from,

@@ -4,6 +4,18 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Converting a selection now plays the correction chime.** With
+  `[selection] enabled`, pressing the force-switch hotkey on a selected
+  passage converted it, pasted it back and put the clipboard back in
+  complete silence — the chime lived only in the word paths, so a press
+  that worked looked like one that did nothing. The selection path now
+  chimes too, on the same "Play a soft chime on correction" setting as
+  every other path, and stays silent when there was nothing to convert.
+
 ## [0.38.2] — hands off first
 
 ### Fixed
