@@ -111,11 +111,20 @@ impl LayoutSwitcher for WindowsLayoutSwitcher {
 
     fn switch_to(&self, id: &LayoutId) -> Result<(), LayoutError> {
         let active = self.list_active()?;
-        let active_map: HashMap<LayoutId, HKL> = self
-            .raw_active()?
-            .into_iter()
-            .map(|h| (hkl_to_layout_id(h), h))
-            .collect();
+        // First per id, the one in effect ahead of the rest: the same
+        // keyboard `describe_keymaps` gave the DB its table from. Two
+        // keyboards of one language must not switch to the other's keys.
+        let mut hkls = self.raw_active()?;
+        // Safety: pure Win32 calls with no aliasing concerns.
+        let current =
+            unsafe { GetKeyboardLayout(GetWindowThreadProcessId(GetForegroundWindow(), None)) };
+        if let Some(pos) = hkls.iter().position(|h| h.0 == current.0) {
+            hkls.swap(0, pos);
+        }
+        let mut active_map: HashMap<LayoutId, HKL> = HashMap::new();
+        for h in hkls {
+            active_map.entry(hkl_to_layout_id(h)).or_insert(h);
+        }
 
         let Some(&hkl) = active_map.get(id) else {
             warn!(?id, ?active, "requested layout is not active");
@@ -194,10 +203,22 @@ fn hkl_to_layout_id(hkl: HKL) -> LayoutId {
         let n = (written as usize).saturating_sub(1); // strip trailing NUL
         let s = String::from_utf16_lossy(&buf[..n]);
         if !s.is_empty() {
-            return LayoutId::new(s);
+            return LayoutId::new(language_of_locale(s));
         }
     }
     LayoutId::new(format!("hkl:{raw:08x}"))
+}
+
+/// The id a Windows locale name goes by. Arabic is bundled as one
+/// language, `ar`, and Windows names a country for every keyboard:
+/// `ar-SA`, `ar-EG`, `ar-001`. Which keyboard it is comes from
+/// [`describe_hkl`] anyway.
+fn language_of_locale(locale: String) -> String {
+    if locale.split('-').next() == Some("ar") {
+        "ar".to_owned()
+    } else {
+        locale
+    }
 }
 
 /// Describe one keyboard: what each key of the character block
@@ -270,6 +291,11 @@ fn char_at(vk: u32, sc: u32, hkl: HKL, shift: bool) -> Option<char> {
     } else {
         (n as usize).min(buf.len())
     };
+    // An Arabic keyboard answers its lam-alef keys with two code points;
+    // the first alone would turn `B` into `ل`.
+    if let Some(ligature) = poltertype_types::fold_lam_alef(&buf[..len]) {
+        return Some(ligature);
+    }
     String::from_utf16_lossy(&buf[..len])
         .chars()
         .next()

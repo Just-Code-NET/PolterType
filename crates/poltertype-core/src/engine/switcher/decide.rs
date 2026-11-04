@@ -268,7 +268,10 @@ impl SwitcherEngine {
             self.dismiss_suggestions(None);
             // Counting keys rather than rendered chars survives
             // scancodes the mapping table cannot render.
-            self.dispatch_smart_command(cmd, erase_len(cmd, keys.len()), boundary_char);
+            let typed = keys.len()
+                + self
+                    .extra_backspaces(&current_layout, keys.iter().map(|k| (k.scancode, k.shift)));
+            self.dispatch_smart_command(cmd, erase_len(cmd, typed), boundary_char);
             // The trigger text is gone from screen: not re-openable by
             // backspace, not matchable again.
             buffer.forget_completed();
@@ -470,7 +473,12 @@ impl SwitcherEngine {
                     corrected_text: corrected_with_boundary,
                     // Keys, not rendered chars: under-counting is how
                     // word heads get left behind.
-                    backspaces: keys.len() + 1,
+                    backspaces: keys.len()
+                        + self.extra_backspaces(
+                            &current_layout,
+                            keys.iter().map(|k| (k.scancode, k.shift)),
+                        )
+                        + 1,
                     reason: v.reason,
                 }
             }

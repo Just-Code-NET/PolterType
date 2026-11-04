@@ -407,7 +407,16 @@ impl SwitcherEngine {
         // delete all of it, retype with the word replaced. The accept
         // chord's digit is not on screen: every chord holds Ctrl, Alt or
         // Meta, and the engine reads such a keystroke as a shortcut.
-        let backspaces = pending.keys.len() + pending.trail.len();
+        let backspaces = pending.keys.len()
+            + pending.trail.len()
+            + self.extra_backspaces(
+                &pending.layout,
+                pending
+                    .keys
+                    .iter()
+                    .chain(pending.trail.iter().map(|t| &t.key))
+                    .map(|k| (k.scancode, k.shift)),
+            );
 
         // Cross-layout entries replay the original scancodes under the
         // switched layout; spelling entries reverse-map the suggestion

@@ -44,6 +44,16 @@ fn pretty_keymap_names_resolve_for_all_bundled_languages() {
         ("French", "fr-FR"),
         ("Spanish", "es-ES"),
         ("Spanish (Latin American)", "es-ES"),
+        ("Polish", "pl-PL"),
+        ("Czech", "cs-CZ"),
+        ("Greek", "el-GR"),
+        ("Hebrew", "he-IL"),
+        ("Turkish", "tr-TR"),
+        ("Bulgarian", "bg-BG"),
+        ("Italian", "it-IT"),
+        ("Portuguese", "pt-PT"),
+        ("Portuguese (Brazil)", "pt-BR"),
+        ("Arabic", "ar"),
         // "Belarusian" contains the letters "us" — it must fall
         // through as unknown, not resolve to en-US.
         ("Belarusian", "Belarusian"),

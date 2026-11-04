@@ -515,7 +515,8 @@ impl SwitcherEngine {
                 Some(rk) => {
                     let mut full: Vec<ReplayKey> = rk.to_vec();
                     full.extend(extra_keys.iter().copied());
-                    emitted = full.len();
+                    emitted = full.len()
+                        + self.extra_backspaces(to, full.iter().map(|k| (k.scancode, k.shift)));
                     let sent = self.key_emitter.send_keys(&full);
                     self.push_echoes(self.key_emitter.take_emitted());
                     match sent {
@@ -1017,6 +1018,17 @@ impl SwitcherEngine {
 }
 
 impl SwitcherEngine {
+    /// What `keys` cost in Backspaces beyond one each, typed under `layout`.
+    pub(super) fn extra_backspaces(
+        &self,
+        layout: &LayoutId,
+        keys: impl IntoIterator<Item = (u32, bool)>,
+    ) -> usize {
+        self.layouts
+            .get(layout)
+            .map_or(0, |m| m.extra_backspaces(keys))
+    }
+
     /// Wait for the finger to come off the hotkey before anything is
     /// emitted — the same fact `apply_correction` waits on, on the one
     /// force-switch path that was not waiting on it.
@@ -1172,7 +1184,7 @@ impl SwitcherEngine {
     /// The order has to be the same in every process. `HashMap::keys()`
     /// was not, which is harmless while the DB holds exactly the two
     /// active layouts and not at all harmless when it does not: a
-    /// failed `list_active()` loads all fifteen bundled layouts, the
+    /// failed `list_active()` loads every bundled layout, the
     /// force-switch aims at whichever came out first, and the
     /// pre-flight refuses it — no keystroke, no word, no explanation.
     /// So: what the OS says is switchable, else the DB sorted by name.
@@ -1264,7 +1276,8 @@ impl SwitcherEngine {
         // The word plus, if there is one, the boundary key that closed
         // it. A word still being typed has none: nothing follows the
         // caret to backspace over or put back.
-        let mut backspaces = last.keys.len();
+        let mut backspaces = last.keys.len()
+            + self.extra_backspaces(&from, last.keys.iter().map(|k| (k.scancode, k.shift)));
         if let Some(b) = last.boundary {
             corrected.push(b.ch);
             // Enter/Tab excepted, where a re-press would submit the line

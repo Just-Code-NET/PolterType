@@ -832,6 +832,38 @@ mod engine_integration_tests {
         }
     }
 
+    /// Hebrew shares Arabic's unwritten short vowels, so the same rule
+    /// holds: a Hebrew word the stems list lacks
+    /// stays, and an English word typed on the Hebrew keys still leaves on
+    /// the dictionary's word.
+    #[test]
+    fn hebrew_is_left_to_the_dictionary_like_arabic() {
+        use crate::layouts::LayoutDb;
+        let db = LayoutDb::load_embedded();
+        let (en, he) = (LayoutId::from("en-US"), LayoutId::from("he-IL"));
+        let en_map = db.get(&en).expect("en-US");
+        let he_map = db.get(&he).expect("he-IL");
+        let judge = |typed: &str| -> Option<LayoutId> {
+            let hebrew = en_map.transliterate_to(typed, he_map).expect("renders");
+            let candidates = vec![(en.clone(), typed.to_owned()), (he.clone(), hebrew)];
+            let ctx = poltertype_detect::DetectionContext {
+                current_layout: &he,
+                candidates: &candidates,
+                recent_context: "",
+            };
+            for d in real_detectors() {
+                match d.judge(&ctx) {
+                    Verdict::NoOpinion => continue,
+                    Verdict::Keep { .. } => return None,
+                    Verdict::Switch(v) => return Some(v.best_layout),
+                }
+            }
+            None
+        };
+        assert_eq!(judge("hello"), Some(en.clone()), "a dictionary hit leaves");
+        assert_eq!(judge("qwrtpz"), None, "shape alone does not");
+    }
+
     /// Issue #33, the residue on 0.21.0: `auto-switch ` typed in
     /// en-US came back as `ФГЕЩ-ЫЦШЕСР `. Both halves of that need
     /// explaining, and this pins the half that needs no Caps Lock —
@@ -1074,7 +1106,7 @@ mod engine_integration_tests {
     /// by scancode against the *new* layout.
     ///
     /// The reported key was `Shift`+`0x35`, but this harness loads all
-    /// fifteen bundled layouts and bg-BG carries a letter there, which
+    /// bundled layouts and bg-BG carries a letter there, which
     /// makes it a word key rather than a boundary. Hence the same trap
     /// one row up: `Shift`+`0x08` is `?` under uk-UA and `&` under
     /// en-US, and `?` lives on `Shift`+`0x35` in en-US.
@@ -1850,12 +1882,8 @@ mod engine_integration_tests {
             "and the user's own clipboard must be the last thing put back: {writes:?}"
         );
         assert!(
-            matches!(
-                h.sounds().as_slice(),
-                [crate::audio::SoundEvent::Correct, ..]
-            ),
-            "and a converted selection must chime like every other correction: {:?}",
-            h.sounds()
+            matches!(h.sounds().as_slice(), [crate::audio::SoundEvent::Correct]),
+            "and a converted selection must chime, once, like every other correction"
         );
     }
 

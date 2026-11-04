@@ -42,7 +42,7 @@ script = "Latin"          # Latin / Cyrillic / Greek / Armenian / Hebrew / Arabi
 ### Which scancodes matter
 
 Cover at least the alphanumeric block plus the punctuation that
-serves as a word boundary in your language. The fifteen bundled files
+serves as a word boundary in your language. The sixteen bundled files
 in `data/layout-mappings/` are good copy-paste templates — they all
 list the same 46 scancodes (number row, three letter rows, and the
 key left of `Z`), plus `0x56` where a layout puts a letter on the

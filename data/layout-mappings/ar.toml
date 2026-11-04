@@ -1,15 +1,17 @@
 # Layout mapping: العربية (Arabic, standard "Arabic (101)").
 #
-# Keyed by Win SC Set-1 scancode (hex). Read off the OS rather than
-# transcribed: `UCKeyTranslate` against macOS `com.apple.keylayout.ArabicPC`,
-# which is the Arabic (101) arrangement Windows ships and xkeyboard-config's
-# `ara` follows. Arabic is unicase; the shifted level carries harakat,
-# hamza forms and punctuation.
+# Keyed by Win SC Set-1 scancode (hex). This table only speaks for Linux —
+# macOS and Windows read the installed keyboard from the OS and replace it
+# — so it follows xkeyboard-config's `ara`, checked key by key against
+# libxkbcommon: ASCII digits on the number row, `%` on Shift+5. Arabic is
+# unicase; the shifted level carries harakat, hamza forms and punctuation.
 #
 # The lam-alef keys produce a two-code-point ligature (`لا` on 0x30 `B`,
 # `لإ` / `لأ` on shifted 0x14 / 0x22, `لآ` on shifted `B`), and a key
 # here is one character. They carry the single-code-point presentation
 # forms instead (U+FEFB, U+FEF9, U+FEF7, U+FEF5), which render the same.
+# On screen they stay two code points on every OS, xkb's Compose table
+# included, and the engine erases them as two.
 # Leaving them out is worse: an unmapped key is dropped from a
 # translation, so `gdb` would read as `لي`, a real word, and `B` would
 # vanish from every corrected word. The wordlist carries each `لا` word
@@ -42,16 +44,16 @@ script = "Arabic"
 0x29 = { plain = "ذ", shift = "ّ" }
 
 # Number row
-0x02 = { plain = "١", shift = "!" }
-0x03 = { plain = "٢", shift = "@" }
-0x04 = { plain = "٣", shift = "#" }
-0x05 = { plain = "٤", shift = "$" }
-0x06 = { plain = "٥", shift = "٪" }
-0x07 = { plain = "٦", shift = "^" }
-0x08 = { plain = "٧", shift = "&" }
-0x09 = { plain = "٨", shift = "*" }
-0x0A = { plain = "٩", shift = ")" }
-0x0B = { plain = "٠", shift = "(" }
+0x02 = { plain = "1", shift = "!" }
+0x03 = { plain = "2", shift = "@" }
+0x04 = { plain = "3", shift = "#" }
+0x05 = { plain = "4", shift = "$" }
+0x06 = { plain = "5", shift = "%" }
+0x07 = { plain = "6", shift = "^" }
+0x08 = { plain = "7", shift = "&" }
+0x09 = { plain = "8", shift = "*" }
+0x0A = { plain = "9", shift = ")" }
+0x0B = { plain = "0", shift = "(" }
 0x0C = { plain = "-", shift = "_" }
 0x0D = { plain = "=", shift = "+" }
 
@@ -62,7 +64,7 @@ script = "Arabic"
 0x13 = { plain = "ق", shift = "ٌ" }
 0x14 = { plain = "ف", shift = "ﻹ" }
 0x15 = { plain = "غ", shift = "إ" }
-0x16 = { plain = "ع", shift = "‘" }
+0x16 = { plain = "ع", shift = "`" }
 0x17 = { plain = "ه", shift = "÷" }
 0x18 = { plain = "خ", shift = "×" }
 0x19 = { plain = "ح", shift = "؛" }
@@ -90,7 +92,7 @@ script = "Arabic"
 0x2F = { plain = "ر", shift = "{" }
 0x30 = { plain = "ﻻ", shift = "ﻵ" }
 0x31 = { plain = "ى", shift = "آ" }
-0x32 = { plain = "ة", shift = "’" }
+0x32 = { plain = "ة", shift = "'" }
 0x33 = { plain = "و", shift = "," }
 0x34 = { plain = "ز", shift = "." }
 0x35 = { plain = "ظ", shift = "؟" }

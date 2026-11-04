@@ -11,7 +11,7 @@
 use core_foundation::base::{CFRelease, TCFType};
 use core_foundation::data::{CFData, CFDataRef};
 use core_foundation::string::CFStringRef;
-use poltertype_types::OsKeymap;
+use poltertype_types::{OsKeymap, fold_lam_alef};
 
 use super::consts::CHARACTER_KEYS;
 use super::ids::{source_id_string, source_id_to_layout_id};
@@ -114,7 +114,7 @@ unsafe fn char_at(layout: *const u8, kvk: u16, modifiers: u32, kbd_type: u32) ->
     if status != 0 || len == 0 {
         return None;
     }
-    if let Some(ligature) = lam_alef(&buf[..len]) {
+    if let Some(ligature) = fold_lam_alef(&buf[..len]) {
         return Some(ligature);
     }
     let mut chars = char::decode_utf16(buf[..len].iter().copied());
@@ -156,16 +156,4 @@ pub(super) fn describe_all() -> Result<Vec<OsKeymap>, LayoutError> {
         out.swap(0, pos);
     }
     Ok(out)
-}
-
-/// The single-code-point presentation form of a lam-alef pair, so the
-/// `B` key of an Arabic keyboard keeps its entry instead of being dropped.
-fn lam_alef(utf16: &[u16]) -> Option<char> {
-    match utf16 {
-        [0x0644, 0x0627] => Some('\u{FEFB}'),
-        [0x0644, 0x0623] => Some('\u{FEF7}'),
-        [0x0644, 0x0625] => Some('\u{FEF9}'),
-        [0x0644, 0x0622] => Some('\u{FEF5}'),
-        _ => None,
-    }
 }

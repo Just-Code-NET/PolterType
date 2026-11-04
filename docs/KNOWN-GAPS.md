@@ -1182,7 +1182,7 @@ move too fast to be true.
 
 ## Languages and keyboard data
 
-- **Nine of the fifteen bundled layouts have never been typed on.**
+- **Nine of the sixteen bundled layouts have never been typed on.**
   0.9.0 added pl, cs, el, he, tr, bg, it, pt-PT and pt-BR. The
   mappings were generated from `xkeyboard-config` rather than
   transcribed by hand — which is why they are trustworthy at all, and
@@ -1220,6 +1220,31 @@ move too fast to be true.
     path here.
   A report that a correction produces the wrong letter under one of
   these is a data bug in one TOML, not an engine bug — fix the row.
+
+- **Arabic (new in this release) has been typed on Linux only.** On
+  X11 (openbox, xterm and a GTK text field) both directions, a suggestion,
+  the manual hotkey and a selection were checked byte for byte; on sway the
+  layout is recognised and corrections go through, though that rig
+  scrambles keystrokes with or without Arabic, so its text proves little.
+  macOS was read on the contributor's Mac (`Arabic - North Africa`, 47 keys
+  adopted). Windows has not run at all: its `ar-*` mapping and lam-alef fold
+  are unit-tested and compile, nothing more.
+  The lam-alef keys carry the limits. One key puts two code points on
+  screen, which a correction erases with two Backspaces: measured under
+  GTK and xterm, where libX11's Compose table makes the pair, and assumed
+  on macOS and Windows. An application that shows xkb's U+FEFB uncomposed
+  would lose one character more. A lam-alef key pressed *during* a
+  correction's burst still counts as one. Converting a selection reads any
+  `لا` as that one key, so `gh` typed on `G` and `H` comes back as `b`.
+  Words with a bare one-letter clitic (`وكتاب`) miss the dictionary, and in
+  Arabic or Hebrew an English word the dictionary does not know stays as
+  typed.
+
+- **On macOS the OS answers too, since this release.** `describe_keymaps`
+  reads each keyboard with `UCKeyTranslate` and replaces the bundled table,
+  for **every** macOS user rather than only Arabic ones. It compiles and
+  passes in CI, and was seen working on one Mac; a wrong table there is
+  fixed by a TOML in `<config-dir>/poltertype/layouts/`, which outranks it.
 
 - **On Windows a language is not a keyboard — handled since 0.14.3,
   but not all the way down.** `hkl_to_layout_id` still keeps only the

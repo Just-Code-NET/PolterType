@@ -167,3 +167,15 @@ fn the_three_bulgarian_keyboards_describe_differently() {
          is not variant-aware after all"
     );
 }
+
+/// A bundled `ar` is only found if every country's Arabic keyboard goes
+/// by it; other languages keep their region.
+#[test]
+fn every_arabic_locale_is_the_one_arabic_layout() {
+    for locale in ["ar-SA", "ar-EG", "ar-001", "ar"] {
+        assert_eq!(language_of_locale(locale.to_owned()), "ar", "{locale}");
+    }
+    for locale in ["en-US", "uk-UA", "arn-CL"] {
+        assert_eq!(language_of_locale(locale.to_owned()), locale);
+    }
+}

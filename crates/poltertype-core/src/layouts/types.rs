@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use poltertype_detect::{LayoutDictionary, LayoutProfile, Script};
-use poltertype_types::{LayoutId, WordKey};
+use poltertype_types::{LayoutId, WordKey, fold_lam_alef, lam_alef_pair};
 use serde::Deserialize;
 use tracing::warn;
 
@@ -118,6 +118,23 @@ impl LayoutMapping {
         }
     }
 
+    /// How many of these keystrokes put two code points on screen, each
+    /// taking a second Backspace: a text field deletes `لا` a code point at
+    /// a time, and a count of keys alone leaves a word's head behind.
+    pub fn extra_backspaces(&self, keys: impl IntoIterator<Item = (u32, bool)>) -> usize {
+        keys.into_iter()
+            .filter(|&(scancode, shift)| {
+                self.translate_key(WordKey {
+                    scancode,
+                    shift,
+                    caps: false,
+                    timestamp_ms: 0,
+                })
+                .is_some_and(|c| lam_alef_pair(c).is_some())
+            })
+            .count()
+    }
+
     /// Reverse lookup: which physical key and shift state produces `ch`
     /// under this layout? Used by the suggestion-accept path to type a
     /// replacement as scancodes. Linear over the ~48-key table, a
@@ -208,7 +225,11 @@ impl LayoutMapping {
         }
         let mut out = String::with_capacity(text.len());
         let mut changed = false;
-        for ch in text.chars() {
+        // Where a key types `لا` whole, that pair came off that key: read
+        // apart it would turn `b` into `gh`. A pair typed on the two keys
+        // reads the same on screen and loses here; it is the rarer one.
+        let folded = self.fold_pairs(text);
+        for ch in folded.chars() {
             let mapped = self.key_for_char(ch).and_then(|(scancode, shift)| {
                 to.translate_key(WordKey {
                     scancode,
@@ -223,12 +244,37 @@ impl LayoutMapping {
             match mapped {
                 Some(c) => {
                     changed |= c != ch;
-                    out.push(c);
+                    // Pasted text should read as the keyboard would have
+                    // typed it, not as the form our table stands in with.
+                    match lam_alef_pair(c) {
+                        Some(pair) => out.extend(pair),
+                        None => out.push(c),
+                    }
                 }
                 None => out.push(ch),
             }
         }
         changed.then_some(out)
+    }
+
+    /// `text` with each lam-alef pair folded, where this layout has the key.
+    fn fold_pairs(&self, text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(ch) = chars.next() {
+            let form = chars.peek().and_then(|&next| {
+                let unit = |c: char| u16::try_from(u32::from(c)).ok();
+                fold_lam_alef(&[unit(ch)?, unit(next)?]).filter(|&f| self.key_for_char(f).is_some())
+            });
+            match form {
+                Some(form) => {
+                    chars.next();
+                    out.push(form);
+                }
+                None => out.push(ch),
+            }
+        }
+        out
     }
 
     /// Build the [`LayoutProfile`] used by the detector pipeline.

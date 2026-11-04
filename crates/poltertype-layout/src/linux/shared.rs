@@ -136,6 +136,16 @@ pub(crate) fn name_to_xkb_code(name: &str) -> String {
         // the moment the user switches to it the engine sees an unknown
         // current layout: empty renders, phantom re-corrections.
         s if s.contains("spanish") => "es".into(),
+        s if s.contains("polish") => "pl".into(),
+        s if s.contains("czech") => "cz".into(),
+        s if s.contains("greek") => "gr".into(),
+        s if s.contains("hebrew") => "il".into(),
+        s if s.contains("turkish") => "tr".into(),
+        s if s.contains("bulgarian") => "bg".into(),
+        s if s.contains("italian") => "it".into(),
+        s if s.contains("portuguese (brazil") => "br".into(),
+        s if s.contains("portuguese") => "pt".into(),
+        s if s.contains("arabic") => "ara".into(),
         _ => name.to_owned(),
     }
 }

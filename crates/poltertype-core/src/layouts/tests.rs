@@ -1131,3 +1131,47 @@ fn a_file_changed_on_disk_is_read_again() {
     dir.write("words.fst", "newer");
     assert_eq!(fst_cache::leaked_bytes(&path).expect("read"), b"newer");
 }
+
+// ─── Lam-alef: one key, two code points ───────────────────────────
+
+#[test]
+fn a_lam_alef_key_costs_a_second_backspace() {
+    const B: u32 = 0x30;
+    const G: u32 = 0x22;
+    let db = LayoutDb::load_embedded();
+    let ar = db.get(&LayoutId::from("ar")).expect("ar is bundled");
+    assert_eq!(ar.extra_backspaces([(G, false), (0x23, false)]), 0);
+    assert_eq!(ar.extra_backspaces([(G, false), (B, false)]), 1);
+    assert_eq!(ar.extra_backspaces([(B, true)]), 1, "the shifted form too");
+
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US is bundled");
+    assert_eq!(en.extra_backspaces([(B, false)]), 0);
+}
+
+#[test]
+fn a_converted_selection_is_pasted_as_the_keyboard_types_it() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US is bundled");
+    let ar = db.get(&LayoutId::from("ar")).expect("ar is bundled");
+    assert_eq!(
+        en.transliterate_to("b", ar).as_deref(),
+        Some("\u{0644}\u{0627}")
+    );
+}
+
+#[test]
+fn a_lam_alef_pair_converts_back_to_its_one_key() {
+    let db = LayoutDb::load_embedded();
+    let en = db.get(&LayoutId::from("en-US")).expect("en-US is bundled");
+    let ar = db.get(&LayoutId::from("ar")).expect("ar is bundled");
+    let there = en.transliterate_to("table", ar).expect("converts");
+    assert_eq!(ar.transliterate_to(&there, en).as_deref(), Some("table"));
+    assert_eq!(ar.transliterate_to("\u{FEFB}", en).as_deref(), Some("b"));
+}
+
+#[test]
+fn bundled_arabic_digits_are_what_its_keyboard_types() {
+    let db = LayoutDb::load_embedded();
+    let ar = db.get(&LayoutId::from("ar")).expect("ar is bundled");
+    assert_eq!(ar.translate_key(plain(0x02)), Some('1'));
+}

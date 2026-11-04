@@ -9,6 +9,13 @@ pub(crate) const EN_URL: &str =
 pub(crate) const UK_README_URL: &str =
     "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/README_uk_UA.txt";
 
+/// The [`Extras`] of a dictionary that needs none.
+pub(crate) const NO_EXTRAS: Extras = Extras {
+    prefixes: &[],
+    respell: &[],
+    drop: &[],
+};
+
 /// The Hunspell-derived bundled languages, one [`HunspellSource`] each.
 ///
 /// Without affix expansion ~70 % of common verb and declension forms
@@ -17,13 +24,6 @@ pub(crate) const UK_README_URL: &str =
 /// Keep in lock-step with `poltertype-core/build.rs::LAYOUTS`: a
 /// language with a layout but no entry here gets an empty FST and
 /// plausibility-only detection, which is legal but rarely intended.
-/// The [`Extras`] of a dictionary that needs none.
-pub(crate) const NO_EXTRAS: Extras = Extras {
-    prefixes: &[],
-    respell: &[],
-    drop: &[],
-};
-
 pub(crate) const HUNSPELL_SOURCES: &[HunspellSource] = &[
     HunspellSource {
         base: "uk_UA",

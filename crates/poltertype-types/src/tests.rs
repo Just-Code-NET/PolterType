@@ -71,3 +71,19 @@ fn redaction_hides_the_word_and_keeps_its_length() {
 fn opted_in_debug_shows_the_word_in_backticks() {
     assert_eq!(logsafe::render("mañana", true), "`mañana`");
 }
+
+#[test]
+fn lam_alef_folds_and_unfolds_each_form() {
+    for (alef, form) in [
+        ('\u{0627}', '\u{FEFB}'),
+        ('\u{0623}', '\u{FEF7}'),
+        ('\u{0625}', '\u{FEF9}'),
+        ('\u{0622}', '\u{FEF5}'),
+    ] {
+        assert_eq!(crate::fold_lam_alef(&[0x0644, alef as u16]), Some(form));
+        assert_eq!(crate::lam_alef_pair(form), Some(['\u{0644}', alef]));
+    }
+    assert_eq!(crate::fold_lam_alef(&[0x0644]), None);
+    assert_eq!(crate::fold_lam_alef(&[0x0627, 0x0644]), None);
+    assert_eq!(crate::lam_alef_pair('a'), None);
+}

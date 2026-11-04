@@ -6,8 +6,6 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [Unreleased]
-
 ### Added
 
 - **Arabic.** A bundled `ar` layout (Arabic 101, read off the OS rather
@@ -17,7 +15,9 @@ and the project follows [Semantic Versioning](https://semver.org/).
   stop-word list checked so that none of its words is what an English
   stop word types as. macOS maps `Arabic`, `Arabic - PC`,
   `Arabic - QWERTY`, `Arabic - AZERTY` and `Arabic - North Africa` to
-  it; Linux maps `ara`.
+  it; Linux maps `ara`; Windows maps every country's Arabic keyboard
+  (`ar-SA`, `ar-EG`, …). A lam-alef key puts two code points on screen,
+  and a correction erases it as two.
 - **macOS reads your keyboards from the OS.** The layout backend now
   answers `describe_keymaps` with `UCKeyTranslate`, as the Windows one
   does with `ToUnicodeEx`, so a variant whose keys differ from the
@@ -34,6 +34,18 @@ and the project follows [Semantic Versioning](https://semver.org/).
   tab-separated or not,** and no longer parses rules it will not use
   for a stems-only dictionary.
 
+- **Hyprland and sway knew only six of the bundled languages by name.**
+  Those compositors report a keymap's description, and `Polish`,
+  `Czech`, `Greek`, `Hebrew`, `Turkish`, `Bulgarian`, `Italian`,
+  `Portuguese` and `Arabic` came back as unknown layouts.
+- **A correctly typed Hebrew word is no longer replaced on shape alone.**
+  Hebrew writes no short vowels, so a word missing from its stems list
+  scored as one consonant cluster and could lose to its Latin rendering.
+  Leaving Hebrew or Arabic is now the dictionary's call; the cost is that
+  an English word it does not know stays as typed there.
+- **On Windows, switching between two keyboards of one language now lands
+  on the keyboard whose table PolterType holds,** rather than on whichever
+  the OS listed last.
 - **Converting a selection now plays the correction chime.** With
   `[selection] enabled`, pressing the force-switch hotkey on a selected
   passage converted it, pasted it back and put the clipboard back in
@@ -41,7 +53,6 @@ and the project follows [Semantic Versioning](https://semver.org/).
   that worked looked like one that did nothing. The selection path now
   chimes too, on the same "Play a soft chime on correction" setting as
   every other path, and stays silent when there was nothing to convert.
-
 
 ## [0.38.2] — hands off first
 
