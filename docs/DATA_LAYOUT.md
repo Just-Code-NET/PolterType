@@ -154,7 +154,7 @@ user's disk — so it belongs in this document.
                                       path, SHA-256, install attempts
     poltertype-0.4.3-x86_64.AppImage  the downloaded installer
                                       (55–65 MB since 0.9.0 bundled
-                                      fifteen languages; one at a time)
+                                      all the languages; one at a time)
     install.sh / install.ps1          the script that runs the
                                       installer after we exit; written
                                       here so it deletes itself with
@@ -291,10 +291,11 @@ restart.
 
 **OS keymaps** are the odd one out: nothing on disk, and only on
 platforms whose layout backend can answer
-`LayoutSwitcher::describe_keymaps()` — today that is Windows alone.
-There a layout is identified by its *language*, so all three of
-Windows' different Bulgarian keyboards arrive as `bg-BG` and a
-bundled table can only be right for one of them. We therefore ask the
+`LayoutSwitcher::describe_keymaps()` — today Windows and, since 0.39.0,
+macOS. There a layout is identified by its *language*, so all three of
+Windows' different Bulgarian keyboards arrive as `bg-BG`, and Apple's
+Arabic keyboards as `ar`, and a bundled table can only be right for one
+of them. We therefore ask the
 OS what each installed keyboard really produces and replace the key
 table with the answer, keeping the layout's name, script, vowels and
 dictionary — those describe the language, not the keyboard. A user

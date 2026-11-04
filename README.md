@@ -416,13 +416,16 @@ Two are worth a footnote rather than a surprise:
   layout you have active, and Polish↔Cyrillic works normally.
 - **Hebrew** ships dictionary stems rather than every inflected form,
   because expanding its clitic prefixes yields 60 million of them.
-  Hebrew shares its script with nothing else bundled, so detection
-  leans on that and the dictionary refines it.
+  Its words read as consonant clusters, so leaving Hebrew is the
+  dictionaries' call, never shape's: a real word the list lacks stays,
+  and English it does not know returns only when the English list
+  recognises much more of it, so some stays as typed.
 - **Arabic** follows Hebrew for the same reason — its article and
   clitic particles are prefixes — and adds the article forms (`ال`,
   `بال`, `لل`, …) back to the list. The lam-alef keys (`لا` on `B`) type
-  two code points, and a key here is one character, so they carry the
-  single-code-point form `ﻻ`, which looks the same.
+  two code points, and a key here is one character, so the table
+  carries the single-code-point form `ﻻ`, which looks the same; a
+  correction still erases them as two.
 
 **Yours isn't here?** Adding a language is one TOML file and one
 wordlist — no Rust required. The walkthrough is

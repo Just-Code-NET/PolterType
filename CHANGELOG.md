@@ -28,7 +28,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Arabic presentation forms count as Arabic script.** `ﻻ` and the
-  rest of U+FB50–FDFF and U+FE70–FEFF read as "other script" and
+  rest of U+FB50–FDFF and U+FE70–FEFC read as "other script" and
   dragged a word's script fit down.
 - **`cargo xtask wordlists fetch` finds a `SET` anywhere in the `.aff`,
   tab-separated or not,** and no longer parses rules it will not use

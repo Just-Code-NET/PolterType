@@ -200,10 +200,15 @@ config directory:
    `poltertype-layout`, or the app can name your language but never
    switch to it:
    * Linux — `linux/shared.rs`, both directions of the XKB table.
-   * macOS — `macos.rs`, `tis_id_to_bcp47` (list every variant you
+   * Linux Hyprland and sway report a description, not a code:
+     `name_to_xkb_code` in `linux/shared.rs` needs the English name.
+   * macOS — `macos/ids.rs`, `tis_id_to_bcp47` (list every variant you
      know) and `bcp47_to_tis_id` (base id only; a wrong guess here
-     targets a keyboard the user doesn't have).
-   * Windows needs nothing — it resolves BCP-47 from the HKL.
+     targets a keyboard the user doesn't have). The key table itself is
+     read from the OS, as on Windows.
+   * Windows resolves BCP-47 from the HKL, so an `xx-YY` id needs
+     nothing. An id with no region, like `ar`, needs a line in
+     `language_of_locale`: Windows always names a country.
 
 7. Optional but recommended: extend `derive_vowels` with the
    language's vowel set (especially if it uses accented vowels —
@@ -254,4 +259,7 @@ and the plausibility detector picks up via vowel-ratio /
 consonant-cluster / script-fit signals. This works well for layouts
 whose script differs from any other active layout (a Greek user
 with Greek + English, say) — script alone is a strong signal. For
-two layouts in the same script, you'll want a real wordlist.
+two layouts in the same script, you'll want a real wordlist. A
+language that leaves its vowels unwritten needs one too: Arabic and
+Hebrew are decided by dictionaries alone (`dictionary_detector/abjad.rs`),
+because their real words look like consonant clusters.

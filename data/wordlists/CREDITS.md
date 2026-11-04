@@ -83,11 +83,11 @@ within the terms. But it is a materially heavier obligation than
 anything else here, and a downstream packager or a company shipping a
 modified build needs to know it is present.
 
-If it ever becomes awkward, `he_il` is the cheapest language in the
-set to drop: nothing else bundled uses the Hebrew script, so the
-plausibility detector separates he-IL from every other layout on
-script alone and the dictionary is a refinement, not the load-bearing
-signal.
+If it ever becomes awkward, `he_il` can be dropped without touching
+another language: nothing else bundled uses the Hebrew script. Hebrew
+detection would suffer, though. Since 0.39.0 a Hebrew word typed in
+Hebrew leaves only on dictionary evidence, so without a list it never
+leaves at all.
 
 ### Arabic ships stems too
 
@@ -101,7 +101,8 @@ emitted behind `ال`, `وال`, `بال`, `فال`, `كال` and `لل`, then e
 form holding `لا` (or `لأ`, `لإ`, `لآ`) also in the one-code-point
 spelling the `B` key types. That gives 2.5 M forms from 466 k `.dic`
 lines. A word with a bare one-letter clitic (`وكتاب`, `بسم`) still
-misses the dictionary and is scored on plausibility.
+misses the dictionary, and stays as typed: plausibility does not decide
+in Arabic or Hebrew.
 
 ### Hebrew also ships stems, not surface forms
 

@@ -927,8 +927,8 @@ Levels:
       Hunspell-expanded lists (not `lingua`, which was dropped).
 - [x] `poltertype-core`: WordBuffer, DecisionPolicy, Corrector,
       AudioPlayer.
-- [x] The EN↔UK map in `data/layout-mappings/` (fifteen are bundled
-      today: EN·UK·RU·DE·ES·FR·PL·CS·EL·HE·TR·BG·IT·PT-PT·PT-BR).
+- [x] The EN↔UK map in `data/layout-mappings/` (sixteen are bundled
+      today: EN·UK·RU·DE·ES·FR·PL·CS·EL·HE·TR·BG·IT·PT-PT·PT-BR·AR).
 - [x] Pause / switch-last hotkeys.
 - [x] Settings: saving/loading `config.toml`.
 
