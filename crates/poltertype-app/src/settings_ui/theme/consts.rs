@@ -44,9 +44,6 @@ pub const DARK: BrandPalette = BrandPalette {
 /// system has and bundles nothing.
 pub const FONT_MONO: Font = Font::MONOSPACE;
 
-/// The cyan of the just-code emblem. Fixed: it is their brand colour, and
-/// their mark keeps it byte-identical on a dark background too.
-pub const JUST_CODE_CYAN: iced::Color = rgb8(0x00, 0x9F, 0xE3);
-
-/// Side of the emblem as stored in `assets/`, in pixels.
-pub(super) const JUST_CODE_MARK_PX: u32 = 80;
+/// Size of the just-code logo as stored in `assets/`, in pixels.
+pub(super) const JUST_CODE_LOGO_WIDTH: u32 = 360;
+pub(super) const JUST_CODE_LOGO_HEIGHT: u32 = 100;

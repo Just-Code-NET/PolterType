@@ -9,7 +9,7 @@
 //! mapping back to a palette, [`styles`] the widget style functions,
 //! [`helpers`] the font/colour functions behind those constants,
 //! [`mark`] the keycap-ghost logo as an image, and [`just_code`] the
-//! maker's emblem.
+//! maker's logo.
 
 mod consts;
 mod helpers;
@@ -19,9 +19,9 @@ mod styles;
 mod themes;
 mod types;
 
-pub use consts::{FONT_MONO, JUST_CODE_CYAN};
+pub use consts::FONT_MONO;
 pub use helpers::{font_bold, font_ui};
-pub use just_code::just_code_mark;
+pub use just_code::just_code_logo;
 pub use mark::mark;
 pub use styles::*;
 pub use themes::{brand_palette, dark, light};

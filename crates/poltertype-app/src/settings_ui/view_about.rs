@@ -9,7 +9,7 @@ use super::consts::{ISSUES_URL, JUST_CODE_URL, REPO_URL, SITE_URL};
 use super::enums::*;
 use super::state::*;
 use super::theme::{self, font_bold};
-use super::widgets::{action, button_label, button_run, card, divider, section_title};
+use super::widgets::{action, button_run, card, divider, section_title};
 
 impl SettingsApp {
     pub(super) fn view_about(&self) -> Element<'_, Message> {
@@ -114,22 +114,9 @@ impl SettingsApp {
             .into()
     }
 
-    /// "A project by" and the maker's mark, all of it one link.
+    /// "A project by" and the maker's logo, which is the link.
     fn project_by(&self) -> Element<'_, Message> {
         let b = self.brand();
-        let logo = Row::new()
-            .spacing(9)
-            .align_y(Alignment::Center)
-            .push(theme::just_code_mark(40, self.is_dark()))
-            .push(
-                Row::new()
-                    .push(button_label("just-code", 17).font(font_bold()).color(b.ink))
-                    .push(
-                        button_label(".net", 17)
-                            .font(font_bold())
-                            .color(theme::JUST_CODE_CYAN),
-                    ),
-            );
         Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
@@ -139,12 +126,12 @@ impl SettingsApp {
                     .color(b.muted),
             )
             .push(
-                Button::new(logo)
+                Button::new(theme::just_code_logo(self.is_dark()))
                     .style(theme::nav(false))
                     .padding(Padding {
-                        top: 5.0,
-                        right: 10.0,
-                        bottom: 5.0,
+                        top: 4.0,
+                        right: 8.0,
+                        bottom: 4.0,
                         left: 8.0,
                     })
                     .on_press(Message::OpenUrl(JUST_CODE_URL)),

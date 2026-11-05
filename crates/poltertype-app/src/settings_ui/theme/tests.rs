@@ -1,4 +1,4 @@
-use super::consts::JUST_CODE_MARK_PX;
+use super::consts::{JUST_CODE_LOGO_HEIGHT, JUST_CODE_LOGO_WIDTH};
 use super::just_code::{decode, embedded};
 use super::mark::handle;
 
@@ -16,11 +16,11 @@ fn the_mark_is_rasterised_once_per_size() {
 /// The handle is built with a declared size, and RGBA that does not match
 /// it is refused by the renderer: an image with no pixels and no error.
 #[test]
-fn the_embedded_emblems_decode_to_the_declared_size() {
+fn the_embedded_logos_decode_to_the_declared_size() {
     for png in embedded() {
         assert_eq!(
             decode(png).map(|rgba| rgba.len()).ok(),
-            Some((JUST_CODE_MARK_PX * JUST_CODE_MARK_PX * 4) as usize)
+            Some((JUST_CODE_LOGO_WIDTH * JUST_CODE_LOGO_HEIGHT * 4) as usize)
         );
     }
 }
