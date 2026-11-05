@@ -9,6 +9,7 @@ use poltertype_layout::LayoutId;
 use poltertype_layout::create_switcher;
 use tracing::warn;
 
+use super::consts;
 use super::enums;
 use super::helpers;
 use super::state::SettingsApp;
@@ -17,13 +18,13 @@ use super::theme;
 /// Entry point: load settings + OS layouts, run the iced loop, save on
 /// "Save". Returns when the user closes the window.
 ///
-/// `open_setup` starts on the **Setup** pane instead of Languages —
+/// `open_setup` starts on the **Setup** pane instead of General —
 /// what the tray passes when the keyboard hooks failed to start.
 pub fn run(open_setup: bool) -> Result<()> {
     run_on(if open_setup {
         enums::Pane::Setup
     } else {
-        enums::Pane::Languages
+        enums::Pane::General
     })
 }
 
@@ -120,8 +121,8 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
         .exit_on_close_request(false)
         .window(iced::window::Settings {
             // Sized so Commands and Wordlists render without scrolling
-            // on 1080p; anything smaller clips their forms.
-            size: iced::Size::new(860.0, 680.0),
+            // on 1080p.
+            size: iced::Size::new(consts::WINDOW_SIZE.0, consts::WINDOW_SIZE.1),
             // An UNVERIFIED mitigation, never a fix: a sudden large
             // resize can hit an iced_tiny_skia 0.13 `debug_assert!` —
             // some quad's height lands on exactly 0.0 for one frame —
@@ -131,7 +132,10 @@ pub fn run_on(initial: enums::Pane) -> Result<()> {
             // and crashed at 300×300 with it set; xdg-shell min-size
             // binds only the compositor's own interactive grab, so a
             // surviving mouse-drag test would prove nothing either.
-            min_size: Some(iced::Size::new(480.0, 420.0)),
+            min_size: Some(iced::Size::new(
+                consts::WINDOW_MIN_SIZE.0,
+                consts::WINDOW_MIN_SIZE.1,
+            )),
             position: iced::window::Position::Centered,
             icon: helpers::window_icon(),
             // Left at its default this is the empty string, which on

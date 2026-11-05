@@ -14,9 +14,9 @@ use super::plugin_pane::Slot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
-    /// Permission walkthrough. First in the list and first on open
-    /// when the tray launches us because the keyboard hooks failed —
-    /// at that moment nothing else in this window matters.
+    /// Permission walkthrough. First on open when the tray launches us
+    /// because the keyboard hooks failed — at that moment nothing else
+    /// in this window matters.
     Setup,
     Languages,
     Hotkeys,
@@ -26,6 +26,7 @@ pub enum Pane {
     Exceptions,
     Suggestions,
     Plugins,
+    /// Where the tray's "About" entry opens the window.
     About,
 }
 
@@ -150,6 +151,8 @@ impl ThemeChoice {
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    /// The window's new width: the panes change shape with it.
+    WindowResized(f32),
     SelectPane(Pane),
 
     // ── Plug-ins pane ──────────────────────────────────────────────

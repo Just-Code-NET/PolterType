@@ -1,3 +1,5 @@
+use super::consts::JUST_CODE_MARK_PX;
+use super::just_code::{decode, embedded};
 use super::mark::handle;
 
 /// One rasterisation per size, handed out again on every `view`
@@ -9,4 +11,16 @@ use super::mark::handle;
 fn the_mark_is_rasterised_once_per_size() {
     assert_eq!(handle(64).id(), handle(64).id());
     assert_ne!(handle(64).id(), handle(128).id());
+}
+
+/// The handle is built with a declared size, and RGBA that does not match
+/// it is refused by the renderer: an image with no pixels and no error.
+#[test]
+fn the_embedded_emblems_decode_to_the_declared_size() {
+    for png in embedded() {
+        assert_eq!(
+            decode(png).map(|rgba| rgba.len()).ok(),
+            Some((JUST_CODE_MARK_PX * JUST_CODE_MARK_PX * 4) as usize)
+        );
+    }
 }

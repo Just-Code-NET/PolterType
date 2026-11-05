@@ -4,6 +4,41 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **The tray's About entry opens something.** It was greyed out; it now
+  opens Settings on the About pane, and `poltertype --about` does the same.
+- **The About pane names who makes PolterType**, with a link to
+  just-code.net, and is laid out again around that.
+
+### Changed
+
+- **Settings holds up at any window size.** A button can no longer be
+  squeezed into a column of single words: runs of buttons wrap, the footer
+  keeps Save and Reload whole beside even a long message, form rows stack
+  when two columns no longer fit, and a very narrow window swaps the sidebar
+  and a plug-in's section list for drop-downs.
+- **Settings is regrouped.** The sidebar runs from General through what the
+  app does, then plug-ins, then Setup and About, and the window opens on
+  General. Setup moves to the top only while it needs attention. Reload is
+  no longer offered twice, and panes open scrolled to their top.
+- **Short choices show every option** as a row of chips instead of a
+  drop-down, on General and in plug-in settings.
+- **A plug-in's tray list is one level deep.** A row's words and actions sit
+  in the list's own submenu instead of a further menu per row, up to four
+  rows at a time with the rest counted.
+
+### Fixed
+
+- **An open tray submenu no longer closes by itself.** Plug-in lists were
+  rebuilt every fifteen seconds whether or not anything had changed.
+- **A plug-in's section list stays reachable** in a window too short to show
+  all of it, and so does the sidebar.
+- **Text from a list under the footer** no longer paints over the footer
+  while scrolling.
+
 ## [0.39.0] — Arabic, and the keyboard you really have
 
 ### Added

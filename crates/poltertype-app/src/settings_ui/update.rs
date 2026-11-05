@@ -10,6 +10,7 @@ use poltertype_core::settings::{
 };
 use tracing::{info, warn};
 
+use super::consts::*;
 use super::doc_links;
 use super::enums::*;
 use super::helpers::*;
@@ -18,6 +19,13 @@ use super::state::*;
 
 impl SettingsApp {
     pub(super) fn update(&mut self, msg: Message) -> Task<Message> {
+        // Above everything else here: nothing about the settings changed,
+        // and the two passes below read any message as an edit.
+        if let Message::WindowResized(width) = msg {
+            self.window_width = width;
+            return Task::none();
+        }
+
         // Any user-visible edit clears the previous banner, so "Saved!"
         // cannot linger while the user is editing again.
         if !matches!(msg, Message::Save | Message::Reload) {
@@ -48,13 +56,21 @@ impl SettingsApp {
         }
 
         match msg {
+            // Handled above, before anything could read it as an edit.
+            Message::WindowResized(_) => {}
+
             Message::SelectPane(p) => {
                 self.pane = p;
+                let top = iced::widget::operation::snap_to(
+                    iced::widget::Id::new(PANE_SCROLL),
+                    iced::widget::scrollable::RelativeOffset::START,
+                );
                 // Reports are asked for on the way into the pane, not
                 // on every draw: each one costs a process.
                 if p == Pane::Plugins {
-                    return self.load_pending_outputs();
+                    return Task::batch([top, self.load_pending_outputs()]);
                 }
+                return top;
             }
 
             // Every plug-in edit writes straight through to the
@@ -196,7 +212,13 @@ impl SettingsApp {
                 // controls visible; without this they show "Asking the
                 // plug-in…" for ever. It is also why a chat client is
                 // read only while its own section is open.
-                return self.load_pending_outputs();
+                return Task::batch([
+                    iced::widget::operation::snap_to(
+                        iced::widget::Id::new(PLUGIN_SCROLL),
+                        iced::widget::scrollable::RelativeOffset::START,
+                    ),
+                    self.load_pending_outputs(),
+                ]);
             }
             Message::PluginListToggled(plugin, control, member, on) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {

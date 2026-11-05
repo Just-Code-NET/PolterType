@@ -165,16 +165,16 @@ pub fn ask_query(
 /// reason: this runs while a menu is being built. An empty answer and a
 /// failed one are both "no rows" here — the menu says so either way, and
 /// the log carries the difference.
-pub fn read_rows(ext: &DiscoveredExtension, command_id: &str) -> Vec<MenuRow> {
+pub fn read_rows(ext: &DiscoveredExtension, command_id: &str) -> Option<Vec<MenuRow>> {
     let Some(cmd) = ext.manifest.commands.iter().find(|c| c.id == command_id) else {
         warn!(id = %ext.id, "no command {command_id:?} to list from");
-        return Vec::new();
+        return Some(Vec::new());
     };
     match capture_output(ext, &cmd.args, STATE_TIMEOUT, "list command") {
-        Ok(out) => parse_rows(&out),
+        Ok(out) => Some(parse_rows(&out)),
         Err(e) => {
             warn!(id = %ext.id, "cannot read plug-in menu rows: {e}");
-            Vec::new()
+            None
         }
     }
 }

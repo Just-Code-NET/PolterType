@@ -27,52 +27,71 @@ use poltertype_core::i18n::{tr, tr_args};
 use poltertype_core::plugins::{ControlKind, PaneControl, SettingValue};
 
 use super::consts::{
-    LABEL_GAP, NUMBER_WIDTH, PLUGIN_DEFAULT, PLUGIN_DEFAULT_SHORT, PLUGIN_LIST_HINT, SECTION_NAV,
-    SUGGEST_ROWS, VALUE_COLUMN,
+    LABEL_GAP, NUMBER_WIDTH, PLUGIN_DEFAULT, PLUGIN_DEFAULT_SHORT, PLUGIN_LIST_HINT, PLUGIN_SCROLL,
+    SECTION_LIST_BELOW, SECTION_NAV, STACK_BELOW, SUGGEST_ROWS, VALUE_COLUMN,
 };
 use super::enums::*;
 use super::plugin_pane::{CommandOutput, Slot};
 use super::state::*;
 use super::theme::{self, FONT_MONO, font_bold};
-use super::view::section_title;
+use super::widgets::{action, button_label, button_run, chip, pane_header};
 
 impl SettingsApp {
     pub(super) fn view_plugins(&self) -> Element<'_, Message> {
         let b = self.brand();
 
         if self.plugins.is_empty() {
-            return Container::new(
-                Column::new()
-                    .spacing(10)
-                    .push(section_title(b, tr("plugins.plugins", "Plug-ins")))
-                    .push(
-                        Text::new(tr(
-                            "plugins.none_installed",
-                            "No plug-ins are installed. A plug-in is a separate program that \
-                             PolterType runs and shows here; it is never loaded into PolterType \
-                             itself.",
-                        ))
-                        .size(13)
-                        .color(b.muted),
-                    ),
-            )
-            .padding(20)
-            .into();
+            return pane_header(
+                b,
+                tr("plugins.plugins", "Plug-ins"),
+                tr(
+                    "plugins.none_installed",
+                    "No plug-ins are installed. A plug-in is a separate program that \
+                     PolterType runs and shows here; it is never loaded into PolterType \
+                     itself.",
+                )
+                .to_owned(),
+            );
+        }
+
+        // One plug-in is the page: its name is the title, the way every
+        // other pane has one. "Plug-ins" above it would be a heading for
+        // a list of one.
+        if self.plugins.len() == 1 {
+            return self.plugin_card(0);
         }
 
         // No padding and no card of its own: the window already pads
         // every pane, and a frame inside that frame made this page sit
         // further from the edge than every other one.
-        let mut body = Column::new()
-            .spacing(12)
-            .push(section_title(b, tr("plugins.plugins", "Plug-ins")));
+        let mut body = Column::new().spacing(16).push(pane_header(
+            b,
+            tr("plugins.plugins", "Plug-ins"),
+            String::new(),
+        ));
         for (index, _) in self.plugins.iter().enumerate() {
             if index > 0 {
                 body = body.push(rule::horizontal(1).style(theme::hairline));
             }
             body = body.push(self.plugin_card(index));
         }
-        Container::new(body).height(self.pane_height()).into()
+        body.into()
+    }
+
+    /// Whether the section list fits beside the settings.
+    fn section_list_beside(&self) -> bool {
+        self.content_width() >= SECTION_LIST_BELOW
+    }
+
+    /// Whether a plug-in's form rows have to stack: the same question as
+    /// [`Self::stacked`], minus what the section list takes.
+    fn plugin_stacked(&self) -> bool {
+        let list = if self.section_list_beside() {
+            SECTION_NAV + 28.0
+        } else {
+            0.0
+        };
+        self.content_width() - list < STACK_BELOW
     }
 
     /// The pane fills the window when there is one plug-in to lay out —
@@ -91,11 +110,16 @@ impl SettingsApp {
         let b = self.brand();
         let pane = &self.plugins[plugin];
 
-        let mut heading = Row::new().spacing(8).align_y(Alignment::Center).push(
-            Text::new(format!("{} {}", pane.ext.name, pane.ext.version))
-                .size(15)
-                .font(font_bold()),
-        );
+        let mut heading = Row::new()
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .push(
+                Text::new(pane.ext.name.as_str())
+                    .size(22)
+                    .font(font_bold())
+                    .color(b.ink),
+            )
+            .push(Text::new(pane.ext.version.as_str()).size(12).color(b.muted));
         if pane.ext.development {
             // Not a badge of honour: this is code that was never
             // installed, found next to a source checkout.
@@ -106,11 +130,11 @@ impl SettingsApp {
             );
         }
 
-        let mut head = Column::new().spacing(4).push(heading);
+        let mut head = Column::new().spacing(5).push(heading);
         if !pane.ext.manifest.summary.is_empty() {
             head = head.push(
                 Text::new(&pane.ext.manifest.summary)
-                    .size(12)
+                    .size(13)
                     .color(b.muted),
             );
         }
@@ -139,6 +163,7 @@ impl SettingsApp {
             .width(Length::Fill);
         let settings: Element<'_, Message> = if owns_height {
             Scrollable::new(controls)
+                .id(iced::widget::Id::new(PLUGIN_SCROLL))
                 .height(Length::Fill)
                 .width(Length::Fill)
                 .into()
@@ -149,17 +174,24 @@ impl SettingsApp {
         let body: Element<'_, Message> = if sections.is_empty() {
             // A small plug-in does not need navigating.
             settings
-        } else {
+        } else if self.section_list_beside() {
             Row::new()
                 .spacing(16)
                 .push(self.section_nav(plugin, &sections))
                 .push(settings)
                 .height(self.pane_height())
                 .into()
+        } else {
+            Column::new()
+                .spacing(10)
+                .push(self.section_picker(plugin, &sections))
+                .push(settings)
+                .height(self.pane_height())
+                .into()
         };
 
         let mut card = Column::new()
-            .spacing(10)
+            .spacing(12)
             .push(head)
             .push(rule::horizontal(1).style(theme::hairline))
             .push(body);
@@ -195,7 +227,44 @@ impl SettingsApp {
                     .on_press(Message::PluginSectionSelected(plugin, *control)),
             );
         }
-        nav.into()
+        // A plug-in can declare more sections than a window has height,
+        // and a list that clips strands the ones below the edge. No
+        // visible bar: the settings beside it own the pane's scrollbar.
+        Scrollable::new(nav)
+            .direction(iced::widget::scrollable::Direction::Vertical(
+                iced::widget::scrollable::Scrollbar::new()
+                    .width(0)
+                    .scroller_width(0),
+            ))
+            .width(Length::Fixed(SECTION_NAV))
+            .height(self.pane_height())
+            .into()
+    }
+
+    /// The section list's narrow-window form.
+    fn section_picker<'a>(&'a self, plugin: usize, sections: &[usize]) -> Element<'a, Message> {
+        let pane = &self.plugins[plugin];
+        let named: Vec<(String, usize)> = sections
+            .iter()
+            .filter_map(|c| pane.control(*c).map(|d| (d.label.clone(), *c)))
+            .collect();
+        let labels: Vec<String> = named.iter().map(|(label, _)| label.clone()).collect();
+        let selected = pane
+            .selected_section()
+            .and_then(|c| named.iter().find(|(_, control)| *control == c))
+            .map(|(label, _)| label.clone());
+        let fallback = sections.first().copied().unwrap_or_default();
+        PickList::new(labels, selected, move |picked: String| {
+            let control = named
+                .iter()
+                .find(|(label, _)| *label == picked)
+                .map_or(fallback, |(_, control)| *control);
+            Message::PluginSectionSelected(plugin, control)
+        })
+        .text_size(13)
+        .style(theme::pick_list)
+        .width(Length::Fill)
+        .into()
     }
 
     /// Every control on show: the ones above the first section, then
@@ -205,25 +274,26 @@ impl SettingsApp {
         let mut column = Column::new().spacing(13);
         // Buttons declared next to each other are one row of actions:
         // stacked, three of them cost a third of the page and read as
-        // three unrelated decisions.
-        let mut actions: Option<Row<'_, Message>> = None;
+        // three unrelated decisions. A run, so a label too long for the
+        // line moves the button down instead of crushing it.
+        let mut actions: Vec<Element<'_, Message>> = Vec::new();
         for (index, control) in pane.ext.manifest.pane.iter().enumerate() {
             if !pane.is_visible(index) {
                 continue;
             }
             if control.kind == ControlKind::Button {
-                let row = actions.take().unwrap_or_else(|| Row::new().spacing(8));
-                actions = Some(row.push(self.plugin_button(plugin, control)));
+                actions.push(self.plugin_button(plugin, control));
                 continue;
             }
-            if let Some(row) = actions.take() {
-                column = column.push(row);
+            if !actions.is_empty() {
+                column = column.push(button_run(std::mem::take(&mut actions)));
             }
             column = column.push(self.plugin_control(plugin, index, control));
         }
-        match actions {
-            Some(row) => column.push(row),
-            None => column,
+        if actions.is_empty() {
+            column
+        } else {
+            column.push(button_run(actions))
         }
     }
 
@@ -233,19 +303,14 @@ impl SettingsApp {
         plugin: usize,
         control: &'a PaneControl,
     ) -> Element<'a, Message> {
-        Button::new(Text::new(control.label.as_str()).size(13))
-            .style(theme::primary)
-            .padding(Padding {
-                top: 7.0,
-                right: 14.0,
-                bottom: 7.0,
-                left: 14.0,
-            })
-            .on_press(Message::PluginCommandClicked(
+        action(
+            control.label.as_str(),
+            Some(Message::PluginCommandClicked(
                 plugin,
                 control.command.clone(),
-            ))
-            .into()
+            )),
+        )
+        .into()
     }
 
     /// One declared control, rendered natively.
@@ -306,12 +371,12 @@ impl SettingsApp {
                     stored.as_ref().map(SettingValue::as_display),
                 ),
 
-            ControlKind::Choice => self.field(
+            ControlKind::Choice => self.wide_field(
                 control,
                 choice_picker(
+                    b,
                     control,
                     stored.as_ref().map(SettingValue::as_display),
-                    13,
                     move |value| Message::PluginChoiceSelected(plugin, index, value),
                 ),
             ),
@@ -322,6 +387,7 @@ impl SettingsApp {
                     .push(Space::new().width(Length::Fill))
                     .push(
                         TextInput::new(tr("plugins.default_short", PLUGIN_DEFAULT_SHORT), &typed)
+                            .style(theme::input)
                             .size(13)
                             .align_x(Alignment::End)
                             .width(Length::Fixed(NUMBER_WIDTH))
@@ -358,6 +424,7 @@ impl SettingsApp {
                     },
                     &typed,
                 )
+                .style(theme::input)
                 .size(13)
                 .width(Length::Fill)
                 .on_input(move |text| Message::PluginTextChanged(plugin, index, text))
@@ -410,7 +477,6 @@ impl SettingsApp {
         current: Option<String>,
         on_typed: impl Fn(String) -> Message + 'static,
     ) -> Element<'a, Message> {
-        let b = self.brand();
         let pane = &self.plugins[plugin];
         let has_list = pane.command_id(slot).is_some() || !pane.suggestions(slot).is_empty();
 
@@ -419,6 +485,7 @@ impl SettingsApp {
                 tr("plugins.default", PLUGIN_DEFAULT),
                 current.as_deref().unwrap_or_default(),
             )
+            .style(theme::input)
             .size(13)
             .width(Length::Fill)
             .on_input(on_typed),
@@ -429,14 +496,14 @@ impl SettingsApp {
             // the renderer resolves `Font::DEFAULT` to is not what the
             // file says.
             box_row = box_row.push(
-                Button::new(
-                    Text::new(if pane.suggest_open(slot) {
+                Button::new(button_label(
+                    if pane.suggest_open(slot) {
                         tr("plugins.hide", "hide")
                     } else {
                         tr("plugins.list", "list")
-                    })
-                    .size(11),
-                )
+                    },
+                    11,
+                ))
                 .style(theme::secondary)
                 .padding(Padding {
                     top: 4.0,
@@ -457,7 +524,6 @@ impl SettingsApp {
         if let Some(note) = self.suggest_note(plugin, slot) {
             column = column.push(note);
         }
-        let _ = b;
         column.into()
     }
 
@@ -577,7 +643,8 @@ impl SettingsApp {
                         .color(b.muted),
                     )
                     .push(
-                        Button::new(Text::new(tr("plugins.refresh", "Refresh")).size(11))
+                        Button::new(button_label(tr("plugins.refresh", "Refresh"), 11))
+                            .style(theme::secondary)
                             .padding(Padding {
                                 top: 3.0,
                                 right: 9.0,
@@ -637,6 +704,14 @@ impl SettingsApp {
         control: &'a PaneControl,
         widget: Element<'a, Message>,
     ) -> Element<'a, Message> {
+        if self.plugin_stacked() {
+            return self
+                .described(control)
+                .spacing(6)
+                .push(widget)
+                .width(Length::Fill)
+                .into();
+        }
         Row::new()
             .spacing(LABEL_GAP)
             .align_y(Alignment::Center)
@@ -716,13 +791,7 @@ impl SettingsApp {
         for row in 0..rows.len() {
             // Remove goes last and apart: it is the one button here that
             // cannot be undone.
-            let mut header = Row::new().spacing(6).align_y(Alignment::Center).push(
-                Text::new(format!("{}", row + 1))
-                    .size(12)
-                    .font(font_bold())
-                    .color(b.muted)
-                    .width(Length::Fill),
-            );
+            let mut buttons: Vec<Element<'a, Message>> = Vec::new();
             let named = pane.record_id(index, row).is_some();
             let running = pane.action_running(index, row);
             for action in &control.actions {
@@ -737,7 +806,7 @@ impl SettingsApp {
                 } else {
                     action.label.clone()
                 };
-                let mut button = Button::new(Text::new(label).size(12))
+                let mut button = Button::new(button_label(label, 12))
                     .style(theme::secondary)
                     .padding(small);
                 // A row with nothing in its naming field is one the
@@ -752,16 +821,32 @@ impl SettingsApp {
                         action.command.clone(),
                     ));
                 }
-                header = header.push(button);
+                buttons.push(button.into());
             }
-            let mut card = Column::new().spacing(8).width(Length::Fill).push(
-                header.push(
-                    Button::new(Text::new(tr("plugins.remove", "Remove")).size(12))
-                        .style(theme::danger)
-                        .padding(small)
-                        .on_press(Message::PluginRecordRemoved(plugin, index, row)),
-                ),
+            buttons.push(
+                Button::new(button_label(tr("plugins.remove", "Remove"), 12))
+                    .style(theme::danger)
+                    .padding(small)
+                    .on_press(Message::PluginRecordRemoved(plugin, index, row))
+                    .into(),
             );
+            let header = Row::new()
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .push(
+                    Text::new(format!("{}", row + 1))
+                        .size(12)
+                        .font(font_bold())
+                        .color(b.muted),
+                )
+                .push(
+                    Row::with_children(buttons)
+                        .spacing(6)
+                        .wrap()
+                        .vertical_spacing(6)
+                        .align_x(Alignment::End),
+                );
+            let mut card = Column::new().spacing(8).width(Length::Fill).push(header);
             for (position, field) in control.fields.iter().enumerate() {
                 card = card.push(self.plugin_record_field(plugin, index, row, position, field));
             }
@@ -775,14 +860,14 @@ impl SettingsApp {
 
         column
             .push(
-                Button::new(
-                    Text::new(if control.add_label.trim().is_empty() {
+                Button::new(button_label(
+                    if control.add_label.trim().is_empty() {
                         tr("plugins.add", "Add")
                     } else {
                         control.add_label.trim()
-                    })
-                    .size(12),
-                )
+                    },
+                    12,
+                ))
                 .style(theme::secondary)
                 .padding(Padding {
                     top: 4.0,
@@ -843,7 +928,7 @@ impl SettingsApp {
                 .into(),
 
             ControlKind::Choice => {
-                choice_picker(field, stored.as_ref().map(SettingValue::as_display), 12, {
+                choice_picker(b, field, stored.as_ref().map(SettingValue::as_display), {
                     let key = key.clone();
                     move |value| {
                         Message::PluginRecordChanged(
@@ -861,6 +946,7 @@ impl SettingsApp {
                 tr("plugins.default_short", PLUGIN_DEFAULT_SHORT),
                 typed.as_deref().unwrap_or_default(),
             )
+            .style(theme::input)
             .size(12)
             .width(Length::Fill)
             .on_input({
@@ -1149,13 +1235,15 @@ impl SettingsApp {
             .align_y(Alignment::Center)
             .push(
                 TextInput::new(tr("plugins.ask_hint", "Type a question…"), typed)
+                    .style(theme::input)
                     .size(13)
                     .width(Length::Fill)
                     .on_input(move |text| Message::PluginQueryTyped(plugin, index, text))
                     .on_submit(ask.clone()),
             )
             .push(
-                Button::new(Text::new(tr("plugins.ask", "Ask")).size(12))
+                Button::new(button_label(tr("plugins.ask", "Ask"), 12))
+                    .style(theme::secondary)
                     .padding(Padding {
                         top: 5.0,
                         right: 12.0,
@@ -1246,24 +1334,30 @@ impl SettingsApp {
         let mut heading = Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
-            .push(Text::new(control.label.as_str()).size(13).font(font_bold()))
             .push(
-                Button::new(Text::new(tr("plugins.refresh", "Refresh")).size(11))
+                Text::new(control.label.as_str())
+                    .size(13)
+                    .font(font_bold())
+                    .width(Length::Fill),
+            )
+            .push(
+                Button::new(button_label(tr("plugins.refresh", "Refresh"), 11))
+                    .style(theme::secondary)
                     .padding(small)
                     .on_press(Message::PluginOutputRefresh(plugin, Slot::control(index))),
             );
         if batch {
             heading = heading
                 .push(
-                    Button::new(Text::new(tr("plugins.select_all", "Select all")).size(11))
+                    Button::new(button_label(tr("plugins.select_all", "Select all"), 11))
                         .padding(small)
-                        .style(iced::widget::button::secondary)
+                        .style(theme::secondary)
                         .on_press(Message::PluginListAll(plugin, index, true)),
                 )
                 .push(
-                    Button::new(Text::new(tr("plugins.clear", "Clear")).size(11))
+                    Button::new(button_label(tr("plugins.clear", "Clear"), 11))
                         .padding(small)
-                        .style(iced::widget::button::secondary)
+                        .style(theme::secondary)
                         .on_press(Message::PluginListAll(plugin, index, false)),
                 );
         }
@@ -1280,45 +1374,52 @@ impl SettingsApp {
     }
 }
 
-/// A choice as a drop-down.
+/// A choice as a run of chips, every alternative on show.
+///
+/// Not a drop-down, which is what this used to be: iced places a pick
+/// list's text by its vertical centre, and the renderer then misjudges
+/// whether it is inside the scrolling region's clip — so the value of a
+/// list scrolled under the footer was painted over the footer.
 ///
 /// What is *read* is the option's label and what is *written* is its
-/// value, and after a plug-in's translation has been applied the two
-/// are rarely the same string — so the mapping happens here rather than
-/// showing a config value to somebody as if it were a word.
+/// value, and after a plug-in's translation has been applied the two are
+/// rarely the same string.
 fn choice_picker(
+    b: &'static theme::BrandPalette,
     control: &PaneControl,
     stored: Option<String>,
-    text_size: u32,
     on_pick: impl Fn(String) -> Message + 'static,
 ) -> Element<'static, Message> {
-    let pairs: Vec<(String, String)> = control
+    let mut chips: Vec<Element<'static, Message>> = control
         .options
         .iter()
-        .map(|o| (o.label().to_owned(), o.value().to_owned()))
+        .map(|option| {
+            chip(
+                option.label().to_owned(),
+                stored.as_deref() == Some(option.value()),
+                Some(on_pick(option.value().to_owned())),
+            )
+        })
         .collect();
-    let labels: Vec<String> = pairs.iter().map(|(label, _)| label.clone()).collect();
-    // A stored value with no option of its own is shown as itself: the
-    // plug-in's config said something this manifest no longer offers,
-    // and blanking the box would quietly propose overwriting it.
-    let selected = stored.map(|value| {
-        pairs
-            .iter()
-            .find(|(_, declared)| *declared == value)
-            .map(|(label, _)| label.clone())
-            .unwrap_or(value)
-    });
-
-    PickList::new(labels, selected, move |chosen| {
-        let value = pairs
-            .iter()
-            .find(|(label, _)| *label == chosen)
-            .map(|(_, value)| value.clone())
-            .unwrap_or(chosen);
-        on_pick(value)
-    })
-    .text_size(text_size)
-    .placeholder(tr("plugins.default", PLUGIN_DEFAULT))
-    .width(Length::Fill)
-    .into()
+    match stored {
+        // A stored value with no option of its own is shown as itself:
+        // the plug-in's config said something this manifest no longer
+        // offers, and hiding it would quietly propose overwriting it.
+        Some(value) if !control.options.iter().any(|o| o.value() == value) => {
+            chips.push(chip(value, true, None));
+        }
+        Some(_) => {}
+        // Nothing chosen is not an answer the plug-in lacks: it has a
+        // default, and this pane does not know which.
+        None => chips.push(
+            Container::new(
+                Text::new(tr("plugins.default", PLUGIN_DEFAULT))
+                    .size(11)
+                    .color(b.muted),
+            )
+            .padding(Padding::default().top(6.0))
+            .into(),
+        ),
+    }
+    button_run(chips)
 }

@@ -237,6 +237,31 @@ pub fn input(theme: &Theme, status: text_input::Status) -> text_input::Style {
     }
 }
 
+/// Drop-downs: the same field as [`input`], so a form's boxes match
+/// whichever kind each one happens to be.
+pub fn pick_list(
+    theme: &Theme,
+    status: iced::widget::pick_list::Status,
+) -> iced::widget::pick_list::Style {
+    let p = brand_palette(theme);
+    let border_color = match status {
+        iced::widget::pick_list::Status::Opened { .. } => p.brand,
+        iced::widget::pick_list::Status::Hovered => p.muted,
+        iced::widget::pick_list::Status::Active => p.line,
+    };
+    iced::widget::pick_list::Style {
+        text_color: p.ink,
+        placeholder_color: with_alpha(p.muted, 0.7),
+        handle_color: p.muted,
+        background: Background::Color(p.surface),
+        border: Border {
+            color: border_color,
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+    }
+}
+
 /// The wordlist editor — same treatment as [`input`].
 pub fn editor(theme: &Theme, status: text_editor::Status) -> text_editor::Style {
     let p = brand_palette(theme);

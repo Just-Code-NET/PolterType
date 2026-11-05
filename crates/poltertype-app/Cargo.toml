@@ -55,6 +55,7 @@ tracing-subscriber = { workspace = true }
 tracing-appender   = { workspace = true }
 crossbeam-channel  = { workspace = true }
 parking_lot        = { workspace = true }
+png                = { workspace = true }
 
 tao             = { workspace = true }
 tray-icon       = { workspace = true }

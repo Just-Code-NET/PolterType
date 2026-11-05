@@ -12,7 +12,7 @@
 //! equally bad, so every row states what the capability is *for*, and a
 //! step we cannot verify says so instead of guessing.
 
-use iced::widget::{Button, Column, Container, Row, Space, Text};
+use iced::widget::{Column, Container, Row, Space, Text};
 use iced::{Alignment, Element, Length, Padding};
 use poltertype_core::i18n::{tr, tr_args};
 use poltertype_input::setup::{SetupText, StepAction, StepState};
@@ -21,7 +21,7 @@ use super::consts::PERMISSIONS_DOC_URL;
 use super::enums::*;
 use super::state::*;
 use super::theme::{self, font_bold};
-use super::view::{card, pane_header, section_title, status_line, tip};
+use super::widgets::{action, button_run, card, pane_header, section_title, status_line, tip};
 
 impl SettingsApp {
     pub(super) fn view_setup(&self) -> Element<'_, Message> {
@@ -127,53 +127,37 @@ impl SettingsApp {
                         .size(12)
                         .color(b.muted),
                     )
-                    .push(
-                        Button::new(
-                            Text::new(tr(
-                                "setup.what_backends_are_supported",
-                                "What backends are supported?",
-                            ))
-                            .size(12),
-                        )
-                        .on_press(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned()))
-                        .style(theme::secondary)
-                        .padding(button_padding()),
-                    ),
+                    .push(action(
+                        tr(
+                            "setup.what_backends_are_supported",
+                            "What backends are supported?",
+                        ),
+                        Some(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned())),
+                    )),
             ));
         }
 
-        let mut footer = Row::new().spacing(10).align_y(Alignment::Center).push(
-            Button::new(Text::new(tr("setup.check_again", "Check again")).size(13))
-                .on_press(Message::SetupRecheck)
-                .style(theme::primary)
-                .padding(Padding {
-                    top: 7.0,
-                    right: 16.0,
-                    bottom: 7.0,
-                    left: 16.0,
-                }),
-        );
-        footer = footer.push(
-            Button::new(Text::new(tr("setup.restart_app", "Restart PolterType")).size(13))
-                .on_press(Message::RestartApp)
-                .style(theme::primary)
-                .padding(Padding {
-                    top: 7.0,
-                    right: 16.0,
-                    bottom: 7.0,
-                    left: 16.0,
-                }),
-        );
-        footer = footer.push(
-            Button::new(Text::new(tr("setup.full_setup_guide", "Full setup guide")).size(12))
-                .on_press(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned()))
-                .style(theme::secondary)
-                .padding(button_padding()),
-        );
+        body = body.push(button_run(vec![
+            action(
+                tr("setup.check_again", "Check again"),
+                Some(Message::SetupRecheck),
+            )
+            .style(theme::primary)
+            .into(),
+            action(
+                tr("setup.restart_app", "Restart PolterType"),
+                Some(Message::RestartApp),
+            )
+            .into(),
+            action(
+                tr("setup.full_setup_guide", "Full setup guide"),
+                Some(Message::SetupOpen(PERMISSIONS_DOC_URL.to_owned())),
+            )
+            .into(),
+        ]));
         if let Some(banner) = &self.setup_status {
-            footer = footer.push(status_line(b, banner));
+            body = body.push(status_line(b, banner));
         }
-        body = body.push(footer);
 
         // On every OS, a permission granted now does not reach a
         // process that already started without it — saying so here is
@@ -259,8 +243,8 @@ fn translated(text: &SetupText) -> String {
 /// One button per step, labelled by what it actually does. No step
 /// ever offers to run something with `sudo` on the user's behalf —
 /// `Copy` hands over the command instead, for them to read and run.
-fn action_button(action: &StepAction) -> Element<'static, Message> {
-    let (label, msg): (String, Message) = match action {
+fn action_button(step: &StepAction) -> Element<'static, Message> {
+    let (label, msg): (String, Message) = match step {
         StepAction::Open(url) if url.starts_with("x-apple") => (
             tr("setup.open_system_settings", "Open System Settings").to_owned(),
             Message::SetupOpen(url.clone()),
@@ -282,18 +266,5 @@ fn action_button(action: &StepAction) -> Element<'static, Message> {
             Message::SetupRequestPermission(*p),
         ),
     };
-    Button::new(Text::new(label).size(12))
-        .on_press(msg)
-        .style(theme::secondary)
-        .padding(button_padding())
-        .into()
-}
-
-fn button_padding() -> Padding {
-    Padding {
-        top: 5.0,
-        right: 12.0,
-        bottom: 5.0,
-        left: 12.0,
-    }
+    action(label, Some(msg)).into()
 }

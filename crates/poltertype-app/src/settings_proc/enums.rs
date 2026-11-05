@@ -27,6 +27,7 @@ pub(super) enum OwnExe {
 pub(super) enum SettingsEntry {
     Normal,
     Setup,
+    About,
 }
 
 impl SettingsEntry {
@@ -34,6 +35,7 @@ impl SettingsEntry {
         match self {
             SettingsEntry::Normal => "--settings",
             SettingsEntry::Setup => "--setup",
+            SettingsEntry::About => "--about",
         }
     }
 }

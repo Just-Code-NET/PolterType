@@ -4,16 +4,18 @@
 //! sidebar, hairline cards, keycap chips, brand-indigo primary actions.
 //! All colours come from [`theme::BrandPalette`](super::theme::BrandPalette)
 //! via `self.brand()`, so every pane re-themes with the window.
+//!
+//! This file holds the window's frame and the smaller panes; the larger
+//! ones have a `view_*` file each, and the pieces they share live in
+//! [`widgets`](super::widgets).
 
 use iced::widget::{
     Button, Checkbox, Column, Container, PickList, Row, Scrollable, Space, Text, TextInput,
-    container, rule, text_editor,
+    container, rule, text, text_editor,
 };
 use iced::{Alignment, Element, Font, Length, Padding};
 
 use poltertype_core::i18n::{tr, tr_args};
-use poltertype_core::settings::{AcceptKeys, SuggestionNavigation, TrayIconStyle};
-use poltertype_input::ReplaySpeed;
 
 use crate::consts::{
     DEFAULT_PAUSE_TOGGLE, DEFAULT_SWITCH_LAST, MACOS_SAFE_PAUSE_TOGGLE, WAYLAND_SAFE_SWITCH_LAST,
@@ -24,6 +26,9 @@ use super::enums::*;
 use super::helpers::*;
 use super::state::*;
 use super::theme::{self, font_bold};
+use super::widgets::{
+    action, button_label, button_run, card, chip, pane_header, section_title, status_line, tip,
+};
 
 impl SettingsApp {
     pub(super) fn view(&self) -> Element<'_, Message> {
@@ -44,31 +49,40 @@ impl SettingsApp {
         // section list has to stay put while its settings scroll, and
         // a scrollable inside a scrollable cannot do that.
         let scrolls_itself = self.pane == Pane::Plugins && self.plugins.len() == 1;
-        let padded = Container::new(body).padding(Padding {
+        let padded = Container::new(body).width(Length::Fill).padding(Padding {
             top: 22.0,
             right: 24.0,
             bottom: 16.0,
             left: 24.0,
         });
         let scrolled: Element<'_, Message> = if scrolls_itself {
-            padded.height(Length::Fill).width(Length::Fill).into()
+            padded.height(Length::Fill).into()
         } else {
             Scrollable::new(padded)
+                .id(iced::widget::Id::new(PANE_SCROLL))
                 .height(Length::Fill)
                 .width(Length::Fill)
                 .into()
         };
-        let content = Column::new().push(scrolled).push(self.view_footer());
-
-        let main = Row::new()
-            .push(self.nav_panel())
-            .push(rule::vertical(1).style(theme::hairline))
-            .push(
-                Container::new(content)
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
+        let content = Container::new(Column::new().push(scrolled).push(self.view_footer()))
+            .width(Length::Fill)
             .height(Length::Fill);
+
+        let main: Element<'_, Message> = if self.is_narrow() {
+            Column::new()
+                .push(self.nav_bar())
+                .push(rule::horizontal(1).style(theme::hairline))
+                .push(content)
+                .height(Length::Fill)
+                .into()
+        } else {
+            Row::new()
+                .push(self.nav_panel())
+                .push(rule::vertical(1).style(theme::hairline))
+                .push(content)
+                .height(Length::Fill)
+                .into()
+        };
 
         // Root backdrop quad. NOT cosmetic: the per-rebuild epsilon in
         // its colour defeats buggy partial presents in iced 0.13's
@@ -84,25 +98,40 @@ impl SettingsApp {
             .into()
     }
 
-    /// Branded side navigation: mark + wordmark on top, pane list,
-    /// version pinned to the bottom.
-    fn nav_panel(&self) -> Element<'_, Message> {
-        let b = self.brand();
-        let item = |label: &'static str, pane: Pane| -> Element<'static, Message> {
-            Button::new(Text::new(label).size(13))
-                .on_press(Message::SelectPane(pane))
-                .style(theme::nav(self.pane == pane))
-                .width(Length::Fill)
-                .padding(Padding {
-                    top: 7.0,
-                    right: 12.0,
-                    bottom: 7.0,
-                    left: 12.0,
-                })
-                .into()
-        };
+    /// The panes in the order the sidebar lists them, grouped: what the
+    /// app does, what extends it, and what is about the app itself.
+    ///
+    /// Setup waits at the bottom once there is nothing to do there and
+    /// moves to the very top while something is unresolved: at that
+    /// moment nothing else in this window works anyway.
+    fn nav_groups(&self) -> Vec<Vec<(&'static str, Pane)>> {
+        let attention = self.setup.needs_attention();
+        let setup = (setup_nav_label(attention), Pane::Setup);
+        let mut groups = vec![
+            vec![
+                (tr("nav.general", "General"), Pane::General),
+                (tr("nav.languages", "Languages"), Pane::Languages),
+                (tr("nav.hotkeys", "Hotkeys"), Pane::Hotkeys),
+                (tr("nav.suggestions", "Suggestions"), Pane::Suggestions),
+                (tr("nav.commands", "Commands"), Pane::Commands),
+                (tr("nav.wordlists", "Wordlists"), Pane::Wordlists),
+                (tr("nav.exceptions", "Exceptions"), Pane::Exceptions),
+            ],
+            vec![(tr("nav.plugins", "Plug-ins"), Pane::Plugins)],
+            vec![(tr("nav.about", "About"), Pane::About)],
+        ];
+        if attention {
+            groups.insert(0, vec![setup]);
+        } else {
+            groups[2].insert(0, setup);
+        }
+        groups
+    }
 
-        let brand_row = Row::new()
+    /// Mark and wordmark, shared by the sidebar and the narrow top bar.
+    fn brand_row(&self) -> Row<'_, Message> {
+        let b = self.brand();
+        Row::new()
             .spacing(10)
             .align_y(Alignment::Center)
             .push(theme::mark(32))
@@ -119,43 +148,102 @@ impl SettingsApp {
                             .size(11)
                             .color(b.muted),
                     ),
-            );
+            )
+    }
+
+    /// Branded side navigation: mark + wordmark on top, pane list,
+    /// version pinned to the bottom.
+    fn nav_panel(&self) -> Element<'_, Message> {
+        let b = self.brand();
+        let mut list = Column::new().spacing(2);
+        for (index, group) in self.nav_groups().into_iter().enumerate() {
+            if index > 0 {
+                list = list.push(Space::new().height(10));
+            }
+            for (label, pane) in group {
+                list = list.push(
+                    Button::new(button_label(label, 13))
+                        .on_press(Message::SelectPane(pane))
+                        .style(theme::nav(self.pane == pane))
+                        .width(Length::Fill)
+                        .padding(Padding {
+                            top: 7.0,
+                            right: 12.0,
+                            bottom: 7.0,
+                            left: 12.0,
+                        }),
+                );
+            }
+        }
 
         Container::new(
             Column::new()
-                .spacing(3)
                 .padding(14)
-                .push(Container::new(brand_row).padding(Padding {
+                .push(Container::new(self.brand_row()).padding(Padding {
                     top: 2.0,
                     right: 0.0,
-                    bottom: 14.0,
+                    bottom: 16.0,
                     left: 2.0,
                 }))
-                .push(item(
-                    setup_nav_label(self.setup.needs_attention()),
-                    Pane::Setup,
-                ))
-                .push(item(tr("nav.languages", "Languages"), Pane::Languages))
-                .push(item(tr("nav.hotkeys", "Hotkeys"), Pane::Hotkeys))
-                .push(item(tr("nav.commands", "Commands"), Pane::Commands))
-                .push(item(tr("nav.wordlists", "Wordlists"), Pane::Wordlists))
-                .push(item(tr("nav.general", "General"), Pane::General))
-                .push(item(tr("nav.exceptions", "Exceptions"), Pane::Exceptions))
-                .push(item(
-                    tr("nav.suggestions", "Suggestions"),
-                    Pane::Suggestions,
-                ))
-                .push(item(tr("nav.plugins", "Plug-ins"), Pane::Plugins))
-                .push(item(tr("nav.about", "About"), Pane::About))
-                .push(Space::new().height(Length::Fill))
+                .push(
+                    // A window too short for the whole list must still
+                    // reach every pane. No visible bar: the content beside
+                    // it owns the window's one scrollbar.
+                    Scrollable::new(list)
+                        .direction(iced::widget::scrollable::Direction::Vertical(
+                            iced::widget::scrollable::Scrollbar::new()
+                                .width(0)
+                                .scroller_width(0),
+                        ))
+                        .height(Length::Fill),
+                )
+                .push(Space::new().height(8))
                 .push(
                     Text::new(concat!("v", env!("CARGO_PKG_VERSION")))
                         .size(11)
                         .color(b.muted),
                 ),
         )
-        .width(190)
+        .width(NAV_WIDTH)
         .height(Length::Fill)
+        .style(theme::sidebar)
+        .into()
+    }
+
+    /// The sidebar's narrow-window form: one drop-down instead of a
+    /// column that would leave the panes no width at all.
+    fn nav_bar(&self) -> Element<'_, Message> {
+        let panes: Vec<(&'static str, Pane)> = self.nav_groups().into_iter().flatten().collect();
+        let labels: Vec<&'static str> = panes.iter().map(|(label, _)| *label).collect();
+        let selected = panes
+            .iter()
+            .find(|(_, pane)| *pane == self.pane)
+            .map(|(label, _)| *label);
+        let picker = PickList::new(labels, selected, move |picked: &'static str| {
+            let pane = panes
+                .iter()
+                .find(|(label, _)| *label == picked)
+                .map_or(Pane::General, |(_, pane)| *pane);
+            Message::SelectPane(pane)
+        })
+        .text_size(13)
+        .style(theme::pick_list)
+        .width(Length::Fill);
+
+        Container::new(
+            Row::new()
+                .spacing(14)
+                .align_y(Alignment::Center)
+                .push(self.brand_row())
+                .push(picker),
+        )
+        .padding(Padding {
+            top: 10.0,
+            right: 16.0,
+            bottom: 10.0,
+            left: 16.0,
+        })
+        .width(Length::Fill)
         .style(theme::sidebar)
         .into()
     }
@@ -225,13 +313,13 @@ impl SettingsApp {
                 let is_ignored = self.settings.languages.ignored.contains(id);
                 rows = rows.push(
                     Row::new()
-                        .spacing(16)
+                        .spacing(20)
                         .align_y(Alignment::Center)
                         .push(
                             Text::new(id.as_str().to_string())
                                 .size(13)
                                 .font(Font::MONOSPACE)
-                                .width(Length::FillPortion(2)),
+                                .width(Length::Fill),
                         )
                         .push(
                             Checkbox::new(is_active_effective)
@@ -240,8 +328,7 @@ impl SettingsApp {
                                 .on_toggle({
                                     let id = id.clone();
                                     move |flag| Message::LanguageToggled(id.clone(), flag)
-                                })
-                                .width(Length::FillPortion(1)),
+                                }),
                         )
                         .push(
                             Checkbox::new(is_ignored)
@@ -250,8 +337,7 @@ impl SettingsApp {
                                 .on_toggle({
                                     let id = id.clone();
                                     move |flag| Message::LanguageIgnoreToggled(id.clone(), flag)
-                                })
-                                .width(Length::FillPortion(1)),
+                                }),
                         ),
                 );
             }
@@ -305,24 +391,38 @@ impl SettingsApp {
             } else {
                 hotkey_chips(b, current)
             };
-            let action = if capturing {
-                Button::new(Text::new(tr("hotkeys.cancel", "Cancel")).size(12))
-                    .on_press(Message::HotkeyRebindCancel)
+            let action_button = if capturing {
+                action(
+                    tr("hotkeys.cancel", "Cancel"),
+                    Some(Message::HotkeyRebindCancel),
+                )
             } else {
-                Button::new(Text::new(tr("hotkeys.rebind", "Rebind")).size(12))
-                    .on_press(Message::HotkeyRebindStart(kind))
+                action(
+                    tr("hotkeys.rebind", "Rebind"),
+                    Some(Message::HotkeyRebindStart(kind)),
+                )
             };
-            let line = Row::new()
-                .spacing(16)
-                .align_y(Alignment::Center)
-                .push(Text::new(label).size(13).width(Length::FillPortion(2)))
-                .push(Container::new(display).width(Length::FillPortion(3)))
-                .push(action.style(theme::secondary).padding(Padding {
-                    top: 5.0,
-                    right: 12.0,
-                    bottom: 5.0,
-                    left: 12.0,
-                }));
+            let line: Element<'_, Message> = if self.stacked() {
+                Column::new()
+                    .spacing(6)
+                    .push(Text::new(label).size(13))
+                    .push(
+                        Row::new()
+                            .spacing(12)
+                            .align_y(Alignment::Center)
+                            .push(Container::new(display).width(Length::Fill))
+                            .push(action_button),
+                    )
+                    .into()
+            } else {
+                Row::new()
+                    .spacing(16)
+                    .align_y(Alignment::Center)
+                    .push(Text::new(label).size(13).width(Length::FillPortion(2)))
+                    .push(Container::new(display).width(Length::FillPortion(3)))
+                    .push(action_button)
+                    .into()
+            };
             let note = match effective.substitution {
                 Some(s) => Some(substitution_note(s)),
                 // A Caps Lock binding works, and it latches the lock on
@@ -343,7 +443,7 @@ impl SettingsApp {
                 None => None,
             };
             match note {
-                None => line.into(),
+                None => line,
                 // Under the row, not beside it: a sentence does not fit
                 // in a table cell.
                 Some(n) => Column::new().spacing(4).push(line).push(tip(b, n)).into(),
@@ -506,12 +606,22 @@ impl SettingsApp {
         }
 
         // ── "Add new command" form ──────────────────────────────────
-        let label = |text: &'static str| -> Element<'static, Message> {
-            Text::new(text)
-                .size(12)
-                .color(b.muted)
-                .width(Length::FillPortion(1))
-                .into()
+        // ── "Add new command" form ──────────────────────────────────
+        let stacked = self.stacked();
+        let line = move |text: &'static str,
+                         widget: Element<'static, Message>|
+              -> Element<'static, Message> {
+            let name = Text::new(text).size(12).color(b.muted);
+            if stacked {
+                Column::new().spacing(4).push(name).push(widget).into()
+            } else {
+                Row::new()
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .push(name.width(Length::Fixed(FORM_LABEL)))
+                    .push(widget)
+                    .into()
+            }
         };
 
         let mut form = Column::new().spacing(10).push(section_title(
@@ -519,110 +629,87 @@ impl SettingsApp {
             tr("commands.add_new_command", "Add a new command"),
         ));
 
-        form = form.push(
-            Row::new()
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(label(tr("commands.field_name", "Name")))
-                .push(
-                    TextInput::new(
-                        tr("commands.name_example", "e.g. Insert email signature"),
-                        &self.command_draft_name,
-                    )
-                    .on_input(Message::CommandDraftNameChanged)
-                    .style(theme::input)
-                    .size(13)
-                    .width(Length::FillPortion(4)),
-                ),
-        );
+        form = form.push(line(
+            tr("commands.field_name", "Name"),
+            TextInput::new(
+                tr("commands.name_example", "e.g. Insert email signature"),
+                &self.command_draft_name,
+            )
+            .on_input(Message::CommandDraftNameChanged)
+            .style(theme::input)
+            .size(13)
+            .width(Length::Fill)
+            .into(),
+        ));
 
         // The buffer resets at every word boundary, so a trigger must
         // be a single token; Add refuses any whitespace.
-        form = form.push(
-            Row::new()
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(label(tr("commands.field_trigger", "Trigger")))
-                .push(
-                    TextInput::new(
-                        tr("commands.trigger_example", "e.g. anrl, ;sig, ((en))"),
-                        &self.command_draft_trigger,
-                    )
-                    .on_input(Message::CommandDraftTriggerChanged)
-                    .style(theme::input)
-                    .size(13)
-                    .width(Length::FillPortion(4)),
-                ),
-        );
+        form = form.push(line(
+            tr("commands.field_trigger", "Trigger"),
+            TextInput::new(
+                tr("commands.trigger_example", "e.g. anrl, ;sig, ((en))"),
+                &self.command_draft_trigger,
+            )
+            .on_input(Message::CommandDraftTriggerChanged)
+            .style(theme::input)
+            .size(13)
+            .width(Length::Fill)
+            .into(),
+        ));
 
-        let mk_kind_btn = |kind: CommandActionKind| -> Element<'_, Message> {
-            Button::new(Text::new(kind.label()).size(12))
-                .on_press(Message::CommandDraftActionKindChanged(kind))
-                .style(theme::chip(self.command_draft_action_kind == kind))
-                .padding(Padding {
-                    top: 5.0,
-                    right: 10.0,
-                    bottom: 5.0,
-                    left: 10.0,
+        form = form.push(line(
+            tr("commands.field_action", "Action"),
+            button_run(
+                [
+                    CommandActionKind::TypeText,
+                    CommandActionKind::SwitchLayout,
+                    CommandActionKind::OpenPath,
+                ]
+                .into_iter()
+                .map(|kind| {
+                    chip(
+                        kind.label(),
+                        self.command_draft_action_kind == kind,
+                        Some(Message::CommandDraftActionKindChanged(kind)),
+                    )
                 })
-                .into()
-        };
-        form = form.push(
-            Row::new()
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(label(tr("commands.field_action", "Action")))
-                .push(
-                    Row::new()
-                        .spacing(6)
-                        .push(mk_kind_btn(CommandActionKind::TypeText))
-                        .push(mk_kind_btn(CommandActionKind::SwitchLayout))
-                        .push(mk_kind_btn(CommandActionKind::OpenPath))
-                        .width(Length::FillPortion(4)),
-                ),
-        );
+                .collect(),
+            ),
+        ));
 
-        form = form.push(
-            Row::new()
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(label(match self.command_draft_action_kind {
-                    CommandActionKind::TypeText => tr("commands.param_text", "Text"),
-                    CommandActionKind::SwitchLayout => tr("commands.param_layout", "Layout id"),
-                    CommandActionKind::OpenPath => tr("commands.param_path", "Path / URL"),
-                }))
-                .push(
-                    TextInput::new(
-                        self.command_draft_action_kind.placeholder(),
-                        &self.command_draft_param,
-                    )
-                    .on_input(Message::CommandDraftParamChanged)
-                    .style(theme::input)
-                    .size(13)
-                    .width(Length::FillPortion(4)),
-                ),
-        );
+        form = form.push(line(
+            match self.command_draft_action_kind {
+                CommandActionKind::TypeText => tr("commands.param_text", "Text"),
+                CommandActionKind::SwitchLayout => tr("commands.param_layout", "Layout id"),
+                CommandActionKind::OpenPath => tr("commands.param_path", "Path / URL"),
+            },
+            TextInput::new(
+                self.command_draft_action_kind.placeholder(),
+                &self.command_draft_param,
+            )
+            .on_input(Message::CommandDraftParamChanged)
+            .style(theme::input)
+            .size(13)
+            .width(Length::Fill)
+            .into(),
+        ));
 
-        form = form.push(
-            Row::new()
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .push(label(tr("commands.field_apps", "Apps (optional)")))
-                .push(
-                    TextInput::new(
-                        tr(
-                            "commands.apps_example",
-                            "comma-separated, e.g. Code.exe,idea64.exe",
-                        ),
-                        &self.command_draft_apps,
-                    )
-                    .on_input(Message::CommandDraftAppsChanged)
-                    .on_submit(Message::CommandAdd)
-                    .style(theme::input)
-                    .size(13)
-                    .width(Length::FillPortion(4)),
+        form = form.push(line(
+            tr("commands.field_apps", "Apps (optional)"),
+            TextInput::new(
+                tr(
+                    "commands.apps_example",
+                    "comma-separated, e.g. Code.exe,idea64.exe",
                 ),
-        );
+                &self.command_draft_apps,
+            )
+            .on_input(Message::CommandDraftAppsChanged)
+            .on_submit(Message::CommandAdd)
+            .style(theme::input)
+            .size(13)
+            .width(Length::Fill)
+            .into(),
+        ));
 
         let status: Element<'_, Message> = match &self.command_status {
             Some(banner) => status_line(b, banner),
@@ -632,18 +719,13 @@ impl SettingsApp {
             Row::new()
                 .spacing(8)
                 .align_y(Alignment::Center)
-                .push(status)
-                .push(Space::new().width(Length::Fill))
+                .push(Container::new(status).width(Length::Fill))
                 .push(
-                    Button::new(Text::new(tr("commands.add_command", "Add command")).size(12))
-                        .on_press(Message::CommandAdd)
-                        .style(theme::primary)
-                        .padding(Padding {
-                            top: 6.0,
-                            right: 14.0,
-                            bottom: 6.0,
-                            left: 14.0,
-                        }),
+                    action(
+                        tr("commands.add_command", "Add command"),
+                        Some(Message::CommandAdd),
+                    )
+                    .style(theme::primary),
                 ),
         );
 
@@ -693,12 +775,18 @@ impl SettingsApp {
                 .into();
         }
 
-        let picker_label = |text: &'static str| -> Element<'static, Message> {
-            Text::new(text)
-                .size(12)
-                .color(b.muted)
-                .width(Length::Fixed(52.0))
-                .into()
+        // A word list or a row of chips, beside the name of what they pick.
+        let picker = |name: &'static str, chips: Vec<Element<'static, Message>>| {
+            Row::new()
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .push(
+                    Text::new(name)
+                        .size(12)
+                        .color(b.muted)
+                        .width(Length::Fixed(FORM_LABEL)),
+                )
+                .push(Container::new(button_run(chips)).width(Length::Fill))
         };
 
         let mut pickers = Column::new().spacing(8);
@@ -708,76 +796,55 @@ impl SettingsApp {
         // single redundant "Global" button. Profiles are added by hand
         // in `[[wordlists.profiles]]` — there is no UI for that yet.
         if !self.settings.wordlists.profiles.is_empty() {
-            let profile_btn = |id: &str, pick_label: &str| -> Element<'_, Message> {
-                Button::new(Text::new(pick_label.to_owned()).size(12))
-                    .on_press(Message::WordlistProfileSelected(id.to_owned()))
-                    .style(theme::chip(self.wordlist_profile == id))
-                    .padding(Padding {
-                        top: 4.0,
-                        right: 10.0,
-                        bottom: 4.0,
-                        left: 10.0,
-                    })
-                    .into()
-            };
-            let mut profile_row = Row::new()
-                .spacing(6)
-                .align_y(Alignment::Center)
-                .push(picker_label(tr("wordlists.picker_profile", "Profile")));
-            profile_row =
-                profile_row.push(profile_btn("", tr("wordlists.profile_global", "Global")));
+            let mut chips = vec![chip(
+                tr("wordlists.profile_global", "Global"),
+                self.wordlist_profile.is_empty(),
+                Some(Message::WordlistProfileSelected(String::new())),
+            )];
             for p in &self.settings.wordlists.profiles {
-                let pick_label = if p.name.is_empty() {
+                let label = if p.name.is_empty() {
                     p.id.clone()
                 } else {
                     p.name.clone()
                 };
-                profile_row = profile_row.push(profile_btn(&p.id, &pick_label));
+                chips.push(chip(
+                    label,
+                    self.wordlist_profile == p.id,
+                    Some(Message::WordlistProfileSelected(p.id.clone())),
+                ));
             }
-            pickers = pickers.push(profile_row);
+            pickers = pickers.push(picker(tr("wordlists.picker_profile", "Profile"), chips));
         }
 
         // ── Layout picker (one chip per OS-active layout) ───────────
-        let mut layout_row = Row::new()
-            .spacing(6)
-            .align_y(Alignment::Center)
-            .push(picker_label(tr("wordlists.picker_layout", "Layout")));
-        for id in &self.os_layouts {
-            layout_row = layout_row.push(
-                Button::new(Text::new(id.as_str().to_string()).size(12))
-                    .on_press(Message::WordlistLayoutSelected(id.clone()))
-                    .style(theme::chip(self.wordlist_layout.as_ref() == Some(id)))
-                    .padding(Padding {
-                        top: 4.0,
-                        right: 10.0,
-                        bottom: 4.0,
-                        left: 10.0,
-                    }),
-            );
-        }
-        pickers = pickers.push(layout_row);
+        pickers = pickers.push(picker(
+            tr("wordlists.picker_layout", "Layout"),
+            self.os_layouts
+                .iter()
+                .map(|id| {
+                    chip(
+                        id.as_str().to_string(),
+                        self.wordlist_layout.as_ref() == Some(id),
+                        Some(Message::WordlistLayoutSelected(id.clone())),
+                    )
+                })
+                .collect(),
+        ));
 
         // ── Kind picker (Extras vs Stop) ────────────────────────────
-        let kind_button = |kind: WordlistKind| -> Element<'_, Message> {
-            Button::new(Text::new(kind.label()).size(12))
-                .on_press(Message::WordlistKindSelected(kind))
-                .style(theme::chip(self.wordlist_kind == kind))
-                .padding(Padding {
-                    top: 4.0,
-                    right: 10.0,
-                    bottom: 4.0,
-                    left: 10.0,
+        pickers = pickers.push(picker(
+            tr("wordlists.picker_list", "List"),
+            [WordlistKind::Extras, WordlistKind::Stop]
+                .into_iter()
+                .map(|kind| {
+                    chip(
+                        kind.label(),
+                        self.wordlist_kind == kind,
+                        Some(Message::WordlistKindSelected(kind)),
+                    )
                 })
-                .into()
-        };
-        pickers = pickers.push(
-            Row::new()
-                .spacing(6)
-                .align_y(Alignment::Center)
-                .push(picker_label(tr("wordlists.picker_list", "List")))
-                .push(kind_button(WordlistKind::Extras))
-                .push(kind_button(WordlistKind::Stop)),
-        );
+                .collect(),
+        ));
 
         col = col.push(pickers);
 
@@ -932,15 +999,8 @@ impl SettingsApp {
                         .width(Length::Fill),
                     )
                     .push(
-                        Button::new(Text::new(tr("exceptions.add", "Add")).size(13))
-                            .on_press(Message::ExceptionAdd)
-                            .style(theme::primary)
-                            .padding(Padding {
-                                top: 6.0,
-                                right: 14.0,
-                                bottom: 6.0,
-                                left: 14.0,
-                            }),
+                        action(tr("exceptions.add", "Add"), Some(Message::ExceptionAdd))
+                            .style(theme::primary),
                     ),
             )
             .push(tip(
@@ -953,942 +1013,82 @@ impl SettingsApp {
             ))
             .into()
     }
-
-    pub(super) fn view_general(&self) -> Element<'_, Message> {
-        let b = self.brand();
-        let g = &self.settings.general;
-        let e = &self.settings.engine;
-
-        // The same flag the tray's pause item writes, named as the mode
-        // it is: the request behind it was for manual-only conversion,
-        // from someone who had found the pause and read it as the app
-        // being off (issue #51).
-        let mut conversion_row = Row::new().spacing(6);
-        for (manual, label) in [
-            (false, tr("general.conversion_auto", "Automatic")),
-            (true, tr("general.conversion_manual", "Manual only")),
-        ] {
-            conversion_row = conversion_row.push(
-                Button::new(Text::new(label).size(12))
-                    .on_press(Message::ManualOnlyChosen(manual))
-                    .style(theme::chip(g.paused == manual))
-                    .padding(Padding {
-                        top: 5.0,
-                        right: 12.0,
-                        bottom: 5.0,
-                        left: 12.0,
-                    }),
-            );
-        }
-
-        let speed_choice = ReplaySpeed::from_config(&e.replay_speed);
-        let mut speed_row = Row::new().spacing(6);
-        for (choice, label) in [
-            (ReplaySpeed::Normal, tr("general.speed_normal", "Normal")),
-            (ReplaySpeed::Fast, tr("general.speed_fast", "Fast")),
-            (ReplaySpeed::Instant, tr("general.speed_instant", "Instant")),
-        ] {
-            speed_row = speed_row.push(
-                Button::new(Text::new(label).size(12))
-                    .on_press(Message::ReplaySpeedChanged(choice))
-                    .style(theme::chip(speed_choice == choice))
-                    .padding(Padding {
-                        top: 5.0,
-                        right: 12.0,
-                        bottom: 5.0,
-                        left: 12.0,
-                    }),
-            );
-        }
-
-        let behaviour = Column::new()
-            .spacing(12)
-            .push(section_title(b, tr("general.behaviour", "Behaviour")))
-            .push(Text::new(tr("general.conversion", "Conversion")).size(12))
-            .push(conversion_row)
-            .push(
-                Text::new(tr(
-                    "general.conversion_hint",
-                    "Manual only watches what you type but corrects nothing on its own — \
-                     the last word is converted when you press the manual hotkey. Same \
-                     switch as the tray's Pause auto-switch, so the tray icon shows it too.",
-                ))
-                .size(11)
-                .color(b.muted),
-            )
-            .push(
-                Checkbox::new(g.autostart)
-                    .label(tr(
-                        "general.start_automatically_when_i",
-                        "Start automatically when I sign in",
-                    ))
-                    .text_size(13)
-                    .on_toggle(Message::AutostartToggled),
-            )
-            .push(
-                Checkbox::new(g.sound_on_correct)
-                    .label(tr(
-                        "general.play_soft_chime_on",
-                        "Play a soft chime on correction",
-                    ))
-                    .text_size(13)
-                    .on_toggle(Message::SoundOnCorrectToggled),
-            )
-            .push(
-                Checkbox::new(g.show_notifications)
-                    .label(tr(
-                        "general.show_second_system_notification",
-                        "Show a 2-second system notification on auto-switch",
-                    ))
-                    .text_size(13)
-                    .on_toggle(Message::ShowNotificationsToggled),
-            )
-            .push(
-                Checkbox::new(e.suppress_in_identifiers)
-                    .label(tr(
-                        "general.skip_auto_switch_on",
-                        "Skip auto-switch on identifiers (foo_bar, snake_case, …)",
-                    ))
-                    .text_size(13)
-                    .on_toggle(Message::SuppressInIdentifiersToggled),
-            )
-            .push(
-                Row::new()
-                    .spacing(10)
-                    .align_y(Alignment::Center)
-                    .push(Text::new(tr("general.idle_timeout_ms", "Idle timeout (ms):")).size(13))
-                    .push(
-                        Button::new(Text::new("-100").size(12))
-                            .on_press(Message::IdleTimeoutDelta(-100))
-                            .style(theme::secondary)
-                            .padding(Padding {
-                                top: 4.0,
-                                right: 8.0,
-                                bottom: 4.0,
-                                left: 8.0,
-                            }),
-                    )
-                    .push(
-                        Text::new(format!("{:>5}", e.idle_timeout_ms))
-                            .size(13)
-                            .font(Font::MONOSPACE),
-                    )
-                    .push(
-                        Button::new(Text::new("+100").size(12))
-                            .on_press(Message::IdleTimeoutDelta(100))
-                            .style(theme::secondary)
-                            .padding(Padding {
-                                top: 4.0,
-                                right: 8.0,
-                                bottom: 4.0,
-                                left: 8.0,
-                            }),
-                    )
-                    .push(
-                        Text::new(tr(
-                            "general.buffer_cleared_after_this",
-                            "Buffer is cleared after this much keyboard silence.",
-                        ))
-                        .size(11)
-                        .color(b.muted),
-                    ),
-            )
-            .push(Text::new(tr("general.replay_speed", "Replacement speed")).size(12))
-            .push(speed_row)
-            .push(
-                Text::new(tr(
-                    "general.replay_speed_hint",
-                    "How quickly a correction happens — both the pauses between \
-                     keystrokes and the waits around the layout switch. Normal is paced \
-                     for input remappers such as keyd, which drop keystrokes sent \
-                     faster; try a faster setting and go back if letters start going \
-                     missing. Applies to the next correction.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-
-        // Applies instantly; persisted by the footer Save.
-        let mut theme_row = Row::new().spacing(6);
-        for choice in ThemeChoice::ALL {
-            theme_row = theme_row.push(
-                Button::new(Text::new(choice.label()).size(12))
-                    .on_press(Message::ThemeChoiceChanged(choice))
-                    .style(theme::chip(self.theme_choice() == choice))
-                    .padding(Padding {
-                        top: 5.0,
-                        right: 12.0,
-                        bottom: 5.0,
-                        left: 12.0,
-                    }),
-            );
-        }
-        // Takes effect where the tray reads it, so unlike the theme
-        // above there is nothing to preview here.
-        let tray_choice = TrayIconStyle::from_config(&self.settings.general.tray_icon);
-        let mut tray_row = Row::new().spacing(6);
-        for (choice, label) in [
-            (TrayIconStyle::Color, tr("general.tray_color", "Colour")),
-            (TrayIconStyle::Flag, tr("general.tray_flag", "Flag")),
-            (TrayIconStyle::Mono, tr("general.tray_mono", "Mono")),
-            (TrayIconStyle::Hidden, tr("general.tray_hidden", "Hidden")),
-        ] {
-            tray_row = tray_row.push(
-                Button::new(Text::new(label).size(12))
-                    .on_press(Message::TrayIconChoiceChanged(choice))
-                    .style(theme::chip(tray_choice == choice))
-                    .padding(Padding {
-                        top: 5.0,
-                        right: 12.0,
-                        bottom: 5.0,
-                        left: 12.0,
-                    }),
-            );
-        }
-
-        // Offers what is on disk, not what was compiled in: a
-        // translation dropped into the config directory — or one a
-        // plug-in brought with it — is selectable without anybody
-        // editing `config.toml` by hand.
-        let mut languages: Vec<(String, String)> = vec![(
-            tr("general.language_system", "System").to_owned(),
-            "system".to_owned(),
-        )];
-        languages.extend(
-            self.ui_languages
-                .iter()
-                .map(|(code, name)| (language_label(code, name), code.clone())),
-        );
-        let current = self.settings.general.ui_language.trim();
-        let automatic = current.is_empty()
-            || current.eq_ignore_ascii_case("system")
-            || current.eq_ignore_ascii_case("auto");
-        let chosen_language = languages
-            .iter()
-            .find(|(_, code)| {
-                if automatic {
-                    code == "system"
-                } else {
-                    code.eq_ignore_ascii_case(current)
-                }
-            })
-            .map(|(label, _)| label.clone())
-            // A code with no catalog on this machine is still what the
-            // file says, so it is shown rather than silently replaced
-            // by "System".
-            .or_else(|| (!automatic).then(|| current.to_owned()));
-        let language_pairs = languages.clone();
-        let language_row = PickList::new(
-            languages
-                .into_iter()
-                .map(|(label, _)| label)
-                .collect::<Vec<_>>(),
-            chosen_language,
-            move |picked| {
-                let code = language_pairs
-                    .iter()
-                    .find(|(label, _)| *label == picked)
-                    .map(|(_, code)| code.clone())
-                    .unwrap_or(picked);
-                Message::UiLanguageChanged(code)
-            },
-        )
-        .text_size(12)
-        .width(Length::Fixed(260.0));
-
-        let mut appearance = Column::new()
-            .spacing(12)
-            .push(section_title(b, tr("general.appearance", "Appearance")))
-            .push(Text::new(tr("general.interface_language", "Interface language")).size(12))
-            .push(language_row)
-            .push(
-                Text::new(tr(
-                    "general.interface_language_hint",
-                    "Applies as you pick it; the tray menu follows once you save. Anything \
-                     not translated stays English, and a plug-in can bring a language of \
-                     its own.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-        if let Some(trouble) = language_trouble() {
-            appearance = appearance.push(Text::new(trouble).size(11).color(b.warn));
-        }
-        let appearance = appearance
-            .push(Text::new(tr("general.theme", "Theme")).size(12))
-            .push(theme_row)
-            .push(
-                Text::new(tr(
-                    "general.system_follows_os_light",
-                    "System follows the OS light/dark preference. Save to persist.",
-                ))
-                .size(11)
-                .color(b.muted),
-            )
-            .push(Text::new(tr("general.tray_icon", "Tray icon")).size(12))
-            .push(tray_row)
-            .push(
-                Text::new(tr(
-                    "general.tray_icon_hint",
-                    "Colour gives every layout its own; Flag draws its country, and \
-                     falls back to Colour where there is no drawing for one; Mono \
-                     keeps one neutral badge. Hidden removes the icon and its menu — \
-                     reopen this window by running poltertype --settings.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-
-        // This card is the app's disclosure surface for the one thing it
-        // does that reaches outside the machine, so it names the exact
-        // URL rather than saying "checks for updates" and leaving the
-        // user to trust us.
-        let u = &self.settings.updates;
-        // `on_press` only when updates are on: an iced Button with no
-        // handler renders disabled, which is exactly the signal wanted
-        // — with checking off, the interval means nothing.
-        let step = |label: &'static str, delta: i64| {
-            let btn = Button::new(Text::new(label).size(12))
-                .style(theme::secondary)
-                .padding(Padding {
-                    top: 4.0,
-                    right: 8.0,
-                    bottom: 4.0,
-                    left: 8.0,
-                });
-            if u.enabled {
-                btn.on_press(Message::UpdateIntervalDelta(delta))
-            } else {
-                btn
-            }
-        };
-        let interval_row = Row::new()
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .push(Text::new(tr("general.check_every_hours", "Check every (hours):")).size(13))
-            .push(step("-1", -1))
-            .push(
-                Text::new(format!("{:>3}", u.check_interval_hours))
-                    .size(13)
-                    .font(Font::MONOSPACE)
-                    .color(if u.enabled { b.ink } else { b.muted }),
-            )
-            .push(step("+1", 1));
-
-        let mut updates = Column::new()
-            .spacing(12)
-            .push(section_title(b, tr("general.updates", "Updates")))
-            .push(
-                Checkbox::new(u.enabled)
-                    .label(tr(
-                        "general.download_new_versions_automatically",
-                        "Download new versions automatically, install on restart",
-                    ))
-                    .text_size(13)
-                    .on_toggle(Message::AutoUpdateToggled),
-            )
-            .push(interval_row)
-            .push(
-                Text::new(tr(
-                    "general.updates_disclosure",
-                    "This is the only network connection PolterType makes. It fetches a small \
-                     version file from GitHub — no account, no identifier, nothing about you or \
-                     what you type. A new version is downloaded, checksum-verified and then left \
-                     alone until you quit or click \"Restart to update\" in the tray. Never \
-                     installed while you're typing.",
-                ))
-                .size(11)
-                .color(b.muted),
-            )
-            .push(
-                Text::new(poltertype_update::MANIFEST_URL)
-                    .size(10)
-                    .font(Font::MONOSPACE)
-                    .color(b.muted),
-            );
-
-        // Beside the switch that turns updating on, because that is
-        // where the price is paid — the alternative is finding out
-        // after the restart, with the app silently deaf.
-        if let Some(note) = poltertype_shell::update_permission_note() {
-            updates = updates.push(Text::new(note).size(11).color(b.brand));
-        }
-
-        let folders = Column::new()
-            .spacing(12)
-            .push(section_title(b, tr("general.folders", "Folders")))
-            .push(
-                Row::new()
-                    .spacing(8)
-                    .push(folder_button(
-                        tr("general.open_config", "Open config.toml"),
-                        Message::OpenConfigFile,
-                    ))
-                    .push(folder_button(
-                        tr("general.open_logs", "Logs"),
-                        Message::OpenLogsDir,
-                    ))
-                    .push(folder_button(
-                        tr("general.open_wordlists", "User wordlists"),
-                        Message::OpenWordlistsDir,
-                    ))
-                    .push(folder_button(
-                        tr("general.open_layouts", "User layouts"),
-                        Message::OpenLayoutsDir,
-                    )),
-            );
-
-        Column::new()
-            .spacing(14)
-            .push(pane_header(
-                b,
-                tr("general.general", "General"),
-                tr(
-                    "general.subtitle",
-                    "Behaviour of the tray app and the correction engine.",
-                )
-                .to_owned(),
-            ))
-            .push(card(behaviour))
-            .push(card(appearance))
-            .push(card(updates))
-            .push(card(folders))
-            .into()
-    }
-
-    pub(super) fn view_suggestions(&self) -> Element<'_, Message> {
-        let b = self.brand();
-        let s = &self.settings.suggestions;
-
-        // `on_press` only while suggestions are on — the same
-        // handler-less-Button-renders-disabled signal the Updates card
-        // uses for its interval row.
-        let step = |label: &'static str, msg: Message| {
-            let btn = Button::new(Text::new(label).size(12))
-                .style(theme::secondary)
-                .padding(Padding {
-                    top: 4.0,
-                    right: 8.0,
-                    bottom: 4.0,
-                    left: 8.0,
-                });
-            if s.enabled { btn.on_press(msg) } else { btn }
-        };
-        let value_color = if s.enabled { b.ink } else { b.muted };
-
-        let max_row = Row::new()
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .push(Text::new(tr("suggestions.max_suggestions", "Max suggestions (1–9):")).size(13))
-            .push(step("-1", Message::SuggestionMaxDelta(-1)))
-            .push(
-                Text::new(format!("{:>2}", s.max_suggestions))
-                    .size(13)
-                    .font(Font::MONOSPACE)
-                    .color(value_color),
-            )
-            .push(step("+1", Message::SuggestionMaxDelta(1)))
-            .push(
-                Text::new(tr(
-                    "suggestions.each_entry_applied_with",
-                    "Each entry is applied with one digit key, so 9 is the ceiling.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-
-        let timeout_row = Row::new()
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .push(
-                Text::new(tr(
-                    "suggestions.tooltip_timeout_seconds",
-                    "Tooltip timeout (seconds):",
-                ))
-                .size(13),
-            )
-            .push(step("-5", Message::SuggestionTimeoutDelta(-5)))
-            .push(
-                Text::new(format!("{:>3}", s.tooltip_timeout_secs))
-                    .size(13)
-                    .font(Font::MONOSPACE)
-                    .color(value_color),
-            )
-            .push(step("+5", Message::SuggestionTimeoutDelta(5)))
-            .push(
-                Text::new(tr(
-                    "suggestions.seconds_tooltip_hides_itself",
-                    "3–600 seconds; the tooltip hides itself when the time is up.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-
-        // A Checkbox with no `on_toggle` renders disabled, which is the
-        // right signal while the tooltip itself is off: there is then
-        // nothing to anchor anywhere.
-        let mut anchor_checkbox = Checkbox::new(s.caret_anchor && s.enabled)
-            .label(tr(
-                "suggestions.caret_anchor",
-                "Place the tooltip at the text cursor",
-            ))
-            .text_size(13);
-        if s.enabled {
-            anchor_checkbox = anchor_checkbox.on_toggle(Message::SuggestionCaretAnchorToggled);
-        }
-
-        let tooltip_card = Column::new()
-            .spacing(12)
-            .push(section_title(b, tr("suggestions.tooltip", "Tooltip")))
-            .push(
-                Checkbox::new(s.enabled)
-                    .label(tr(
-                        "suggestions.show_suggestions_mistyped_words",
-                        "Show suggestions for mistyped words",
-                    ))
-                    .text_size(13)
-                    .on_toggle(Message::SuggestionsToggled),
-            )
-            .push(max_row)
-            .push(timeout_row)
-            .push(anchor_checkbox)
-            .push(
-                Text::new(tr(
-                    "suggestions.caret_anchor_hint",
-                    "Off, the tooltip always sits at the place in the window chosen below. \
-                     On Linux this reaches outside PolterType: the cursor's position comes \
-                     from the accessibility bus, and an application that joins that bus is \
-                     what makes Qt ones — Telegram among them — announce that a screen reader \
-                     is running. There, turning it back on takes effect on restart.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-
-        // F-keys and arrows only work where the listener can keep them
-        // from the application — answered here without one, since this
-        // window is its own process.
-        let claimable = poltertype_input::suggestion_keys_claimable(self.settings.engine.hold_keys);
-        let accept_keys = AcceptKeys::from_config(&s.accept_keys);
-        let navigation = SuggestionNavigation::from_config(&s.navigation);
-        let chip = |label: &'static str, selected: bool, msg: Message| {
-            let btn = Button::new(Text::new(label).size(12))
-                .style(theme::chip(selected))
-                .padding(Padding {
-                    top: 5.0,
-                    right: 12.0,
-                    bottom: 5.0,
-                    left: 12.0,
-                });
-            if s.enabled { btn.on_press(msg) } else { btn }
-        };
-        let unavailable = |text: &'static str| Text::new(text).size(11).color(b.warn);
-
-        let mut accept_row = Row::new()
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .push(Text::new(tr("suggestions.accept_with", "Accept by number:")).size(13));
-        for (choice, label) in [
-            (
-                AcceptKeys::ModifierDigits,
-                tr("suggestions.accept_modifier_digits", "Modifiers + 1–9"),
-            ),
-            (
-                AcceptKeys::FunctionKeys,
-                tr("suggestions.accept_function_keys", "F1–F9"),
-            ),
-        ] {
-            accept_row = accept_row.push(chip(
-                label,
-                accept_keys == choice,
-                Message::SuggestionAcceptKeysChanged(choice),
-            ));
-        }
-        // With F-keys in force the chord is not listened for and its
-        // field goes; where F-keys cannot be claimed, the chord is what
-        // still works, so it stays.
-        let function_keys_live = accept_keys == AcceptKeys::FunctionKeys && claimable;
-
-        // A `TextInput` without `on_input` renders disabled.
-        let mut modifiers_input = TextInput::new(
-            tr("suggestions.modifiers_example", "e.g. Ctrl+Shift"),
-            &s.accept_modifiers,
-        )
-        .style(theme::input)
-        .size(13)
-        .width(Length::Fixed(180.0));
-        if s.enabled {
-            modifiers_input = modifiers_input.on_input(Message::SuggestionModifiersChanged);
-        }
-
-        let mut chord_card = Column::new()
-            .spacing(12)
-            .push(section_title(
-                b,
-                tr("suggestions.keyboard_accept", "Keyboard accept"),
-            ))
-            .push(accept_row);
-        if accept_keys == AcceptKeys::FunctionKeys {
-            chord_card = chord_card.push(if claimable {
-                Text::new(tr(
-                    "suggestions.function_keys_hint",
-                    "F1 applies the first suggestion, F2 the second, and so on. While the \
-                     tooltip is up these keys go to PolterType alone, so they cannot reload \
-                     a page or open an application's help.",
-                ))
-                .size(11)
-                .color(b.muted)
-            } else {
-                unavailable(tr(
-                    "suggestions.function_keys_unavailable",
-                    "Not available on this system: PolterType cannot keep a key from the \
-                     application here (Wayland, or macOS without [engine].hold_keys), and F5 \
-                     would reload a browser page. The modifier + digit chord below stays in \
-                     use.",
-                ))
-            });
-        }
-        if !function_keys_live {
-            chord_card = chord_card
-                .push(
-                    Row::new()
-                        .spacing(10)
-                        .align_y(Alignment::Center)
-                        .push(
-                            Text::new(tr(
-                                "suggestions.keyboard_accept_modifiers",
-                                "Keyboard accept modifiers:",
-                            ))
-                            .size(13),
-                        )
-                        .push(modifiers_input),
-                )
-                .push(
-                    Text::new(tr_args(
-                        "suggestions.modifiers_hint",
-                        "'+'-separated: {} — e.g. Ctrl+Shift. Applied with \
-                         digit keys 1–9. Leave empty to disable keyboard accept.",
-                        &[&named_key_list(&["Ctrl", "Shift", "Alt", "Meta"], ", ")],
-                    ))
-                    .size(11)
-                    .color(b.muted),
-                );
-            // Non-empty but chord-disabling input (bare `Shift`, a typo)
-            // warns instead of being rejected: the engine treats it as "no
-            // chord", so without this the setting looks configured while
-            // doing nothing.
-            if !s.accept_modifiers.trim().is_empty()
-                && !accept_modifiers_enable_keyboard(&s.accept_modifiers)
-            {
-                chord_card = chord_card.push(
-                    Text::new(tr_args(
-                        "suggestions.modifiers_required",
-                        "At least one of {} is required — as written, keyboard \
-                         accept is off (clicking a suggestion still works).",
-                        &[&named_key_list(&["Ctrl", "Alt", "Meta"], " / ")],
-                    ))
-                    .size(11)
-                    .color(b.warn),
-                );
-            }
-        }
-
-        let mut nav_row = Row::new()
-            .spacing(10)
-            .align_y(Alignment::Center)
-            .push(Text::new(tr("suggestions.navigation", "Arrow keys:")).size(13));
-        for (choice, label) in [
-            (
-                SuggestionNavigation::Off,
-                tr("suggestions.navigation_off", "Off"),
-            ),
-            (
-                SuggestionNavigation::Arrows,
-                tr("suggestions.navigation_arrows", "Up/Down + Enter"),
-            ),
-        ] {
-            nav_row = nav_row.push(chip(
-                label,
-                navigation == choice,
-                Message::SuggestionNavigationChanged(choice),
-            ));
-        }
-        chord_card = chord_card.push(nav_row);
-        if navigation == SuggestionNavigation::Arrows && !claimable {
-            chord_card = chord_card.push(unavailable(tr(
-                "suggestions.navigation_unavailable",
-                "Not available on this system: PolterType cannot keep the arrow keys from \
-                 the application here (Wayland, or macOS without [engine].hold_keys).",
-            )));
-        } else {
-            chord_card = chord_card.push(
-                Text::new(tr(
-                    "suggestions.navigation_hint",
-                    "While the tooltip is up, Down highlights the first suggestion and Up the \
-                     last; further presses move the highlight, Enter applies it and Esc closes \
-                     the tooltip. Until the tooltip goes away, Up and Down do not move the text \
-                     cursor, which is why this is off by default.",
-                ))
-                .size(11)
-                .color(b.muted),
-            );
-        }
-
-        Column::new()
-            .spacing(14)
-            .push(pane_header(
-                b,
-                tr("suggestions.suggestions", "Suggestions"),
-                tr(
-                    "suggestions.subtitle",
-                    "Offer dictionary suggestions in a small tooltip when a typed word \
-                     looks misspelled. Clicking a suggestion (or pressing the accept \
-                     chord + a digit) replaces the word.",
-                )
-                .to_owned(),
-            ))
-            .push(card(tooltip_card))
-            .push(card(self.tooltip_look_card()))
-            .push(card(chord_card))
-            .push(tip(
-                b,
-                tr(
-                    "suggestions.tip",
-                    "Tip: suggestions come from the same bundled dictionaries the detector \
-                     already uses. Everything is computed locally — nothing you type leaves \
-                     your machine.",
-                ),
-            ))
-            .into()
-    }
-
-    pub(super) fn view_about(&self) -> Element<'_, Message> {
-        let b = self.brand();
-
-        let hero = Column::new()
-            .spacing(6)
-            .width(Length::Fill)
-            .align_x(Alignment::Center)
-            .push(Space::new().height(10))
-            .push(theme::mark(64))
-            .push(Space::new().height(4))
-            .push(
-                Text::new("PolterType")
-                    .size(24)
-                    .font(font_bold())
-                    .color(b.ink),
-            )
-            .push(
-                Text::new(tr_args(
-                    "about.version",
-                    "Version {}",
-                    &[env!("CARGO_PKG_VERSION")],
-                ))
-                .size(12)
-                .color(b.muted),
-            )
-            .push(
-                Text::new(tr(
-                    "about.cross_platform_automatic_keyboard",
-                    "Cross-platform automatic keyboard layout switcher.",
-                ))
-                .size(13),
-            )
-            .push(
-                Row::new()
-                    .spacing(4)
-                    .push(link_button("poltertype.com", SITE_URL))
-                    .push(link_button("GitHub", REPO_URL))
-                    .push(link_button(
-                        tr("about.report_an_issue", "Report an issue"),
-                        ISSUES_URL,
-                    )),
-            )
-            .push(Space::new().height(6));
-
-        let escape_hatches = Column::new()
-            .spacing(12)
-            .push(section_title(
-                b,
-                tr(
-                    "about.power_user_escape_hatches",
-                    "Power-user escape hatches",
-                ),
-            ))
-            .push(
-                Row::new()
-                    .spacing(8)
-                    .push(
-                        Button::new(
-                            Text::new(tr("about.reset_defaults", "Reset to defaults")).size(13),
-                        )
-                        .on_press(Message::ResetDefaults)
-                        .style(theme::danger)
-                        .padding(Padding {
-                            top: 6.0,
-                            right: 12.0,
-                            bottom: 6.0,
-                            left: 12.0,
-                        }),
-                    )
-                    .push(
-                        Button::new(
-                            Text::new(tr("about.reload_from_disk", "Reload from disk")).size(13),
-                        )
-                        .on_press(Message::Reload)
-                        .style(theme::secondary)
-                        .padding(Padding {
-                            top: 6.0,
-                            right: 12.0,
-                            bottom: 6.0,
-                            left: 12.0,
-                        }),
-                    ),
-            )
-            .push(
-                Text::new(tr_args(
-                    "about.config_line",
-                    "Config: {}",
-                    &[&self.config_path.display().to_string()],
-                ))
-                .size(11)
-                .font(Font::MONOSPACE)
-                .color(b.muted),
-            );
-
-        Column::new()
-            .spacing(14)
-            .push(card(hero))
-            .push(card(escape_hatches))
-            .into()
-    }
-
     pub(super) fn view_footer(&self) -> Element<'_, Message> {
         let b = self.brand();
-        let banner: Element<'_, Message> = match &self.save_banner {
-            Some(banner) => Text::new(&banner.text)
+        // `Fill` rather than the text's natural width: a row measures its
+        // shrinking children first and in order, so a long path on the
+        // left used to take the width the buttons on its right needed.
+        let banner = self.save_banner.as_ref().map(|banner| {
+            Text::new(&banner.text)
                 .size(12)
                 .color(if banner.is_error { b.garble } else { b.ecto })
+                .wrapping(text::Wrapping::WordOrGlyph)
+                .width(Length::Fill)
+        });
+        let buttons = Row::new()
+            .spacing(10)
+            .push(
+                Button::new(button_label(tr("footer.reload", "Reload"), 13))
+                    .on_press(Message::Reload)
+                    .style(theme::secondary)
+                    .padding(Padding {
+                        top: 7.0,
+                        right: 16.0,
+                        bottom: 7.0,
+                        left: 16.0,
+                    }),
+            )
+            .push(
+                Button::new(button_label(tr("footer.save", "Save"), 13))
+                    .on_press(Message::Save)
+                    .style(theme::primary)
+                    .padding(Padding {
+                        top: 7.0,
+                        right: 18.0,
+                        bottom: 7.0,
+                        left: 18.0,
+                    }),
+            );
+        let padding = Padding {
+            top: 12.0,
+            right: 24.0,
+            bottom: 14.0,
+            left: 24.0,
+        };
+        let bar: Element<'_, Message> = match banner {
+            // Too little room beside the buttons to read a sentence.
+            Some(banner) if self.content_width() < FOOTER_STACK_BELOW => Column::new()
+                .spacing(8)
+                .padding(padding)
+                .push(banner)
+                .push(
+                    Row::new()
+                        .push(Space::new().width(Length::Fill))
+                        .push(buttons),
+                )
                 .into(),
-            None => Space::new().width(Length::Shrink).into(),
+            Some(banner) => Row::new()
+                .padding(padding)
+                .spacing(14)
+                .align_y(Alignment::Center)
+                .push(banner)
+                .push(buttons)
+                .into(),
+            None => Row::new()
+                .padding(padding)
+                .push(Space::new().width(Length::Fill))
+                .push(buttons)
+                .into(),
         };
 
         Column::new()
             .push(rule::horizontal(1).style(theme::hairline))
-            .push(
-                Row::new()
-                    .padding(Padding {
-                        top: 12.0,
-                        right: 24.0,
-                        bottom: 14.0,
-                        left: 24.0,
-                    })
-                    .spacing(10)
-                    .align_y(Alignment::Center)
-                    .push(banner)
-                    .push(Space::new().width(Length::Fill))
-                    .push(
-                        Button::new(Text::new(tr("footer.reload", "Reload")).size(13))
-                            .on_press(Message::Reload)
-                            .style(theme::secondary)
-                            .padding(Padding {
-                                top: 7.0,
-                                right: 16.0,
-                                bottom: 7.0,
-                                left: 16.0,
-                            }),
-                    )
-                    .push(
-                        Button::new(Text::new(tr("footer.save", "Save")).size(13))
-                            .on_press(Message::Save)
-                            .style(theme::primary)
-                            .padding(Padding {
-                                top: 7.0,
-                                right: 18.0,
-                                bottom: 7.0,
-                                left: 18.0,
-                            }),
-                    ),
-            )
+            .push(bar)
             .into()
     }
 }
 
-// ── Shared building blocks ──────────────────────────────────────────
-
-/// Pane title + one-paragraph explainer.
-pub(super) fn pane_header(
-    b: &'static theme::BrandPalette,
-    title: &'static str,
-    subtitle: String,
-) -> Element<'static, Message> {
-    Column::new()
-        .spacing(6)
-        .push(Text::new(title).size(22).font(font_bold()).color(b.ink))
-        .push(Text::new(subtitle).size(13).color(b.muted))
-        .into()
-}
-
-/// Surface card with a hairline border — the pane's main grouping
-/// device, mirroring the landing page's feature cards.
-pub(super) fn card<'a>(content: impl Into<Element<'a, Message>>) -> Element<'a, Message> {
-    Container::new(content)
-        .style(theme::card)
-        .padding(16)
-        .width(Length::Fill)
-        .into()
-}
-
-/// Bold in-card section heading ("Behaviour", "Folders", …).
-pub(super) fn section_title(
-    b: &'static theme::BrandPalette,
-    text: &'static str,
-) -> Element<'static, Message> {
-    Text::new(text)
-        .size(14)
-        .font(font_bold())
-        .color(b.ink)
-        .into()
-}
-
-/// How one language is named in the picker. A locale nobody has a name
-/// for is offered under its bare code — the file works, so hiding it
-/// would be the worse answer.
-fn language_label(code: &str, name: &str) -> String {
-    if name == code {
-        code.to_owned()
-    } else {
-        format!("{name} ({code})")
-    }
-}
-
-/// What to say under the picker when the catalogs did not come out the
-/// way the files promised.
-///
-/// Silence is the normal answer, and the one this returns for a
-/// language that simply has no file: that is a translation nobody
-/// wrote, not one that failed. The two cases worth a line are a file
-/// that was found and could not be fully read, and a language that was
-/// asked for and produced nothing — because from the outside those
-/// look identical to a translation that works, and the only account of
-/// either was a log line nobody has a reason to read (#64).
-fn language_trouble() -> Option<String> {
-    let catalog = poltertype_core::i18n::active_catalog()?;
-    if let Some(problem) = catalog.problems().first() {
-        return Some(tr_args(
-            "general.language_partly_read",
-            "Part of this translation could not be read — {}",
-            &[problem],
-        ));
-    }
-    (catalog.is_empty() && !catalog.locale().starts_with("en")).then(|| {
-        tr_args(
-            "general.language_not_found",
-            "No catalog found for {}, so the interface stays in English.",
-            &[catalog.locale()],
-        )
-    })
-}
+// ── Pieces only these panes use ─────────────────────────────────────
 
 /// Sidebar label for the Setup pane. Carries the warning glyph only
 /// while something is actually unresolved — a permanent ⚠ in the nav
@@ -1926,14 +1126,6 @@ fn substitution_note(s: crate::hotkeys::Substitution) -> String {
     }
 }
 
-/// Muted footnote at the bottom of a pane.
-pub(super) fn tip(
-    b: &'static theme::BrandPalette,
-    text: impl Into<String>,
-) -> Element<'static, Message> {
-    Text::new(text.into()).size(11).color(b.muted).into()
-}
-
 /// One mono glyph on a raised key — the site's `.keycap`.
 fn keycap_chip(text: String) -> Element<'static, Message> {
     Container::new(Text::new(text).size(11).font(Font::MONOSPACE))
@@ -1959,44 +1151,4 @@ fn hotkey_chips(b: &'static theme::BrandPalette, combo: &str) -> Element<'static
         row = row.push(keycap_chip(display_key_token(part)));
     }
     row.into()
-}
-
-/// Brand-coloured inline link opening `url` in the browser.
-fn link_button(label: &'static str, url: &'static str) -> Element<'static, Message> {
-    Button::new(Text::new(label).size(13))
-        .on_press(Message::OpenUrl(url))
-        .style(theme::link)
-        .padding(Padding {
-            top: 4.0,
-            right: 6.0,
-            bottom: 4.0,
-            left: 6.0,
-        })
-        .into()
-}
-
-/// Quiet bordered button for the Folders row.
-fn folder_button(label: &'static str, msg: Message) -> Element<'static, Message> {
-    Button::new(Text::new(label).size(12))
-        .on_press(msg)
-        .style(theme::secondary)
-        .padding(Padding {
-            top: 5.0,
-            right: 12.0,
-            bottom: 5.0,
-            left: 12.0,
-        })
-        .into()
-}
-
-/// Per-pane status banner text: ecto green for OK, garble pink for
-/// errors — the site's fixed/garbled word colours.
-pub(super) fn status_line(
-    b: &'static theme::BrandPalette,
-    banner: &SaveBanner,
-) -> Element<'static, Message> {
-    Text::new(banner.text.clone())
-        .size(11)
-        .color(if banner.is_error { b.garble } else { b.ecto })
-        .into()
 }

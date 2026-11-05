@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 
-use tray_icon::menu::{MenuId, MenuItem, PredefinedMenuItem, Submenu};
+use tray_icon::menu::{MenuItem, PredefinedMenuItem, Submenu};
 
 use crate::plugins::supervisor::{read_rows, read_state};
 
-use super::enums::StateItem;
+use super::enums::{ListEntry, StateItem};
+use super::rows::list_entries;
 use super::state::PluginMenu;
-use super::types::RowRoute;
 
 impl PluginMenu {
     /// Re-read every plug-in's state and redraw the entries that show
@@ -31,12 +31,23 @@ impl PluginMenu {
             let state = state.as_ref();
 
             match entry {
+                // Compared first: writing an unchanged value still tells
+                // a desktop's tray host the menu changed.
                 StateItem::Check { item, spec } => {
-                    item.set_checked(spec.is_active(state));
-                    item.set_text(spec.render(state));
+                    let active = spec.is_active(state);
+                    if item.is_checked() != active {
+                        item.set_checked(active);
+                    }
+                    let text = spec.render(state);
+                    if item.text() != text {
+                        item.set_text(text);
+                    }
                 }
                 StateItem::Status { item, spec } => {
-                    item.set_text(spec.render(state));
+                    let text = spec.render(state);
+                    if item.text() != text {
+                        item.set_text(text);
+                    }
                 }
             }
         }
@@ -61,26 +72,32 @@ impl PluginMenu {
             .sum();
     }
 
-    /// Throw away every runtime menu's contents and build them again
-    /// from what the plug-in prints now.
+    /// Rebuild the runtime menus whose rows have changed.
+    ///
+    /// **Only those, because a rebuild takes the menu away from under the
+    /// pointer.** Removing an open submenu's items closes it, and this
+    /// runs on a heartbeat: rebuilding every time threw whoever was
+    /// reading a draft back to the top of the tray every fifteen seconds.
+    /// A plug-in that could not be asked leaves its list as it stands, for
+    /// the same reason — one slow answer is not an emptied queue.
     ///
     /// Rebuilt whole rather than diffed: a menu that kept the items it
     /// recognised would have to decide what "the same row" means, and
     /// getting that wrong acts on the row above the one pointed at.
     fn refresh_lists(&mut self) {
-        if self.lists.is_empty() {
-            return;
-        }
-        self.row_routes.clear();
-        // Collected first so the borrow of `self.extensions` ends before
-        // the routes are written back.
-        let mut built: Vec<Vec<(MenuId, RowRoute)>> = Vec::new();
-
-        for list in &self.lists {
+        for list in &mut self.lists {
             let Some(ext) = self.extensions.get(list.ext) else {
                 continue;
             };
-            let rows = read_rows(ext, &list.spec.command);
+            let Some(rows) = read_rows(ext, &list.spec.command) else {
+                continue;
+            };
+            if list.shown.as_ref() == Some(&rows) {
+                continue;
+            }
+            for id in list.route_ids.drain(..) {
+                self.row_routes.remove(&id);
+            }
             clear_submenu(&list.root);
 
             if rows.is_empty() {
@@ -92,50 +109,35 @@ impl PluginMenu {
                 });
                 // Disabled, so it cannot open onto a blank rectangle.
                 list.root.set_enabled(false);
+                list.shown = Some(rows);
                 continue;
             }
             list.root
                 .set_text(count_label(&list.spec.label, rows.len()));
             list.root.set_enabled(true);
 
-            let mut routes = Vec::new();
-            for row in &rows {
-                // Each row is a submenu of its own: the label is all a
-                // menu row has space for; the detail waits one hover away.
-                let entry = Submenu::new(&row.label, true);
-                for detail in &row.details {
-                    let line = MenuItem::new(detail, false, None);
-                    let _ = entry.append(&line);
-                }
-                if !row.details.is_empty() && !list.spec.actions.is_empty() {
-                    let _ = entry.append(&PredefinedMenuItem::separator());
-                }
-                for action in &list.spec.actions {
-                    let item = MenuItem::new(&action.label, true, None);
-                    routes.push((
-                        item.id().clone(),
-                        (list.ext, action.command.clone(), row.id.clone()),
-                    ));
-                    let _ = entry.append(&item);
-                }
-                let _ = list.root.append(&entry);
-            }
-            if !list.spec.bulk.is_empty() {
-                let _ = list.root.append(&PredefinedMenuItem::separator());
-                for action in &list.spec.bulk {
-                    let item = MenuItem::new(&action.label, true, None);
-                    routes.push((
-                        item.id().clone(),
-                        (list.ext, action.command.clone(), String::new()),
-                    ));
-                    let _ = list.root.append(&item);
+            for entry in list_entries(&rows, &list.spec) {
+                match entry {
+                    ListEntry::Note(text) => {
+                        let _ = list.root.append(&MenuItem::new(text, false, None));
+                    }
+                    ListEntry::Separator => {
+                        let _ = list.root.append(&PredefinedMenuItem::separator());
+                    }
+                    ListEntry::Action {
+                        label,
+                        command,
+                        row,
+                    } => {
+                        let item = MenuItem::new(label, true, None);
+                        list.route_ids.push(item.id().clone());
+                        self.row_routes
+                            .insert(item.id().clone(), (list.ext, command, row));
+                        let _ = list.root.append(&item);
+                    }
                 }
             }
-            built.push(routes);
-        }
-
-        for routes in built {
-            self.row_routes.extend(routes);
+            list.shown = Some(rows);
         }
     }
 }

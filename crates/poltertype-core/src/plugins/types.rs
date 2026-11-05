@@ -83,8 +83,8 @@ pub struct TrayList {
     /// tab-separated form the pane's tick-box lists use: `id`, then a
     /// label, then any number of detail fields.
     pub command: String,
-    /// What may be done to one row. Each becomes an entry inside that
-    /// row's own submenu, under its details.
+    /// What may be done to one row. Each becomes an entry under that
+    /// row's details, on the list's own level.
     pub actions: Vec<TrayListAction>,
     /// What may be done to the whole list — emptying it, accepting all
     /// of it. Drawn once, below the rows, behind a separator.

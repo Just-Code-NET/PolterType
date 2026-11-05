@@ -3776,6 +3776,7 @@ dependencies = [
  "notify-rust",
  "opener",
  "parking_lot",
+ "png",
  "poltertype-ai",
  "poltertype-autostart",
  "poltertype-core",

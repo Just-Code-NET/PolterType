@@ -22,9 +22,13 @@ mod theme;
 mod types;
 mod update;
 mod view;
+mod view_about;
+mod view_general;
 mod view_plugins;
 mod view_setup;
+mod view_suggestions;
 mod view_tooltip_look;
+mod widgets;
 
 pub use run::{run, run_on};
 

@@ -19,3 +19,17 @@ pub(super) enum StateItem {
         spec: poltertype_core::plugins::TrayItem,
     },
 }
+
+/// One line of a runtime submenu, before it is a menu item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ListEntry {
+    /// A line to read: disabled, so it answers a hover with nothing.
+    Note(String),
+    /// A line to click. An empty `row` means the whole list.
+    Action {
+        label: String,
+        command: String,
+        row: String,
+    },
+    Separator,
+}

@@ -36,6 +36,11 @@ pub(crate) fn spawn_setup_ui(deps: SettingsCloseDeps) {
     spawn_settings_ui_on(deps, SettingsEntry::Setup)
 }
 
+/// Same, but opening on the About pane — the tray's "About" entry.
+pub(crate) fn spawn_about_ui(deps: SettingsCloseDeps) {
+    spawn_settings_ui_on(deps, SettingsEntry::About)
+}
+
 /// Whether a Settings child is running right now.
 ///
 /// The window is a subprocess and the tray had no memory of it, so

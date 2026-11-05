@@ -36,7 +36,7 @@ which the tray spawns as a child process.
 The two share nothing at runtime: the UI reads and writes
 `config.toml` on disk, and when it exits the tray sees
 `SettingsReloaded` and refreshes its caches. The named pane
-(`--setup`, `--plugins`) is the entire protocol between the two
+(`--setup`, `--about`, `--plugins`) is the entire protocol between the two
 processes.
 
 The subprocess boundary is not just a macOS workaround. A crash in the
@@ -359,9 +359,12 @@ draws the menu. A manifest can name its entries in advance, but not a
 queue — the things that arrived while nobody was looking — so a
 `tray_list` names a command whose *rows* are produced while the menu
 is being opened, in the same tab-separated form the pane's tick-box
-lists use. Each row becomes a submenu of its own: the label is what
-fits on one line, and the detail is one hover away, which is the only
-place in a tray menu detail can live at all.
+lists use. A row is not a submenu of its own: everything it says and
+everything that can be done to it sits flat in the list's one submenu,
+because a menu per row closes on any hover that strays across a
+neighbour. A few rows are drawn and the rest counted, and a list is
+rebuilt only when its rows change — a rebuild closes an open menu, and
+the heartbeat re-reads the rows every fifteen seconds.
 
 What a row can *do* comes from the manifest and nowhere else. The
 plug-in supplies the row's text, never its actions, and `{id}` is

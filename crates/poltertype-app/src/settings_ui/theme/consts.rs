@@ -43,3 +43,10 @@ pub const DARK: BrandPalette = BrandPalette {
 /// `MONOSPACE` is a family request, so it resolves to whatever the
 /// system has and bundles nothing.
 pub const FONT_MONO: Font = Font::MONOSPACE;
+
+/// The cyan of the just-code emblem. Fixed: it is their brand colour, and
+/// their mark keeps it byte-identical on a dark background too.
+pub const JUST_CODE_CYAN: iced::Color = rgb8(0x00, 0x9F, 0xE3);
+
+/// Side of the emblem as stored in `assets/`, in pixels.
+pub(super) const JUST_CODE_MARK_PX: u32 = 80;

@@ -9,6 +9,7 @@ use iced::{Subscription, Theme};
 use poltertype_core::settings::{Settings, SettingsStore};
 use poltertype_layout::LayoutId;
 
+use super::consts::*;
 use super::enums::*;
 use super::helpers::*;
 use super::theme;
@@ -20,6 +21,10 @@ pub struct SettingsApp {
     pub(super) config_path: PathBuf,
     pub(super) store: Arc<SettingsStore>,
     pub(super) pane: Pane,
+    /// Current width, kept because the panes change shape with it. Held
+    /// here rather than asked of a `responsive` widget: three levels of
+    /// the tree want the same answer.
+    pub(super) window_width: f32,
     /// OS dark-mode preference for `[general].ui_theme = "system"`,
     /// sampled once at window start (iced's own auto-detection misses
     /// the XDG portal — see [`super::system_theme`]). Not re-sampled
@@ -157,6 +162,7 @@ impl SettingsApp {
             config_path,
             store,
             pane: initial_pane,
+            window_width: WINDOW_SIZE.0,
             setup,
             layout_backend,
             setup_status: None,
@@ -212,13 +218,36 @@ impl SettingsApp {
         ThemeChoice::from_config(&self.settings.general.ui_theme)
     }
 
-    pub(super) fn theme(&self) -> Theme {
-        let dark = match self.theme_choice() {
+    pub(super) fn is_dark(&self) -> bool {
+        match self.theme_choice() {
             ThemeChoice::Light => false,
             ThemeChoice::Dark => true,
             ThemeChoice::System => self.system_prefers_dark,
-        };
-        if dark { theme::dark() } else { theme::light() }
+        }
+    }
+
+    pub(super) fn theme(&self) -> Theme {
+        if self.is_dark() {
+            theme::dark()
+        } else {
+            theme::light()
+        }
+    }
+
+    /// Whether the sidebar has given way to a drop-down.
+    pub(super) fn is_narrow(&self) -> bool {
+        self.window_width < NARROW_WINDOW
+    }
+
+    /// How wide a pane's content can be right now.
+    pub(super) fn content_width(&self) -> f32 {
+        let nav = if self.is_narrow() { 0.0 } else { NAV_WIDTH };
+        self.window_width - nav - PANE_GUTTERS
+    }
+
+    /// Whether form rows have to put their value under their label.
+    pub(super) fn stacked(&self) -> bool {
+        self.content_width() < STACK_BELOW
     }
 
     /// Brand tokens for the active theme — view code colours text
@@ -265,7 +294,10 @@ impl SettingsApp {
     /// keystroke in the window would allocate a `Message` and
     /// re-render.
     pub(super) fn subscription(&self) -> Subscription<Message> {
-        let close_sub = iced::window::close_requests().map(Message::WindowCloseRequested);
+        let close_sub = Subscription::batch([
+            iced::window::close_requests().map(Message::WindowCloseRequested),
+            iced::window::resize_events().map(|(_, size)| Message::WindowResized(size.width)),
+        ]);
 
         if self.capturing.is_none() {
             return close_sub;

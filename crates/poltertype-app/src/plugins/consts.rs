@@ -23,3 +23,7 @@ pub const ROW_ID_PLACEHOLDER: &str = "{id}";
 /// the substitution would come to disagree about what they are looking
 /// for.
 pub use poltertype_core::plugins::QUERY_PLACEHOLDER;
+
+/// How many rows a tray list draws at once. At three lines of words and
+/// two actions each, more than this overruns a laptop's screen height.
+pub(crate) const LIST_INLINE_ROWS: usize = 4;

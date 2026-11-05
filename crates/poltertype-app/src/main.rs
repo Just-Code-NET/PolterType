@@ -94,6 +94,7 @@ fn main() -> Result<()> {
             // The tray uses this when the keyboard hooks failed to
             // start, so the user lands on the one screen that helps.
             "--setup" => return settings_ui::run(true),
+            "--about" => return settings_ui::run_on(settings_ui::Pane::About),
             "--plugins" => {
                 return settings_ui::run_on(settings_ui::Pane::Plugins);
             }
@@ -524,7 +525,7 @@ fn main() -> Result<()> {
     };
     let item_update = updates_enabled.then(|| MenuItem::new("", true, None));
 
-    let item_about = MenuItem::new("", false, None);
+    let item_about = MenuItem::new("", true, None);
     let item_quit = MenuItem::new("", true, None);
     // Words a tooltip offered and lost, so the offer can be taken up
     // later (issue #38). Always here and always openable: an entry that
@@ -593,6 +594,7 @@ fn main() -> Result<()> {
     let layouts_id = item_layouts.id().clone();
     let reload_id = item_reload.id().clone();
     let pause_id = item_pause.id().clone();
+    let about_id = item_about.id().clone();
     let quit_id = item_quit.id().clone();
 
     // Initial icon: query the OS for the current layout so we don't
@@ -939,6 +941,18 @@ fn main() -> Result<()> {
                     }
                 } else if id == settings_ui_id {
                     spawn_settings_ui(SettingsCloseDeps {
+                        settings: Arc::clone(&settings_for_loop),
+                        layouts: Arc::clone(&layouts),
+                        data_dir: data_dir.clone(),
+                        user_wordlist_dir: user_wordlist_dir.clone(),
+                        dict_reload_handle: dict_reload_handle.handle(),
+                        profile_dict_cache: Arc::clone(&profile_dict_cache),
+                        profile_force_reapply: Arc::clone(&profile_force_reapply),
+                        reload_tx: cmd_tx_for_loop.clone(),
+                        proxy: settings_proxy.clone(),
+                    });
+                } else if id == about_id {
+                    spawn_about_ui(SettingsCloseDeps {
                         settings: Arc::clone(&settings_for_loop),
                         layouts: Arc::clone(&layouts),
                         data_dir: data_dir.clone(),

@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use super::enums::ListEntry;
 use std::path::PathBuf;
 
 use poltertype_core::plugins::{DiscoveredExtension, ExtensionManifest, PluginCommand, TrayItem};
@@ -299,4 +300,68 @@ fn the_count_reaches_the_title_with_or_without_a_placeholder() {
     // No placeholder: appended rather than dropped, because the whole
     // point of the count is not having to open the menu to see it.
     assert_eq!(count_label("Drafts waiting", 0), "Drafts waiting (0)");
+}
+
+fn tray_list() -> poltertype_core::plugins::TrayList {
+    let action = |label: &str, command: &str| poltertype_core::plugins::TrayListAction {
+        label: label.to_owned(),
+        command: command.to_owned(),
+    };
+    poltertype_core::plugins::TrayList {
+        label: "{} waiting".to_owned(),
+        empty_label: String::new(),
+        command: "list".to_owned(),
+        actions: vec![action("Send", "send"), action("Dismiss", "dismiss")],
+        bulk: vec![action("Clear", "clear")],
+    }
+}
+
+/// The complaint behind the flat layout: a menu per row means a hover that
+/// strays closes it. Every action has to be on the list's own level.
+#[test]
+fn every_row_shows_its_words_and_actions_on_one_level() {
+    let rows = super::parse_rows("a\tAnna\tfirst line\nb\tBoris\n");
+    let entries = super::rows::list_entries(&rows, &tray_list());
+    let note = |t: &str| ListEntry::Note(t.to_owned());
+    let act = |l: &str, c: &str, r: &str| ListEntry::Action {
+        label: l.to_owned(),
+        command: c.to_owned(),
+        row: r.to_owned(),
+    };
+    assert_eq!(
+        entries,
+        vec![
+            note("Anna"),
+            note("first line"),
+            act("Send", "send", "a"),
+            act("Dismiss", "dismiss", "a"),
+            ListEntry::Separator,
+            note("Boris"),
+            act("Send", "send", "b"),
+            act("Dismiss", "dismiss", "b"),
+            ListEntry::Separator,
+            act("Clear", "clear", ""),
+        ]
+    );
+}
+
+#[test]
+fn rows_past_the_limit_are_counted_and_the_bulk_actions_stay_reachable() {
+    let text: String = (0..7).map(|n| format!("id{n}\tRow {n}\n")).collect();
+    let rows = super::parse_rows(&text);
+    let entries = super::rows::list_entries(&rows, &tray_list());
+    let drawn = entries
+        .iter()
+        .filter(|e| matches!(e, ListEntry::Action { command, .. } if command == "send"))
+        .count();
+    assert_eq!(drawn, crate::plugins::consts::LIST_INLINE_ROWS);
+    assert!(entries.contains(&ListEntry::Action {
+        label: "Clear".to_owned(),
+        command: "clear".to_owned(),
+        row: String::new(),
+    }));
+    assert!(entries.iter().any(|e| matches!(
+        e,
+        ListEntry::Note(text) if text.contains('3')
+    )));
 }

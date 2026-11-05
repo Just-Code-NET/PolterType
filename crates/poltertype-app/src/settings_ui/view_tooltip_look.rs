@@ -7,14 +7,14 @@
 //! tray, so a saved change shows on the next one — nothing to restart.
 
 use iced::widget::{Button, Column, Container, Row, Space, Text};
-use iced::{Alignment, Element, Font, Length, Padding};
+use iced::{Alignment, Element, Length};
 use poltertype_core::i18n::tr;
 use poltertype_core::settings::{SuggestionSettings, TooltipSpot};
 
 use super::enums::*;
 use super::state::*;
 use super::theme;
-use super::view::section_title;
+use super::widgets::{form_row, section_title, stepper};
 
 /// The picker's cells, row by row as they appear on screen.
 const GRID: [[TooltipSpot; 3]; 3] = [
@@ -64,6 +64,7 @@ impl SettingsApp {
             ))
             .push(form_row(
                 b,
+                self.stacked(),
                 tr("suggestions.size", "Size"),
                 tr(
                     "suggestions.size_hint",
@@ -74,6 +75,7 @@ impl SettingsApp {
             ))
             .push(form_row(
                 b,
+                self.stacked(),
                 tr("suggestions.window_spot", "Place in the window"),
                 tr(
                     "suggestions.window_spot_hint",
@@ -85,6 +87,7 @@ impl SettingsApp {
             ))
             .push(form_row(
                 b,
+                self.stacked(),
                 tr("suggestions.window_margin", "Distance from the edge"),
                 tr(
                     "suggestions.window_margin_hint",
@@ -94,61 +97,6 @@ impl SettingsApp {
             ))
             .into()
     }
-}
-
-/// What the setting is on the left with its explanation under it, its
-/// value on the right — the window's form-row shape.
-fn form_row<'a>(
-    b: &'static theme::BrandPalette,
-    label: &'static str,
-    hint: &'static str,
-    control: Element<'a, Message>,
-) -> Element<'a, Message> {
-    Row::new()
-        .spacing(16)
-        .align_y(Alignment::Center)
-        .push(
-            Column::new()
-                .spacing(3)
-                .width(Length::Fill)
-                .push(Text::new(label).size(13))
-                .push(Text::new(hint).size(11).color(b.muted)),
-        )
-        .push(control)
-        .into()
-}
-
-/// `[−] value [+]`, with the buttons inert while suggestions are off —
-/// the same signal the pane's other steppers give.
-fn stepper<'a>(
-    enabled: bool,
-    value: String,
-    color: iced::Color,
-    down: Message,
-    up: Message,
-) -> Element<'a, Message> {
-    let step = |label: &'static str, msg: Message| {
-        let btn = Button::new(Text::new(label).size(12))
-            .style(theme::secondary)
-            .padding(Padding {
-                top: 4.0,
-                right: 10.0,
-                bottom: 4.0,
-                left: 10.0,
-            });
-        if enabled { btn.on_press(msg) } else { btn }
-    };
-    Row::new()
-        .spacing(8)
-        .align_y(Alignment::Center)
-        .push(step("−", down))
-        .push(
-            Container::new(Text::new(value).size(13).font(Font::MONOSPACE).color(color))
-                .width(Length::Fixed(56.0))
-                .align_x(Alignment::Center),
-        )
-        .push(step("+", up))
-        .into()
 }
 
 /// A miniature window: nine cells, the chosen one filled, its name

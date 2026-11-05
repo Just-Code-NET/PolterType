@@ -12,6 +12,7 @@ pub(crate) fn print_help() {
             poltertype                      start the tray app\n  \
             poltertype --settings           open the settings window\n  \
             poltertype --setup              open the settings window on the Setup pane\n  \
+            poltertype --about              open the settings window on the About pane\n  \
             poltertype --install-plugin DIR install a plug-in for this user\n  \
             poltertype --remove-plugin ID   remove a plug-in this user installed\n  \
             poltertype --plugin-strings ID  print a plug-in's translatable strings\n  \

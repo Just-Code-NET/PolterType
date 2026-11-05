@@ -106,6 +106,8 @@ impl PluginMenu {
                     ext: index,
                     spec: spec.clone(),
                     root,
+                    shown: None,
+                    route_ids: Vec::new(),
                 });
             }
 
