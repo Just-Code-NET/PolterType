@@ -519,11 +519,13 @@ filter by design. (On Wayland: `Ctrl+Shift+F9`, see above.)
 
 Two ways to configure:
 
-1. **Tray → "Settings…"** opens a real GUI (`iced 0.13` with the
-   lightweight `tiny-skia` renderer). Ten panes: **Setup**,
-   **Languages**, **Hotkeys**, **Commands**, **Wordlists**,
-   **General**, **Exceptions**, **Suggestions**, **Plugins**,
-   **About**.
+1. **Tray → "Settings…"** opens a real GUI (`iced 0.14` with the
+   lightweight `tiny-skia` renderer). Ten panes: **General**,
+   **Languages**, **Hotkeys**, **Suggestions**, **Commands**,
+   **Wordlists**, **Exceptions**, **Plugins**, **Setup**, **About**.
+   It opens on what most people change; the **Expert** switch at the
+   foot of the sidebar shows timings, thresholds, folders, the
+   Wordlists pane and a plug-in's advanced rows.
 2. **Tray → "Edit config.toml…"** opens the raw TOML file in your
    default editor — useful for what the GUI doesn't expose yet
    (creating a wordlist profile entry, listing `[[commands]]` in
