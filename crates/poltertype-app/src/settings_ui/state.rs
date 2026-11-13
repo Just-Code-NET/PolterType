@@ -156,6 +156,7 @@ impl SettingsApp {
 
         let setup =
             poltertype_input::setup::probe_setup(&store.snapshot().updates.local_signing_identity);
+        let advanced = settings.general.advanced_settings;
         Self {
             settings,
             os_layouts,
@@ -176,10 +177,14 @@ impl SettingsApp {
             exception_draft: String::new(),
             plugins: {
                 let data_dir = poltertype_core::resolve_data_dir().unwrap_or_default();
-                super::plugin_pane::load_all(
+                let mut panes = super::plugin_pane::load_all(
                     poltertype_core::plugins::extensions(&data_dir),
                     &plugin_config_root,
-                )
+                );
+                for pane in &mut panes {
+                    pane.advanced = advanced;
+                }
+                panes
             },
             ui_languages: {
                 let data_dir = poltertype_core::resolve_data_dir().unwrap_or_default();

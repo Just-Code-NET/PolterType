@@ -137,6 +137,10 @@ pub struct GeneralSettings {
     /// left it in is the state it starts in (issue #46) — and read
     /// back live, so setting it here pauses a running app too.
     pub paused: bool,
+    /// The Settings window shows advanced rows too — its own and every
+    /// plug-in's. Off by default: what most people change should not
+    /// sit among thresholds nobody needs to touch.
+    pub advanced_settings: bool,
 }
 
 impl Default for GeneralSettings {
@@ -150,6 +154,7 @@ impl Default for GeneralSettings {
             tray_icon: "color".into(),
             log_level: "info".into(),
             paused: false,
+            advanced_settings: false,
         }
     }
 }

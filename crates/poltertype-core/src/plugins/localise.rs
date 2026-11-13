@@ -100,6 +100,11 @@ fn visit_control(
     replace(&mut control.label, &format!("{path}.label"), f);
     replace(&mut control.help, &format!("{path}.help"), f);
     replace(&mut control.add_label, &format!("{path}.add"), f);
+    // Keyed by the group's own slug, not the section's: every section
+    // naming a group has to come out with the same translation, or the
+    // nav would split one group in two.
+    let group = format!("pane.group.{}", slug(&control.group));
+    replace(&mut control.group, &group, f);
     for option in &mut control.options {
         visit_option(option, path, f);
     }

@@ -224,6 +224,10 @@ pub enum Message {
     PluginListAll(usize, usize, bool),
     /// A section was chosen in the plug-in's own navigation list.
     PluginSectionSelected(usize, usize),
+    /// Text typed into a plug-in's settings search.
+    PluginSearchChanged(usize, String),
+    /// The window's "Advanced settings" switch.
+    AdvancedToggled(bool),
     LanguageToggled(LayoutId, bool),
     LanguageIgnoreToggled(LayoutId, bool),
     AutostartToggled(bool),

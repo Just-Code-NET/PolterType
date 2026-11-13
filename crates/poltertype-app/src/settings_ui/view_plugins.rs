@@ -31,7 +31,7 @@ use super::consts::{
     SECTION_LIST_BELOW, SECTION_NAV, STACK_BELOW, SUGGEST_ROWS, VALUE_COLUMN,
 };
 use super::enums::*;
-use super::plugin_pane::{CommandOutput, Slot};
+use super::plugin_pane::{CommandOutput, NavEntry, Slot};
 use super::state::*;
 use super::theme::{self, FONT_MONO, font_bold};
 use super::widgets::{action, button_label, button_run, chip, pane_header};
@@ -206,38 +206,138 @@ impl SettingsApp {
             .into()
     }
 
-    /// The plug-in's own section list, in the window's nav idiom.
-    fn section_nav<'a>(&'a self, plugin: usize, sections: &[usize]) -> Element<'a, Message> {
+    /// The plug-in's own section list, in the window's nav idiom, with
+    /// the search over it.
+    ///
+    /// A group is one line until the section on screen is one of its
+    /// own; then it opens under its heading. Seven chat applications
+    /// listed flat pushed everything after them off the window.
+    fn section_nav<'a>(&'a self, plugin: usize, _sections: &[usize]) -> Element<'a, Message> {
+        let b = self.brand();
         let pane = &self.plugins[plugin];
-        let mut nav = Column::new().spacing(2).width(Length::Fixed(SECTION_NAV));
-        for control in sections {
-            let Some(declared) = pane.control(*control) else {
-                continue;
-            };
-            nav = nav.push(
-                Button::new(Text::new(declared.label.as_str()).size(12))
-                    .style(theme::nav(pane.selected_section() == Some(*control)))
-                    .width(Length::Fill)
-                    .padding(Padding {
-                        top: 6.0,
-                        right: 10.0,
-                        bottom: 6.0,
-                        left: 10.0,
-                    })
-                    .on_press(Message::PluginSectionSelected(plugin, *control)),
-            );
+        let selected = if pane.searching() {
+            None
+        } else {
+            pane.selected_section()
+        };
+        let item = |label: String, active: bool, indent: f32, target: usize| {
+            Button::new(Text::new(label).size(12))
+                .style(theme::nav(active))
+                .width(Length::Fill)
+                .padding(Padding {
+                    top: 6.0,
+                    right: 10.0,
+                    bottom: 6.0,
+                    left: 10.0 + indent,
+                })
+                .on_press(Message::PluginSectionSelected(plugin, target))
+        };
+        let mut nav = Column::new().spacing(2).width(Length::Fill);
+        for entry in pane.nav_entries() {
+            match entry {
+                NavEntry::Section(index) => {
+                    let Some(declared) = pane.control(index) else {
+                        continue;
+                    };
+                    nav = nav.push(item(
+                        declared.label.clone(),
+                        selected == Some(index),
+                        0.0,
+                        index,
+                    ));
+                }
+                NavEntry::Group { label, sections } => {
+                    let open = selected.is_some_and(|s| sections.contains(&s));
+                    let Some(first) = sections.first().copied() else {
+                        continue;
+                    };
+                    let chevron = if open { "▾" } else { "▸" };
+                    nav = nav.push(
+                        Button::new(
+                            Row::new()
+                                .spacing(6)
+                                .push(
+                                    Text::new(label)
+                                        .size(12)
+                                        .font(if open { font_bold() } else { theme::font_ui() })
+                                        .width(Length::Fill),
+                                )
+                                .push(Text::new(chevron).size(11).color(b.muted)),
+                        )
+                        .style(theme::nav(false))
+                        .width(Length::Fill)
+                        .padding(Padding {
+                            top: 6.0,
+                            right: 10.0,
+                            bottom: 6.0,
+                            left: 10.0,
+                        })
+                        .on_press(Message::PluginSectionSelected(plugin, first)),
+                    );
+                    if open {
+                        for index in sections {
+                            let Some(declared) = pane.control(index) else {
+                                continue;
+                            };
+                            nav = nav.push(item(
+                                declared.label.clone(),
+                                selected == Some(index),
+                                12.0,
+                                index,
+                            ));
+                        }
+                    }
+                }
+            }
         }
         // A plug-in can declare more sections than a window has height,
         // and a list that clips strands the ones below the edge. No
         // visible bar: the settings beside it own the pane's scrollbar.
-        Scrollable::new(nav)
+        let list = Scrollable::new(nav)
             .direction(iced::widget::scrollable::Direction::Vertical(
                 iced::widget::scrollable::Scrollbar::new()
                     .width(0)
                     .scroller_width(0),
             ))
+            .width(Length::Fill)
+            .height(self.pane_height());
+        Column::new()
+            .spacing(10)
             .width(Length::Fixed(SECTION_NAV))
-            .height(self.pane_height())
+            .push(self.search_box(plugin))
+            .push(list)
+            .into()
+    }
+
+    /// The pane's settings search.
+    fn search_box(&self, plugin: usize) -> Element<'_, Message> {
+        let pane = &self.plugins[plugin];
+        let input = TextInput::new(tr("plugins.search", "Search settings…"), &pane.search)
+            .style(theme::input)
+            .size(12)
+            .padding(Padding {
+                top: 6.0,
+                right: 8.0,
+                bottom: 6.0,
+                left: 8.0,
+            })
+            .width(Length::Fill)
+            .on_input(move |text| Message::PluginSearchChanged(plugin, text));
+        // The same tree whether or not anything is typed: wrapping the
+        // box in a row on the first character rebuilt it, and the focus
+        // went with it after one letter.
+        Row::new()
+            .spacing(4)
+            .align_y(Alignment::Center)
+            .push(input)
+            .push(
+                action(
+                    "✕",
+                    pane.searching()
+                        .then(|| Message::PluginSearchChanged(plugin, String::new())),
+                )
+                .style(theme::link),
+            )
             .into()
     }
 
@@ -246,15 +346,16 @@ impl SettingsApp {
         let pane = &self.plugins[plugin];
         let named: Vec<(String, usize)> = sections
             .iter()
-            .filter_map(|c| pane.control(*c).map(|d| (d.label.clone(), *c)))
+            .map(|c| (pane.section_path(*c), *c))
             .collect();
         let labels: Vec<String> = named.iter().map(|(label, _)| label.clone()).collect();
         let selected = pane
             .selected_section()
+            .filter(|_| !pane.searching())
             .and_then(|c| named.iter().find(|(_, control)| *control == c))
             .map(|(label, _)| label.clone());
         let fallback = sections.first().copied().unwrap_or_default();
-        PickList::new(labels, selected, move |picked: String| {
+        let picker = PickList::new(labels, selected, move |picked: String| {
             let control = named
                 .iter()
                 .find(|(label, _)| *label == picked)
@@ -263,23 +364,45 @@ impl SettingsApp {
         })
         .text_size(13)
         .style(theme::pick_list)
-        .width(Length::Fill)
-        .into()
+        .width(Length::Fill);
+        Column::new()
+            .spacing(8)
+            .push(self.search_box(plugin))
+            .push(picker)
+            .into()
     }
 
     /// Every control on show: the ones above the first section, then
-    /// the selected section's own.
+    /// the selected section's own — or, while searching, every match
+    /// under the name of the section it lives in.
     fn plugin_controls(&self, plugin: usize) -> Column<'_, Message> {
+        let b = self.brand();
         let pane = &self.plugins[plugin];
+        let searching = pane.searching();
         let mut column = Column::new().spacing(13);
         // Buttons declared next to each other are one row of actions:
         // stacked, three of them cost a third of the page and read as
         // three unrelated decisions. A run, so a label too long for the
         // line moves the button down instead of crushing it.
         let mut actions: Vec<Element<'_, Message>> = Vec::new();
+        let mut last_section: Option<Option<usize>> = None;
+        let mut found = 0usize;
         for (index, control) in pane.ext.manifest.pane.iter().enumerate() {
             if !pane.is_visible(index) {
                 continue;
+            }
+            if searching {
+                let section = pane.section_of(index);
+                if last_section != Some(section) {
+                    if !actions.is_empty() {
+                        column = column.push(button_run(std::mem::take(&mut actions)));
+                    }
+                    if let Some(section) = section {
+                        column = column.push(self.search_crumb(plugin, section));
+                    }
+                    last_section = Some(section);
+                }
+                found += 1;
             }
             if control.kind == ControlKind::Button {
                 actions.push(self.plugin_button(plugin, control));
@@ -290,11 +413,111 @@ impl SettingsApp {
             }
             column = column.push(self.plugin_control(plugin, index, control));
         }
-        if actions.is_empty() {
-            column
-        } else {
-            column.push(button_run(actions))
+        if !actions.is_empty() {
+            column = column.push(button_run(actions));
         }
+
+        if searching {
+            let jumps = pane.search_jumps();
+            if !jumps.is_empty() {
+                column = column.push(
+                    Text::new(tr(
+                        "plugins.search_elsewhere",
+                        "Also found — open the section to see it:",
+                    ))
+                    .size(12)
+                    .color(b.muted),
+                );
+                for (section, control) in jumps {
+                    let label = pane.control(control).map_or("", |c| c.label.as_str());
+                    column = column.push(
+                        Button::new(
+                            Column::new()
+                                .spacing(2)
+                                .push(Text::new(label).size(13).color(b.ink))
+                                .push(
+                                    Text::new(pane.section_path(section))
+                                        .size(11)
+                                        .color(b.muted),
+                                ),
+                        )
+                        .style(theme::nav(false))
+                        .width(Length::Fill)
+                        .padding(Padding {
+                            top: 6.0,
+                            right: 10.0,
+                            bottom: 6.0,
+                            left: 10.0,
+                        })
+                        .on_press(Message::PluginSectionSelected(plugin, section)),
+                    );
+                    found += 1;
+                }
+            }
+            if found == 0 {
+                column = column.push(
+                    Text::new(tr("plugins.search_nothing", "No setting matches that."))
+                        .size(13)
+                        .color(b.muted),
+                );
+            }
+            return column;
+        }
+
+        let hidden = pane.hidden_advanced();
+        if hidden > 0 {
+            column = column.push(
+                Row::new()
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .push(
+                        Text::new(tr_args(
+                            "plugins.advanced_hidden",
+                            "{} expert settings hidden here.",
+                            &[&hidden.to_string()],
+                        ))
+                        .size(12)
+                        .color(b.muted)
+                        .width(Length::Fill),
+                    )
+                    .push(action(
+                        tr("plugins.show_advanced", "Turn on Expert"),
+                        Some(Message::AdvancedToggled(true)),
+                    )),
+            );
+        }
+        column
+    }
+
+    /// Where a search result lives, and the way there.
+    fn search_crumb(&self, plugin: usize, section: usize) -> Element<'_, Message> {
+        let b = self.brand();
+        let pane = &self.plugins[plugin];
+        let advanced = pane.control(section).is_some_and(|c| c.advanced);
+        let mut row = Row::new().spacing(8).align_y(Alignment::Center).push(
+            Button::new(
+                Text::new(format!("{} ›", pane.section_path(section)))
+                    .size(12)
+                    .font(font_bold())
+                    .color(b.ink),
+            )
+            .style(theme::link)
+            .padding(0)
+            .on_press(Message::PluginSectionSelected(plugin, section)),
+        );
+        if advanced {
+            row = row.push(
+                Text::new(tr("plugins.advanced_tag", "expert"))
+                    .size(11)
+                    .color(b.muted),
+            );
+        }
+        Column::new()
+            .spacing(4)
+            .push(Space::new().height(4))
+            .push(row)
+            .push(rule::horizontal(1).style(theme::hairline))
+            .into()
     }
 
     /// One action button.

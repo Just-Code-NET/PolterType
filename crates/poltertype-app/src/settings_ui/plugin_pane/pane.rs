@@ -82,6 +82,13 @@ pub struct PluginPane {
     /// never writes what you searched for to disk" a property of the
     /// code rather than a promise.
     pub(super) queries: std::collections::HashMap<usize, String>,
+    /// Whether rows and sections marked `advanced` are on screen —
+    /// the window's own switch, mirrored here so every visibility
+    /// question is answered in one place.
+    pub advanced: bool,
+    /// What is typed into the pane's settings search. Like `queries`,
+    /// never written anywhere.
+    pub search: String,
 }
 
 impl PluginPane {
@@ -132,6 +139,8 @@ impl PluginPane {
             record_edits: std::collections::HashMap::new(),
             queries: std::collections::HashMap::new(),
             running_action: None,
+            advanced: false,
+            search: String::new(),
         };
         pane.reload_arrays();
         pane.reload_records();

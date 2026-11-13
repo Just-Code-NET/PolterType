@@ -17,7 +17,8 @@ use super::widgets::{
 impl SettingsApp {
     pub(super) fn view_suggestions(&self) -> Element<'_, Message> {
         let b = self.brand();
-        Column::new()
+        let advanced = self.settings.general.advanced_settings;
+        let mut page = Column::new()
             .spacing(14)
             .push(pane_header(
                 b,
@@ -30,9 +31,11 @@ impl SettingsApp {
                 )
                 .to_owned(),
             ))
-            .push(card(self.suggestions_tooltip()))
-            .push(card(self.tooltip_look_card()))
-            .push(card(self.suggestions_keyboard()))
+            .push(card(self.suggestions_tooltip()));
+        if advanced {
+            page = page.push(card(self.tooltip_look_card()));
+        }
+        page.push(card(self.suggestions_keyboard()))
             .push(tip(
                 b,
                 tr(
@@ -63,7 +66,7 @@ impl SettingsApp {
             anchor = anchor.on_toggle(Message::SuggestionCaretAnchorToggled);
         }
 
-        Column::new()
+        let column = Column::new()
             .spacing(14)
             .push(section_title(b, tr("suggestions.tooltip", "Tooltip")))
             .push(switch(
@@ -73,7 +76,11 @@ impl SettingsApp {
                     "Show suggestions for mistyped words",
                 ),
                 Message::SuggestionsToggled,
-            ))
+            ));
+        if !self.settings.general.advanced_settings {
+            return column;
+        }
+        column
             .push(form_row(
                 b,
                 self.stacked(),

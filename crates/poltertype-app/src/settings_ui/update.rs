@@ -220,6 +220,22 @@ impl SettingsApp {
                     self.load_pending_outputs(),
                 ]);
             }
+            Message::PluginSearchChanged(plugin, text) => {
+                if let Some(pane) = self.plugins.get_mut(plugin) {
+                    pane.search = text;
+                }
+                // Clearing the search lands back on a section whose
+                // lists may never have been asked for.
+                return self.load_pending_outputs();
+            }
+            Message::AdvancedToggled(on) => {
+                self.settings.general.advanced_settings = on;
+                self.sync_advanced();
+                // A section that only exists in the advanced view may
+                // have been on screen, and the one it falls back to may
+                // be one nothing has been asked for yet.
+                return self.load_pending_outputs();
+            }
             Message::PluginListToggled(plugin, control, member, on) => {
                 if let Some(pane) = self.plugins.get_mut(plugin) {
                     pane.set_array_member(control, &member, on);
@@ -548,6 +564,7 @@ impl SettingsApp {
             Message::Reload => match SettingsStore::load_or_default() {
                 Ok(fresh) => {
                     self.settings = fresh.snapshot();
+                    self.sync_advanced();
                     // Before the banner below is phrased, so it is
                     // already in the language the file asks for.
                     self.apply_ui_language();
@@ -862,6 +879,14 @@ impl SettingsApp {
 
     /// Ask for every command-backed control on this pane that has not
     /// been asked yet.
+    /// Mirror the window's advanced switch into every plug-in pane.
+    pub(super) fn sync_advanced(&mut self) {
+        let on = self.settings.general.advanced_settings;
+        for pane in &mut self.plugins {
+            pane.advanced = on;
+        }
+    }
+
     pub(super) fn load_pending_outputs(&mut self) -> Task<Message> {
         let wanted: Vec<usize> = (0..self.plugins.len())
             .filter(|i| {

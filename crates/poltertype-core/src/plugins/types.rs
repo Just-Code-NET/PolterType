@@ -240,6 +240,19 @@ pub struct PaneControl {
     /// are given. Required as soon as there is an action; a row has no
     /// identity of its own that a plug-in would recognise.
     pub id_field: String,
+
+    /// For a [`ControlKind::Section`]: the heading it is listed under in
+    /// the section list. Sections sharing a group fold into one entry
+    /// that opens on the section in front, so a plug-in with a section
+    /// per chat application shows "Chats" once instead of seven times.
+    /// Empty leaves the section at the top level.
+    pub group: String,
+
+    /// Hidden while the window shows basic settings only. On a section
+    /// it hides the whole section; on a control, just that row. Search
+    /// still finds it — a setting nobody can find is worse than one
+    /// that takes a click to reveal.
+    pub advanced: bool,
 }
 
 impl Default for PaneControl {
@@ -255,6 +268,8 @@ impl Default for PaneControl {
             add_label: String::new(),
             actions: Vec::new(),
             id_field: String::new(),
+            group: String::new(),
+            advanced: false,
         }
     }
 }

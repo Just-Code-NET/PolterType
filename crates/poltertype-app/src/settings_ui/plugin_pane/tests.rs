@@ -973,3 +973,104 @@ fn what_is_typed_into_a_query_box_never_reaches_the_config_file() {
         "the question was written to the plug-in's config: {written}"
     );
 }
+
+fn grouped(label: &str, group: &str) -> PaneControl {
+    PaneControl {
+        group: group.to_owned(),
+        ..section(label)
+    }
+}
+
+fn advanced(mut c: PaneControl) -> PaneControl {
+    c.advanced = true;
+    c
+}
+
+#[test]
+fn sections_sharing_a_group_are_one_nav_entry() {
+    let root = scratch("groups");
+    let pane = PluginPane::load(
+        extension(vec![
+            section("Mode"),
+            grouped("Element", "Chats"),
+            section("Model"),
+            grouped("Slack", "Chats"),
+        ]),
+        &root,
+    );
+    assert_eq!(
+        pane.nav_entries(),
+        vec![
+            NavEntry::Section(0),
+            NavEntry::Group {
+                label: "Chats".to_owned(),
+                sections: vec![1, 3],
+            },
+            NavEntry::Section(2),
+        ]
+    );
+    assert_eq!(pane.section_path(3), "Chats › Slack");
+}
+
+#[test]
+fn the_basic_view_hides_advanced_rows_and_sections() {
+    let root = scratch("advanced");
+    let mut pane = PluginPane::load(
+        extension(vec![
+            section("Mode"),
+            control(ControlKind::Toggle, "act.enabled"),
+            advanced(control(ControlKind::Number, "act.gap_secs")),
+            advanced(section("Tuning")),
+            control(ControlKind::Number, "capture.episode_gap_secs"),
+        ]),
+        &root,
+    );
+    assert!(pane.is_visible(1));
+    assert!(!pane.is_visible(2), "an advanced row waits for the switch");
+    assert_eq!(pane.hidden_advanced(), 1, "and says that it is there");
+    assert_eq!(
+        pane.sections(),
+        vec![0],
+        "an advanced section is not offered"
+    );
+
+    // A section chosen in the advanced view falls back once it is gone,
+    // rather than leaving the page blank.
+    pane.advanced = true;
+    pane.select_section(3);
+    assert!(pane.is_visible(4));
+    pane.advanced = false;
+    assert_eq!(pane.selected_section(), Some(0));
+    assert!(!pane.is_visible(4));
+}
+
+#[test]
+fn search_reaches_every_section_but_asks_no_plugin_anything() {
+    let root = scratch("search");
+    let mut pane = PluginPane::load(
+        extension(vec![
+            section("Mode"),
+            control(ControlKind::Toggle, "act.enabled"),
+            grouped("Element", "Chats"),
+            advanced(control(ControlKind::Number, "chat.poll_secs")),
+            listed("chat.rooms"),
+        ]),
+        &root,
+    );
+    pane.search = "CHATS poll".to_owned();
+    assert!(!pane.is_visible(1));
+    assert!(
+        pane.is_visible(3),
+        "found by its group's name, advanced or not, in another section"
+    );
+
+    // A list would have to read the chat client to draw itself: it is
+    // offered as a way into its section, and nothing is asked for it.
+    pane.search = "rooms".to_owned();
+    assert!(!pane.is_visible(4));
+    assert_eq!(pane.search_jumps(), vec![(2, 4)]);
+    assert!(pane.unasked_commands().is_empty());
+
+    pane.select_section(2);
+    assert!(!pane.searching(), "choosing a section ends the search");
+}

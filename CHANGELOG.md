@@ -12,6 +12,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
   opens Settings on the About pane, and `poltertype --about` does the same.
 - **The About pane names who makes PolterType**, with a link to
   just-code.net, and is laid out again around that.
+- **Basic and expert settings.** Settings opens on what most people
+  change; timings, thresholds, folders and the wordlist editor appear under
+  the *Expert* switch at the foot of the sidebar, which is remembered on
+  Save.
+- **A plug-in's settings can be searched and grouped.** A search box over
+  its section list finds a setting in any section, advanced or not.
+  Sections can share a `group`, shown as one entry that opens on the
+  section in front, and any row or section can be marked `advanced`.
 
 ### Changed
 

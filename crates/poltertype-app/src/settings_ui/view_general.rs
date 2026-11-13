@@ -16,7 +16,8 @@ use super::widgets::{
 impl SettingsApp {
     pub(super) fn view_general(&self) -> Element<'_, Message> {
         let b = self.brand();
-        Column::new()
+        let advanced = self.settings.general.advanced_settings;
+        let mut page = Column::new()
             .spacing(14)
             .push(pane_header(
                 b,
@@ -28,11 +29,17 @@ impl SettingsApp {
                 .to_owned(),
             ))
             .push(card(self.general_behaviour()))
-            .push(card(self.general_timing()))
             .push(card(self.general_appearance()))
-            .push(card(self.general_updates()))
-            .push(card(self.general_folders()))
-            .into()
+            .push(card(self.general_updates()));
+        // Timing and folders are for the one person in fifty whose
+        // remapper drops keys or who wants the log file; everybody
+        // else only has to read past them.
+        if advanced {
+            page = page
+                .push(card(self.general_timing()))
+                .push(card(self.general_folders()));
+        }
+        page.into()
     }
 
     fn general_behaviour(&self) -> Column<'_, Message> {
@@ -60,7 +67,7 @@ impl SettingsApp {
             .collect(),
         );
 
-        Column::new()
+        let mut column = Column::new()
             .spacing(12)
             .push(section_title(b, tr("general.behaviour", "Behaviour")))
             .push(choice_block(
@@ -97,15 +104,18 @@ impl SettingsApp {
                     "Show a 2-second system notification on auto-switch",
                 ),
                 Message::ShowNotificationsToggled,
-            ))
-            .push(switch(
+            ));
+        if g.advanced_settings {
+            column = column.push(switch(
                 e.suppress_in_identifiers,
                 tr(
                     "general.skip_auto_switch_on",
                     "Skip auto-switch on identifiers (foo_bar, snake_case, …)",
                 ),
                 Message::SuppressInIdentifiersToggled,
-            ))
+            ));
+        }
+        column
     }
 
     fn general_timing(&self) -> Column<'_, Message> {
@@ -289,8 +299,9 @@ impl SettingsApp {
                     "Download new versions automatically, install on restart",
                 ),
                 Message::AutoUpdateToggled,
-            ))
-            .push(form_row(
+            ));
+        if self.settings.general.advanced_settings {
+            updates = updates.push(form_row(
                 b,
                 self.stacked(),
                 tr("general.check_every_hours", "Check every (hours)"),
@@ -304,7 +315,9 @@ impl SettingsApp {
                     Message::UpdateIntervalDelta(-1),
                     Message::UpdateIntervalDelta(1),
                 ),
-            ))
+            ));
+        }
+        updates = updates
             .push(
                 Text::new(tr(
                     "general.updates_disclosure",

@@ -42,6 +42,7 @@ mod values;
 pub use enums::{CommandOutput, Typing};
 pub use helpers::load_all;
 pub use pane::PluginPane;
+pub use sections::NavEntry;
 pub use types::Slot;
 
 #[cfg(test)]

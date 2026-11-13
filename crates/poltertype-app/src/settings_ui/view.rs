@@ -120,6 +120,12 @@ impl SettingsApp {
             vec![(tr("nav.plugins", "Plug-ins"), Pane::Plugins)],
             vec![(tr("nav.about", "About"), Pane::About)],
         ];
+        // Wordlists edits the detector's own dictionaries — nobody's
+        // first stop. It stays listed while it is the open pane, so
+        // switching advanced off never strands someone mid-edit.
+        if !self.settings.general.advanced_settings && self.pane != Pane::Wordlists {
+            groups[0].retain(|(_, pane)| *pane != Pane::Wordlists);
+        }
         if attention {
             groups.insert(0, vec![setup]);
         } else {
@@ -198,6 +204,10 @@ impl SettingsApp {
                         .height(Length::Fill),
                 )
                 .push(Space::new().height(8))
+                .push(rule::horizontal(1).style(theme::hairline))
+                .push(Space::new().height(8))
+                .push(self.advanced_switch())
+                .push(Space::new().height(8))
                 .push(
                     Text::new(concat!("v", env!("CARGO_PKG_VERSION")))
                         .size(11)
@@ -208,6 +218,18 @@ impl SettingsApp {
         .height(Length::Fill)
         .style(theme::sidebar)
         .into()
+    }
+
+    /// The window's one basic/advanced switch. Every pane and every
+    /// plug-in reads it, so it lives with the navigation rather than on
+    /// any one page.
+    fn advanced_switch(&self) -> Element<'_, Message> {
+        Checkbox::new(self.settings.general.advanced_settings)
+            .label(tr("nav.advanced", "Expert"))
+            .text_size(12)
+            .size(14)
+            .on_toggle(Message::AdvancedToggled)
+            .into()
     }
 
     /// The sidebar's narrow-window form: one drop-down instead of a
@@ -235,7 +257,8 @@ impl SettingsApp {
                 .spacing(14)
                 .align_y(Alignment::Center)
                 .push(self.brand_row())
-                .push(picker),
+                .push(picker)
+                .push(self.advanced_switch()),
         )
         .padding(Padding {
             top: 10.0,
