@@ -18,7 +18,7 @@ typed on an English layout comes out as `ma;ana` — PolterType fixes the
 word the moment it ends and switches the layout with it, so `por la
 tarde` lands correctly as typed.*
 
-> **Status: v0.39.0**, out of beta since v0.1.0. Windows, macOS and
+> **Status: v0.40.0**, out of beta since v0.1.0. Windows, macOS and
 > Linux (Wayland and X11, on the desktops in the table below) all
 > correct words end to end, and the spelling-suggestions tooltip
 > renders on all three. Installers are **unsigned**, so first launch
@@ -483,8 +483,8 @@ explicitly:
 
 For specialty words the engine doesn't know yet (project-specific
 terms, slang, brand names), the easiest path is the **Wordlists**
-pane in the Settings window — pick a layout, type words one per
-line, hit Save.
+pane in the Settings window — turn on **Expert** at the foot of its
+sidebar to see it, pick a layout, type words one per line, hit Save.
 
 The same files live under `<config-dir>/poltertype/wordlists/`
 if you'd rather edit them by hand (the Wordlists pane writes to

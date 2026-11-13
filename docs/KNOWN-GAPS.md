@@ -1,4 +1,4 @@
-# Known gaps (as of v0.39.0)
+# Known gaps (as of v0.40.0)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,15 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.40.0 pass actually checked (2026-11-13).** This release
+changes the Settings window and nothing that corrects a word. The
+window was looked at on Hyprland at 960, 760 and 520 px wide: the
+basic view, the Expert switch, a plug-in pane's grouped section list,
+its search (including a match that only opens its section) and the
+narrow-window picker. Tests and both clippy passes ran on Linux;
+Windows and macOS were not run. No bullet below changed state, and
+none was re-measured.
 
 **What the 0.39.0 pass actually checked (2026-11-04).** Arabic in a
 real session, in the desktop-matrix guest on openbox X11, against xterm

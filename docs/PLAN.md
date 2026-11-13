@@ -1,7 +1,7 @@
 # PolterType — Project Plan
 
 > A living roadmap. Updated as implementation proceeds.
-> Created: 2026-05-02. Last updated: 2026-11-04 (v0.39.0).
+> Created: 2026-05-02. Last updated: 2026-11-13 (v0.40.0).
 
 > **How to read this document.** This is a **plan**, not a description
 > of the implementation: wherever the code has diverged from the
@@ -359,6 +359,9 @@ paused = false             # auto-switch off — the General pane's
                            # "Manual only". Written by the app itself
                            # every time you pause or resume, and read
                            # back live — see DECISIONS, 2026-08-29
+advanced_settings = false  # the sidebar's Expert switch: show timings,
+                           # thresholds, folders, the Wordlists pane and
+                           # every plug-in row marked advanced
 
 [languages]
 active   = ["en-US", "uk-UA"]
@@ -888,7 +891,7 @@ Levels:
 
 ## 10. Roadmap
 
-> **Status as of v0.39.0 (2026-11-04).** Phases 0–8 are, in their core
+> **Status as of v0.40.0 (2026-11-13).** Phases 0–8 are, in their core
 > parts, complete and shipped; `CHANGELOG.md` is the release-by-release
 > record and does not need repeating here. Items that are **not** done
 > are deliberately left as
