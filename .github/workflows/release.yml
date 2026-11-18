@@ -63,29 +63,41 @@ jobs:
   # ─── Linux: AppImage (x86_64 + aarch64) ──────────────────────────────
   #
   # A matrix here and not three jobs, unlike the OS split below: the
-  # steps are byte-for-byte the same, only the runner and the triple
-  # change. Both build natively — GitHub's `ubuntu-24.04-arm` runners
-  # are free for public repositories, and native beats cross-compiling
-  # for anything that links system libraries (GTK, X11, Wayland) and
-  # then has to be packaged by a tool that is itself an AppImage.
+  # steps are byte-for-byte the same, only the runner, suffix and triple
+  # change.
   #
-  # aarch64 is the *only* extra artifact we take on. Every installer is
-  # a support surface — a build to keep green, a download to explain,
-  # a self-update path to get right — so armv7, ARM Windows and the
-  # rest stay out until someone turns up with the hardware and the
-  # demand. `poltertype-update::platform_key()` and the `latest.json`
+  # For x86_64, we provide two builds:
+  #   1. A baseline/compatible AppImage built on ubuntu-24.04 (GLIBC 2.39,
+  #      x86-64-v1/v2 compatible). Runs cleanly on Ubuntu 24.04+, Debian,
+  #      Arch, CachyOS and older CPUs without AVX2 (issues #87, #88).
+  #      This is the primary artifact referenced in latest.json.
+  #   2. A modern AppImage built on ubuntu-latest (Ubuntu 26.04+, GLIBC 2.43).
+  #
+  # aarch64 is built natively on ubuntu-24.04-arm.
+  # `poltertype-update::platform_key()` and the `latest.json`
   # step below must always name exactly the set published here.
   appimage:
-    name: AppImage (${{ matrix.arch }})
+    name: AppImage (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x86_64
+          - name: x86_64
+            arch: x86_64
+            runner: ubuntu-24.04
+            suffix: ""
+            upload-key: x86_64
+          - name: x86_64-glibc2.43
+            arch: x86_64
             runner: ubuntu-latest
-          - arch: aarch64
+            suffix: "-glibc2.43"
+            upload-key: x86_64-glibc2.43
+          - name: aarch64
+            arch: aarch64
             runner: ubuntu-24.04-arm
+            suffix: ""
+            upload-key: aarch64
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -128,14 +140,15 @@ jobs:
         env:
           VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.0.0-dev' }}
           ARCH: ${{ matrix.arch }}
+          SUFFIX: ${{ matrix.suffix }}
           ICON_PNG: target/dist/icon-256.png
           OUT_DIR: target/dist
         run: bash installers/linux/build-appimage.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: appimage-${{ matrix.arch }}
-          path: target/dist/poltertype-*-${{ matrix.arch }}.AppImage
+          name: appimage-${{ matrix.upload-key }}
+          path: target/dist/poltertype-*-${{ matrix.arch }}${{ matrix.suffix }}.AppImage
           if-no-files-found: error
 
   # ─── macOS: universal DMG ────────────────────────────────────────────
@@ -370,6 +383,7 @@ jobs:
         with:
           files: |
             dist/poltertype-*-x86_64.AppImage
+            dist/poltertype-*-x86_64-glibc2.43.AppImage
             dist/poltertype-*-aarch64.AppImage
             dist/poltertype-*-universal-apple-darwin.dmg
             dist/poltertype-*-x86_64-pc-windows-msvc.msi
@@ -412,9 +426,11 @@ jobs:
               Settings — again after every update, since without a
               Developer ID macOS identifies the app by the hash of its
               own bytes and reads a new version as different software.
-            * **Linux** — download the `.AppImage` for your
-              architecture (`x86_64` for a normal PC, `aarch64` for a
-              Raspberry Pi 5, an Asahi Mac or an ARM server),
+            * **Linux** — download the `.AppImage` for your architecture:
+              * `poltertype-*-x86_64.AppImage`: compatible with Ubuntu 24.04+,
+                Debian 13+, CachyOS, Fedora, Arch (GLIBC 2.39+) and older CPUs (Intel 2nd/3rd gen+).
+              * `poltertype-*-x86_64-glibc2.43.AppImage`: built for modern systems with GLIBC 2.43+ (Ubuntu 26.04+).
+              * `poltertype-*-aarch64.AppImage`: Raspberry Pi 5, Asahi Mac or ARM64 Linux.
               `chmod +x` it, run. On Wayland sessions, see
               `docs/PERMISSIONS.md` for the evdev permission setup.
 

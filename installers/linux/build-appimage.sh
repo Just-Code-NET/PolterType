@@ -238,7 +238,8 @@ fi
 echo "bundled tray library: ${APPINDICATOR_SO}"
 
 # ─── build AppImage ───────────────────────────────────────────────────
-export OUTPUT="${OUT_DIR}/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
+SUFFIX="${SUFFIX:-}"
+export OUTPUT="${OUT_DIR}/${APP_NAME}-${VERSION}-${ARCH}${SUFFIX}.AppImage"
 export VERSION
 export ARCH
 

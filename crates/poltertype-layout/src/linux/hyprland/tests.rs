@@ -38,6 +38,7 @@ const DESYNCED: &str = r#"Keyboards:
 fn pretty_keymap_names_resolve_for_all_bundled_languages() {
     for (name, id) in [
         ("English (US)", "en-US"),
+        ("English (UK)", "en-GB"),
         ("Ukrainian", "uk-UA"),
         ("Russian", "ru-RU"),
         ("German", "de-DE"),

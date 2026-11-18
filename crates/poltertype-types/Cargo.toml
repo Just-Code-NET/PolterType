@@ -13,5 +13,4 @@ publish.workspace     = true
 workspace = true
 
 [dependencies]
-serde     = { workspace = true }
-thiserror = { workspace = true }
+serde = { workspace = true }

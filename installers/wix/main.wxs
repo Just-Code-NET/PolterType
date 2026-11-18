@@ -153,6 +153,9 @@
                                     <File Id="MapEnUs"
                                           Source="$(var.DataDir)\layout-mappings\en_us.toml"
                                           Name="en_us.toml" />
+                                    <File Id="MapEnGb"
+                                          Source="$(var.DataDir)\layout-mappings\en_gb.toml"
+                                          Name="en_gb.toml" />
                                     <File Id="MapUkUa"
                                           Source="$(var.DataDir)\layout-mappings\uk_ua.toml"
                                           Name="uk_ua.toml" />
@@ -245,6 +248,9 @@
                                     <File Id="FstEnUs"
                                           Source="$(var.DataDir)\wordlists\en_us.fst"
                                           Name="en_us.fst" />
+                                    <File Id="FstEnGb"
+                                          Source="$(var.DataDir)\wordlists\en_gb.fst"
+                                          Name="en_gb.fst" />
                                     <File Id="FstUkUa"
                                           Source="$(var.DataDir)\wordlists\uk_ua.fst"
                                           Name="uk_ua.fst" />
@@ -294,6 +300,9 @@
                                     <File Id="StopEnUs"
                                           Source="$(var.DataDir)\wordlists\en_us-stop.txt"
                                           Name="en_us-stop.txt" />
+                                    <File Id="StopEnGb"
+                                          Source="$(var.DataDir)\wordlists\en_gb-stop.txt"
+                                          Name="en_gb-stop.txt" />
                                     <File Id="StopUkUa"
                                           Source="$(var.DataDir)\wordlists\uk_ua-stop.txt"
                                           Name="uk_ua-stop.txt" />
@@ -344,6 +353,9 @@
                                     <File Id="SurfaceEnUs"
                                           Source="$(var.DataDir)\wordlists\en_us-surface.fst"
                                           Name="en_us-surface.fst" />
+                                    <File Id="SurfaceEnGb"
+                                          Source="$(var.DataDir)\wordlists\en_gb-surface.fst"
+                                          Name="en_gb-surface.fst" />
                                     <File Id="SurfaceUkUa"
                                           Source="$(var.DataDir)\wordlists\uk_ua-surface.fst"
                                           Name="uk_ua-surface.fst" />

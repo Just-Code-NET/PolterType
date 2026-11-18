@@ -23,6 +23,7 @@ pub(crate) fn fetch_wordlists() -> Result<()> {
     fs::write(&en_src_path, &en_raw).with_context(|| format!("write {}", en_src_path.display()))?;
     println!("  saved {} ({} bytes)", en_src_path.display(), en_raw.len());
     process_en(&en_src_path, &wl_dir.join("en_us.txt.gz"))?;
+    process_en(&en_src_path, &wl_dir.join("en_gb.txt.gz"))?;
 
     // The affix expander turns ~350k stems into ~1-3M surface forms.
     // Each language is independent — a transient 404/5xx on one source

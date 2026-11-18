@@ -4,6 +4,24 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.41.0] — British English and broad Linux CPU/GLIBC compatibility
+
+### Added
+
+- **British English (`en-GB`) layout and dictionary.** Added standard ISO
+  UK QWERTY layout mapping, compositor detection, and dictionary support.
+  Resolves discussion #86.
+- **Multi-GLIBC Linux AppImage packaging.** The release pipeline now produces
+  both a standard compatible AppImage built on Ubuntu 24.04 (GLIBC 2.39+,
+  compatible with baseline x86-64 CPUs and LTS distros) and a modern build
+  targeting Ubuntu 26.04+ (GLIBC 2.43+). Resolves issues #87 and #88.
+
+### Fixed
+
+- **AppImage crashes with `GLIBC_2.43 not found` on Ubuntu 24.04** (issue #87).
+- **AppImage crashes with `illegal hardware instruction` on CPUs without AVX2**
+  such as Intel Ivy Bridge (issue #88).
+
 ## [0.40.0] — settings you can find your way around
 
 ### Added

@@ -13,7 +13,7 @@ between sources is what redistributing *the bundle* obliges you to do
 AGPL-3.0-or-later for Hebrew. The table below is the per-language
 detail; read it before shipping a build to anyone else.
 
-## en_us.txt
+## en_us.txt, en_gb.txt
 
 * **Source:** [`dwyl/english-words`](https://github.com/dwyl/english-words),
   file `words_alpha.txt`.
@@ -21,7 +21,8 @@ detail; read it before shipping a build to anyone else.
   `LICENSE.md`.
 * **Processing:** dropped blank lines and non-`[a-z]+` entries,
   sorted, de-duplicated.
-* **Size:** ~370k entries.
+* **Size:** ~370k entries. Shared across US (`en_us`) and British (`en_gb`)
+  English layouts.
 
 ## uk_ua.txt
 

@@ -13,10 +13,8 @@ publish.workspace     = true
 workspace = true
 
 [dependencies]
-poltertype-types    = { workspace = true }
-serde       = { workspace = true }
-thiserror   = { workspace = true }
-tracing     = { workspace = true }
-fst         = { workspace = true }
+poltertype-types     = { workspace = true }
+serde                = { workspace = true }
+fst                  = { workspace = true }
 levenshtein_automata = { workspace = true }
-parking_lot = { workspace = true }
+parking_lot          = { workspace = true }

@@ -886,6 +886,15 @@ fn plain(scancode: u32) -> WordKey {
     }
 }
 
+fn shifted(scancode: u32) -> WordKey {
+    WordKey {
+        scancode,
+        shift: true,
+        caps: false,
+        timestamp_ms: 0,
+    }
+}
+
 /// The whole point of #20: when the OS describes the keyboard the user
 /// actually has, that description wins over the one we guessed.
 #[test]
@@ -1174,4 +1183,26 @@ fn bundled_arabic_digits_are_what_its_keyboard_types() {
     let db = LayoutDb::load_embedded();
     let ar = db.get(&LayoutId::from("ar")).expect("ar is bundled");
     assert_eq!(ar.translate_key(plain(0x02)), Some('1'));
+}
+
+#[test]
+fn bundled_en_gb_layout_and_conversion() {
+    let db = LayoutDb::load_embedded();
+    let gb = db.get(&LayoutId::from("en-GB")).expect("en-GB is bundled");
+    let ua = db.get(&LayoutId::from("uk-UA")).expect("uk-UA is bundled");
+
+    // UK-specific keys
+    assert_eq!(gb.translate_key(plain(0x03)), Some('2'));
+    assert_eq!(gb.translate_key(shifted(0x03)), Some('"'));
+    assert_eq!(gb.translate_key(shifted(0x04)), Some('£'));
+    assert_eq!(gb.translate_key(plain(0x28)), Some('\''));
+    assert_eq!(gb.translate_key(shifted(0x28)), Some('@'));
+    assert_eq!(gb.translate_key(plain(0x2B)), Some('#'));
+    assert_eq!(gb.translate_key(shifted(0x2B)), Some('~'));
+    assert_eq!(gb.translate_key(plain(0x56)), Some('\\'));
+    assert_eq!(gb.translate_key(shifted(0x56)), Some('|'));
+
+    // Transliteration / conversion: "ghbdsn" on en-GB -> "привіт" on uk-UA
+    assert_eq!(gb.transliterate_to("ghbdsn", ua).as_deref(), Some("привіт"));
+    assert_eq!(ua.transliterate_to("руддщ", gb).as_deref(), Some("hello"));
 }

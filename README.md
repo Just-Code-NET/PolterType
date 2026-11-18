@@ -386,14 +386,14 @@ them on the **Commands** pane in Settings.
 
 ## Languages
 
-Sixteen layouts ship with the app, each with a full dictionary:
+Seventeen layouts ship with the app, each with a full dictionary:
 
-**English (US) · Ukrainian · Russian · German · Spanish · French ·
+**English (US) · English (UK) · Ukrainian · Russian · German · Spanish · French ·
 Polish · Czech · Greek · Hebrew · Turkish · Bulgarian · Italian ·
 Portuguese (PT) · Portuguese (BR) · Arabic**
 
 PolterType only loads the ones your OS actually has enabled, so
-bundling sixteen costs a two-keyboard user nothing at runtime.
+bundling seventeen costs a two-keyboard user nothing at runtime.
 
 **On Windows and macOS the bundled table is only a starting point.** A
 layout there is named after a *language*, but a language is not a keyboard —

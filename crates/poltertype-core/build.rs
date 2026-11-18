@@ -28,6 +28,7 @@ use fst::SetBuilder;
 /// discrepancies surface as missing-layout warnings at startup.
 const LAYOUTS: &[(&str, &str)] = &[
     ("en_us", "en-US"),
+    ("en_gb", "en-GB"),
     ("uk_ua", "uk-UA"),
     ("ru_ru", "ru-RU"),
     ("de_de", "de-DE"),
