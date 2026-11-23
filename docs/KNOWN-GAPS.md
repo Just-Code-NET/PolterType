@@ -1,4 +1,4 @@
-# Known gaps (as of v0.41.0)
+# Known gaps (as of v0.41.1)
 
 Things a reader of the docs might reasonably assume work, but don't.
 Check here before promising any of them (especially on the website).
@@ -12,6 +12,13 @@ three releases without a stamp (0.14.3 → 0.17.2), which is what the
 sentence above exists to prevent.
 
 ## What each release pass actually checked
+
+**What the 0.41.1 pass actually checked (2026-11-23).** Dependency
+security updates (`rustls`, `webpki-roots`, `rustls-webpki`, `url`, plus
+two yanked crates) and `deny.toml` cleanup; no behaviour or UI changes.
+`cargo deny check` (default and `--all-features`), `cargo fmt`,
+`cargo xtask style`, both clippy passes and `cargo test --workspace` ran
+on Linux; Windows and macOS were not run. No bullet below changed state.
 
 **What the 0.40.0 pass actually checked (2026-11-13).** This release
 changes the Settings window and nothing that corrects a word. The
