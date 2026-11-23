@@ -265,7 +265,7 @@ Translate only the parts that barely change:
 
 1. What the app does — the opening paragraph — plus a line pointing at
    the English README for everything else.
-2. The install table, all four installers.
+2. The install table, all five installers.
 3. The two caveats: unsigned installers, and no Flatpak.
 4. The closing line pointing here for building from source.
 
@@ -458,14 +458,14 @@ force-push the branch.
 > the previous release. Nothing in CI will catch it for you.
 
 Releases are cut by pushing a `v*` tag. CI ([release.yml]) then
-builds four installers in parallel and attaches them to a draft
+builds five installers in parallel and attaches them to a draft
 GitHub Release, along with `latest.json` — the manifest the in-app
 updater polls, generated from the exact artifacts being uploaded so
 the checksums cannot drift out of step with the files:
 
 | Platform | Artifact | Tooling |
 |---|---|---|
-| Linux (x86_64) | `.AppImage` | `linuxdeploy` + appimage plugin |
+| Linux (x86_64, x86_64-glibc2.43, aarch64) | `.AppImage` | `linuxdeploy` + appimage plugin |
 | macOS (universal: Intel + Apple Silicon) | `.dmg` | `lipo` + `hdiutil` |
 | Windows (x86_64) | `.msi` | WiX Toolset 3 (`candle` + `light`) |
 | all three | `latest.json` | generated in [release.yml] |

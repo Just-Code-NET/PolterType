@@ -3,7 +3,7 @@
 > Step-by-step checklist for bumping the version and shipping a
 > tagged release. Once you push a `v*` tag, the GitHub Actions
 > workflow at [`.github/workflows/release.yml`][release-yml]
-> builds the four platform installers in parallel and attaches
+> builds the five platform installers in parallel and attaches
 > them to a draft release.
 
 The whole flow takes ~15 minutes of local work plus ~15 minutes of
@@ -76,7 +76,7 @@ Nothing on a Linux machine compiles those modules — `cargo check`,
 both clippy passes and `cargo xtask style` all read straight past
 `#[cfg(target_os = …)]` — so the release workflow is the first
 compiler that ever sees them. The workflow's release job is tag-gated,
-so a dispatch on `main` builds all four installers and creates
+so a dispatch on `main` builds all five installers and creates
 nothing. v0.31.0 learned this the expensive way: two visibility errors
 that exist only on macOS, each found by a tagged run, each costing a
 delete-the-tag / re-tag / wait cycle. Rehearsing would have cost the
@@ -403,18 +403,18 @@ gh run watch                        # if you have gh CLI
 
 The workflow:
 
-1. Builds four installers in parallel — Windows `.msi` (WiX
+1. Builds five installers in parallel — Windows `.msi` (WiX
    3.x), macOS universal `.dmg` (Intel + Apple Silicon merged
-   with `lipo`), Linux `.AppImage` for x86_64 and aarch64
-   (`linuxdeploy`, each built natively on a runner of its own
-   architecture).
+   with `lipo`), and three Linux `.AppImage` builds (x86_64
+   compatible on Ubuntu 24.04, x86_64 modern on Ubuntu 26.04+ /
+   GLIBC 2.43, and native aarch64).
 2. Writes `latest.json` — the manifest the **in-app updater**
    polls (version, release-notes URL, and a URL + SHA-256 + size
    per platform). Generated from the exact artefacts being
    uploaded, so the checksums cannot drift out of step with the
    files. A missing artefact fails the job rather than shipping a
    manifest with a hole in it.
-3. Creates a **draft** release on GitHub with the four installers
+3. Creates a **draft** release on GitHub with the five installers
    plus `latest.json` attached, and SHA-256 checksums in the body.
 4. Stops there — you publish the release manually after sanity-
    checking the artefacts.
@@ -697,7 +697,7 @@ git commit -m "release: v$NEW"
 git tag "v$NEW"
 git push origin HEAD --tags
 
-# 6. Watch CI. It builds four installers into a DRAFT release.
+# 6. Watch CI. It builds five installers into a DRAFT release.
 gh run watch
 
 # 7. SIGN THE MANIFEST — mandatory, and nothing fails if you skip

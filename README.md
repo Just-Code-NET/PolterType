@@ -43,7 +43,7 @@ hotkeys, smart commands, wordlists, and per-app exceptions.*
 - **Fast** — pure Rust, no WebView, no perceptible typing latency.
 - **Light to run** — single binary, ~20 MB, a tray icon's worth of
   CPU and RAM. **The download is not light** — the installers are
-  about 60–70 MB, nearly all of it the sixteen bundled dictionaries — but
+  about 60–70 MB, nearly all of it the seventeen bundled dictionaries — but
   only the languages your OS has enabled are ever read into memory.
 - **Quiet** — tray-only, **zero telemetry**. Exactly one network call
   exists, the update check (§ [Staying up to
@@ -86,7 +86,7 @@ making on everybody's behalf
 ## Install
 
 Builds are published as GitHub Releases —
-[**Releases page**](../../releases). Each release ships four
+[**Releases page**](../../releases). Each release ships five
 installers (plus `latest.json`, the manifest the in-app updater
 polls — you never download that one by hand):
 
@@ -94,7 +94,8 @@ polls — you never download that one by hand):
 | --------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 10 / 11                   | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Double-click. Per-user install — no admin rights, no UAC prompt (Server editions disable per-user MSIs and answer 1625; there it needs an elevated install). SmartScreen may show "Windows protected your PC" → **More info** → **Run anyway**.                                                                 |
 | macOS 11+ (Intel + Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | Open the DMG, drag `poltertype.app` into `/Applications`. First launch: right-click the app → **Open** — on macOS 15 and later, open it once, then click **Open Anyway** under System Settings → Privacy & Security — or run `xattr -dr com.apple.quarantine /Applications/poltertype.app`. Then grant **Input Monitoring** and **Accessibility** — macOS asks for the first itself, and if the second is missing PolterType says so and opens its Setup pane. Expect to grant them again after an update: without a Developer ID the app is identified by the hash of its own bytes, so a new version is, to macOS, different software. |
-| Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland, and for NixOS, where an AppImage needs `programs.appimage.binfmt` to run at all.                                                                                        |
+| Linux (x86_64)                    | `poltertype-<ver>-x86_64.AppImage`            | Standard build (Ubuntu 24.04+, Debian 13+, Arch, Fedora; GLIBC 2.39+ and baseline x86-64 CPUs). `chmod +x` and run. Per-user, no system install. See [docs/PERMISSIONS.md](docs/PERMISSIONS.md) for evdev access on Wayland, and for NixOS, where an AppImage needs `programs.appimage.binfmt` to run at all. |
+| Linux (x86_64, GLIBC 2.43+)       | `poltertype-<ver>-x86_64-glibc2.43.AppImage`  | Modern build for systems with GLIBC 2.43+ (Ubuntu 26.04+). Same `chmod +x` and run.                                                                                                                                |
 | Linux (aarch64)                   | `poltertype-<ver>-aarch64.AppImage`           | Same, for ARM64 — Raspberry Pi 5, Asahi, ARM laptops and servers. Built natively, not cross-compiled.                                                                                                               |
 
 > The installers are **unsigned** — that is why Gatekeeper and

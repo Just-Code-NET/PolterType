@@ -15,13 +15,14 @@ Codezeile durchläuft ein Review.
 ## Installation
 
 Die Binaries werden auf der [Releases-Seite](../../releases) veröffentlicht.
-Jedes Release enthält vier Installer:
+Jedes Release enthält fünf Installer:
 
 | System | Datei | Installation |
 | --- | --- | --- |
 | Windows 10 / 11 | `poltertype-<ver>-x86_64-pc-windows-msvc.msi` | Doppelklick. Installation pro Benutzer, ohne Administratorrechte und ohne UAC-Abfrage. SmartScreen zeigt eventuell „Der Computer wurde durch Windows geschützt“ → **Weitere Informationen** → **Trotzdem ausführen**. |
 | macOS 11+ (Intel und Apple Silicon) | `poltertype-<ver>-universal-apple-darwin.dmg` | DMG öffnen und `poltertype.app` nach `/Applications` ziehen. Beim ersten Start Rechtsklick auf die App → **Öffnen** (oder `xattr -dr com.apple.quarantine /Applications/poltertype.app` ausführen). Danach **Bedienungshilfen** und **Eingabeüberwachung** erlauben, wenn macOS danach fragt. Nach jedem Update erneut erlauben: ohne Developer ID erkennt macOS die App am Hash ihrer eigenen Bytes, eine neue Version ist für das System also eine andere Software. **Auf Intel 0.14.4 oder neuer nehmen:** in allen früheren DMGs war der x86_64-Teil unsigniert, und unsigniertem Code gewährt macOS keine Bedienungshilfen — die App lief, die Berechtigung sah erteilt aus, korrigiert wurde nie etwas ([#28](https://github.com/Just-Code-NET/PolterType/issues/28)). |
-| Linux (x86_64) | `poltertype-<ver>-x86_64.AppImage` | `chmod +x` und starten. Pro Benutzer, keine Systeminstallation. Zum `evdev`-Zugriff unter Wayland siehe [docs/PERMISSIONS.md](docs/PERMISSIONS.md) — dort steht auch, warum ein AppImage unter NixOS ohne `programs.appimage.binfmt` gar nicht startet. |
+| Linux (x86_64) | `poltertype-<ver>-x86_64.AppImage` | Standard-Build (Ubuntu 24.04+, GLIBC 2.39+ und Baseline-x86-64-CPUs). `chmod +x` und starten. Pro Benutzer, keine Systeminstallation. Zum `evdev`-Zugriff unter Wayland siehe [docs/PERMISSIONS.md](docs/PERMISSIONS.md) — dort steht auch, warum ein AppImage unter NixOS ohne `programs.appimage.binfmt` gar nicht startet. |
+| Linux (x86_64, GLIBC 2.43+) | `poltertype-<ver>-x86_64-glibc2.43.AppImage` | Moderner Build für Systeme mit GLIBC 2.43+ (Ubuntu 26.04+). Wie oben: `chmod +x` und starten. |
 | Linux (aarch64) | `poltertype-<ver>-aarch64.AppImage` | Wie oben, für ARM64: Raspberry Pi 5, Asahi, ARM-Notebooks und -Server. |
 
 > Die Installer sind weiterhin **nicht signiert**, deshalb warnen Gatekeeper
