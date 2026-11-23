@@ -4,6 +4,22 @@ All notable changes to PolterType are recorded here. The format is
 loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.41.1] — security dependency updates and cargo-deny cleanup
+
+### Fixed
+
+- **Updated vulnerable TLS and URL dependencies** used by the built-in
+  updater (`poltertype-update`): `rustls` 0.23.46 (RUSTSEC-2026-0285,
+  RUSTSEC-2026-0346, RUSTSEC-2026-0348, RUSTSEC-2026-0349), `webpki-roots`
+  1.0.12 (RUSTSEC-2026-0381), `rustls-webpki` 0.103.17 (RUSTSEC-2026-0382),
+  and `url` 2.5.9 (RUSTSEC-2026-0592), along with yanked transitive crates
+  (`async-executor` 1.14.1, `clipboard-win` 5.4.3).
+- **Cleaned up stale `deny.toml` advisory ignores** (issue #89): removed
+  withdrawn `gtk-rs` GTK3 advisories, removed `rustybuzz` and unmatched
+  transitive `unmaintained` ignores, and enabled
+  `unused-ignored-advisory = "deny"` so expired entries fail `cargo deny`
+  immediately.
+
 ## [0.41.0] — British English and broad Linux CPU/GLIBC compatibility
 
 ### Added

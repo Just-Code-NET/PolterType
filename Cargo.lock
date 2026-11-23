@@ -170,9 +170,9 @@ dependencies = [
 
 [[package]]
 name = "async-executor"
-version = "1.14.0"
+version = "1.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c96bf972d85afc50bf5ab8fe2d54d1586b4e0b46c97c50a0c9e71e2f7bcd812a"
+checksum = "f426a31126c735126297bc5ea7a521263c9faff4f63ca415267ee625651c4f37"
 dependencies = [
  "async-task",
  "concurrent-queue",
@@ -630,9 +630,9 @@ checksum = "4bfbf56724aa9eca8afa4fcfadeb479e722935bb2a0900c2d37e0cc477af0688"
 
 [[package]]
 name = "clipboard-win"
-version = "5.4.1"
+version = "5.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
+checksum = "052af7878466feccda12ba7a6a67d019d712f296809559b47c12c8cc196d3a9a"
 dependencies = [
  "error-code",
 ]
@@ -1458,9 +1458,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -2056,7 +2056,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]
@@ -3753,7 +3753,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-ai"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "keyring",
  "poltertype-detect",
@@ -3767,7 +3767,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-app"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
@@ -3799,14 +3799,14 @@ dependencies = [
 
 [[package]]
 name = "poltertype-autostart"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "tracing",
 ]
 
 [[package]]
 name = "poltertype-core"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "crossbeam-channel",
  "directories",
@@ -3828,7 +3828,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-detect"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "fst",
  "levenshtein_automata",
@@ -3839,7 +3839,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-icon"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "png",
  "thiserror 1.0.69",
@@ -3847,7 +3847,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-input"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "arboard",
  "core-foundation 0.10.1",
@@ -3869,7 +3869,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-layout"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "core-foundation 0.10.1",
  "poltertype-types",
@@ -3881,7 +3881,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-popup"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "core-graphics 0.25.0",
  "cosmic-text",
@@ -3903,7 +3903,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-shell"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "core-foundation 0.10.1",
  "iced",
@@ -3916,7 +3916,7 @@ dependencies = [
 
 [[package]]
 name = "poltertype-tray"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "glib",
  "libappindicator-sys",
@@ -3929,14 +3929,14 @@ dependencies = [
 
 [[package]]
 name = "poltertype-types"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "poltertype-update"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "base64",
  "directories",
@@ -4341,7 +4341,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]
@@ -4426,9 +4426,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.40"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "log",
  "once_cell",
@@ -4451,9 +4451,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.13"
+version = "0.103.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
+checksum = "e3a0760a887c14823fca5a1c970b01d47c328c696c0c64829d1df50e8f853fd5"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -5603,9 +5603,9 @@ dependencies = [
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -5912,14 +5912,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.12",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.7"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52f5ee44c96cf55f1b349600768e3ece3a8f26010c05265ab73f945bb1a2eb9d"
+checksum = "7265c9301c16a8711c992c2d8da90ee77ef54b1ed51482d6dfeb00dc756b1297"
 dependencies = [
  "rustls-pki-types",
 ]
